@@ -1,0 +1,461 @@
+# Harper's Circle — Project Scope
+
+**Version** 0.1 · draft for build planning
+**Audience** Technical cofounder / first engineer, and the working spec the founder builds against
+**Depth** Product scope. No architecture, stack, or data-model decisions here — those follow from this.
+**Sources** Harper's Circle interactive prototype; Pitch Deck v2.
+
+---
+
+## 1. Summary
+
+Harper's Circle is a family operating system for aging-parent care.
+
+A family caring for an aging parent is not short on information. They are short on a system. The discharge summary is in one person's email, the medication list is a photo on someone's phone, the insurance statement is in a paper pile, the caregiver's schedule is a group text, and the answer to "what did the cardiologist actually say" lives in one sibling's memory. Every family rebuilds this system from scratch, badly, under stress — and one person ends up being the system.
+
+Harper's Circle is a shared record for one parent, held by their family, that ingests what the family already produces — documents, photos, forwarded emails, voice notes — and uses AI to read it, extract what matters, connect it to everything already in the record, and propose what to do next. People decide; the AI does the reading, the connecting, and the drafting.
+
+The closest analogue is a synthesis workspace: the value is not storage and not chat, it is **consolidation across sources plus connection between them**. A discharge summary alone is a PDF. A discharge summary read against the current medication list, the follow-up calendar, the house's stair situation, and who in the family is on call this week is a plan. That gap — from documents to plan — is the product.
+
+### The three returns
+
+Every feature in this scope should be traceable to at least one of these:
+
+- **Time.** The coordinator's hours go from searching, re-asking, and re-explaining to reviewing and deciding. The target is that no fact is ever entered twice and no sibling ever has to ask "where is that."
+- **Emotional.** The load is distributed and visible, so the coordinator is not alone and the distant sibling is not guessing. The record also holds the parent as a person, not only as a patient — which is what keeps a family in the product after the crisis passes.
+- **Financial.** Missed follow-ups, unclaimed benefits, unfiled paperwork, and quiet deadlines cost real money. Catching them is a measurable outcome the product can show.
+
+### Scope of v1
+
+- **Platform:** responsive web only. No native apps.
+- **AI stance:** extract and suggest; a person approves every write to the record. No autonomous filing in v1.
+- **Regulatory posture:** consumer application, not a HIPAA-covered entity. See §9 — this constrains what we integrate with and what we say, and it must be reviewed before any provider-side integration.
+- **Explicitly out of v1:** parent-facing phone experience, patient-portal / health-records API integration, native mobile, professional or agency accounts.
+
+---
+
+## 2. Who this is for
+
+**The circle** is the unit of the product. One circle = one parent (a second parent can be added as their own record; see §4.9).
+
+| Role | Who | What they need |
+|---|---|---|
+| **Coordinator** (primary user, buyer) | Usually one adult child, often a daughter, often 45–60, often working | To stop being the system. Fewer open loops, less re-explaining, a place where the answer already is. |
+| **Contributing sibling** | Handles a slice — money, calls, visits | To help without a briefing. To see what's happening without asking. |
+| **Distant sibling** | Low operational load, high anxiety | To know the parent is okay and to be genuinely useful in bounded ways. |
+| **The parent** | Subject of the record | Dignity and control. Nothing about them without their say, while they're able. Read-only presence in v1. |
+| **Paid caregiver / aide** | Hired help | The narrow slice they need: today's plan, their assigned items. Nothing else. |
+| **Professional** (attorney, care manager, clinician) | Occasional | Scoped, revocable, time-boxed access to a subset. Not a v1 build; the permissions model must not preclude it. |
+
+**Design principle:** the coordinator gets a system; everyone else gets an on-ramp with almost no learning curve. If the sibling has to be trained, they won't come.
+
+---
+
+## 3. The core loop
+
+Everything in the product is one loop, repeated:
+
+```
+INGEST  →  READ  →  PROPOSE  →  APPROVE  →  FILE  →  SURFACE
+```
+
+1. **Ingest.** Something arrives: a photo of a pill bottle, a forwarded email, a PDF, a voice note, an SMS.
+2. **Read.** AI extracts structured facts, always with a citation back to the source location.
+3. **Propose.** AI drafts the consequences: documents to file, tasks to create, timeline events to add, checklist items to raise, facts to update — and flags conflicts with what's already in the record.
+4. **Approve.** A person reviews the proposal in plain language and accepts, edits, or rejects. Item by item, never all-or-nothing.
+5. **File.** Approved items are written to the record, each carrying provenance (source, extraction, approver, timestamp).
+6. **Surface.** The record shows up where it's needed — the brief, the timeline, a checklist, a task, a person's slice.
+
+Every surface in §4 is either an entry to this loop, a step in it, or a view of its output. **Nothing enters the record without a human approval, and nothing in the record is without provenance.** These are the two rules the build should not bend.
+
+---
+
+## 4. Surfaces
+
+Each section: what it is, what a user does, what the AI does, what it depends on, and where the v1 line sits.
+
+---
+
+### 4.1 Care Inbox — the wedge
+
+**What it is.** The single arrival point for everything that comes into the family's care life. One list, source-agnostic. Each item moves through: `arrived → read → needs review → filed`.
+
+**What the user does.**
+- Sees a queue of arrivals with what they are, where they came from, and when.
+- Opens an item and sees, side by side: the source, what the AI read out of it, and what it proposes to do about it.
+- Approves, edits, or rejects each proposed action individually.
+- Sees, after filing, exactly where each thing went — with links to those destinations.
+
+**What the AI does.**
+- Classifies the item (medical, medication, insurance, legal, financial, scheduling, personal).
+- Extracts structured facts with a citation to the source region for each.
+- **Interprets against the existing record** — this is the differentiating step, not the extraction. Examples the prototype demonstrates: a new medication that duplicates a current one; a discharge instruction that contradicts the standing routine; a follow-up window that has no appointment booked; a bill with a date that matches an event already on the timeline.
+- Drafts: documents to file (with category), tasks (with a suggested owner and due date), timeline events, checklist items, and profile-field updates.
+- States its own uncertainty. Low-confidence extractions are shown as questions, not assertions.
+
+**Depends on.** Ingestion channels (§5), document vault, tasks, timeline, checklists, person profile.
+
+**In v1.** Full loop for photo, PDF, forwarded email, connected inbox, SMS, and voice note. Item-level approve/edit/reject. Provenance display. Conflict flags. Post-file receipt with destination links.
+
+**Later.** Bulk review of similar items; learned filing preferences per family; auto-file of low-risk categories once accuracy is proven in production; re-processing an item when the record changes around it.
+
+**Done when.** A coordinator can forward a real discharge summary and, in under two minutes of review, end with a filed document, the right tasks assigned to the right people, the appointment on the calendar, the medication list updated, and a timeline entry — without typing anything twice.
+
+---
+
+### 4.2 Weekly Brief
+
+**What it is.** A periodic synthesis of the record — what changed, what's coming, what needs a decision, and what's quietly overdue. The artifact that makes the distant sibling useful without a phone call.
+
+**What the user does.**
+- Reads it in the app; receives it by email on a family-set cadence (default weekly).
+- Acts directly from it: claim a task, approve a pending decision, open the item behind a line.
+- Sends it to the circle, or to a subset.
+
+**What the AI does.**
+- Composes the brief from the week's record activity — not a changelog, a summary with a point of view about what matters.
+- Surfaces what is *not* happening: the follow-up nobody booked, the item assigned three weeks ago with no movement, the caregiver shift with no cover.
+- Includes one non-clinical note — a photo, a good day, a memory added — because a brief that is only bad news gets unsubscribed from.
+- Every claim in the brief links to its source in the record.
+
+**Depends on.** Everything. The brief is the record's output surface.
+
+**In v1.** Weekly generation, in-app and email, family cadence setting, actionable lines, per-recipient scoping (a person only sees lines they have access to).
+
+**Later.** Per-person brief tailoring by role; event-triggered briefs (after a hospitalization); voice/audio version for the parent.
+
+**Done when.** A sibling who has not opened the app in a week can read one page and know what's true, what changed, and what they can take.
+
+---
+
+### 4.3 Timeline
+
+**What it is.** One chronological thread for the parent's life-in-care. Clinical events and ordinary days on the same thread, deliberately.
+
+**What the user does.**
+- Scrolls the thread; filters by kind (medical, care, admin, memory) and by date range.
+- Opens any event to see its source and everything linked to it.
+- Adds an event manually.
+- Uses it as the answer to "when did this start" and "what happened last time" — including in a doctor's office.
+
+**What the AI does.**
+- Creates events from inbox filings, on approval.
+- Threads related events into episodes (a fall → ER → hospitalization → discharge → home health → follow-up is one story, not six entries).
+- Answers timeline questions from the record with citations ("she's been on this since Jul 2 — here's the document").
+
+**Depends on.** Inbox, documents, tasks, memories.
+
+**In v1.** Chronological thread, kind filters, manual add, event detail with links, episode grouping.
+
+**Later.** Printable/shareable clinical summary for an appointment; trend views (weight, blood pressure) when structured vitals exist.
+
+**Done when.** A family member walking into an appointment can answer "when did this start and what have you tried" from the timeline alone.
+
+---
+
+### 4.4 Tasks
+
+**What it is.** The shared work board for the circle. The mechanism by which the load stops being one person's.
+
+**What the user does.**
+- Sees open items, who owns each, what's due, and where it came from.
+- Claims, reassigns, completes, snoozes, or adds a task.
+- Filters to "mine," "unassigned," "overdue."
+- Sees the source of every task — the brief, a checklist, an inbox item, a person.
+
+**What the AI does.**
+- Proposes tasks from inbox items and checklists, with a suggested owner (based on that person's declared slice) and a due date derived from the source (a 7-day follow-up window means a real date, not "soon").
+- Flags the unassigned and the aging.
+- Never assigns work to a person without a human approving it. Assignment is a social act; the AI proposes, the family decides.
+
+**Depends on.** Inbox, checklists, people & roles, calendar.
+
+**In v1.** Board with owner/due/source, claim & reassign, completion, filters, manual add, AI-proposed tasks via approval.
+
+**Later.** Recurring tasks; caregiver-visible task subsets on their own simplified view; workload balance view across the circle.
+
+**Done when.** A coordinator can hand off a real item to a sibling in two taps and the sibling knows what it means without a call.
+
+---
+
+### 4.5 Document vault
+
+**What it is.** The family's filing cabinet for the most sensitive material: medical, medications, insurance, legal, finances, labs. The most-searched, least-glamorous surface, and one of the strongest retention hooks.
+
+**What the user does.**
+- Uploads, or lets the inbox file for them.
+- Browses by category; searches by content, not just filename.
+- Opens a document and sees what the AI read out of it, and everything else in the record that references it.
+- Shares a specific document, scoped, with a specific person.
+
+**What the AI does.**
+- Categorizes, names (a phone photo becomes "Medicare EOB · Jul 2026 · $0 owed"), and summarizes on filing.
+- Extracts key fields per type (policy numbers, effective dates, prescriber, dosage, expiration).
+- Makes the contents searchable in natural language, answering with citations.
+- Flags expirations and renewal windows as tasks.
+
+**Depends on.** Inbox, permissions, tasks.
+
+**In v1.** Upload, AI categorization + naming, category browse, content search, document detail with extraction and cross-references, scoped sharing, expiration flags.
+
+**Later.** Versioning of superseded documents; family-level export ("give me everything"); attorney/professional read-only share links.
+
+**Done when.** "Where is the insurance card" is answered in under ten seconds by anyone in the circle who has access.
+
+---
+
+### 4.6 Checklists
+
+**What it is.** Situational playbooks — hospital discharge, making the house safe after a fall, a doctor's visit, the monthly bills pass, legal & decisions on paper, a day at home, when the caregiver quits, an ER trip, the out-of-town visit. Each is grouped into phases, each item has an owner and can become a task.
+
+The differentiator: **a checklist is populated from this family's record, not from a generic template.** Items appear because the discharge summary mentioned stairs, or because the parent's medication list includes a fall-risk drug — and each AI-added item carries a "why this is here" that cites the source.
+
+**What the user does.**
+- Opens the checklist that matches the situation.
+- Checks items off; hands items to people (which creates tasks with the checklist named as source).
+- Reads the "why" behind AI-suggested items.
+- Shares a subset with a caregiver.
+- Asks for more suggestions on a given checklist.
+
+**What the AI does.**
+- Selects the relevant checklist when a triggering event enters the record.
+- Adds record-specific items with cited reasoning.
+- Suppresses items that are already handled elsewhere in the record.
+
+**Depends on.** Record, tasks, people & roles.
+
+**In v1.** A curated library of the core situations, phase grouping, per-item owner and completion, hand-to-task, AI-added items with cited reasoning, scoped sharing, related-checklist links.
+
+**Later.** Family-authored checklists; community/aggregate checklists; condition-specific playbooks.
+
+**Done when.** A family leaving a hospital gets a checklist that names their parent's actual stairs, actual medications, and actual follow-up window — and hands out in one pass.
+
+---
+
+### 4.7 Local resources
+
+**What it is.** A directory of the specific, local, practical help a family needs and cannot find: doctors, dental, transportation, home health and aides, legal, money & benefits, home repair and modification, adult day and respite.
+
+The differentiator: **the record pre-filters the search.** Zip code, insurance, mobility needs, and budget are already known, so results are filtered before the family sees them rather than after.
+
+**What the user does.**
+- Browses by category or searches; sets/adjusts location.
+- Reads what each place actually is, in plain language, with distance and phone number.
+- Saves a resource to the circle — which makes it visible to everyone and adds a timeline entry.
+- Sees which saved resources the family is already using.
+
+**What the AI does.**
+- Ranks by fit to this record, not by generic relevance.
+- Explains the fit ("takes her plan," "house calls for patients over 75," "half-day respite").
+- Suggests a category when the record implies a need (a fall creates a need for home modification).
+
+**Depends on.** Person profile, documents (insurance), permissions.
+
+**In v1.** Category browse, search, location setting, resource detail, save-to-circle, saved list. **Data sourcing is an open question — see §11.**
+
+**Later.** Verified/reviewed listings; family notes and outcomes on each resource; cost and coverage data; booking or referral handoff.
+
+**Done when.** A family can go from "she needs a ride to dialysis" to a saved, shared, plan-appropriate option in one sitting.
+
+---
+
+### 4.8 People, roles & scoped access
+
+**What it is.** The permission model, expressed as people rather than as settings. The reason a family will put legal and financial documents into this product at all.
+
+**The tiers.**
+- **Root authority — the parent.** The parent sees everything about themselves and, while able, has the final say over who else can. This is a stated product position, not a toggle.
+- **Legal roles** — healthcare proxy, durable power of attorney — recorded on the person, with the document that establishes them linked from the vault.
+- **Family** — per-domain access: memories, health & care, schedule, documents, finances. Each independently grantable.
+- **Care circle** — paid caregivers and others, scoped to a narrow slice: their assigned tasks, today's plan. No finances, no family notes.
+- **Professionals** (later) — time-boxed, revocable, subset access.
+
+**What the user does.**
+- Sees every person in the circle, their role, their slice, and exactly what they can see, in plain language ("Summary only," "Full," "Hidden").
+- Invites someone. New members start at the lowest tier until a parent or proxy raises it.
+- Adjusts a person's access, or revokes it.
+- Sees a person's contribution — what they own, what they've done.
+
+**What the AI does.** Nothing autonomous here. It may *suggest* that a filed item is relevant to a person, but access is never AI-granted. Access changes should be logged and visible to the parent.
+
+**Depends on.** Nothing; everything depends on this. **Build it early — retrofitting a permission model across nine surfaces is the most expensive mistake available on this project.**
+
+**In v1.** Person records, roles, per-domain access, invite flow with lowest-tier default, caregiver scoped view, access change log.
+
+**Later.** Professional time-boxed access; parent-facing consent prompts; delegation when the parent can no longer decide.
+
+**Done when.** A family can add a paid caregiver in under a minute and be confident, without reading documentation, that she cannot see the bank statements.
+
+---
+
+### 4.9 Person profile
+
+**What it is.** The structured "who this person is" record — the answer to every intake form the family will ever fill out again. Conditions, medications, allergies, providers, insurance, pharmacy, key contacts, preferences and routines, legal roles.
+
+**What the user does.**
+- Reads it; edits any field; sees the source and date of each fact.
+- Prints or exports a one-page summary for an ER, a new provider, or a caregiver.
+- Adds a second parent as their own record inside the same family.
+
+**What the AI does.**
+- Proposes field updates from filed documents, with citation, always via approval.
+- Flags contradictions between sources ("the discharge summary lists a drug the current medication list doesn't").
+- Flags staleness ("this medication list is from March; four documents since then mention changes").
+
+**In v1.** Full profile, sourced fields, manual edit, AI-proposed updates via approval, printable one-page summary.
+
+**Later.** Multiple parents with shared circle membership; parent-authored preferences in their own voice.
+
+---
+
+### 4.10 Memories & Album
+
+**What it is.** Photos, voice notes, stories, and the album — the parent as a person. Commercially this is the retention layer: it is why a family stays after the hard weeks, and why the record still has value when care ends.
+
+**What the user does.**
+- Adds a photo, a voice note, a video, or a written story.
+- Browses the album by decade or category (early life, milestones, work, home & everyday, portraits, in her voice).
+- Prompts the parent for a memory.
+- Sees memories appear on the timeline and in the brief.
+
+**What the AI does.**
+- Suggests dates and eras from photo content; groups by era.
+- Transcribes voice notes and makes them searchable.
+- Surfaces one memory into each weekly brief.
+- **Never generates, edits, or embellishes memory content.** Stated policy.
+
+**In v1.** Add photo/voice/video/story, album with filters, decade view, transcription, timeline and brief integration, prompt-a-memory.
+
+**Later.** Printed keepsake export; guided life-story interview; parent-initiated recording from their own device.
+
+---
+
+### 4.11 Calendar sync
+
+**What it is.** Two-way sync between the family's existing calendars and the record's dated items — appointments, caregiver shifts, task due dates, visits.
+
+**What the user does.**
+- Connects a calendar (Google/Outlook).
+- Sees care events on their own calendar; sees the family's shared schedule in-app.
+- Chooses what syncs out (all events, or only their own).
+
+**What the AI does.** Extracts appointments from documents and proposes them as events; detects conflicts (two siblings booked to drive on the same afternoon; a caregiver shift with no cover).
+
+**In v1.** Connect, two-way sync, per-person sync scope, conflict flags.
+
+**Later.** Caregiver shift scheduling with coverage gaps as first-class objects; availability polling across the circle.
+
+---
+
+### 4.12 Home
+
+**What it is.** The landing surface: how the parent is, what needs review, what's due, who's on. It is a router, not a dashboard — its job is to send you to the one thing that matters right now, and to make the state of things legible in five seconds.
+
+**In v1.** Status of the parent, review queue count, my open tasks, today's schedule, latest brief, recent record activity.
+
+**Not in v1.** Metrics, charts, scores, or any number the family did not put there themselves.
+
+---
+
+## 5. Ingestion
+
+The single hardest product requirement: **the family must not have to change how they already work.** Six channels in v1.
+
+| Channel | v1 behavior |
+|---|---|
+| Photo / scan upload | Drag-drop or camera. Pill bottles, handwritten notes, cards, forms. |
+| PDF upload | Standard documents. |
+| Forwarding address | Each circle gets an address; anything forwarded lands in the inbox with the original sender preserved. |
+| Connected inbox (Gmail / Outlook) | Read-only, filtered — the user selects which senders/labels flow in. Never a full mailbox slurp. |
+| SMS forward | A number the family can forward texts and photos to. |
+| Text / voice note | In-app capture; voice transcribed on arrival. |
+
+**Rules.** Every ingested item retains the original artifact, unmodified, forever. Every extracted fact cites its source location. Nothing is discarded on the family's behalf.
+
+**Out of v1.** Patient portal and health-record APIs, fax, provider-side integrations, financial account connections. Each of these changes the regulatory posture (§9) and should not be scoped until that is settled.
+
+---
+
+## 6. AI behavior and trust
+
+The AI stance for v1: **extract and suggest; a person approves everything.**
+
+Non-negotiables:
+
+1. **Every extraction cites its source.** A fact the user cannot trace is a fact they will not trust, and one wrong un-cited fact costs more trust than fifty right ones earn.
+2. **Every write is human-approved,** item by item. No bulk accept in v1.
+3. **Uncertainty is shown, not hidden.** Low confidence renders as a question.
+4. **The AI never assigns work to a person, never grants access, and never generates memory content.**
+5. **Plain language, no clinical advice.** The product organizes, connects, and reminds. It does not diagnose, recommend treatment, or interpret results medically. Copy discipline here is a product requirement, not a legal footnote.
+6. **The record is exportable.** The family owns it and can take it out.
+
+The moat is not the extraction — that is commoditizing. It is the **interpretation against an accumulated family record**, which no one else has, and which compounds with every item filed.
+
+---
+
+## 7. What the family gets, measured
+
+The doc should be able to show a family its own return. Candidate in-product measures, all derived from the record rather than invented:
+
+- Items filed without manual entry; facts never re-entered.
+- Time from arrival to filed.
+- Follow-ups caught that had no appointment booked.
+- Deadlines and expirations flagged before they passed.
+- Share of open tasks held by someone other than the coordinator.
+- Circle members active in the last 30 days.
+
+*(Founder input needed on which of these become headline metrics — see §11.)*
+
+---
+
+## 8. Suggested phasing
+
+The answered scope puts ten surfaces in v1. That is buildable but long. A defensible cut, if the timeline demands one:
+
+**Phase 1 — the wedge.** Ingestion (photo, PDF, forwarding address) → Care Inbox → Document vault → Timeline → Tasks → People & scoped access → Home. This is a complete, useful product: things arrive, get read, get filed, get done, and are findable. Permissions are in from day one.
+
+**Phase 2 — the habit.** Weekly Brief, Checklists, Person profile, connected inbox + SMS + voice ingestion, Calendar sync. This is what turns a filing system into a weekly ritual and gets the second and third family members in.
+
+**Phase 3 — the reason to stay.** Memories & Album, Local resources. Retention and reach.
+
+**Phase 4 — deferred by decision.** Parent's phone experience, professional access, health-record integrations, native mobile.
+
+If only one thing ships, it is Phase 1. If Phase 1 does not produce a family that keeps forwarding documents, nothing after it will help.
+
+---
+
+## 9. Posture and constraints
+
+**Consumer application, not a HIPAA-covered entity.** The family is uploading their own records, voluntarily, to a service they control. This is the right v1 posture and it is common for consumer health tools — but it carries hard boundaries:
+
+- No integration that makes us a business associate of a covered entity (patient-portal APIs, provider-side data feeds) without first taking on the compliance work.
+- No claim, anywhere in the product or marketing, that we are HIPAA compliant.
+- Consumer health privacy law still applies and is tightening — state health-data laws (e.g. Washington's My Health My Data), FTC health-breach rules, and app-store health-data policies all reach this product. **This needs a lawyer's read before launch, not after.**
+
+Regardless of posture, and because families are handing over legal and financial material, the product should hold itself to: encryption at rest and in transit, per-domain access enforced server-side, a visible access log, no training on family data, no third-party data sharing, and full export and deletion on request. These are trust features as much as security ones — the permissions surface (§4.8) is where they become visible, and that visibility is what earns the upload.
+
+---
+
+## 10. Non-goals for v1
+
+- Not a social network. No feeds, no public profiles.
+- Not an EHR or a clinical system.
+- Not a caregiver marketplace or a booking platform.
+- Not a chatbot. AI appears inside surfaces as extraction, connection, and drafting — not as a conversation to be started from nothing.
+- Not a general family organizer. One parent, one circle, one problem, done well.
+- No gamification, streaks, scores, or badges. The subject matter forbids it.
+
+---
+
+## 11. Open questions
+
+To be answered before or during build:
+
+1. **Local resources data.** Licensed directory, public datasets, scraped-and-verified, or family-contributed? This determines whether §4.7 is a v1 feature or a v2 one.
+2. **Target timeline, team, and budget.** Not yet specified; the phasing in §8 assumes nothing.
+3. **MVP success definition.** Which of §7's measures are the headline, and at what target?
+4. **Pricing.** Deck v2 proposes two tiers as an untested hypothesis, with the coordinator as payer. Does v1 charge, or run free to a design-partner cohort?
+5. **Parent-facing experience.** Deferred from v1 — but the product's stated position is that the parent is root authority. How is that honored in v1 if they cannot log in?
+6. **Second parent.** Two parents in one household is the common case. Separate records inside one family, or one record with two subjects?
+7. **What happens after.** The record's value does not end when care does. Is there a defined end-of-care state, and does it change the product's obligations?
+8. **Design-partner families.** How many, recruited how, and how much do we build in front of them versus behind them?
