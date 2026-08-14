@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # secret scanning needs history
+
+      - name: Secret scanning
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install (locked)
+        run: npm ci
+
+      - name: Service-role containment
+        run: node scripts/check-service-role-containment.mjs
+
+      - name: Start local Postgres (Supabase, pinned CLI)
+        run: npx supabase db start
+
+      - name: Reset database from migrations
+        run: npm run db:reset
+
+      - name: Database tests (pgTAP)
+        run: npm run test:db
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck

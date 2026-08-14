@@ -18,6 +18,9 @@ supabase/.temp
 build/
 coverage/
 
+# claude code personal settings
+.claude/settings.local.json
+
 # misc
 .DS_Store
 *.pem

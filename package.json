@@ -1,0 +1,35 @@
+{
+  "name": "harpers-circle",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.15.0 <23",
+    "npm": ">=10.9.0"
+  },
+  "packageManager": "npm@10.9.2",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
+    "db:reset": "supabase db reset",
+    "test:db": "supabase test db",
+    "db:verify": "supabase db lint"
+  },
+  "dependencies": {
+    "next": "16.3.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.1",
+    "supabase": "2.100.1",
+    "typescript": "^5"
+  }
+}
