@@ -422,7 +422,7 @@ create table public.invites (
 
 **Circle creation is ordered, and the order is an acceptance criterion.** `hc.create_circle()` writes the **custodianship declaration to `access_log` before any other row for that circle exists** — before subjects, before the founder's membership, before grants (AC-AUTH-6). It names subject, custodian and date, and it is `seq = 1` in that circle's hash chain. This is what gives PRD §7.5's *"this is Nell's record, held by you on her behalf"* a receipt from row one rather than a sentence on a screen. A pgTAP test asserts `seq = 1` is `custodianship_declared` for every circle, so the ordering cannot drift when the function is later edited.
 
-**Freeze** (PRD §7.5). `subject_id` null means the whole circle.
+**Freeze** (PRD §7.5). Intake is whole-circle: while a freeze is `open`, `subject_id` is null — enforced by a declarative constraint, not a convention. Only an adjudicated finding can narrow the freeze to a subject (ADR-0001).
 
 ```sql
 create table public.freezes (
@@ -438,13 +438,18 @@ create table public.freezes (
   contact_attempted_at timestamptz,
   adjudicated_at timestamptz,
   adjudicated_by text,
-  outcome_note   text
+  outcome_note   text,
+  -- An open freeze cannot name a subject: intake is whole-circle, and only
+  -- a finding can narrow (ADR-0001).
+  constraint freezes_open_is_whole_circle
+    check (state <> 'open' or subject_id is null)
 );
--- One open freeze per target.  Per subject AND per claimant rate limiting (PRD §7.5)
--- lives in hc.request_freeze(); this index is the "a record cannot be re-frozen
--- while one adjudication is open" half.
-create unique index freezes_one_open_per_target
-  on public.freezes (circle_id, coalesce(subject_id,'00000000-0000-0000-0000-000000000000'::uuid))
+-- One open freeze per circle.  (Intake is whole-circle, so "per target"
+-- reduces to per circle.)  Per subject AND per claimant rate limiting
+-- (PRD §7.5) lives in hc.request_freeze(); this index is the "a record
+-- cannot be re-frozen while one adjudication is open" half.
+create unique index freezes_one_open_per_circle
+  on public.freezes (circle_id)
   where state = 'open';
 ```
 
@@ -452,7 +457,7 @@ Three notes the PRD forces:
 
 - **There is no expiry column and no scheduled job that lifts a freeze.** The 3-day contact and 10-day decision obligations are tracked as operational alerts against `requested_at`; neither writes to `state`. A freeze ends by a finding (`dismissed`/`upheld`/`unresolved`) and by nothing else (PRD §7.5).
 - **`unresolved` is a state, not a fallback.** It is entered explicitly. §3.9 gives it read-only access for coordinators *other than* the objected-to member, and closed if that member is the only coordinator.
-- **Interpretation flagged for review.** The PRD says "the record is closed" without saying whether a two-subject circle closes both records when one subject is objected to. This schema freezes **per subject by default** (consistent with §7.1's "no circle-wide access level"), with `subject_id = null` available to the adjudicator for a whole-circle freeze. Circle-level effects — exports, deletions, invites — are suspended while *any* freeze is open. If the intent is that any freeze closes the whole circle, it is one line in §3.9.
+- **Resolved (ADR-0001): whole circle at intake, narrowed at adjudication.** The PRD says "the record is closed" without saying whether a two-subject circle closes both records when one subject is objected to. It does: an open freeze covers every subject, enforced by `freezes_open_is_whole_circle` above. PRD §7.5 is containment-first; a claimant should not have to scope an objection they may not know spans two subjects; and joint finances mean a per-subject freeze would leave the accused reading the couple's records through the other file. The adjudicator may set `subject_id` when entering a finding — an `unresolved` finding narrowed to one subject continues the freeze on that record only. Circle-level effects — exports, deletions, invites — are suspended while *any* freeze is open.
 
 ### 2.4 Ingestion
 
@@ -1405,13 +1410,13 @@ The marker is scoped to a **specific row id**, not a boolean, so a reclassificat
 
 ### 3.8 Freeze
 
-`hc.grant_vectors()` sets `frozen = true` for a subject with an open freeze covering it (directly, or via a circle-wide `subject_id is null` row). `hc.visible_at()` returns `hidden` on that flag **before** evaluating tier, grants or shares — so the custodian and every coordinator are closed out along with everyone else, and no share and no grant lifts it (AC-PERM-11).
+`hc.grant_vectors()` sets `frozen = true` for a subject with a freeze covering it. While a freeze is `open` that is always every subject in the circle — intake is whole-circle, `subject_id is null` enforced by `freezes_open_is_whole_circle` (§2.3, ADR-0001); a continuing `unresolved` finding covers the subject it names, or the whole circle if the adjudicator did not narrow. `hc.visible_at()` returns `hidden` on that flag **before** evaluating tier, grants or shares — so the custodian and every coordinator are closed out along with everyone else, and no share and no grant lifts it (AC-PERM-11).
 
 | Outcome | Effect |
 |---|---|
 | `dismissed` | The flag clears. Full access restored, every member notified, the finding logged |
 | `upheld` | The flag clears and the finding is applied as an ordinary grant change — usually removing or lowering the objected-to member |
-| `unresolved` | `frozen` stays true for everyone **except** coordinators other than the objected-to member, who are restored **read-only** (`hc.visible_at` capped at `view`, and `hc.approve_proposal` refuses). If the objected-to member is the only coordinator, the record stays closed. No ingestion processing, no new grants, no exports, no deletions, no invites |
+| `unresolved` | `frozen` stays true for everyone **except** coordinators other than the objected-to member, who are restored **read-only** (`hc.visible_at` capped at `view`, and `hc.approve_proposal` refuses). If the objected-to member is the only coordinator, the record stays closed. The adjudicator may narrow the continuing freeze to the subject the finding names (`subject_id` set at adjudication — the open state cannot carry one); the other subject's record then reopens under the ordinary rules. No ingestion processing, no new grants, no exports, no deletions, no invites |
 
 Inbound mail is still **accepted and stored** during a freeze — nothing is lost — but the pipeline does not advance past `stored`, and no notification is sent (PRD §7.5).
 
@@ -2723,7 +2728,7 @@ Every gate, and the section that makes it satisfiable.
 |---|---|
 | **PRD §12.8** — caregiver accounts across families | **Frozen here.** Global identity, per-circle membership, separate accounts required (PRD §8.12, §12.5). The product question does not change the schema either way (§2.3) |
 | **PRD §12.7** — coordinator succession | Interim mechanism is §9.3's admin-executed transfer, dual-controlled and logged. Built **and tested** before the first family |
-| Freeze scope — per subject or per circle | Written per subject with a whole-circle option (§2.3). **One line in §3.8 to reverse** |
+| Freeze scope — per subject or per circle | **Settled (ADR-0001): whole circle at intake, narrowed at adjudication.** §2.3's `freezes_open_is_whole_circle` constraint makes an open freeze circle-wide by construction; a finding may narrow |
 | `documents.summary_text` at `summary` or `view` | Written at `summary` (§3.4). **One table split to reverse**, and cheaper to decide now than after slice 7 |
 | Forwarding-address local part | `<firstname>.<token>` (§5.1). Affects copy on the completion screen and Home; **decide before slice 2** |
 
