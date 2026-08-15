@@ -7,7 +7,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(20);
+select plan(18);
 
 -- ----------------------------------------------------------------------------
 -- M1: roles (TSD §1.2 — the load-bearing table of the architecture)
@@ -35,40 +35,25 @@ select has_extension('pgcrypto', 'pgcrypto installed (access_log hash chain, §2
 select has_extension('pgmq',     'pgmq installed (§1.4)');
 
 -- ----------------------------------------------------------------------------
--- M1: execute is deny-by-default for future functions (ADR-0003 finding 8)
+-- M1: execute is deny-by-default for future functions (ADR-0003 finding 8).
+-- GLOBAL default-ACL rows (defaclnamespace = 0): per-schema entries only add
+-- to global defaults, so only the global form removes PUBLIC EXECUTE.
 -- ----------------------------------------------------------------------------
 select ok(exists (
   select 1 from pg_default_acl d
-  join pg_namespace n on n.oid = d.defaclnamespace
-  where n.nspname = 'hc' and d.defaclobjtype = 'f'
-    and not exists (select 1 from aclexplode(d.defaclacl) a
-                    where a.grantee = 0 and a.privilege_type = 'EXECUTE')
-), 'default privileges in hc revoke PUBLIC EXECUTE on functions');
-
-select ok(exists (
-  select 1 from pg_default_acl d
-  join pg_namespace n on n.oid = d.defaclnamespace
-  where n.nspname = 'public' and d.defaclobjtype = 'f'
-    and not exists (select 1 from aclexplode(d.defaclacl) a
-                    where a.grantee = 0 and a.privilege_type = 'EXECUTE')
-), 'default privileges in public revoke PUBLIC EXECUTE on functions');
-
-select ok(exists (
-  select 1 from pg_default_acl d
-  join pg_namespace n on n.oid = d.defaclnamespace
-  where n.nspname = 'admin_meta' and d.defaclobjtype = 'f'
-    and not exists (select 1 from aclexplode(d.defaclacl) a
-                    where a.grantee = 0 and a.privilege_type = 'EXECUTE')
-), 'default privileges in admin_meta revoke PUBLIC EXECUTE on functions');
-
-select ok(exists (
-  select 1 from pg_default_acl d
-  join pg_namespace n on n.oid = d.defaclnamespace
   join pg_roles r on r.oid = d.defaclrole
-  where n.nspname = 'hc' and d.defaclobjtype = 'f' and r.rolname = 'hc_internal'
+  where d.defaclnamespace = 0 and d.defaclobjtype = 'f' and r.rolname = 'postgres'
     and not exists (select 1 from aclexplode(d.defaclacl) a
                     where a.grantee = 0 and a.privilege_type = 'EXECUTE')
-), 'default privileges for role hc_internal in hc also revoke PUBLIC EXECUTE');
+), 'global default privileges for the migration runner revoke PUBLIC EXECUTE on functions');
+
+select ok(exists (
+  select 1 from pg_default_acl d
+  join pg_roles r on r.oid = d.defaclrole
+  where d.defaclnamespace = 0 and d.defaclobjtype = 'f' and r.rolname = 'hc_internal'
+    and not exists (select 1 from aclexplode(d.defaclacl) a
+                    where a.grantee = 0 and a.privilege_type = 'EXECUTE')
+), 'global default privileges for hc_internal revoke PUBLIC EXECUTE on functions');
 
 -- ----------------------------------------------------------------------------
 -- M1: schema USAGE — the caller half of the definer invariant (ADR-0003 f.8)
