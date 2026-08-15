@@ -14,7 +14,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(16);
+select plan(18);
 
 -- ----------------------------------------------------------------------------
 -- Fixtures (fresh uuids each run; three circles, three accounts)
@@ -104,6 +104,12 @@ begin
                                      tier, display_name_at_join)
   values (c2, s2, m2, 'coordinator', 'Marcus');
 
+  -- grants: u1 holds two on s1; u2 holds one on s2 (u1 must never see it)
+  insert into public.access_grants (circle_id, member_id, subject_id, domain, level, granted_by)
+  values (c1, m1, s1, 'health',   'manage', u1),
+         (c1, m1, s1, 'schedule', 'view',   u1),
+         (c2, m2, s2, 'health',   'manage', u2);
+
   -- stash ids for the assertions below
   perform set_config('t.u1', u1::text, true);
   perform set_config('t.u3', u3::text, true);
@@ -128,6 +134,8 @@ select is((select count(*)::int from public.circle_members), 2,
   'circle_members: own circle''s rows (member + subject-member), nothing foreign');
 select is((select count(*)::int from public.accounts), 1,
   'accounts: exactly the caller''s own row');
+select is((select count(*)::int from public.access_grants), 2,
+  'access_grants: the caller''s own grant rows and nothing else');
 
 -- Negative reads under the same session (green from M3's fail-closed state).
 select is((select count(*)::int from public.circles
@@ -148,6 +156,9 @@ select throws_ok(
 select throws_ok(
   $$ select * from public.admin_users $$,
   '42501', null, 'authenticated cannot read admin_users at all');
+select throws_ok(
+  $$ select * from public.invites $$,
+  '42501', null, 'authenticated cannot read invites — tokens and invitee PII carry no request-path privilege');
 
 reset role;
 

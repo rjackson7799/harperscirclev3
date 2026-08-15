@@ -7,7 +7,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(37);
+select plan(41);
 
 -- ----------------------------------------------------------------------------
 -- M1: roles (TSD §1.2 — the load-bearing table of the architecture)
@@ -173,6 +173,22 @@ select is((
       join pg_attribute a on a.attrelid = src.oid and a.attnum = k
       where a.attname = 'circle_id')
 ), 0, 'every FK between two circle-scoped tables is circle-consistent (§2.1, §3.13)');
+
+-- ----------------------------------------------------------------------------
+-- M4: access_grants composite FKs; the one-grant-per-(member,subject,domain)
+-- unique; invites token_hash uniqueness (single-use anchor, AC-PERM-4).
+-- ----------------------------------------------------------------------------
+select fk_ok('public', 'access_grants', array['circle_id','member_id'],
+             'public', 'circle_members', array['circle_id','id'],
+  'access_grants → circle_members is circle-consistent');
+select fk_ok('public', 'access_grants', array['circle_id','subject_id'],
+             'public', 'subjects',       array['circle_id','id'],
+  'access_grants → subjects is circle-consistent');
+select index_is_unique('public', 'access_grants',
+  'access_grants_member_id_subject_id_domain_key',
+  'one grant per (member, subject, domain)');
+select index_is_unique('public', 'invites', 'invites_token_hash_key',
+  'invite tokens are unique by hash — the single-use anchor');
 
 select * from finish();
 rollback;
