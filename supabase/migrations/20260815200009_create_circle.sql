@@ -52,7 +52,7 @@ declare
   v_founder uuid;
   v_subject uuid;
   v_member  uuid;
-  v_ids     uuid[] := '{}';
+  v_ids     uuid[] := '{}'::uuid[];
   s         jsonb;
   d         hc.domain;
 begin
