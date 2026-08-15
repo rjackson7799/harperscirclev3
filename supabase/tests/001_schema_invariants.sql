@@ -7,7 +7,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(30);
+select plan(37);
 
 -- ----------------------------------------------------------------------------
 -- M1: roles (TSD §1.2 — the load-bearing table of the architecture)
@@ -115,6 +115,64 @@ select is(hc.all_domains(), enum_range(null::hc.domain),
   'hc.all_domains() literal equals enum_range(null::hc.domain)');
 select is(hc.dom(to_jsonb(enum_range(null::hc.domain))), enum_range(null::hc.domain),
   'hc.dom() round-trips the full enum_range');
+
+-- ----------------------------------------------------------------------------
+-- M3: every table in public has RLS enabled AND forced (TSD §2.1 — force
+-- matters: without it the owner bypasses its own policies and the
+-- hc_internal boundary is meaningless). One assertion, scales to every
+-- future table: a new table cannot ship without both flags.
+-- ----------------------------------------------------------------------------
+select is(
+  (select count(*)::int from pg_class c
+   join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relkind = 'r'
+     and not (c.relrowsecurity and c.relforcerowsecurity)),
+  0, 'every table in public has RLS enabled AND forced');
+
+-- ----------------------------------------------------------------------------
+-- M3: AC-ADMIN-3 as declarative constraint — the composite FK to
+-- accounts(id, kind), plus the two circle-consistent composites (§2.1).
+-- ----------------------------------------------------------------------------
+select fk_ok('public', 'circle_members', array['account_id','account_kind'],
+             'public', 'accounts',       array['id','kind'],
+  'circle_members pins accounts to kind = member via composite FK (AC-ADMIN-3)');
+select fk_ok('public', 'circle_members', array['circle_id','subject_id'],
+             'public', 'subjects',       array['circle_id','id'],
+  'circle_members → subjects is circle-consistent');
+select fk_ok('public', 'circle_members', array['circle_id','custodian_member_id'],
+             'public', 'circle_members', array['circle_id','id'],
+  'custodianship is circle-consistent');
+
+select index_is_unique('public', 'circle_members', 'circle_members_one_row_per_subject',
+  'one membership row per subject (partial unique)');
+
+select col_not_null('public', 'admin_users', 'mfa_enrolled_at',
+  'AC-ADMIN-5: no admin row without MFA enrolment');
+
+-- ----------------------------------------------------------------------------
+-- M3: the generalized §3.13 invariant — every FK between two circle-scoped
+-- tables (both carrying circle_id) includes circle_id in its column list,
+-- except FKs that ARE the circle anchor (target public.circles).
+-- ----------------------------------------------------------------------------
+select is((
+  select count(*)::int
+  from pg_constraint fk
+  join pg_class src on src.oid = fk.conrelid
+  join pg_class tgt on tgt.oid = fk.confrelid
+  join pg_namespace ns on ns.oid = src.relnamespace
+  join pg_namespace nt on nt.oid = tgt.relnamespace
+  where fk.contype = 'f'
+    and ns.nspname = 'public' and nt.nspname = 'public'
+    and tgt.relname <> 'circles'
+    and exists (select 1 from pg_attribute a
+                where a.attrelid = src.oid and a.attname = 'circle_id' and not a.attisdropped)
+    and exists (select 1 from pg_attribute a
+                where a.attrelid = tgt.oid and a.attname = 'circle_id' and not a.attisdropped)
+    and not exists (
+      select 1 from unnest(fk.conkey) k
+      join pg_attribute a on a.attrelid = src.oid and a.attnum = k
+      where a.attname = 'circle_id')
+), 0, 'every FK between two circle-scoped tables is circle-consistent (§2.1, §3.13)');
 
 select * from finish();
 rollback;
