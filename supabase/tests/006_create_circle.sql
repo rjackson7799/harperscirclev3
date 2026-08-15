@@ -93,10 +93,11 @@ select is((
     select count(*)::int from public.access_log l
     where l.circle_id = (current_setting('t.res')::jsonb ->> 'circle_id')::uuid
       and l.event_type = 'custodianship_declared'
-      and l.subject_id is not null
+      and l.subject_id is null                       -- precedes the subject row, by design
+      and l.detail ->> 'subject_name' is not null
       and l.detail ->> 'custodian' = 'Founder'
       and l.detail ->> 'declared_on' is not null), 2,
-  'each declaration names subject, custodian and date (PRD §7.5 receipt)');
+  'each declaration names subject (by name — its row does not exist yet), custodian and date (PRD §7.5 receipt)');
 
 select is((select count(*)::int from public.subjects
            where circle_id = (current_setting('t.res')::jsonb ->> 'circle_id')::uuid), 2,

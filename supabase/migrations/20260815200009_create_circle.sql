@@ -7,11 +7,9 @@
 -- hash chain (AC-AUTH-6, PRD §7.5). The circles row itself is the one
 -- FK-required exception (access_log.circle_id references circles).
 --
--- RED STATE (deliberate): the body below writes the declaration LAST —
--- after subjects, memberships and grants — so the 006 suite must fail the
--- seq = 1 assertion for exactly the reason the ordering is an acceptance
--- criterion: a receipt written after the fact is a sentence on a screen,
--- not a receipt from row one.
+-- The declarations precede the subject rows themselves, so they name the
+-- subject in detail (subject_id is necessarily null — the row it precedes
+-- cannot be referenced yet); the chain position IS the receipt.
 -- ============================================================================
 
 -- The founder's display name is read as hc_internal at declaration time.
@@ -85,6 +83,17 @@ begin
 
   perform pg_advisory_xact_lock(hashtext('circle:' || v_circle::text));
 
+  -- FIRST: the custodianship declarations, seq 1 (and 2), before subjects,
+  -- before the founder's membership, before grants (AC-AUTH-6). The subject
+  -- is named in detail; its row does not exist yet, by design.
+  for s in select * from jsonb_array_elements(p_subjects) loop
+    perform hc.log(v_circle, 'custodianship_declared', v_display, v_account,
+                   p_detail => jsonb_build_object(
+                     'subject_name', s ->> 'first_name',
+                     'custodian', v_display,
+                     'declared_on', to_char(now(), 'YYYY-MM-DD')));
+  end loop;
+
   insert into public.circle_members (circle_id, account_id, tier, display_name_at_join)
   values (v_circle, v_account, 'coordinator', v_display)
   returning id into v_founder;
@@ -114,13 +123,6 @@ begin
         (v_circle, v_founder, v_subject, d, 'manage', v_account),
         (v_circle, v_member,  v_subject, d, 'manage', v_account);
     end loop;
-
-    perform hc.log(v_circle, 'custodianship_declared', v_display, v_account,
-                   p_subject_id => v_subject,
-                   p_detail => jsonb_build_object(
-                     'subject_name', s ->> 'first_name',
-                     'custodian', v_display,
-                     'declared_on', to_char(now(), 'YYYY-MM-DD')));
   end loop;
 
   return jsonb_build_object(
