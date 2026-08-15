@@ -67,11 +67,10 @@ returns hc.access_level language sql immutable parallel safe as $$
   end;
 $$;
 
--- RED-STATE STUB (deliberately incomplete, TSD §3.13 red-first discipline):
--- the ladder with no guards — no clause 1 (missing subject context), no
--- clause 2 (freeze), no clause 3 (fail-closed lineage), no clause 4
--- (care_circle ceiling), no clause 5 (shares). The truth-table suite must
--- fail on exactly those security properties before the real §3.3 body lands.
+-- Every visibility question in the product resolves through this function;
+-- there is deliberately no second place the rule is written (§3.3). The
+-- ORDER of clauses 1–5 is the security property, not a style choice — the
+-- truth-table suite asserts each ordering independently (§3.13).
 create or replace function hc.visible_at(
   p_ctx         jsonb,
   p_subject     uuid,
@@ -83,9 +82,50 @@ create or replace function hc.visible_at(
 ) returns hc.access_level
 language sql immutable parallel safe
 as $$
-  select hc.ladder(p_ctx -> 'subjects' -> p_subject::text,
-                   case when p_taint is not null and cardinality(p_taint) > 0
-                        then p_taint else hc.all_domains() end);
+with e as (select p_ctx -> 'subjects' -> p_subject::text as s),
+shared as (
+  select coalesce(p_object_id is not null
+     and (p_ctx -> 'shares' -> p_object_type::text) @> to_jsonb(p_object_id), false) as ok
+),
+t as (
+  select
+    case when p_resolved and p_taint is not null and cardinality(p_taint) > 0
+         then p_taint else hc.all_domains() end as taint,
+    (p_resolved and p_taint is not null and cardinality(p_taint) > 0) as lineage_ok
+)
+select case
+  -- 1. No context for this subject ⇒ the object does not exist for this caller.
+  --    FIRST and unconditional: a share must not be able to manufacture context for
+  --    a subject the caller holds nothing on.
+  when (select s from e) is null                                  then 'hidden'::hc.access_level
+
+  -- 2. Freeze suspends ALL interactive access, including the custodian's and every
+  --    coordinator's.  coalesce(...,true) so a missing key fails closed. (AC-PERM-11)
+  when coalesce(((select s from e) ->> 'frozen')::boolean, true)   then 'hidden'::hc.access_level
+
+  -- 3. Unresolved or empty lineage: manage on all five, or nothing.  The ladder is
+  --    NOT evaluated here — running it would hand 'log' to a member holding log on
+  --    all five, which is exactly what AC-PERM-9 forbids.  A share cannot lift this
+  --    either, because we do not know what the object carries.
+  when not (select lineage_ok from t) then
+       case when hc.all_domains() <@ hc.dom((select s from e) -> 'manage')
+            then 'manage'::hc.access_level else 'hidden'::hc.access_level end
+
+  -- 4. care_circle is a ceiling: only what is assigned to them or shared with them.
+  --    p_owner_member null ⇒ distinct from any member id ⇒ hidden. (PRD §7.4, AC-TASK-5)
+  when ((select s from e) ->> 'tier') = 'care_circle'
+   and coalesce(p_owner_member::text, '') is distinct from ((select s from e) ->> 'member')
+   and not (select ok from shared)                                then 'hidden'::hc.access_level
+
+  -- 5. An object share widens ONE named object to 'view'.  Reachable only past 1–3,
+  --    so it can neither invent subject context nor outlive a freeze nor bypass
+  --    fail-closed lineage.  It never widens a domain and never propagates.
+  when (select ok from shared) then
+       greatest(hc.ladder((select s from e), (select taint from t)), 'view'::hc.access_level)
+
+  -- 6. The ordinary case: min over the taint, as set containment.
+  else hc.ladder((select s from e), (select taint from t))
+end;
 $$;
 
 -- ----------------------------------------------------------------------------
