@@ -7,7 +7,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(41);
+select plan(53);
 
 -- ----------------------------------------------------------------------------
 -- M1: roles (TSD §1.2 — the load-bearing table of the architecture)
@@ -189,6 +189,66 @@ select index_is_unique('public', 'access_grants',
   'one grant per (member, subject, domain)');
 select index_is_unique('public', 'invites', 'invites_token_hash_key',
   'invite tokens are unique by hash — the single-use anchor');
+
+-- ----------------------------------------------------------------------------
+-- M6: the access log — append-only two ways, denial shape, chain seq.
+-- ----------------------------------------------------------------------------
+do $$
+declare u uuid := gen_random_uuid(); c uuid; n bigint;
+begin
+  insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
+                          email_confirmed_at, created_at, updated_at,
+                          raw_app_meta_data, raw_user_meta_data)
+  values ('00000000-0000-0000-0000-000000000000', u, 'authenticated',
+          'authenticated', u || '@fixture.local', 'x', now(), now(), now(), '{}', '{}');
+  insert into public.accounts (id, kind, display_name) values (u, 'member', 'Log fixture');
+  insert into public.circles (name, created_by) values ('Log circle', u) returning id into c;
+  n := hc.log(c, 'member_joined', 'Log fixture', u);
+  perform set_config('t001.c', c::text, true);
+end $$;
+
+select has_trigger('public', 'access_log', 'access_log_immutable',
+  'the unconditional append-only trigger is attached');
+
+select throws_ok(format(
+  $$ update public.access_log set detail = '{"edited":true}' where circle_id = %L $$,
+  current_setting('t001.c')),
+  '42501', null,
+  'access_log rejects UPDATE even for a role the policies cannot stop (the trigger is the second way)');
+
+select throws_ok(format(
+  $$ delete from public.access_log where circle_id = %L $$,
+  current_setting('t001.c')),
+  '42501', null, 'access_log rejects DELETE unconditionally');
+
+select throws_ok(format(
+  $$ select hc.log(p_circle_id => %L::uuid, p_event_type => 'access_denied',
+                   p_actor_display_name => 'probe', p_object_id => %L::uuid) $$,
+  current_setting('t001.c'), gen_random_uuid()),
+  '23514', null,
+  'a denial entry carrying an object id is rejected by constraint (denial_names_no_object, AC-PPL-7)');
+
+select is((select hc.log(current_setting('t001.c')::uuid, 'member_joined', 'Log fixture')),
+  2::bigint, 'seq is per-circle and gapless — second entry is 2');
+
+select ok(not has_table_privilege('authenticated', 'public.access_log', 'select'),
+  'no family read path on access_log until 1D''s filtered policy (fail closed)');
+select ok(not has_table_privilege('authenticated', 'public.access_log', 'insert'),
+  'authenticated cannot write the log — hc.log() is the only writer');
+select ok(not has_table_privilege('hc_admin', 'public.access_log', 'select'),
+  'hc_admin cannot read the log (AC-ADMIN-1 posture)');
+
+select fk_ok('public', 'access_log', array['circle_id','subject_id'],
+             'public', 'subjects',   array['circle_id','id'],
+  'access_log → subjects is circle-consistent');
+select fk_ok('public', 'access_log', array['circle_id','corrects_id'],
+             'public', 'access_log', array['circle_id','id'],
+  'a correction row points at its target circle-consistently');
+select index_is_unique('public', 'access_log', 'access_log_circle_id_seq_key',
+  'seq is unique per circle — the chain cannot fork');
+
+select is((select count(*)::int from hc.log_event_types), 7,
+  'the 1A event-type enumeration is seeded');
 
 select * from finish();
 rollback;
