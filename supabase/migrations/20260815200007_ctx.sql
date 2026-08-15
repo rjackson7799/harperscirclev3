@@ -5,11 +5,6 @@
 -- TSD §3.2. hc.ctx() is evaluated once per query per textual reference
 -- (InitPlan, ADR-0002 note 2); policies call it as (select hc.ctx()).
 --
--- RED STATE (deliberate): hc.grant_vectors() below emits a row ONLY for
--- subjects the account holds grants on, and never a frozen flag — the
--- exact fail-open shape §3.2 forbids (absence is indistinguishable from
--- not-my-circle, so the freeze flag would be absent too). The 004 suite
--- must show it before the real body lands.
 -- ============================================================================
 
 -- DEVIATION FROM §3.2's LITERAL TEXT, forced by the platform and recorded
@@ -33,9 +28,20 @@ $$;
 alter function hc.uid() owner to hc_internal;
 revoke execute on function hc.uid() from public, anon, authenticated, hc_pipeline, hc_admin;
 
--- The one helper specified by contract (§3.2): for every subject in every
--- circle the account is a live member of, the four CUMULATIVE domain arrays
--- (manage ⊆ view ⊆ summary ⊆ log) plus tier, member id and the frozen flag.
+-- The one helper specified by contract (§3.2): for EVERY subject in every
+-- circle the account is a live member of — not only the subjects it holds
+-- grants on — the four CUMULATIVE domain arrays (manage ⊆ view ⊆ summary ⊆
+-- log) plus tier, member id and the frozen flag. Emitting all-hidden
+-- subjects is deliberate: present-but-empty is a fail-closed shape; absent
+-- would be indistinguishable from not-my-circle, and the freeze flag would
+-- be absent with it.
+--
+-- frozen — §3.8 at 1A staging: an OPEN freeze covers every subject in its
+-- circle (subject_id is null by constraint); an UNRESOLVED finding covers
+-- the subject it names, or the whole circle when the adjudicator did not
+-- narrow. The 1B carve-out (read-only coordinators under unresolved) is
+-- pending in coverage.md; until it lands unresolved closes everyone, the
+-- strictly fail-closed direction.
 create or replace function hc.grant_vectors(p_account uuid)
 returns table (
   subject_id uuid, circle_id uuid, member_id uuid, tier hc.tier,
@@ -45,17 +51,27 @@ language sql stable security definer set search_path = ''
 as $$
   select
     s.id, s.circle_id, m.id, m.tier,
-    false as frozen,
-    coalesce(jsonb_agg(g.domain) filter (where g.level >= 'manage'),  '[]'::jsonb),
-    coalesce(jsonb_agg(g.domain) filter (where g.level >= 'view'),    '[]'::jsonb),
-    coalesce(jsonb_agg(g.domain) filter (where g.level >= 'summary'), '[]'::jsonb),
-    coalesce(jsonb_agg(g.domain) filter (where g.level >= 'log'),     '[]'::jsonb)
+    exists (
+      select 1 from public.freezes f
+      where f.circle_id = s.circle_id
+        and (   f.state = 'open'
+             or (f.state = 'unresolved'
+                 and (f.subject_id is null or f.subject_id = s.id)))
+    ) as frozen,
+    v.manage, v.view, v.summary, v.log
   from public.circle_members m
-  join public.access_grants g on g.member_id = m.id
-  join public.subjects s on s.id = g.subject_id
+  join public.subjects s
+    on s.circle_id = m.circle_id and s.deleted_at is null
+  left join lateral (
+    select
+      coalesce(jsonb_agg(g.domain) filter (where g.level >= 'manage'),  '[]'::jsonb) as manage,
+      coalesce(jsonb_agg(g.domain) filter (where g.level >= 'view'),    '[]'::jsonb) as view,
+      coalesce(jsonb_agg(g.domain) filter (where g.level >= 'summary'), '[]'::jsonb) as summary,
+      coalesce(jsonb_agg(g.domain) filter (where g.level >= 'log'),     '[]'::jsonb) as log
+    from public.access_grants g
+    where g.member_id = m.id and g.subject_id = s.id
+  ) v on true
   where m.account_id = p_account and m.removed_at is null
-    and s.deleted_at is null
-  group by s.id, s.circle_id, m.id, m.tier
 $$;
 
 create or replace function hc.ctx()
