@@ -7,14 +7,6 @@
 -- row and a disposition, including rate-limited ones — and freezes is the
 -- single active enforcement state per circle.
 --
--- RED STATE (deliberate, TSD §3.13 discipline): the three declarative
--- constraints from ADR-0003 findings 2 and 3 are OMITTED in this commit —
--- freezes_open_is_whole_circle, freezes_outcome_is_adjudicated,
--- freezes_narrowing_is_assessed. The 007 suite must show the pre-review
--- hazard live (a narrowed open freeze accepted; a finding without
--- adjudication metadata accepted; narrowing without a recorded assessment
--- accepted) before the constraints land.
---
 -- No request-path role holds ANY privilege on either table (§2.3): claims
 -- carry claimant PII, and mutation of freezes is exclusive to
 -- hc.request_freeze() / hc.adjudicate_freeze() (M8).
@@ -33,7 +25,20 @@ create table public.freezes (
   outcome_note   text,
   narrowing_rationale text,   -- the recorded cross-subject exposure assessment
   foreign key (circle_id, subject_id) references public.subjects (circle_id, id),
-  unique (circle_id, id)
+  unique (circle_id, id),
+  -- An open freeze cannot name a subject: intake is whole-circle, and only
+  -- a finding can narrow (ADR-0001).
+  constraint freezes_open_is_whole_circle
+    check (state <> 'open' or subject_id is null),
+  -- A finding is adjudication or it is nothing: no path to a non-open state
+  -- without complete adjudication metadata (ADR-0003, finding 2).
+  constraint freezes_outcome_is_adjudicated
+    check (state = 'open'
+           or (adjudicated_at is not null and adjudicated_by is not null)),
+  -- Narrowing is an explicit act carrying its own recorded justification,
+  -- never a side effect (ADR-0003, findings 2 and 3).
+  constraint freezes_narrowing_is_assessed
+    check (subject_id is null or narrowing_rationale is not null)
 );
 -- One ACTIVE freeze per circle.  Claims are not bounded by this — they
 -- attach.  This index is the "a record cannot be re-frozen while one
