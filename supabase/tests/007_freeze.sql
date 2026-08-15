@@ -11,7 +11,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(53);
+select plan(55);
 
 -- Probe helper: run one statement as another role, return its SQLSTATE.
 create function pg_temp.errcode_as(p_role text, p_sql text) returns text
