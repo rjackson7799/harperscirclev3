@@ -422,7 +422,9 @@ create table public.invites (
 
 **Circle creation is ordered, and the order is an acceptance criterion.** `hc.create_circle()` writes the **custodianship declaration to `access_log` before any other row for that circle exists** — before subjects, before the founder's membership, before grants (AC-AUTH-6). It names subject, custodian and date, and it is `seq = 1` in that circle's hash chain. This is what gives PRD §7.5's *"this is Nell's record, held by you on her behalf"* a receipt from row one rather than a sentence on a screen. A pgTAP test asserts `seq = 1` is `custodianship_declared` for every circle, so the ordering cannot drift when the function is later edited.
 
-**Freeze** (PRD §7.5). Intake is whole-circle: while a freeze is `open`, `subject_id` is null — enforced by a declarative constraint, not a convention. Only an adjudicated finding can narrow the freeze to a subject (ADR-0001).
+**Freeze** (PRD §7.5). Intake is whole-circle: while a freeze is `open`, `subject_id` is null — enforced by a declarative constraint, not a convention. Only an adjudicated finding can narrow the freeze to a subject (ADR-0001, amended per ADR-0003).
+
+**Two tables, deliberately: a claim is not a freeze.** `freeze_claims` is the immutable intake ledger — every report that reaches the service gets a row and a disposition, including rate-limited ones — and `freezes` is the single active enforcement state per circle. A second claimant during an open adjudication *attaches* to the open freeze; their report is never swallowed by a uniqueness violation, because corroborating or broader allegations arriving second are exactly the ones an adjudicator must see (ADR-0003, finding 1).
 
 ```sql
 create table public.freezes (
@@ -430,34 +432,60 @@ create table public.freezes (
   circle_id      uuid not null references public.circles(id),
   subject_id     uuid references public.subjects(id),
   requested_at   timestamptz not null default now(),
-  claimant_contact text not null,
-  claimant_relationship text,
-  reason         text not null,
   state          text not null default 'open'
                  check (state in ('open','dismissed','upheld','unresolved')),
   contact_attempted_at timestamptz,
   adjudicated_at timestamptz,
   adjudicated_by text,
   outcome_note   text,
+  narrowing_rationale text,   -- the recorded cross-subject exposure assessment
   -- An open freeze cannot name a subject: intake is whole-circle, and only
   -- a finding can narrow (ADR-0001).
   constraint freezes_open_is_whole_circle
-    check (state <> 'open' or subject_id is null)
+    check (state <> 'open' or subject_id is null),
+  -- A finding is adjudication or it is nothing: no path to a non-open state
+  -- without complete adjudication metadata (ADR-0003, finding 2).
+  constraint freezes_outcome_is_adjudicated
+    check (state = 'open'
+           or (adjudicated_at is not null and adjudicated_by is not null)),
+  -- Narrowing is an explicit act carrying its own recorded justification,
+  -- never a side effect (ADR-0003, findings 2 and 3).
+  constraint freezes_narrowing_is_assessed
+    check (subject_id is null or narrowing_rationale is not null)
 );
--- One open freeze per circle.  (Intake is whole-circle, so "per target"
--- reduces to per circle.)  Per subject AND per claimant rate limiting
--- (PRD §7.5) lives in hc.request_freeze(); this index is the "a record
--- cannot be re-frozen while one adjudication is open" half.
+-- One ACTIVE freeze per circle.  Claims are not bounded by this — they
+-- attach.  This index is the "a record cannot be re-frozen while one
+-- adjudication is open" half of PRD §7.5.
 create unique index freezes_one_open_per_circle
   on public.freezes (circle_id)
   where state = 'open';
+
+-- The immutable intake ledger.  hc.request_freeze() writes exactly one row
+-- per report and disposes it; rows are never updated or deleted.  Claimant
+-- identity for rate limiting keys on claimant_contact.
+create table public.freeze_claims (
+  id            uuid primary key default gen_random_uuid(),
+  circle_id     uuid not null references public.circles(id),
+  freeze_id     uuid references public.freezes(id),
+  claimant_contact text not null,
+  claimant_relationship text,
+  reason        text not null,
+  received_at   timestamptz not null default now(),
+  disposition   text not null check (disposition in
+                  ('opened_freeze','attached_to_existing','rate_limited')),
+  -- A rate-limited claim attaches to nothing; every accepted claim attaches
+  -- to the freeze it opened or joined.
+  check ((disposition = 'rate_limited') = (freeze_id is null))
+);
 ```
+
+**The PRD §7.5 rate limit, interpreted for whole-circle intake** (recorded because the PRD says "per claimant *and per subject*" and an intake claim now names no subject): the per-claimant dimension keys on `claimant_contact`; the per-subject dimension is enforced at **circle** granularity, which is strictly stronger — a circle-level bound bounds every subject within it. Both live in `hc.request_freeze()`, which is also the only writer of `freeze_claims`. **No request-path role holds any privilege on `freeze_claims`** — claims carry claimant PII and are read only by the adjudication surfaces (§9). Mutation of `freezes` is exclusive to `hc.request_freeze()` (open) and `hc.adjudicate_freeze()` (findings); no request-path role holds DML on it, and slice 1A tests direct INSERT, direct UPDATE, and every non-adjudication definer entry point against both tables.
 
 Three notes the PRD forces:
 
 - **There is no expiry column and no scheduled job that lifts a freeze.** The 3-day contact and 10-day decision obligations are tracked as operational alerts against `requested_at`; neither writes to `state`. A freeze ends by a finding (`dismissed`/`upheld`/`unresolved`) and by nothing else (PRD §7.5).
 - **`unresolved` is a state, not a fallback.** It is entered explicitly. §3.9 gives it read-only access for coordinators *other than* the objected-to member, and closed if that member is the only coordinator.
-- **Resolved (ADR-0001): whole circle at intake, narrowed at adjudication.** The PRD says "the record is closed" without saying whether a two-subject circle closes both records when one subject is objected to. It does: an open freeze covers every subject, enforced by `freezes_open_is_whole_circle` above. PRD §7.5 is containment-first; a claimant should not have to scope an objection they may not know spans two subjects; and joint finances mean a per-subject freeze would leave the accused reading the couple's records through the other file. The adjudicator may set `subject_id` when entering a finding — an `unresolved` finding narrowed to one subject continues the freeze on that record only. Circle-level effects — exports, deletions, invites — are suspended while *any* freeze is open.
+- **Resolved (ADR-0001, amended per ADR-0003): whole circle at intake, narrowed at adjudication — and narrowing is the exception, not the default.** The PRD says "the record is closed" without saying whether a two-subject circle closes both records when one subject is objected to. It does: an open freeze covers every subject, enforced by `freezes_open_is_whole_circle` above. PRD §7.5 is containment-first; a claimant should not have to scope an objection they may not know spans two subjects; and joint finances mean a per-subject freeze would leave the accused reading the couple's records through the other file. That same joint-finances argument binds at adjudication: an `unresolved` finding stays **whole-circle by default**, because the visibility arithmetic is per subject (§3.1) and cannot close a joint document filed under the other subject's record. Narrowing requires the adjudicator to record a cross-subject exposure assessment in `narrowing_rationale` — enforced by `freezes_narrowing_is_assessed` — and the standard for when narrowing is appropriate belongs to the counsel-owned adjudication protocol (G1, §12.10). Circle-level effects — exports, deletions, invites — are suspended while *any* freeze is open.
 
 ### 2.4 Ingestion
 
@@ -1416,7 +1444,7 @@ The marker is scoped to a **specific row id**, not a boolean, so a reclassificat
 |---|---|
 | `dismissed` | The flag clears. Full access restored, every member notified, the finding logged |
 | `upheld` | The flag clears and the finding is applied as an ordinary grant change — usually removing or lowering the objected-to member |
-| `unresolved` | `frozen` stays true for everyone **except** coordinators other than the objected-to member, who are restored **read-only** (`hc.visible_at` capped at `view`, and `hc.approve_proposal` refuses). If the objected-to member is the only coordinator, the record stays closed. The adjudicator may narrow the continuing freeze to the subject the finding names (`subject_id` set at adjudication — the open state cannot carry one); the other subject's record then reopens under the ordinary rules. No ingestion processing, no new grants, no exports, no deletions, no invites |
+| `unresolved` | `frozen` stays true for everyone **except** coordinators other than the objected-to member, who are restored **read-only** (`hc.visible_at` capped at `view`, and `hc.approve_proposal` refuses). If the objected-to member is the only coordinator, the record stays closed. The continuing freeze stays **whole-circle by default**. Narrowing to the subject the finding names is an explicit adjudicator act requiring a recorded cross-subject exposure assessment (`narrowing_rationale`, §2.3) — because the visibility arithmetic is per subject, joint material filed under the other subject reopens with that record, and only the assessment can weigh that (ADR-0003, finding 3; standard owned by counsel, G1). No ingestion processing, no new grants, no exports, no deletions, no invites |
 
 Inbound mail is still **accepted and stored** during a freeze — nothing is lost — but the pipeline does not advance past `stored`, and no notification is sent (PRD §7.5).
 
@@ -2755,7 +2783,7 @@ Both classes still ship and are still tested; they are tested by watching a pers
 
 ## Appendix A — the policy test matrix
 
-The negative test cases summarised in §3.13. Each is a pgTAP case against this product's own future schema; each asserts that a read returns nothing. They exist because PRD gates G2 and G8 require them before any real family data enters the system.
+The negative test cases summarised in §3.13. Each asserts that a read returns nothing, and each is assigned — **per assertion, in `docs/coverage.md`, which is authoritative** — to the test layer that can actually prove it: most are pgTAP against this product's own schema, but assertions requiring two committed sessions (a revoked live session, a lease surviving a worker rollback), HTTP semantics (the artifact route's 404 shape, a pre-revocation URL), the storage API, or workers (kill-before-transition, outbox loss and sweeper pickup) are integration cases, and timing equivalence is asserted nowhere — only error shape and code (§7.3; ADR-0003, finding 6). A requirement spanning layers is split into one assertion per layer rather than claimed green at a layer that cannot prove it. They exist because PRD gates G2 and G8 require them before any real family data enters the system.
 
 **A.1 · Per-domain cases (AC-PERM-1, G2).** One per domain. In each, the member holds the destination domain and lacks the source domain, and the assertion is zero rows.
 

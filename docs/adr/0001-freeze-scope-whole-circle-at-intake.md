@@ -1,6 +1,6 @@
 # ADR-0001 — Freeze scope: whole circle at intake, narrowed at adjudication
 
-**Status:** Accepted
+**Status:** Accepted — amended by ADR-0003 (third-party review round 4)
 **Date:** 2026-08-14
 **Amends:** TSD §2.3 (freezes table), §3.8 (freeze semantics), §11.3 (decision table)
 
@@ -65,3 +65,40 @@ reach during the open phase at all.
   finding narrowed to one subject reopens the other subject's record.
 - Slice 1A builds `freezes` in this shape from the first migration — no
   retrofit.
+
+## Amendments — third-party review round 4 (2026-08-14, ADR-0003)
+
+Three findings against this decision were accepted; TSD §2.3 and §3.8 carry
+the applied text.
+
+1. **A claim is not a freeze.** The one-open-freeze-per-circle index made a
+   second claimant's report bounce as a uniqueness violation with no audit
+   trail — losing exactly the corroborating or broader allegation an
+   adjudicator most needs. `freeze_claims` is now the immutable intake
+   ledger (every report recorded with a disposition: `opened_freeze`,
+   `attached_to_existing`, `rate_limited`); `freezes` remains the single
+   active enforcement state. PRD §7.5's "per claimant and per subject" rate
+   limit is interpreted as per-claimant (`claimant_contact`) and per-circle
+   — strictly stronger than per-subject, since an intake claim names no
+   subject.
+2. **Narrowing is declaratively bound to adjudication, not procedurally.**
+   New constraints: `freezes_outcome_is_adjudicated` (no non-open state
+   without complete adjudication metadata) and
+   `freezes_narrowing_is_assessed` (no `subject_id` without a recorded
+   `narrowing_rationale`). Mutation is exclusive to `hc.request_freeze()`
+   and `hc.adjudicate_freeze()`; 1A tests direct DML and every
+   non-adjudication entry point. The reviewer's fuller suggestion — an FK
+   to a separate immutable finding row — was **partially adopted**: the
+   claims ledger plus the metadata constraints deliver the immutability and
+   binding sought, without a table whose only content would duplicate
+   columns `freezes` already carries. Revisit if adjudication grows state
+   of its own.
+3. **Unresolved stays whole-circle by default.** The original text let a
+   narrowed `unresolved` finding reopen the other subject's record
+   automatically — recreating the joint-finances leak this ADR's own "Why"
+   cites, because §3.1's visibility arithmetic is per subject and cannot
+   close a joint document filed under the other subject. Narrowing now
+   requires the adjudicator to record a cross-subject exposure assessment
+   (`narrowing_rationale`), and the standard for when narrowing is
+   appropriate belongs to the counsel-owned adjudication protocol (G1,
+   PRD §12.10).
