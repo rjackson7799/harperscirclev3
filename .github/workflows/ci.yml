@@ -13,10 +13,14 @@ jobs:
         with:
           fetch-depth: 0 # secret scanning needs history
 
+      # Direct gitleaks invocation, digest-pinned — the marketplace action
+      # failed opaquely on the repo's first push; this is the identical scan
+      # verified against the full local history (ADR-0002-era spike included).
       - name: Secret scanning
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          docker run --rm -v "${{ github.workspace }}:/repo"
+          zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          detect -s /repo --no-banner
 
       - uses: actions/setup-node@v4
         with:
