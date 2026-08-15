@@ -7,7 +7,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(18);
+select plan(30);
 
 -- ----------------------------------------------------------------------------
 -- M1: roles (TSD §1.2 — the load-bearing table of the architecture)
@@ -66,6 +66,55 @@ select ok(not has_schema_privilege('hc_pipeline', 'hc', 'usage'),
   'hc_pipeline holds no USAGE on hc until 1C grants its one function (§3.10)');
 select ok(not has_schema_privilege('anon', 'hc', 'usage'),
   'anon holds no USAGE on hc');
+
+-- ----------------------------------------------------------------------------
+-- M2: enumerated types (TSD §2.2). enum_has_labels is ORDER-SENSITIVE, which
+-- is the point: hc.access_level ordering is the arithmetic of the whole
+-- permission model, and min()/>=/greatest() follow declaration order
+-- (ADR-0002 claim 8 — the ordinal assertion joins 1A's suite here).
+-- ----------------------------------------------------------------------------
+select enum_has_labels('hc', 'access_level',
+  array['hidden','log','summary','view','manage'],
+  'hc.access_level ordinal sequence — ascending, load-bearing');
+select enum_has_labels('hc', 'domain',
+  array['memories','health','schedule','documents','finances'],
+  'hc.domain has exactly the five domains');
+select enum_has_labels('hc', 'tier',
+  array['coordinator','family','care_circle'], 'hc.tier labels');
+select enum_has_labels('hc', 'account_kind',
+  array['member','admin'], 'hc.account_kind labels');
+select enum_has_labels('hc', 'object_type',
+  array['document','task','timeline_event','profile_fact',
+        'episode','arrival','extraction','proposal'],
+  'hc.object_type labels');
+select enum_has_labels('hc', 'doc_category',
+  array['medical','medications','insurance','legal','financial','labs','other'],
+  'hc.doc_category labels');
+select enum_has_labels('hc', 'proposal_kind',
+  array['document','task','timeline_event','profile_fact','conflict','episode'],
+  'hc.proposal_kind labels — conflict and episode are proposals in their own right');
+select enum_has_labels('hc', 'arrival_state',
+  array['received','store_failed','stored',
+        'scanning','quarantined','scan_unavailable','scan_inconclusive','scanned',
+        'extracting','extract_timeout','extract_failed','cancelled','extracted',
+        'interpreting','proposals_ready',
+        'held_unknown_sender','needs_password','duplicate_suspected',
+        'filed','nothing_filed','unsupported_type'],
+  'hc.arrival_state labels');
+select enum_has_labels('hc', 'timeline_kind',
+  array['medical','care','admin','memory'], 'hc.timeline_kind labels');
+select enum_has_labels('hc', 'risk_class',
+  array['standard','high'], 'hc.risk_class labels');
+
+-- ----------------------------------------------------------------------------
+-- M2: the five-domain literal cannot drift from the enum (TSD §2.2, §3.3 —
+-- an IMMUTABLE function cannot call STABLE enum_range; a sixth domain must
+-- fail the suite rather than silently open a hole in fail-closed behaviour)
+-- ----------------------------------------------------------------------------
+select is(hc.all_domains(), enum_range(null::hc.domain),
+  'hc.all_domains() literal equals enum_range(null::hc.domain)');
+select is(hc.dom(to_jsonb(enum_range(null::hc.domain))), enum_range(null::hc.domain),
+  'hc.dom() round-trips the full enum_range');
 
 select * from finish();
 rollback;
