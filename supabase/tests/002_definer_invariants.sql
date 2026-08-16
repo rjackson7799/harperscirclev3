@@ -21,7 +21,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(18);
+select plan(20);
 
 -- 1 · Every function in hc is owned by the non-login internal role.
 select is((
@@ -291,6 +291,39 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write']::name[],
   'the hc_internal policy list is exactly the enumerated forty-six');
+
+-- ----------------------------------------------------------------------------
+-- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
+-- the exact principals and privileges on documents and
+-- document_search_content from information_schema.role_table_grants, and
+-- the exact trigger inventory from pg_trigger. Named catalogs, exact
+-- inventory — extending the 002 pattern. dsc: empty on BOTH counts until
+-- 1D lands the search writer.
+-- ----------------------------------------------------------------------------
+select is((
+  select coalesce(array_agg(g.grantee || ':' || g.table_name || ':' || g.privilege_type
+                            order by g.table_name, g.grantee, g.privilege_type),
+                  '{}'::text[])
+  from information_schema.role_table_grants g
+  where g.table_schema = 'public'
+    and g.table_name in ('documents', 'document_search_content')
+    and g.grantee in ('anon', 'authenticated', 'hc_pipeline', 'hc_admin', 'hc_internal')),
+  array['authenticated:documents:SELECT',
+        'hc_internal:documents:INSERT',
+        'hc_internal:documents:SELECT',
+        'hc_internal:documents:UPDATE'],
+  'writer allowlist: documents = authenticated read + hc_internal read/insert/update; dsc = NOTHING for any of our five roles');
+
+select is((
+  select coalesce(array_agg(c.relname || ':' || t.tgname order by c.relname, t.tgname),
+                  '{}'::text[])
+  from pg_trigger t
+  join pg_class c on c.oid = t.tgrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and not t.tgisinternal
+    and c.relname in ('documents', 'document_search_content')),
+  array['documents:hc_claim_documents', 'documents:hc_guard_documents'],
+  'writer allowlist: documents carries exactly the claim + guard triggers; dsc carries none');
 
 -- ----------------------------------------------------------------------------
 -- Round-5 ruling R1: hc.uid() accepted permanently CONDITIONAL on this
