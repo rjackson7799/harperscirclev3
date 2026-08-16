@@ -14,6 +14,17 @@
 //           partial edge.
 //   Case 4  RLS-08: a revoked member's live session gets zero rows on its
 //           NEXT query — same connection, no re-login.
+//   Case 5  Round-6 R-rule: a freeze committing while an approval waits on
+//           the per-circle lock DEFEATS the approval (freeze_active).
+//   Case 6  A grant revocation committing while an approval waits defeats
+//           it (authorization evaluates ctx UNDER the lock).
+//   Case 7  A membership removal committing while an approval waits
+//           defeats it.
+//   Case 8  Taint growth racing a revision: authorization binds to the
+//           version the write touches — stale-taint edit refused.
+//   Case 9  The shrink path re-authorizes under the lock: a schedule-only
+//           actor is refused once the taint grew.
+//   Case 10 A freeze committing while a revision waits defeats it.
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -350,6 +361,301 @@ async function case4(admin) {
   }
 }
 
+// Claims only, NO role switch — for owner-only definers called as postgres
+// with an authenticated identity (the case-3 pattern; PLT-04 discipline).
+async function withClaims(client, userId) {
+  await client.query(`select set_config('request.jwt.claims', $1, false)`,
+    [JSON.stringify({ sub: userId, role: 'authenticated' })]);
+}
+
+// --- case 5: a freeze racing an in-flight approval (round-6 F1) --------------
+//
+// The serialization rule (ADR-0006 R-rule): security-state transitions and
+// record writers serialize on the per-circle lock; a transition that commits
+// while a writer waits on the lock DEFEATS the writer. Here the approval is
+// already past its old pre-lock freeze check when the freeze commits — the
+// fixed function re-checks under the lock and refuses.
+
+async function case5(admin) {
+  const fx = await mkCircle(admin, 'c5');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const pA = randomUUID();
+    await admin.query(`set session_replication_role = replica`);
+    await admin.query(
+      `insert into public.proposals (id, arrival_id, circle_id, subject_id, kind, payload, taint)
+       values ($1, $2, $3, $4, 'task', jsonb_build_object('title', 'Race the freeze'), '{schedule}')`,
+      [pA, fx.a, fx.c, fx.s]);
+    await admin.query(`set session_replication_role = default`);
+
+    // S1 holds the per-circle lock in an open transaction.
+    await withClaims(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.reclassify_taint('document', $1)`, [fx.doc]);
+
+    // S2's approval blocks on the lock…
+    await asUser(s2, fx.u2);
+    const p2 = s2.query(`select hc.approve_proposal($1, 1, $2)`, [pA, `k-${pA}`])
+      .then(() => null).catch(e => e);
+    const pid2 = (await admin.query(
+      `select pid from pg_stat_activity
+       where query like 'select hc.approve_proposal%' and state = 'active'
+       order by query_start desc limit 1`)).rows[0]?.pid;
+    let blocked = false;
+    if (pid2) { await waitForLockWait(admin, pid2, 's2 approval on the circle lock'); blocked = true; }
+    check('case5: the approval blocks on the per-circle lock', blocked,
+      'pg_locks never showed the wait');
+
+    // …a freeze commits mid-flight…
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fx.c]);
+
+    // …and when the lock releases, the approval must SEE it.
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case5 approval after freeze');
+    const n = await admin.query(
+      `select count(*)::int as n from public.proposal_commits where proposal_id = $1`, [pA]);
+    check('case5: a freeze committed while the approval waited DEFEATS it (freeze_active, nothing written)',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'freeze_active' && n.rows[0].n === 0,
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'} commits=${n.rows[0].n}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 6: grant revocation racing an in-flight approval -------------------
+// Confirmation, not a fix: authorization already evaluates ctx() UNDER the
+// lock, so a revocation committed while the approval waits is honoured.
+
+async function case6(admin) {
+  const fx = await mkCircle(admin, 'c6');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const pA = randomUUID();
+    await admin.query(`set session_replication_role = replica`);
+    await admin.query(
+      `insert into public.proposals (id, arrival_id, circle_id, subject_id, kind, payload, taint)
+       values ($1, $2, $3, $4, 'task', jsonb_build_object('title', 'Race the revocation'), '{schedule}')`,
+      [pA, fx.a, fx.c, fx.s]);
+    await admin.query(`set session_replication_role = default`);
+
+    await withClaims(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.reclassify_taint('document', $1)`, [fx.doc]);
+
+    await asUser(s2, fx.u2);
+    const p2 = s2.query(`select hc.approve_proposal($1, 1, $2)`, [pA, `k-${pA}`])
+      .then(() => null).catch(e => e);
+    const pid2 = (await admin.query(
+      `select pid from pg_stat_activity
+       where query like 'select hc.approve_proposal%' and state = 'active'
+       order by query_start desc limit 1`)).rows[0]?.pid;
+    if (pid2) await waitForLockWait(admin, pid2, 's2 approval on the circle lock');
+
+    await admin.query(`delete from public.access_grants where member_id = $1`, [fx.m2]);
+
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case6 approval after revocation');
+    check('case6: a grant revocation committed while the approval waited DEFEATS it (approval_refused)',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'approval_refused',
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 7: membership removal racing an in-flight approval -----------------
+// Confirmation: removed_at filters ctx() at its (post-lock) evaluation.
+
+async function case7(admin) {
+  const fx = await mkCircle(admin, 'c7');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const pA = randomUUID();
+    await admin.query(`set session_replication_role = replica`);
+    await admin.query(
+      `insert into public.proposals (id, arrival_id, circle_id, subject_id, kind, payload, taint)
+       values ($1, $2, $3, $4, 'task', jsonb_build_object('title', 'Race the removal'), '{schedule}')`,
+      [pA, fx.a, fx.c, fx.s]);
+    await admin.query(`set session_replication_role = default`);
+
+    await withClaims(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.reclassify_taint('document', $1)`, [fx.doc]);
+
+    await asUser(s2, fx.u2);
+    const p2 = s2.query(`select hc.approve_proposal($1, 1, $2)`, [pA, `k-${pA}`])
+      .then(() => null).catch(e => e);
+    const pid2 = (await admin.query(
+      `select pid from pg_stat_activity
+       where query like 'select hc.approve_proposal%' and state = 'active'
+       order by query_start desc limit 1`)).rows[0]?.pid;
+    if (pid2) await waitForLockWait(admin, pid2, 's2 approval on the circle lock');
+
+    await admin.query(
+      `update public.circle_members set removed_at = now(), removed_by = $2 where id = $1`,
+      [fx.m2, fx.u1]);
+
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case7 approval after removal');
+    check('case7: a membership removal committed while the approval waited DEFEATS it (approval_refused)',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'approval_refused',
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 8: taint growth racing a revision (round-6 F1, the revise defect) --
+// The old revise_object authorized on an UNLOCKED read, then locked the row:
+// it could observe two versions of its object in one transaction and write
+// under stale-taint authorization. Fixed: per-circle lock, re-read, THEN
+// authorize — the schedule-only editor is refused once finances arrives.
+
+async function case8(admin) {
+  const fx = await mkCircle(admin, 'c8');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // u2 manages SCHEDULE only.
+    await admin.query(
+      `delete from public.access_grants where member_id = $1 and domain <> 'schedule'`,
+      [fx.m2]);
+
+    // S1: open transaction grows the task's taint from the finances parent.
+    await withClaims(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.link_provenance('task', $1, 'document', $2)`,
+      [fx.task, fx.doc]);
+
+    // S2: the schedule-only editor revises the task — must block, re-read,
+    // and refuse against the GROWN taint.
+    await asUser(s2, fx.u2);
+    const p2 = s2.query(`select hc.revise_object('task', $1, '{"title": "stale edit"}')`,
+      [fx.task]).then(() => null).catch(e => e);
+    const pid2 = (await admin.query(
+      `select pid from pg_stat_activity
+       where query like 'select hc.revise_object%' and state = 'active'
+       order by query_start desc limit 1`)).rows[0]?.pid;
+    let blocked = false;
+    if (pid2) { await waitForLockWait(admin, pid2, 's2 revision behind the growth'); blocked = true; }
+    check('case8: the revision blocks behind the in-flight growth', blocked,
+      'pg_locks never showed the wait');
+
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case8 revision after growth');
+    const t = await admin.query(`select title from public.tasks where id = $1`, [fx.task]);
+    check('case8: authorization binds to the version the write would touch — stale-taint edit refused, row unchanged',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'revise_refused'
+        && t.rows[0].title === 'Baseline task',
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'} title=${t.rows[0].title}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 9: the shrink path authorizes UNDER the lock (round-6 F1) ----------
+// reclassify_taint checked manage-on-current-taint before acquiring the
+// lock; a growth committing while it waited left the check bound to the
+// narrower taint. Fixed: re-read and authorize under the lock.
+
+async function case9(admin) {
+  const fx = await mkCircle(admin, 'c9');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    await admin.query(
+      `delete from public.access_grants where member_id = $1 and domain <> 'schedule'`,
+      [fx.m2]);
+
+    await withClaims(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.link_provenance('task', $1, 'document', $2)`,
+      [fx.task, fx.doc]);
+
+    // S2: schedule-only actor reclassifies the task (owner-only definer,
+    // claims-only session). Pre-fix: auth passed on {schedule}, then the
+    // recompute ran against the grown row.
+    await withClaims(s2, fx.u2);
+    const p2 = s2.query(`select hc.reclassify_taint('task', $1)`, [fx.task])
+      .then(() => null).catch(e => e);
+    const pid2 = (await admin.query(
+      `select pid from pg_stat_activity
+       where query like 'select hc.reclassify_taint%' and state = 'active'
+       order by query_start desc limit 1`)).rows[0]?.pid;
+    if (pid2) await waitForLockWait(admin, pid2, 's2 reclassify on the circle lock');
+
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case9 reclassify after growth');
+    check('case9: the shrink path re-authorizes under the lock — schedule-only actor refused on the grown taint',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'reclassify_refused',
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 10: a freeze racing a revision -------------------------------------
+// With revise under the per-circle lock, a freeze committed while the
+// revision waits is seen at its (post-lock) authorization evaluation.
+
+async function case10(admin) {
+  const fx = await mkCircle(admin, 'c10');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    await withClaims(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.reclassify_taint('document', $1)`, [fx.doc]);
+
+    await asUser(s2, fx.u2);
+    const p2 = s2.query(`select hc.revise_object('task', $1, '{"title": "frozen edit"}')`,
+      [fx.task]).then(() => null).catch(e => e);
+    // Tolerant wait: pre-fix the revision never blocks (it commits straight
+    // through), which IS the defect — the check below names it either way.
+    const pid2 = (await admin.query(
+      `select pid from pg_stat_activity
+       where query like 'select hc.revise_object%' and state = 'active'
+       order by query_start desc limit 1`)).rows[0]?.pid;
+    if (pid2) {
+      try { await waitForLockWait(admin, pid2, 's2 revision on the circle lock'); }
+      catch { /* not blocked — the pre-fix path */ }
+    }
+
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fx.c]);
+
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case10 revision after freeze');
+    const t = await admin.query(`select title from public.tasks where id = $1`, [fx.task]);
+    check('case10: a freeze committed while the revision waited DEFEATS it (revise_refused, row unchanged)',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'revise_refused'
+        && t.rows[0].title === 'Baseline task',
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'} title=${t.rows[0].title}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -359,6 +665,12 @@ try {
   await case2(admin);
   await case3(admin);
   await case4(admin);
+  await case5(admin);
+  await case6(admin);
+  await case7(admin);
+  await case8(admin);
+  await case9(admin);
+  await case10(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;
