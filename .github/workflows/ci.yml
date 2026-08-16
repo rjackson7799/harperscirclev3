@@ -33,6 +33,9 @@ jobs:
       - name: Service-role containment
         run: node scripts/check-service-role-containment.mjs
 
+      - name: Exposed-schema pin (ADR-0004 R2)
+        run: node scripts/check-exposed-schemas.mjs
+
       - name: Start local Postgres (Supabase, pinned CLI)
         run: npx supabase db start
 
