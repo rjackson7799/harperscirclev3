@@ -363,8 +363,8 @@ select is(
   (select coalesce(array_agg(p.proname order by p.proname), '{}'::name[])
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'hc' and p.prosrc like '%public.freezes%'),
-  array['adjudicate_freeze','approve_proposal','grant_vectors','request_freeze']::name[],
-  'exactly four hc functions reference freezes: the two writers and the two flag readers (FRZ-14 added approve_proposal)');
+  array['adjudicate_freeze','approve_proposal','circle_frozen','grant_vectors','request_freeze']::name[],
+  'exactly five hc functions reference freezes: the two writers, the two flag readers, and the 1C pipeline predicate hc.circle_frozen (§4.2)');
 select is(
   (select coalesce(array_agg(p.proname order by p.proname), '{}'::name[])
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace

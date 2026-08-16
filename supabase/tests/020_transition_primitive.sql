@@ -393,15 +393,19 @@ select is(pg_temp.scalar(format(
   'stored:0',
   'the parked arrival sits at stored with no further events');
 
+do $$
+begin
+  perform hc.adjudicate_freeze(f.id, 'dismissed', 'Adjudicator R.',
+                               p_outcome_note => 'no basis')
+  from public.freezes f
+  where f.circle_id = current_setting('t.c1')::uuid and f.state = 'open';
+exception when others then null;  -- abort-safe red
+end $$;
+
 select is(pg_temp.scalar(format(
-  $$ with adj as (
-       select hc.adjudicate_freeze(f.id, 'dismissed', 'Adjudicator R.',
-                                   p_outcome_note => 'no basis')
-       from public.freezes f
-       where f.circle_id = %L and f.state = 'open')
-     select hc.advance_arrival(%L, 'stored', 'scanned',
+  $$ select hc.advance_arrival(%L, 'stored', 'scanned',
        (select current_lease_id from public.arrivals where id = %L))::text $$,
-  current_setting('t.c1'), current_setting('t.a2'), current_setting('t.a2'))),
+  current_setting('t.a2'), current_setting('t.a2'))),
   'advanced',
   'ONLY dismissed resumes processing — the same lease advances once the freeze clears');
 
@@ -448,41 +452,57 @@ select is(pg_temp.scalar(format(
 -- ----------------------------------------------------------------------------
 -- 34 · Cancellation wins at the CAS (fixture-level; the member surface is U5).
 -- ----------------------------------------------------------------------------
+do $$
+declare l uuid;
+begin
+  update public.arrivals set state = 'cancelled', cancelled_at = now()
+   where id = current_setting('t.a')::uuid;
+  -- a fresh open lease, so the fence passes and the CANCELLED diagnosis is
+  -- what is under test rather than stale_lease
+  l := pg_temp.mk_lease(current_setting('t.a')::uuid, current_setting('t.c1')::uuid,
+                        'interpret', 1, now() + interval '5 minutes');
+  perform set_config('t.lc', l::text, true);
+exception when others then
+  perform set_config('t.lc', gen_random_uuid()::text, true);
+end $$;
+
 select is(pg_temp.scalar(format(
-  $$ with c as (update public.arrivals set state = 'cancelled', cancelled_at = now()
-                where id = %L returning id)
-     select hc.advance_arrival(%L, 'stored', 'scanned',
-       (select current_lease_id from public.arrivals where id = %L))::text $$,
-  current_setting('t.a'), current_setting('t.a'), current_setting('t.a'))),
+  $$ select hc.advance_arrival(%L, 'stored', 'scanned', %L)::text $$,
+  current_setting('t.a'), current_setting('t.lc'))),
   'cancelled',
   'a cancelled arrival cannot be advanced — the in-flight result is discarded (§4.5)');
 
 -- ----------------------------------------------------------------------------
 -- 35–36 · Sender recognition (gate input) and privilege closure.
 -- ----------------------------------------------------------------------------
+do $$
+declare v1 uuid; v2 uuid; v3 uuid;
+begin
+  insert into public.known_senders (circle_id, address, accepted_by)
+  values (current_setting('t.c1')::uuid, 'dr@clinic.example', current_setting('t.u1')::uuid);
+  insert into public.known_senders (circle_id, domain, accepted_by)
+  values (current_setting('t.c1')::uuid, 'hospital.example', current_setting('t.u1')::uuid);
+  v1 := hc.create_arrival(current_setting('t.c1')::uuid, current_setting('t.s1')::uuid, 'email',
+          p_sender_address => 'DR@CLINIC.EXAMPLE', p_ingest_idempotency_key => 'snd-1');
+  v2 := hc.create_arrival(current_setting('t.c1')::uuid, current_setting('t.s1')::uuid, 'email',
+          p_sender_address => 'billing@Hospital.Example', p_ingest_idempotency_key => 'snd-2');
+  v3 := hc.create_arrival(current_setting('t.c1')::uuid, current_setting('t.s1')::uuid, 'email',
+          p_sender_address => 'stranger@elsewhere.example',
+          p_sender_display_name => 'dr@clinic.example', p_ingest_idempotency_key => 'snd-3');
+  perform set_config('t.sa1', v1::text, true);
+  perform set_config('t.sa2', v2::text, true);
+  perform set_config('t.sa3', v3::text, true);
+exception when others then
+  perform set_config('t.sa1', gen_random_uuid()::text, true);
+  perform set_config('t.sa2', gen_random_uuid()::text, true);
+  perform set_config('t.sa3', gen_random_uuid()::text, true);
+end $$;
+
 select is(pg_temp.scalar(format(
-  $$ with ks as (insert into public.known_senders (circle_id, address, accepted_by)
-                 values (%L, 'dr@clinic.example', %L) returning 1),
-          kd as (insert into public.known_senders (circle_id, domain, accepted_by)
-                 values (%L, 'hospital.example', %L) returning 1),
-          a1 as (select hc.create_arrival(%L, %L, 'email',
-                   p_sender_address => 'DR@CLINIC.EXAMPLE',
-                   p_ingest_idempotency_key => 'snd-1') as id),
-          a2 as (select hc.create_arrival(%L, %L, 'email',
-                   p_sender_address => 'billing@Hospital.Example',
-                   p_ingest_idempotency_key => 'snd-2') as id),
-          a3 as (select hc.create_arrival(%L, %L, 'email',
-                   p_sender_address => 'stranger@elsewhere.example',
-                   p_sender_display_name => 'dr@clinic.example',
-                   p_ingest_idempotency_key => 'snd-3') as id)
-     select hc.sender_recognised((select id from a1))::text || ':' ||
-            hc.sender_recognised((select id from a2))::text || ':' ||
-            hc.sender_recognised((select id from a3))::text $$,
-  current_setting('t.c1'), current_setting('t.u1'),
-  current_setting('t.c1'), current_setting('t.u1'),
-  current_setting('t.c1'), current_setting('t.s1'),
-  current_setting('t.c1'), current_setting('t.s1'),
-  current_setting('t.c1'), current_setting('t.s1'))),
+  $$ select hc.sender_recognised(%L)::text || ':' ||
+            hc.sender_recognised(%L)::text || ':' ||
+            hc.sender_recognised(%L)::text $$,
+  current_setting('t.sa1'), current_setting('t.sa2'), current_setting('t.sa3'))),
   'true:true:false',
   'address and domain match case-blind; a display name WEARING a known address never matches (PRD §4.2.8)');
 

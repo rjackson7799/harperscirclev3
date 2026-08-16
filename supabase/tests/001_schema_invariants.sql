@@ -62,8 +62,8 @@ select ok(has_schema_privilege('authenticated', 'hc', 'usage'),
   'authenticated holds USAGE on hc (per-function grants stay explicit)');
 select ok(not has_schema_privilege('hc_admin', 'hc', 'usage'),
   'hc_admin holds no USAGE on hc (§3.9)');
-select ok(not has_schema_privilege('hc_pipeline', 'hc', 'usage'),
-  'hc_pipeline holds no USAGE on hc until 1C grants its one function (§3.10)');
+select ok(has_schema_privilege('hc_pipeline', 'hc', 'usage'),
+  'hc_pipeline holds USAGE on hc since 1C M2 — EXECUTE stays per-function (§3.10)');
 select ok(not has_schema_privilege('anon', 'hc', 'usage'),
   'anon holds no USAGE on hc');
 
