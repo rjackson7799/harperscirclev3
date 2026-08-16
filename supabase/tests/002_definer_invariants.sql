@@ -183,7 +183,17 @@ insert into snapshot_expected values
   ('hc_internal',   'documents',       'SELECT'),
   ('hc_internal',   'tasks',           'SELECT'),
   ('hc_internal',   'timeline_events', 'SELECT'),
-  ('hc_internal',   'profile_facts',   'SELECT');
+  ('hc_internal',   'profile_facts',   'SELECT'),
+  -- 1B M3: asymmetric by design — revisions append-only, shares
+  -- revoke-only, edges link/unlink (relink = delete-then-insert, §2.6).
+  ('hc_internal',   'record_revisions', 'SELECT'),
+  ('hc_internal',   'record_revisions', 'INSERT'),
+  ('hc_internal',   'object_shares',    'SELECT'),
+  ('hc_internal',   'object_shares',    'INSERT'),
+  ('hc_internal',   'object_shares',    'UPDATE'),
+  ('hc_internal',   'provenance_edges', 'SELECT'),
+  ('hc_internal',   'provenance_edges', 'INSERT'),
+  ('hc_internal',   'provenance_edges', 'DELETE');
 
 create temp view snapshot_actual as
   select r.rolname as grantee, c.relname::text as tbl, a.privilege_type as priv
@@ -228,12 +238,17 @@ select is((
         'documents_internal','episodes_internal',
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
+        'object_shares_internal','object_shares_internal_create',
+        'object_shares_internal_revoke',
         'profile_facts_internal',
         'proposal_commits_internal','proposal_commits_internal_claim',
         'proposals_internal','proposals_internal_decide',
+        'provenance_edges_internal','provenance_edges_internal_link',
+        'provenance_edges_internal_unlink',
+        'record_revisions_internal','record_revisions_internal_append',
         'subjects_internal','subjects_internal_create',
         'tasks_internal','timeline_events_internal']::name[],
-  'the hc_internal policy list is exactly the enumerated twenty-eight');
+  'the hc_internal policy list is exactly the enumerated thirty-six');
 
 -- ----------------------------------------------------------------------------
 -- Round-5 ruling R1: hc.uid() accepted permanently CONDITIONAL on this
