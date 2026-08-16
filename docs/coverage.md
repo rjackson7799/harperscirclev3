@@ -73,7 +73,7 @@ property, verified at review gates).
 | CTX-04 | `frozen`: open ⇒ whole circle; narrowed unresolved ⇒ named subject (other reopens); unnarrowed unresolved ⇒ whole circle; dismissed clears | §3.8, ADR-0001/0003 | pgTAP | 1A | green | 004:16–21 |
 | CTX-05 | `hc.ctx_for(account)` ≡ `hc.ctx()` for that account; memberless ctx empty-but-well-formed | §3.2 | pgTAP | 1A | green | 004:26–27 |
 | CTX-06 | ctx `shares` key present-and-empty (placeholder) | plan d2 | pgTAP | 1A | green | 004:15 |
-| CTX-07 | ctx `shares` populated from `object_shares`; ctx body per §3.2 verbatim | §3.2 | pgTAP | **1B** | **pending** | — |
+| CTX-07 | ctx `shares` populated from `object_shares`; ctx body per §3.2 verbatim (subjects entries additionally carry `cap`, ADR-0005 D5) | §3.2 | pgTAP | 1B | green | 015:6–7, 14–16 |
 
 ## 1A — identity-table RLS (§3.4 shape; Appendix A.1 subset)
 
@@ -84,9 +84,9 @@ property, verified at review gates).
 | RLS-03 | Write privilege absent for authenticated on every 1A table (42501) | §3.7 posture | pgTAP | 1A | green | 005:7–9 |
 | RLS-04 | anon holds nothing (42501) | §1.2 | pgTAP | 1A | green | 005:14 |
 | RLS-05 | `hc_admin` gets `permission denied for table` — the A.1 distinguished failure mode, privilege absent, no policy consulted (AC-ADMIN-1) | A.1 | pgTAP | 1A | green | 005:15–17 |
-| RLS-06 | A.1 five per-domain negative cases against record tables | A.1 | pgTAP | **1B** | **pending** | record tables land in 1B |
-| RLS-07 | A.3 twenty ordered-pair matrix, generated from one rule | A.3 | pgTAP | **1B** | **pending** | needs provenance/taint |
-| RLS-08 | A.2 revoked live session fails on next request from a second session | A.2 | multi-session | **1B** | **pending** | `test:concurrency` runner lands 1B |
+| RLS-06 | A.1 five per-domain negatives against record tables, each with a distinguishing positive control; the five hc_admin permission-denied variants | A.1 | pgTAP | 1B | green | 010:31–45 |
+| RLS-07 | A.3 twenty ordered-pair matrix, generated from one rule (1B channels: direct select = every count, hc.presence; search/notification/export staged — RLS-11) | A.3 | pgTAP | 1B | green | 017:1–5 |
+| RLS-08 | A.2 revoked live session: the NEXT query on the SAME connection returns zero rows | A.2 | multi-session | 1B | green | test:concurrency case 4 |
 | RLS-09 | A.2 invite token replayed after acceptance creates nothing (AC-PERM-4) | A.2, §5.10 | pgTAP | **auth slice** | **pending** | acceptance path is slice 2 |
 | RLS-10 | A.2 artifact-route 404 indistinguishability; pre-revocation URL fails | A.2, §1.3 | HTTP | **slice 2+** | **pending** | route does not exist |
 
@@ -118,8 +118,8 @@ property, verified at review gates).
 | FRZ-10 | Writer proof rests on catalogs: exact table-privilege snapshot + zero triggers on both freeze tables + no dynamic SQL; the prosrc inventory scan is the labelled supplemental check | §2.3; ADR-0004 F5 | pgTAP | 1A | green | 002:8, 10–11 · 007:52–53, 56 |
 | FRZ-11 | Freeze request/claim/adjudication are access-log events; claimant PII never in the log | PRD §7.5 | pgTAP | 1A | green | 007:30, 34, 46 |
 | FRZ-12 | Adjudication outcomes: dismissed/upheld clear `frozen`; narrowed unresolved holds named subject, reopens the other; unnarrowed holds whole circle | §3.8 | pgTAP | 1A | green | 004:16–21 · 007:41–48 |
-| FRZ-13 | Unresolved read-only carve-out (coordinators-not-objected-to capped at `view`); until it lands unresolved closes everyone (fail-closed staging) | §3.8, ADR-0003 f4 | pgTAP | **1B** | **pending** | — |
-| FRZ-14 | `hc.approve_proposal()` refuses under freeze | §3.7 | pgTAP | **1B** | **pending** | function lands 1B |
+| FRZ-13 | Unresolved read-only carve-out: coordinators-not-objected-to at frozen=false + cap=view (visible_at applies least(result, cap) LAST); null objected_to ⇒ everyone closed | §3.8, ADR-0005 D2/D5 | pgTAP | 1B | green | 016:1–17 |
+| FRZ-14 | `hc.approve_proposal()` refuses under freeze — open AND unresolved, named signature freeze_active | §3.7 | pgTAP | 1B | green | 013:17–18 |
 | FRZ-15 | Frozen arrival parked; no retry consumption; terminal-transition refusal; outbox re-enqueue on dismissal; sweeper recovery | §4, A.5 | pgTAP + worker | **1C** | **pending** | pipeline lands 1C |
 | FRZ-16 | Freeze suspends exports/deletions/invites at circle level | §2.3 | pgTAP | **1B/1C** | **pending** | those surfaces land later |
 
@@ -144,6 +144,63 @@ property, verified at review gates).
 | ID | Assertion | Source | Layer | Slice | Status | Test |
 |---|---|---|---|---|---|---|
 | PLT-01 | The 15 Postgres behavioural assumptions from the Step-2 spike | ADR-0002 | pgTAP | init | green | 000:1–15 |
-| PLT-02 | Documents-first lock ordering (deadlock repro + rule) | ADR-0002 n3 | multi-session | **1B** | **pending** | `test:concurrency` runner |
+| PLT-02 | Lock ordering: raw opposite-order repro deadlocks (exactly one 40P01 ×3); the same contention through approve serializes on the per-circle advisory lock (×10, zero deadlocks) | ADR-0002 n3, ADR-0005 D6 | multi-session | 1B | green | test:concurrency cases 1–2 |
 | PLT-03 | ALTER TYPE … ADD VALUE upgrade-path fixture (55P04 rule exercised) | ADR-0002 n5, ADR-0003 f7 | pgTAP | **1C** | **pending** | first ADD VALUE migration is 1C |
 | PLT-04 | Function-ACL-denial segfault on this image (backend signal 11) — closure asserted via catalog until fixed upstream | this slice | review | 1A | review | round-5 packet, upstream report |
+
+## 1B — record schema and write path (TSD §2.4–§2.6, §3.5–§3.7; ADR-0005)
+
+| ID | Assertion | Source | Layer | Slice | Status | Test |
+|---|---|---|---|---|---|---|
+| ING-01 | §2.4 prerequisite tables (arrivals, proposals, approval_attempts, proposal_commits): shapes, checks, one-live lineage index, circle-consistent composites; fail-closed for every request-path role; arrivals granted to NOBODY | §2.4, ADR-0005 D1 | pgTAP | 1B | green | 009:1–39 |
+| REC-01 | Shared tenancy/provenance/taint block NOT NULL on all five record tables; approved_* carry NO default | §2.5 | pgTAP | 1B | green | 010:7–8 |
+| REC-02 | dsc pins circle AND subject via the ONE composite FK (carries the cascade; the §2.1 sweep forbids the circle-blind second FK) | §2.5, §2.1 | pgTAP | 1B | green | 010:15–18 · 001:37 |
+| REC-03 | profile_facts supersession: one current per (subject, field); supersede-then-insert is the only path; approval marks old and links old↔new | §2.5, AC-INBOX-6 | pgTAP | 1B | green | 010:19–22 · 013:21–24 |
+| REC-04 | §2.7 temporal shapes: three accepted, conflation refused | §2.7 | pgTAP | 1B | green | 010:23–26 |
+| REC-05 | dsc: ZERO grants in both directions for every role incl. hc_internal until 1D | §2.5, plan | pgTAP | 1B | green | 010:44–48 · 002:19 |
+| GRD-01 | Provenance quartet immutable on all five record tables + proposals (per-column on documents, 16-probe sweep elsewhere) | §3.7, N2 | pgTAP | 1B | green | 011:1–5 |
+| GRD-02 | Taint never shrinks; marker row-scoped to new.id; false→true resolved only under the marker; true→false always open | §3.7, PRD §7.6 | pgTAP | 1B | green | 011:6–15 |
+| GRD-03 | Trigger inventory exact: guard ×6 + claim ×5; dsc none | §3.7, §2.4 | pgTAP | 1B | green | 011:17 · 002:20 |
+| TNT-01 | link_provenance: ONE refusal shape for missing/cross-circle/cross-subject; unsupported endpoint types refused; cycle refused BEFORE the write | §2.6 | pgTAP | 1B | green | 012:21–25 |
+| TNT-02 | Delta growth: child at link, GRANDCHILD at propagate (the stale-recompute regression), diamond idempotent | §2.6, §3.13 | pgTAP | 1B | green | 012:11–20 |
+| TNT-03 | Depth cap: applied under it, MARKED at it, nothing silently widened past it | §2.6, AC-PERM-9 | pgTAP | 1B | green | 012:26–29 |
+| TNT-04 | Walk failure ⇒ marked-and-committed; partial updates rolled back to the savepoint | §2.6 mech 1 | pgTAP | 1B | green | 012:30–32 |
+| TNT-05 | Reclassify: manage-on-current-taint; path-complete (a second path retains its domain); resolved restored only by completed recompute; audience_changed names both audiences; nonexistent/unauthorized ONE shape | §2.6, AC-DOC-6, DEF-10 | pgTAP | 1B | green | 012:33–41 |
+| TNT-06 | Sweep marks dangling and cross-circle edges (detector 3) | §2.6 mech 3 | pgTAP | 1B | green | 012:43–45 |
+| TNT-07 | Growth-vs-shrink serialize on the per-circle advisory lock (blocking asserted from pg_locks; serial-equivalent result); an aborted link writes nothing | §2.6, ADR-0005 D6 | multi-session | 1B | green | test:concurrency case 3 |
+| APR-01 | Full approval: claim → object with provenance → edges → log → recorded result, one transaction; idempotent replay returns the STORED result | §3.7, §2.4, AC-INBOX-12 | pgTAP | 1B | green | 013:3–12 |
+| APR-02 | Refusals: version drift distinct; nonexistent/unauthorized/decided/key-misuse ONE shape; the care ceiling binds the writer; high-risk unconfirmed refused | §3.7, DEF-10, PRD §6.4 | pgTAP | 1B | green | 013:13–16, 19, 28–29 |
+| APR-03 | Taint at write = the D7 union (own ∪ drafted ∪ parents' CURRENT taints), manage on the union; drafted covers parents (1C drafting contract) | ADR-0005 D7 as amended by ADR-0006 | pgTAP | 1B | green | 013:5 · 018:12–13 |
+| APR-06 | Step-up fail-closed: a non-null `p_step_up_token` is REFUSED until §5.7 validates — never accepted-and-ignored; signature stays §3.7-verbatim | ADR-0006 F6; TSD annex A3 | pgTAP | 1B | green | 018:1–2 |
+| APR-07 | Idempotency hardening: replay actor-bound (another actor gets approval_refused, not the stored result); key bounded 1..200, empty refused | ADR-0006 P5 | pgTAP | 1B | green | 018:3–6 |
+| APR-08 | Duplicate payload parents collapse to ONE edge; no raw 23505 escapes the definer | ADR-0006 P5 | pgTAP | 1B | green | 018:7–8 |
+| APR-09 | Drift refusal (D7 amended): parents' CURRENT union beyond own ∪ drafted → `proposal_taint_changed`, post-authorization (order pinned: authorization outranks it); the refusal writes nothing | ADR-0006 F8/Q4 | pgTAP | 1B | green | 018:9–11 |
+| APR-04 | Manual entry through the same function: source_arrival_id null, provenance of the same shape | §3.7, AC-TL-2 | pgTAP | 1B | green | 013:25–27 |
+| APR-05 | Unclaimed writes die in BOTH places: the insert policy (hc_internal, 42501) and the deferred claim trigger (everything else, P0001; SECURITY DEFINER per M10) | §3.7, §2.4 | pgTAP | 1B | green | 013:30–31 |
+| REV-01 | revise_object: manage at write time; per-type content allowlist; provenance/taint unaddressable; profile_facts supersede-only; revision row (before/after, sequenced) in-transaction | §3.7 | pgTAP | 1B | green | 014:1–13 |
+| SHR-01 | share_object: one-transaction validation (existence, circle+subject agreement, live grantee, granter manage); ONE refusal shape; logged; end-to-end widening of ONE object; no propagation; revocation closes on the next query; a committed freeze refuses at the next evaluation | §2.5, §3.6, AC-PERM-10 | pgTAP | 1B | green | 015:1–16 · 018:14 |
+| RAC-01 | R-rule, freeze vs approval: a freeze committing while an approval waits on the per-circle lock defeats it WITH the named FRZ-14 signature (`freeze_active`, nothing written) | ADR-0006 F1; TSD annex A4 | multi-session | 1B | green | test:concurrency case 5 |
+| RAC-02 | R-rule, grant revocation and membership removal vs approval: either committing mid-wait defeats the approval (ctx evaluates under the lock) | ADR-0006 F1 | multi-session | 1B | green | test:concurrency cases 6–7 |
+| RAC-03 | R-rule, transitions vs revision: authorization binds to the version the write touches — a stale-taint edit is refused and the row unchanged; a freeze committing mid-wait defeats the revision | ADR-0006 F1 | multi-session | 1B | green | test:concurrency cases 8, 10 |
+| RAC-04 | R-rule, the shrink path: reclassify re-reads and authorizes UNDER the lock — an actor without manage on the grown taint is refused | ADR-0006 F1 | multi-session | 1B | green | test:concurrency case 9 |
+| PRS-01 | presence(): ids/dates/types only — no title column EXISTS; log on every taint domain per row; circle pre-filter bounds arbitrary p_subject; freeze closes it | §3.5 | pgTAP | 1B | green | 016:18–24 |
+| WRT-01 | Writer allowlist (catalog-based): exact grantee×privilege inventory for documents + dsc from information_schema.role_table_grants; exact pg_trigger inventory | plan | pgTAP | 1B | green | 002:19–20 |
+| PRF-05 | Record policies at volume: two InitPlans per §3.4 two-clause policy, zero SubPlans; measured ctx executions == 2 over a 2,000-row scan (the deterministic O(rows) tripwire); wall clock RECORDED (~0.95 s quiet, 1:4 load variance — round-6 question) | §3.12, ADR-0003 f9 | pgTAP | 1B | green | 008:10–14 |
+| MUT-01 | Mutation: guard_row shrink-guard removed ⇒ 011:6, 7, 9, 14 red by name; restored green | plan | review | 1B | review | round-6 packet |
+| MUT-02 | Mutation: tasks_internal_write with_check dropped ⇒ 013:31 red; the deferred-trigger branch (013:30) stays green — the belts are independent; restored green | plan | review | 1B | review | round-6 packet |
+| UPG-01 | Upgrade leg: pinned 1A baseline (10 migrations @ 03a0c12) materialised in a TEMP worktree; ONLY the 1B migrations applied on top; both suites green; worktree removed | plan | review | 1B | review | round-6 packet + addendum |
+| UPG-02 | The upgrade rehearsal and db:verify are repeatable CI merge gates: exact two-way migration-state check after every reset (clean and base), increment applied via `supabase migration up`, both suites re-run against the upgraded database, schema lint failing on warnings | ADR-0006 F5 | CI | 1B | green | ci.yml + scripts/verify-migration-state.mjs |
+
+## 1B → staged forward (new pending rows)
+
+| ID | Assertion | Source | Layer | Slice | Status | Test |
+|---|---|---|---|---|---|---|
+| ING-02 | arrivals/proposals §3.4 read policies (summary reaches the arrival row; view reaches auth_detail) | §3.4 | pgTAP | **1C** | **pending** | ingestion RLS lands 1C |
+| ING-03 | A.1 health paired half: extractions return nothing at summary | A.1 | pgTAP | **1C** | **pending** | extractions land 1C |
+| RLS-11 | A.3 remaining channels: search, the send-time notification check, export | A.3 | pgTAP+ | **1D / 2+** | **pending** | surfaces land there |
+| DSC-01 | dsc view-level read policy; the 1D search writer joins the (currently empty) dsc allowlist | §2.5, §2.11 | pgTAP | **1D** | **pending** | REC-05 holds it dark now |
+| TNT-08 | Request-path callers for reclassify (re-categorisation surface) and sweep scheduling | §2.6 | pgTAP | **1D** | **pending** | owner-only in 1B |
+| SHR-02 | Share revocation surfaces: hc.assign_task / unassign revokes assignment-created shares | §3.6, AC-TASK-7 | pgTAP | **1C/1D** | **pending** | share_object is the only writer in 1B |
+| PRF-06 | 1D entry gate (quantitative — the round-6 deferral bound): 5,000-arrival realistic-fanout benchmark (dense provenance, multiple memberships/shares, warm+cold cache, p95/p99 over ≥20 runs); page-sized record queries p95 ≤ 250 ms; search/count full scans p95 ≤ 2.5 s; breach ⇒ the inline-friendly visible_at rewrite lands in 1D | ADR-0006 F7/Q6 | pgTAP+ | **1D** | **pending** | gate numbers fixed now; benchmark is 1D work |
+| MNL-01 | Manual entry end-to-end (model pinned ADR-0006 Q12): a synthetic arrival with an explicit manual channel, created with its proposal in ONE transaction; payload `manual` flag must agree with the arrival channel (constraint lands with the creating machinery) | ADR-0006 F9/Q12 | pgTAP | **1C** | **pending** | proposal creation is 1C machinery |
+| OPS-01 | 1D entry gate for staged owner-only machinery: scheduler identity for sweep/reclassify, retry policy, alerting on sweep findings > 0, batch/runtime bounds, max tolerated taint-inconsistency window ≤ 24 h once scheduled; failure posture stays over-taint (fail-closed availability cost, never exposure) | ADR-0006 F10/Q10 | review | **1D** | **pending** | no production invoker exists in 1B |

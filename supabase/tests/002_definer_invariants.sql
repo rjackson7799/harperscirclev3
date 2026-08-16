@@ -21,7 +21,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(18);
+select plan(20);
 
 -- 1 · Every function in hc is owned by the non-login internal role.
 select is((
@@ -38,30 +38,51 @@ select is((
   where n.nspname = 'hc'),
   array[
     'access_log_immutable()',
-    'adjudicate_freeze(p_freeze_id uuid, p_outcome text, p_adjudicated_by text, p_outcome_note text, p_subject_id uuid, p_narrowing_rationale text, p_contact_attempted_at timestamp with time zone)',
+    'adjudicate_freeze(p_freeze_id uuid, p_outcome text, p_adjudicated_by text, p_outcome_note text, p_subject_id uuid, p_narrowing_rationale text, p_contact_attempted_at timestamp with time zone, p_objected_to_member_id uuid)',
     'all_domains()',
+    'apply_taint(p_type hc.object_type, p_id uuid, p_taint hc.domain[], p_resolved boolean)',
+    'approve_proposal(p_proposal_id uuid, p_expected_version integer, p_idempotency_key text, p_edits jsonb, p_step_up_token text)',
+    'assert_claimed()',
     'contact_key(p text)',
     'create_circle(p_name text, p_subjects jsonb, p_opening_context text[])',
     'ctx()',
     'ctx_for(p_account uuid)',
     'dom(p jsonb)',
     'grant_vectors(p_account uuid)',
+    'guard_row()',
     'ladder(p_s jsonb, p_taint hc.domain[])',
+    'link_provenance(p_child_type hc.object_type, p_child_id uuid, p_parent_type hc.object_type, p_parent_id uuid)',
     'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text, p_corrects_id uuid)',
+    'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
+    'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
+    'own_domain(p_type hc.object_type, p_category hc.doc_category, p_kind hc.timeline_kind, p_declared hc.domain)',
+    'presence(p_subject uuid)',
+    'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
+    'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
+    'resolve_object(p_type hc.object_type, p_id uuid)',
+    'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
+    'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid)',
+    'sweep_provenance()',
+    'taint_union(a hc.domain[], b hc.domain[])',
+    'taint_union_2(a hc.domain[], b hc.domain[])',
+    'taint_union_agg(hc.domain[])',
     'uid()',
     'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)'
   ],
-  'the hc function inventory is exactly the enumerated fourteen — no stray overloads');
+  'the hc function inventory is exactly the enumerated set — no stray overloads');
 
--- 3 · SECURITY DEFINER only where required: exactly the six that must read
---     or write past FORCE RLS as hc_internal.
+-- 3 · SECURITY DEFINER only where required: exactly the boundary functions
+--     that must read or write past FORCE RLS as hc_internal.
 select is((
   select array_agg(p.proname order by p.proname)
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
-  array['adjudicate_freeze','create_circle','ctx','ctx_for','grant_vectors','request_freeze']::name[],
-  'SECURITY DEFINER is exactly the six boundary functions, nothing else');
+  array['adjudicate_freeze','approve_proposal','assert_claimed','create_circle',
+        'ctx','ctx_for','grant_vectors','link_provenance','presence',
+        'propagate_taint_growth','reclassify_taint','request_freeze',
+        'revise_object','share_object','sweep_provenance']::name[],
+  'SECURITY DEFINER is exactly the fifteen boundary functions, nothing else (assert_claimed: M10 — fires at commit as the committing role)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -98,6 +119,10 @@ with actual as (
   where n.nspname = 'hc'
   union all select 'ctx', 'authenticated'
   union all select 'create_circle', 'authenticated'
+  union all select 'approve_proposal', 'authenticated'
+  union all select 'revise_object', 'authenticated'
+  union all select 'share_object', 'authenticated'
+  union all select 'presence', 'authenticated'
   -- the pure visibility functions: policies evaluate these as the caller
   union all select 'dom', 'authenticated'
   union all select 'all_domains', 'authenticated'
@@ -161,7 +186,51 @@ insert into snapshot_expected values
   ('hc_internal',   'freeze_claims',   'INSERT'),
   ('hc_internal',   'access_log',      'SELECT'),
   ('hc_internal',   'access_log',      'INSERT'),
-  ('hc_internal',   'log_event_types', 'SELECT');
+  ('hc_internal',   'log_event_types', 'SELECT'),
+  -- 1B M1 (ADR-0005 D1): exactly what hc.approve_proposal() needs; arrivals
+  -- deliberately absent — no role of ours reads or writes it until 1C.
+  ('hc_internal',   'proposals',         'SELECT'),
+  ('hc_internal',   'proposals',         'UPDATE'),
+  ('hc_internal',   'approval_attempts', 'SELECT'),
+  ('hc_internal',   'approval_attempts', 'INSERT'),
+  ('hc_internal',   'approval_attempts', 'UPDATE'),
+  ('hc_internal',   'proposal_commits',  'SELECT'),
+  ('hc_internal',   'proposal_commits',  'INSERT'),
+  -- 1B M2: the record is readable and unwritable until M6 grants the
+  -- writer role its INSERT/UPDATE. document_search_content: NOTHING, for
+  -- anyone, until 1D — its absence from this list is the assertion.
+  ('authenticated', 'episodes',        'SELECT'),
+  ('authenticated', 'documents',       'SELECT'),
+  ('authenticated', 'tasks',           'SELECT'),
+  ('authenticated', 'timeline_events', 'SELECT'),
+  ('authenticated', 'profile_facts',   'SELECT'),
+  ('hc_internal',   'episodes',        'SELECT'),
+  ('hc_internal',   'documents',       'SELECT'),
+  ('hc_internal',   'tasks',           'SELECT'),
+  ('hc_internal',   'timeline_events', 'SELECT'),
+  ('hc_internal',   'profile_facts',   'SELECT'),
+  -- 1B M3: asymmetric by design — revisions append-only, shares
+  -- revoke-only, edges link/unlink (relink = delete-then-insert, §2.6).
+  -- 1B M5: the taint walk is the first hc_internal writer — UPDATE only;
+  -- INSERT waits for M6's approve_proposal.
+  ('hc_internal',   'documents',       'INSERT'),
+  ('hc_internal',   'episodes',        'INSERT'),
+  ('hc_internal',   'tasks',           'INSERT'),
+  ('hc_internal',   'timeline_events', 'INSERT'),
+  ('hc_internal',   'profile_facts',   'INSERT'),
+  ('hc_internal',   'documents',       'UPDATE'),
+  ('hc_internal',   'episodes',        'UPDATE'),
+  ('hc_internal',   'tasks',           'UPDATE'),
+  ('hc_internal',   'timeline_events', 'UPDATE'),
+  ('hc_internal',   'profile_facts',   'UPDATE'),
+  ('hc_internal',   'record_revisions', 'SELECT'),
+  ('hc_internal',   'record_revisions', 'INSERT'),
+  ('hc_internal',   'object_shares',    'SELECT'),
+  ('hc_internal',   'object_shares',    'INSERT'),
+  ('hc_internal',   'object_shares',    'UPDATE'),
+  ('hc_internal',   'provenance_edges', 'SELECT'),
+  ('hc_internal',   'provenance_edges', 'INSERT'),
+  ('hc_internal',   'provenance_edges', 'DELETE');
 
 create temp view snapshot_actual as
   select r.rolname as grantee, c.relname::text as tbl, a.privilege_type as priv
@@ -198,12 +267,63 @@ select is((
   where 'hc_internal'::regrole::oid = any (p.polroles)),
   array['access_grants_internal','access_grants_internal_create',
         'access_log_internal','access_log_internal_append',
-        'accounts_internal','circle_members_internal','circle_members_internal_create',
+        'accounts_internal',
+        'approval_attempts_internal','approval_attempts_internal_update',
+        'approval_attempts_internal_write',
+        'circle_members_internal','circle_members_internal_create',
         'circles_internal','circles_internal_create',
+        'documents_internal','documents_internal_revise',
+        'documents_internal_write',
+        'episodes_internal','episodes_internal_revise','episodes_internal_write',
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
-        'subjects_internal','subjects_internal_create']::name[],
-  'the hc_internal policy list is exactly the enumerated sixteen');
+        'object_shares_internal','object_shares_internal_create',
+        'object_shares_internal_revoke',
+        'profile_facts_internal','profile_facts_internal_revise',
+        'profile_facts_internal_write',
+        'proposal_commits_internal','proposal_commits_internal_claim',
+        'proposals_internal','proposals_internal_decide',
+        'provenance_edges_internal','provenance_edges_internal_link',
+        'provenance_edges_internal_unlink',
+        'record_revisions_internal','record_revisions_internal_append',
+        'subjects_internal','subjects_internal_create',
+        'tasks_internal','tasks_internal_revise','tasks_internal_write',
+        'timeline_events_internal','timeline_events_internal_revise',
+        'timeline_events_internal_write']::name[],
+  'the hc_internal policy list is exactly the enumerated forty-six');
+
+-- ----------------------------------------------------------------------------
+-- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
+-- the exact principals and privileges on documents and
+-- document_search_content from information_schema.role_table_grants, and
+-- the exact trigger inventory from pg_trigger. Named catalogs, exact
+-- inventory — extending the 002 pattern. dsc: empty on BOTH counts until
+-- 1D lands the search writer.
+-- ----------------------------------------------------------------------------
+select is((
+  select coalesce(array_agg(g.grantee || ':' || g.table_name || ':' || g.privilege_type
+                            order by g.table_name, g.grantee, g.privilege_type),
+                  '{}'::text[])
+  from information_schema.role_table_grants g
+  where g.table_schema = 'public'
+    and g.table_name in ('documents', 'document_search_content')
+    and g.grantee in ('anon', 'authenticated', 'hc_pipeline', 'hc_admin', 'hc_internal')),
+  array['authenticated:documents:SELECT',
+        'hc_internal:documents:INSERT',
+        'hc_internal:documents:SELECT',
+        'hc_internal:documents:UPDATE'],
+  'writer allowlist: documents = authenticated read + hc_internal read/insert/update; dsc = NOTHING for any of our five roles');
+
+select is((
+  select coalesce(array_agg(c.relname || ':' || t.tgname order by c.relname, t.tgname),
+                  '{}'::text[])
+  from pg_trigger t
+  join pg_class c on c.oid = t.tgrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and not t.tgisinternal
+    and c.relname in ('documents', 'document_search_content')),
+  array['documents:hc_claim_documents', 'documents:hc_guard_documents'],
+  'writer allowlist: documents carries exactly the claim + guard triggers; dsc carries none');
 
 -- ----------------------------------------------------------------------------
 -- Round-5 ruling R1: hc.uid() accepted permanently CONDITIONAL on this

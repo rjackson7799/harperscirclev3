@@ -363,8 +363,8 @@ select is(
   (select coalesce(array_agg(p.proname order by p.proname), '{}'::name[])
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'hc' and p.prosrc like '%public.freezes%'),
-  array['adjudicate_freeze','grant_vectors','request_freeze']::name[],
-  'exactly three hc functions reference freezes: the two writers and the flag reader');
+  array['adjudicate_freeze','approve_proposal','grant_vectors','request_freeze']::name[],
+  'exactly four hc functions reference freezes: the two writers and the two flag readers (FRZ-14 added approve_proposal)');
 select is(
   (select coalesce(array_agg(p.proname order by p.proname), '{}'::name[])
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -379,9 +379,9 @@ select ok(
   and not has_function_privilege('hc_admin',      'hc.request_freeze(uuid,text,text,text)', 'execute'),
   'no request-path role can execute hc.request_freeze()');
 select ok(
-      not has_function_privilege('authenticated', 'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz)', 'execute')
-  and not has_function_privilege('hc_pipeline',   'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz)', 'execute')
-  and not has_function_privilege('hc_admin',      'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz)', 'execute'),
+      not has_function_privilege('authenticated', 'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz,uuid)', 'execute')
+  and not has_function_privilege('hc_pipeline',   'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz,uuid)', 'execute')
+  and not has_function_privilege('hc_admin',      'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz,uuid)', 'execute'),
   'no request-path role can execute hc.adjudicate_freeze()');
 
 -- ----------------------------------------------------------------------------
