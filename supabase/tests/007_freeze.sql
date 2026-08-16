@@ -110,8 +110,9 @@ select lives_ok(format(
 -- ----------------------------------------------------------------------------
 select throws_ok(format(
   $$ insert into public.freeze_claims
-       (circle_id, freeze_id, claimant_contact, reason, disposition)
-     select %L, f.id, 'caller@example.org', 'reason', 'rate_limited'
+       (circle_id, freeze_id, claimant_contact, claimant_contact_key, reason, disposition)
+     select %L, f.id, 'caller@example.org', hc.contact_key('caller@example.org'),
+            'reason', 'rate_limited'
      from public.freezes f where f.circle_id = %L and f.state = 'open' $$,
   current_setting('t.c1'), current_setting('t.c1')),
   '23514', null,
@@ -119,16 +120,18 @@ select throws_ok(format(
 
 select throws_ok(format(
   $$ insert into public.freeze_claims
-       (circle_id, claimant_contact, reason, disposition)
-     values (%L, 'caller@example.org', 'reason', 'opened_freeze') $$,
+       (circle_id, claimant_contact, claimant_contact_key, reason, disposition)
+     values (%L, 'caller@example.org', hc.contact_key('caller@example.org'),
+             'reason', 'opened_freeze') $$,
   current_setting('t.c1')),
   '23514', null,
   'an accepted claim must attach to the freeze it opened or joined');
 
 select lives_ok(format(
   $$ insert into public.freeze_claims
-       (circle_id, freeze_id, claimant_contact, reason, disposition)
-     select %L, f.id, 'caller@example.org', 'observed concerning access', 'opened_freeze'
+       (circle_id, freeze_id, claimant_contact, claimant_contact_key, reason, disposition)
+     select %L, f.id, 'caller@example.org', hc.contact_key('caller@example.org'),
+            'observed concerning access', 'opened_freeze'
      from public.freezes f where f.circle_id = %L and f.state = 'open' $$,
   current_setting('t.c1'), current_setting('t.c1')),
   'a well-formed claim row is accepted');

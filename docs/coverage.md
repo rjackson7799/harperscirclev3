@@ -26,7 +26,7 @@ property, verified at review gates).
 | INV-08 | `admin_users.mfa_enrolled_at` NOT NULL (AC-ADMIN-5) | §2.3 | pgTAP | 1A | green | 001:36 |
 | INV-09 | `access_log` rejects UPDATE and DELETE **both ways** (privilege absent + unconditional trigger) | §2.8 | pgTAP | 1A | green | 001:41–43, 46–48 |
 | INV-10 | Denial entries name no object (`denial_names_no_object`, AC-PPL-7) | §2.8 | pgTAP | 1A | green | 001:44 |
-| INV-11 | `seq` unique per circle; gapless; chain linked; `entry_hash` recomputable from the stored row | §2.8 | pgTAP | 1A | green | 001:45, 51 · 006:13–15 |
+| INV-11 | `seq` unique per circle; gapless; chain linked; `entry_hash` recomputes as the **complete v1 canonical** — every immutable evidentiary column incl. session/request/correction linkage (collapsed_* excluded as mutable presentation, by design); the declaration FK is DEFERRABLE | §2.8; ADR-0004 F1/F2 | pgTAP | 1A | green | 001:45, 51, 54 · 006:13–16 |
 | INV-12 | Invite token hash unique (single-use anchor) | §2.3 | pgTAP | 1A | green | 001:40 |
 | INV-13 | No unexpected PUBLIC grants: tables zero; functions zero; deny-by-default ACLs in place for runner and `hc_internal` | ADR-0003 f8 | pgTAP | 1A | green | 001:13–14 · 002:5, 12 |
 | INV-14 | Two-way privilege snapshot: our five roles hold exactly the expected inventory; anon/hc_pipeline/hc_admin hold **nothing** | §1.2, §3.7 | pgTAP | 1A | green | 002:10–11 |
@@ -94,8 +94,8 @@ property, verified at review gates).
 
 | ID | Assertion | Source | Layer | Slice | Status | Test |
 |---|---|---|---|---|---|---|
-| CIR-01 | `seq = 1` is `custodianship_declared` for every circle; two subjects ⇒ seq 1 AND 2, before any other event | §2.3 | pgTAP | 1A | green | 006:3–4 |
-| CIR-02 | Declaration names subject (by name — its row does not exist yet), custodian, date | §2.3, PRD §7.5 | pgTAP | 1A | green | 006:5 |
+| CIR-01 | Universal, driven from **circles** (a circle with no declaration cannot pass invisibly): every circle carries one declaration per subject at exactly seq 1..n, before any other event; the seq-1 sweep retained as supplement | §2.3; ADR-0004 F4 | pgTAP | 1A | green | 006:3–4, 23 |
+| CIR-02 | Declaration is **durably subject-bound**: preallocated subject id under the deferred FK, plus name/custodian/date in detail | §2.3, PRD §7.5; ADR-0004 F1 | pgTAP | 1A | green | 006:5 |
 | CIR-03 | Subject-member rows: no account, founder custodian, coordinator tier (AC-PPL-3) | §2.3 | pgTAP | 1A | green | 006:7 |
 | CIR-04 | Founder manage×5 per subject; each subject-member manage×5 on own record | §2.3, PRD §7.5 | pgTAP | 1A | green | 006:9–10 |
 | CIR-05 | Two-subject cap refused in-function (deliberately not a fake CHECK) | §2.3 note | pgTAP | 1A | green | 006:11–12 |
@@ -112,10 +112,10 @@ property, verified at review gates).
 | FRZ-04 | One OPEN freeze per circle; per-circle scope; re-freeze after a finding allowed | PRD §7.5 | pgTAP | 1A | green | 007:5–6, 49–50 |
 | FRZ-05 | Claims disposition ⟷ attachment check; every report recorded incl. rate-limited | ADR-0003 f1 | pgTAP | 1A | green | 007:7–9, 33, 37–38, 40 |
 | FRZ-06 | Second claimant attaches to the same freeze — report never swallowed | ADR-0003 f1 | pgTAP | 1A | green | 007:31–33 |
-| FRZ-07 | Rate limits: dismissed-prior claimant refused; 3/claimant/circle/30d; 10/circle/30d (constants → round-5 question) | PRD §7.5, plan d4 | pgTAP | 1A | green | 007:35–40, 51 |
+| FRZ-07 | Rate limits key on the **canonical contact** (hc.contact_key; verbatim form retained): dismissed-prior claimant refused; 3/claimant/circle/30d; 10/circle/30d; case/whitespace variants share one budget | PRD §7.5; ADR-0004 F3/R3 | pgTAP | 1A | green | 007:35–40, 51, 57–59 |
 | FRZ-08 | Direct INSERT/UPDATE/DELETE refused on both tables from EVERY request-path entry point (42501, before any policy) | §2.3 | pgTAP | 1A | green | 007:10–22 |
 | FRZ-09 | `hc_internal` bounded: freezes never deleted; claims ledger append-only even for the writer role | §2.3 | pgTAP | 1A | green | 007:23–26 |
-| FRZ-10 | Writer inventory exact: {request_freeze, adjudicate_freeze, grant_vectors} on freezes; {request_freeze} on claims | §2.3 | pgTAP | 1A | green | 007:52–53 |
+| FRZ-10 | Writer proof rests on catalogs: exact table-privilege snapshot + zero triggers on both freeze tables + no dynamic SQL; the prosrc inventory scan is the labelled supplemental check | §2.3; ADR-0004 F5 | pgTAP | 1A | green | 002:8, 10–11 · 007:52–53, 56 |
 | FRZ-11 | Freeze request/claim/adjudication are access-log events; claimant PII never in the log | PRD §7.5 | pgTAP | 1A | green | 007:30, 34, 46 |
 | FRZ-12 | Adjudication outcomes: dismissed/upheld clear `frozen`; narrowed unresolved holds named subject, reopens the other; unnarrowed holds whole circle | §3.8 | pgTAP | 1A | green | 004:16–21 · 007:41–48 |
 | FRZ-13 | Unresolved read-only carve-out (coordinators-not-objected-to capped at `view`); until it lands unresolved closes everyone (fail-closed staging) | §3.8, ADR-0003 f4 | pgTAP | **1B** | **pending** | — |
@@ -131,6 +131,13 @@ property, verified at review gates).
 | PRF-02 | **Measured** ctx() executions == textual references (1 and 2), never per row, over a visible scan at volume | ADR-0003 f9 | pgTAP | 1A | green | 008:5–7 |
 | PRF-03 | Volume wall clock under the 250 ms O(rows) tripwire (measured 2.9 / 11.2 ms local; §1.8 page budget 1.5 s) | §3.12, §1.8 | pgTAP | 1A | green | 008:8–9 |
 | PRF-04 | InitPlan/LEFT-JOIN null-extension regression against the real search schema | §7.2, ADR-0002 c1 | pgTAP | **1D** | **pending** | 000 carries the synthetic version |
+
+## Round-5 conditions (ADR-0004)
+
+| ID | Assertion | Source | Layer | Slice | Status | Test |
+|---|---|---|---|---|---|---|
+| UID-EQ | `hc.uid()` ≡ `auth.uid()`: absent claims, claim.sub, legacy claims, conflicting (claim.sub wins), malformed → same error class | ADR-0004 R1 | pgTAP | 1A | green | 002:14–18 |
+| PIN-01 | PostgREST exposed schemas pinned to [public, graphql_public] — `hc` never exposed; exposure gated on live-denial test or fixed image | ADR-0004 R2 | CI | 1A | green | scripts/check-exposed-schemas.mjs + ci.yml step |
 
 ## Platform regression net (pre-1A)
 
