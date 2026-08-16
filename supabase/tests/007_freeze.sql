@@ -379,9 +379,9 @@ select ok(
   and not has_function_privilege('hc_admin',      'hc.request_freeze(uuid,text,text,text)', 'execute'),
   'no request-path role can execute hc.request_freeze()');
 select ok(
-      not has_function_privilege('authenticated', 'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz)', 'execute')
-  and not has_function_privilege('hc_pipeline',   'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz)', 'execute')
-  and not has_function_privilege('hc_admin',      'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz)', 'execute'),
+      not has_function_privilege('authenticated', 'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz,uuid)', 'execute')
+  and not has_function_privilege('hc_pipeline',   'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz,uuid)', 'execute')
+  and not has_function_privilege('hc_admin',      'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz,uuid)', 'execute'),
   'no request-path role can execute hc.adjudicate_freeze()');
 
 -- ----------------------------------------------------------------------------

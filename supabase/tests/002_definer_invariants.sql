@@ -38,7 +38,7 @@ select is((
   where n.nspname = 'hc'),
   array[
     'access_log_immutable()',
-    'adjudicate_freeze(p_freeze_id uuid, p_outcome text, p_adjudicated_by text, p_outcome_note text, p_subject_id uuid, p_narrowing_rationale text, p_contact_attempted_at timestamp with time zone)',
+    'adjudicate_freeze(p_freeze_id uuid, p_outcome text, p_adjudicated_by text, p_outcome_note text, p_subject_id uuid, p_narrowing_rationale text, p_contact_attempted_at timestamp with time zone, p_objected_to_member_id uuid)',
     'all_domains()',
     'apply_taint(p_type hc.object_type, p_id uuid, p_taint hc.domain[], p_resolved boolean)',
     'approve_proposal(p_proposal_id uuid, p_expected_version integer, p_idempotency_key text, p_edits jsonb, p_step_up_token text)',
@@ -56,6 +56,7 @@ select is((
     'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
     'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
     'own_domain(p_type hc.object_type, p_category hc.doc_category, p_kind hc.timeline_kind, p_declared hc.domain)',
+    'presence(p_subject uuid)',
     'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
@@ -78,10 +79,10 @@ select is((
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
   array['adjudicate_freeze','approve_proposal','create_circle','ctx','ctx_for',
-        'grant_vectors','link_provenance','propagate_taint_growth',
+        'grant_vectors','link_provenance','presence','propagate_taint_growth',
         'reclassify_taint','request_freeze','revise_object',
         'share_object','sweep_provenance']::name[],
-  'SECURITY DEFINER is exactly the thirteen boundary functions, nothing else');
+  'SECURITY DEFINER is exactly the fourteen boundary functions, nothing else');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -121,6 +122,7 @@ with actual as (
   union all select 'approve_proposal', 'authenticated'
   union all select 'revise_object', 'authenticated'
   union all select 'share_object', 'authenticated'
+  union all select 'presence', 'authenticated'
   -- the pure visibility functions: policies evaluate these as the caller
   union all select 'dom', 'authenticated'
   union all select 'all_domains', 'authenticated'
