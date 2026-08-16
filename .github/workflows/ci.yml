@@ -45,6 +45,9 @@ jobs:
       - name: Database tests (pgTAP)
         run: npm run test:db
 
+      - name: Database tests (two-session concurrency layer)
+        run: npm run test:concurrency
+
       - name: Lint
         run: npm run lint
 
