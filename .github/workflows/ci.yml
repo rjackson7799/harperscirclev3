@@ -42,11 +42,37 @@ jobs:
       - name: Reset database from migrations
         run: npm run db:reset
 
+      - name: Verify exact migration state (clean leg)
+        run: node scripts/verify-migration-state.mjs supabase/migrations
+
       - name: Database tests (pgTAP)
         run: npm run test:db
 
       - name: Database tests (two-session concurrency layer)
         run: npm run test:concurrency
+
+      - name: Schema lint (db:verify, warnings fail)
+        run: npm run db:verify
+
+      # Round-6 M2: the documented upgrade rehearsal as a repeatable merge
+      # gate, not a one-time local check. Reset to the merge-base's
+      # migration set, verify the exact applied list, apply ONLY this
+      # branch's increment, verify again, and re-run both suites against
+      # the upgraded database. Skipped when HEAD == base (pushes to main).
+      - name: Upgrade leg — base reset, increment apply, both suites
+        run: |
+          BASE=$(git merge-base HEAD origin/main)
+          if [ "$BASE" = "$(git rev-parse HEAD)" ]; then
+            echo "HEAD is the base — no increment to rehearse"; exit 0
+          fi
+          git worktree add /tmp/upgrade-base "$BASE"
+          npx supabase db reset --workdir /tmp/upgrade-base
+          node scripts/verify-migration-state.mjs /tmp/upgrade-base/supabase/migrations
+          npx supabase migration up
+          node scripts/verify-migration-state.mjs supabase/migrations
+          npm run test:db
+          npm run test:concurrency
+          git worktree remove /tmp/upgrade-base
 
       - name: Lint
         run: npm run lint
