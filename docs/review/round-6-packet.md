@@ -134,3 +134,68 @@ Eleven migrations, `20260815230001`–`230011`:
 - Tests: `supabase/tests/009–017` new; 001/002/007/008/010–016 extended.
 - Concurrency: `scripts/concurrency/run.mjs`; CI: `.github/workflows/ci.yml`.
 - Red signatures: in each `test(1b): … red` commit message on the branch.
+
+## Addendum — round-6 findings applied (2026-08-16)
+
+Review returned: **not approvable yet — decision-incomplete** (race family,
+merge criteria, spec divergence, auditability, staged surfaces). Dispositions
+in `docs/adr/0006-slice1b-review-round-6.md`; accepted changes landed
+red→green on the branch (red `cb91936` with per-finding signatures; green
+`04f6949`, migration `20260815230012_round6_fixes.sql`; CI gates `c733fb8`).
+The serialization rule the review demanded is defined there (the R-rule),
+implemented in M12, and pinned by concurrency cases 5–10.
+
+| Finding | Applied as | Proven by |
+|---|---|---|
+| F1 · authorization/freeze races | R-rule: all record + freeze writers under the per-circle lock; predicates evaluate under it on re-read rows. Revise and reclassify lock-then-authorize (real defects); approve's freeze check moves under the lock (the race swallowed FRZ-14's signature — the write never escaped, `commits=0` pre-fix); freeze writers join the lock; share = recorded single-snapshot exception | run.mjs cases 5–10 · 018:14 |
+| F2 · no merge matrix | ADR-0006 §Merge gate: blocking rules, ownership, closure evidence, default-reject | ADR-0006 |
+| F3 · TSD divergence | Normative **Amendments** annex in `docs/TSD.md` (A1–A4): §2.3 D2 column, §3.2 cap/CTX-07, §3.7 order + hardening, §2.6 R-rule | docs/TSD.md |
+| F4 · auditability | This block, below | — |
+| F5 · CI gates | Upgrade rehearsal in ci.yml (worktree at merge-base → base reset → exact list → `migration up` → exact list → both suites); exact-state check after the clean reset; `db:verify --fail-on warning` | ci.yml · scripts/verify-migration-state.mjs |
+| F6 · step-up token | Non-null token REFUSED fail-closed until §5.7 validates; §3.7 signature verbatim; the parked db:verify warning retired (parameter now used) | 018:1–2 |
+| F7 · perf capacity | Quantitative 1D entry gate fixed now (PRF-06): 5,000-arrival realistic-fanout benchmark; pages p95 ≤ 250 ms; full scans p95 ≤ 2.5 s; breach ⇒ inline rewrite in 1D | coverage.md PRF-06 |
+| F8 · D7 drift | Reviewer's rule adopted: `proposal_taint_changed` past authorization; union kept as backstop; fixtures draft the parent union (the 1C drafting contract) | 018:9–13 · 013:5 |
+| F9 · manual entry | Model pinned as binding 1C design: synthetic arrival, explicit manual channel, one transaction with its proposal; flag-vs-channel constraint lands with the creating machinery | coverage.md MNL-01 |
+| F10 · staged ops | 1B posture recorded (no invoker exists; idempotent by construction; failure = over-taint); quantified 1D gate OPS-01 (scheduling, retry, alerting, bounds, ≤ 24 h window) | coverage.md OPS-01 |
+| P5 · abuse cases | Replay actor-bound; key bounds 1..200; duplicate parents → one edge; cycles/self-edges already TNT-01 | 018:3–8 |
+
+### Auditability block (F4)
+
+- **Base:** `main` @ `03a0c12` (PR #1, 10 migrations). **PR:** #2,
+  https://github.com/rjackson7799/harperscirclev3/pull/2 — re-runs on push.
+- **Reviewed head (round-6 input):** `cad6151` — CI green both events
+  (push run 31934729090; pull_request run 31935158867).
+- **Disposition commits:** red `cb91936` → green `04f6949` → CI gates
+  `c733fb8` → docs (this commit). Post-push head CI runs recorded below on
+  verification.
+- **Pins:** Node v22.15.0 · npm 10.9.2 · Supabase CLI 2.100.1 ·
+  `public.ecr.aws/supabase/postgres:17.6.1.106`
+  @ `sha256:21ab971149317ea9cd12a8126fe4ebb34def08c8972956b0958cba0924409dab`
+  · pg 8.16.3.
+- **Commands and results at `c733fb8` (local, in order):**
+  - `npm run db:reset` → storage-api health flap (documented cosmetic;
+    CI is db-only and the arbiter), then
+    `node scripts/verify-migration-state.mjs supabase/migrations` →
+    `migration state exact: 22 applied` — the trust rule, mechanised.
+  - `npm run test:db` → **547/547** across 19 files (533 + the 14 new 018).
+  - `npm run test:concurrency` → **26/26** (three consecutive runs; the 18
+    prior assertions + cases 5–10).
+  - `npm run db:verify` (`supabase db lint --fail-on warning`) →
+    **No schema errors found** — zero warnings; the round-5-era parked
+    warning is gone.
+  - `npm run lint` · `npm run typecheck` → clean.
+  - **Upgrade leg:** `git worktree add %TEMP%\hc-upgrade-base 03a0c12` →
+    `npx supabase db reset --workdir <worktree>` → verifier:
+    `10 applied == <worktree>/supabase/migrations` (exact) →
+    `npx supabase migration up` (exactly the twelve 1B migrations applied,
+    230001–230012) → verifier: `22 applied` (exact) → `npm run test:db`
+    **547/547** · `npm run test:concurrency` **26/26** → worktree removed.
+- **Red evidence at `cb91936`:** 018 failed 9/14 (cases 1–2, 4–10, named
+  signatures in the commit message); concurrency 22/26 — case5
+  `err=P0001:approval_refused commits=0` (the swallowed-signature finding),
+  case8 `title=stale edit` (the revise defect), case9 completed-not-refused,
+  case10 `title=frozen edit`.
+
+**Post-push verification (appended):** head CI runs at the final branch head
+are recorded by the disposition report; the merge gate requires green on both
+events at that head before the owner's sign-off review.

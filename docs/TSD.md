@@ -2855,3 +2855,78 @@ Generating rather than hand-writing is the point: a sixth domain adds its ten pa
 | Stale second search row after a rename | Edit `documents.title`; assert the document is findable at `view` on the new title in the same transaction |
 | A wrapper's stored identity mutated after creation | `update` on `export_requests.requested_by` raises; a completed request cannot be re-claimed; an admin cannot create the request they then act on |
 | Wrapper object-id probing | A nonexistent object id and an unauthorised one return the **same** normalised error, with no timing or shape difference (§3.9) |
+
+---
+
+## Amendments (normative)
+
+These amendments are **normative** and supersede the quoted clauses in place.
+Each was reviewed at a named gate and carries its deciding ADR; the section
+text above is otherwise unedited so review history stays diffable. Rule for
+future deltas: an implementation may not diverge from this document silently —
+a divergence is either reverted or recorded here through an ADR disposition.
+
+### A1 — §2.3 `freezes` DDL: the objected-to identity (ADR-0005 D2; ratified ADR-0006 Q2)
+
+`freezes` additionally carries `objected_to_member_id uuid` — nullable, a
+circle-consistent composite FK to `circle_members (circle_id, id)`, with
+`check (objected_to_member_id is null or state = 'unresolved')`. It is
+settable only through `hc.adjudicate_freeze()`, whose signature gains an
+optional trailing `p_objected_to_member_id uuid default null` (the prior
+overload is dropped). §3.8's `unresolved` carve-out is unimplementable
+without this identity. **Null means no carve-out** — everyone stays closed,
+which also covers PRD §7.5's only-coordinator-is-objected-to case
+arithmetically.
+
+### A2 — §3.2 `grant_vectors` / ctx contract: the FRZ-13 cap and populated shares (ADR-0005 D5; ratified ADR-0006)
+
+`hc.grant_vectors()` gains a `cap` output column: `'view'` only when the
+covering freeze is `unresolved` AND the caller's membership in that circle is
+`coordinator` AND the freeze names an objected-to member other than that
+caller — in which case `frozen` is emitted false for that caller. Every other
+freeze shape leaves `frozen` true / `cap` null. ctx subject entries gain the
+`'cap'` key; `hc.visible_at()` applies `least(result, coalesce(cap,
+'manage'))` as its **final** step, after share-widening, so the cap binds
+shares too. A missing key coalesces to `manage`; `frozen` keeps its
+fail-closed `coalesce(…, true)`. The §3.2 ctx `shares` key is populated from
+`object_shares` (live membership, unrevoked) in both `hc.ctx()` and
+`hc.ctx_for()` (CTX-07).
+
+### A3 — §3.7 `hc.approve_proposal()`: recorded order and round-6 hardening (ADR-0005; ADR-0006 F1/F6/F8, Q4/Q5)
+
+The signature stays verbatim. Deltas to the commented seven steps:
+
+- **Check order as built:** idempotency claim → proposal row lock →
+  per-circle lock (A4) → freeze check (step 4, ordered before the
+  visibility re-check so FRZ-14 keeps its named `freeze_active` signature;
+  the member's own ctx already carries `frozen`) → authorization on the D7
+  union → version check → **taint-drift check** → high-risk confirmation →
+  claim and write.
+- **Step-up (interim):** a non-null `p_step_up_token` is **refused**
+  (`approval_refused`) until §5.7's binding lands in the auth slice. A token
+  the database cannot validate is never accepted-and-ignored; clients must
+  not treat token submission as validated authentication. §5.7 replaces this
+  guard with real validation.
+- **Taint drift (D7 as amended):** the write-time taint is own_domain ∪
+  drafted ∪ parents' CURRENT union, with manage checked on that union — and
+  additionally, parents contributing any domain beyond own ∪ drafted refuse
+  with `proposal_taint_changed` (post-authorization, like
+  `proposal_version_changed`): re-render, then approve what is displayed.
+- **Idempotency:** the stored result replays only to the actor who claimed
+  the key; the key is bounded (length 1..200); duplicate payload parents
+  collapse to one edge.
+
+### A4 — §2.6 lock discipline: the serialization rule (ADR-0005 D6; extended ADR-0006 F1)
+
+The per-circle advisory lock `hashtext('taint:' || circle_id)` is taken by
+every growth and shrink path **and** by every record writer
+(`approve_proposal`, `revise_object`) **and** by every freeze writer
+(`request_freeze`, `adjudicate_freeze`) — before any row lock, with every
+authorization and freeze predicate evaluating under it against re-read rows.
+Consequence (the R-rule): security-state transitions and record writes are
+totally ordered per circle; a transition committing before a writer's
+predicates — including mid-wait — defeats the writer; one committing after
+binds at the next evaluation. `hc.share_object()` is the recorded
+single-snapshot exception (share grants ≤ view and is inert under freezes via
+the A2 cap). Advisory order is acyclic: `freeze:` → `taint:` → `hc.log()`'s
+unprefixed key.
