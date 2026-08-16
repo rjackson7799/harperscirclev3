@@ -60,6 +60,7 @@ select is((
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
     'resolve_object(p_type hc.object_type, p_id uuid)',
+    'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
     'sweep_provenance()',
     'taint_union(a hc.domain[], b hc.domain[])',
     'taint_union_2(a hc.domain[], b hc.domain[])',
@@ -77,8 +78,9 @@ select is((
   where n.nspname = 'hc' and p.prosecdef),
   array['adjudicate_freeze','approve_proposal','create_circle','ctx','ctx_for',
         'grant_vectors','link_provenance','propagate_taint_growth',
-        'reclassify_taint','request_freeze','sweep_provenance']::name[],
-  'SECURITY DEFINER is exactly the eleven boundary functions, nothing else');
+        'reclassify_taint','request_freeze','revise_object',
+        'sweep_provenance']::name[],
+  'SECURITY DEFINER is exactly the twelve boundary functions, nothing else');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -116,6 +118,7 @@ with actual as (
   union all select 'ctx', 'authenticated'
   union all select 'create_circle', 'authenticated'
   union all select 'approve_proposal', 'authenticated'
+  union all select 'revise_object', 'authenticated'
   -- the pure visibility functions: policies evaluate these as the caller
   union all select 'dom', 'authenticated'
   union all select 'all_domains', 'authenticated'
