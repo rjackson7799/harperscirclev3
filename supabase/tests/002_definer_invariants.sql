@@ -46,13 +46,14 @@ select is((
     'ctx_for(p_account uuid)',
     'dom(p jsonb)',
     'grant_vectors(p_account uuid)',
+    'guard_row()',
     'ladder(p_s jsonb, p_taint hc.domain[])',
     'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text, p_corrects_id uuid)',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
     'uid()',
     'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)'
   ],
-  'the hc function inventory is exactly the enumerated fourteen — no stray overloads');
+  'the hc function inventory is exactly the enumerated set — no stray overloads');
 
 -- 3 · SECURITY DEFINER only where required: exactly the six that must read
 --     or write past FORCE RLS as hc_internal.
