@@ -41,6 +41,8 @@ select is((
     'adjudicate_freeze(p_freeze_id uuid, p_outcome text, p_adjudicated_by text, p_outcome_note text, p_subject_id uuid, p_narrowing_rationale text, p_contact_attempted_at timestamp with time zone)',
     'all_domains()',
     'apply_taint(p_type hc.object_type, p_id uuid, p_taint hc.domain[], p_resolved boolean)',
+    'approve_proposal(p_proposal_id uuid, p_expected_version integer, p_idempotency_key text, p_edits jsonb, p_step_up_token text)',
+    'assert_claimed()',
     'contact_key(p text)',
     'create_circle(p_name text, p_subjects jsonb, p_opening_context text[])',
     'ctx()',
@@ -73,10 +75,10 @@ select is((
   select array_agg(p.proname order by p.proname)
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
-  array['adjudicate_freeze','create_circle','ctx','ctx_for','grant_vectors',
-        'link_provenance','propagate_taint_growth','reclassify_taint',
-        'request_freeze','sweep_provenance']::name[],
-  'SECURITY DEFINER is exactly the ten boundary functions, nothing else');
+  array['adjudicate_freeze','approve_proposal','create_circle','ctx','ctx_for',
+        'grant_vectors','link_provenance','propagate_taint_growth',
+        'reclassify_taint','request_freeze','sweep_provenance']::name[],
+  'SECURITY DEFINER is exactly the eleven boundary functions, nothing else');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -113,6 +115,7 @@ with actual as (
   where n.nspname = 'hc'
   union all select 'ctx', 'authenticated'
   union all select 'create_circle', 'authenticated'
+  union all select 'approve_proposal', 'authenticated'
   -- the pure visibility functions: policies evaluate these as the caller
   union all select 'dom', 'authenticated'
   union all select 'all_domains', 'authenticated'
@@ -203,6 +206,11 @@ insert into snapshot_expected values
   -- revoke-only, edges link/unlink (relink = delete-then-insert, §2.6).
   -- 1B M5: the taint walk is the first hc_internal writer — UPDATE only;
   -- INSERT waits for M6's approve_proposal.
+  ('hc_internal',   'documents',       'INSERT'),
+  ('hc_internal',   'episodes',        'INSERT'),
+  ('hc_internal',   'tasks',           'INSERT'),
+  ('hc_internal',   'timeline_events', 'INSERT'),
+  ('hc_internal',   'profile_facts',   'INSERT'),
   ('hc_internal',   'documents',       'UPDATE'),
   ('hc_internal',   'episodes',        'UPDATE'),
   ('hc_internal',   'tasks',           'UPDATE'),
@@ -258,21 +266,24 @@ select is((
         'circle_members_internal','circle_members_internal_create',
         'circles_internal','circles_internal_create',
         'documents_internal','documents_internal_revise',
-        'episodes_internal','episodes_internal_revise',
+        'documents_internal_write',
+        'episodes_internal','episodes_internal_revise','episodes_internal_write',
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
         'object_shares_internal','object_shares_internal_create',
         'object_shares_internal_revoke',
         'profile_facts_internal','profile_facts_internal_revise',
+        'profile_facts_internal_write',
         'proposal_commits_internal','proposal_commits_internal_claim',
         'proposals_internal','proposals_internal_decide',
         'provenance_edges_internal','provenance_edges_internal_link',
         'provenance_edges_internal_unlink',
         'record_revisions_internal','record_revisions_internal_append',
         'subjects_internal','subjects_internal_create',
-        'tasks_internal','tasks_internal_revise',
-        'timeline_events_internal','timeline_events_internal_revise']::name[],
-  'the hc_internal policy list is exactly the enumerated forty-one');
+        'tasks_internal','tasks_internal_revise','tasks_internal_write',
+        'timeline_events_internal','timeline_events_internal_revise',
+        'timeline_events_internal_write']::name[],
+  'the hc_internal policy list is exactly the enumerated forty-six');
 
 -- ----------------------------------------------------------------------------
 -- Round-5 ruling R1: hc.uid() accepted permanently CONDITIONAL on this

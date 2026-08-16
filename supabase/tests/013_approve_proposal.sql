@@ -167,7 +167,7 @@ begin
                         'summary_text', 'Home with follow-up.'),
      '{health}'),
     (current_setting('t.prop_pf')::uuid, a1, c1, s1, 'profile_fact',
-     jsonb_build_object('field', 'medications', 'value', '"metoprolol 25mg"',
+     jsonb_build_object('field', 'medications', 'value', 'metoprolol 25mg',
                         'risk_class', 'high', 'domain', 'health'),
      '{health}'),
     (current_setting('t.prop_tl')::uuid, a1, c1, s1, 'timeline_event',
@@ -261,10 +261,13 @@ select is(pg_temp.scalar(format(
 -- 11–12 · Idempotent replay: the same key returns the SAME result and
 -- writes nothing new (AC-INBOX-12).
 -- ----------------------------------------------------------------------------
-select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
-  $$ select ((hc.approve_proposal(%L, 1, 'k-task-1')) ->> 'object_id' =
-             (select object_id::text from public.proposal_commits where proposal_id = %L))::text $$,
-  current_setting('t.prop_task'), current_setting('t.prop_task'))), 'true',
+select is(
+  pg_temp.call_as(current_setting('t.u1')::uuid, format(
+    $$ select (hc.approve_proposal(%L, 1, 'k-task-1')) ->> 'object_id' $$,
+    current_setting('t.prop_task'))),
+  pg_temp.scalar(format(
+    $$ select object_id::text from public.proposal_commits where proposal_id = %L $$,
+    current_setting('t.prop_task'))),
   'replaying the key returns the stored result — the same object, not a second one');
 
 select is(pg_temp.scalar(format(

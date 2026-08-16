@@ -236,20 +236,25 @@ select is(pg_temp.errcode_as('postgres', format(
 -- record tables and proposals; nothing else user-defined on any of them.
 -- ----------------------------------------------------------------------------
 select is((
-  select coalesce(array_agg(c.relname || ':' || t.tgname order by c.relname), '{}'::text[])
+  select coalesce(array_agg(c.relname || ':' || t.tgname order by c.relname, t.tgname), '{}'::text[])
   from pg_trigger t
   join pg_class c on c.oid = t.tgrelid
   join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'public' and not t.tgisinternal
     and c.relname in ('documents','tasks','timeline_events','profile_facts',
                       'episodes','proposals','document_search_content')
-), array['documents:hc_guard_documents',
+), array['documents:hc_claim_documents',
+         'documents:hc_guard_documents',
+         'episodes:hc_claim_episodes',
          'episodes:hc_guard_episodes',
+         'profile_facts:hc_claim_profile_facts',
          'profile_facts:hc_guard_profile_facts',
          'proposals:hc_guard_proposals',
+         'tasks:hc_claim_tasks',
          'tasks:hc_guard_tasks',
+         'timeline_events:hc_claim_timeline_events',
          'timeline_events:hc_guard_timeline_events'],
-  'trigger inventory: exactly one guard per guarded table; dsc carries none');
+  'trigger inventory: one guard per guarded table + one claim trigger per record table; dsc carries none');
 
 select * from finish();
 rollback;
