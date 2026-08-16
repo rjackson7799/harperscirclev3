@@ -40,6 +40,7 @@ select is((
     'access_log_immutable()',
     'adjudicate_freeze(p_freeze_id uuid, p_outcome text, p_adjudicated_by text, p_outcome_note text, p_subject_id uuid, p_narrowing_rationale text, p_contact_attempted_at timestamp with time zone)',
     'all_domains()',
+    'apply_taint(p_type hc.object_type, p_id uuid, p_taint hc.domain[], p_resolved boolean)',
     'contact_key(p text)',
     'create_circle(p_name text, p_subjects jsonb, p_opening_context text[])',
     'ctx()',
@@ -48,21 +49,34 @@ select is((
     'grant_vectors(p_account uuid)',
     'guard_row()',
     'ladder(p_s jsonb, p_taint hc.domain[])',
+    'link_provenance(p_child_type hc.object_type, p_child_id uuid, p_parent_type hc.object_type, p_parent_id uuid)',
     'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text, p_corrects_id uuid)',
+    'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
+    'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
+    'own_domain(p_type hc.object_type, p_category hc.doc_category, p_kind hc.timeline_kind, p_declared hc.domain)',
+    'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
+    'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
+    'resolve_object(p_type hc.object_type, p_id uuid)',
+    'sweep_provenance()',
+    'taint_union(a hc.domain[], b hc.domain[])',
+    'taint_union_2(a hc.domain[], b hc.domain[])',
+    'taint_union_agg(hc.domain[])',
     'uid()',
     'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)'
   ],
   'the hc function inventory is exactly the enumerated set — no stray overloads');
 
--- 3 · SECURITY DEFINER only where required: exactly the six that must read
---     or write past FORCE RLS as hc_internal.
+-- 3 · SECURITY DEFINER only where required: exactly the boundary functions
+--     that must read or write past FORCE RLS as hc_internal.
 select is((
   select array_agg(p.proname order by p.proname)
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
-  array['adjudicate_freeze','create_circle','ctx','ctx_for','grant_vectors','request_freeze']::name[],
-  'SECURITY DEFINER is exactly the six boundary functions, nothing else');
+  array['adjudicate_freeze','create_circle','ctx','ctx_for','grant_vectors',
+        'link_provenance','propagate_taint_growth','reclassify_taint',
+        'request_freeze','sweep_provenance']::name[],
+  'SECURITY DEFINER is exactly the ten boundary functions, nothing else');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -187,6 +201,13 @@ insert into snapshot_expected values
   ('hc_internal',   'profile_facts',   'SELECT'),
   -- 1B M3: asymmetric by design — revisions append-only, shares
   -- revoke-only, edges link/unlink (relink = delete-then-insert, §2.6).
+  -- 1B M5: the taint walk is the first hc_internal writer — UPDATE only;
+  -- INSERT waits for M6's approve_proposal.
+  ('hc_internal',   'documents',       'UPDATE'),
+  ('hc_internal',   'episodes',        'UPDATE'),
+  ('hc_internal',   'tasks',           'UPDATE'),
+  ('hc_internal',   'timeline_events', 'UPDATE'),
+  ('hc_internal',   'profile_facts',   'UPDATE'),
   ('hc_internal',   'record_revisions', 'SELECT'),
   ('hc_internal',   'record_revisions', 'INSERT'),
   ('hc_internal',   'object_shares',    'SELECT'),
@@ -236,20 +257,22 @@ select is((
         'approval_attempts_internal_write',
         'circle_members_internal','circle_members_internal_create',
         'circles_internal','circles_internal_create',
-        'documents_internal','episodes_internal',
+        'documents_internal','documents_internal_revise',
+        'episodes_internal','episodes_internal_revise',
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
         'object_shares_internal','object_shares_internal_create',
         'object_shares_internal_revoke',
-        'profile_facts_internal',
+        'profile_facts_internal','profile_facts_internal_revise',
         'proposal_commits_internal','proposal_commits_internal_claim',
         'proposals_internal','proposals_internal_decide',
         'provenance_edges_internal','provenance_edges_internal_link',
         'provenance_edges_internal_unlink',
         'record_revisions_internal','record_revisions_internal_append',
         'subjects_internal','subjects_internal_create',
-        'tasks_internal','timeline_events_internal']::name[],
-  'the hc_internal policy list is exactly the enumerated thirty-six');
+        'tasks_internal','tasks_internal_revise',
+        'timeline_events_internal','timeline_events_internal_revise']::name[],
+  'the hc_internal policy list is exactly the enumerated forty-one');
 
 -- ----------------------------------------------------------------------------
 -- Round-5 ruling R1: hc.uid() accepted permanently CONDITIONAL on this
