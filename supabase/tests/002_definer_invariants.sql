@@ -21,7 +21,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(13);
+select plan(18);
 
 -- 1 · Every function in hc is owned by the non-login internal role.
 select is((
@@ -40,18 +40,19 @@ select is((
     'access_log_immutable()',
     'adjudicate_freeze(p_freeze_id uuid, p_outcome text, p_adjudicated_by text, p_outcome_note text, p_subject_id uuid, p_narrowing_rationale text, p_contact_attempted_at timestamp with time zone)',
     'all_domains()',
+    'contact_key(p text)',
     'create_circle(p_name text, p_subjects jsonb, p_opening_context text[])',
     'ctx()',
     'ctx_for(p_account uuid)',
     'dom(p jsonb)',
     'grant_vectors(p_account uuid)',
     'ladder(p_s jsonb, p_taint hc.domain[])',
-    'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text)',
+    'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text, p_corrects_id uuid)',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
     'uid()',
     'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)'
   ],
-  'the hc function inventory is exactly the enumerated thirteen — no stray overloads');
+  'the hc function inventory is exactly the enumerated fourteen — no stray overloads');
 
 -- 3 · SECURITY DEFINER only where required: exactly the six that must read
 --     or write past FORCE RLS as hc_internal.
@@ -203,6 +204,51 @@ select is((
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
         'subjects_internal','subjects_internal_create']::name[],
   'the hc_internal policy list is exactly the enumerated sixteen');
+
+-- ----------------------------------------------------------------------------
+-- Round-5 ruling R1: hc.uid() accepted permanently CONDITIONAL on this
+-- equivalence regression against auth.uid() — absent claims, claim.sub,
+-- legacy claims, conflicting (claim.sub wins), malformed (same error
+-- class from both). Runs as postgres, which can execute both.
+-- ----------------------------------------------------------------------------
+create function pg_temp.errc(p_sql text) returns text language plpgsql as $$
+declare v text;
+begin
+  begin
+    execute p_sql;
+    v := 'no_error';
+  exception when others then
+    get stacked diagnostics v := returned_sqlstate;
+  end;
+  return v;
+end $$;
+
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claims', '', true);
+select ok(hc.uid() is null and auth.uid() is null,
+  'uid equivalence: absent claims → both null');
+
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+select ok(hc.uid() = auth.uid()
+      and hc.uid() = '11111111-1111-1111-1111-111111111111'::uuid,
+  'uid equivalence: request.jwt.claim.sub honoured identically');
+
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222"}', true);
+select ok(hc.uid() = auth.uid()
+      and hc.uid() = '22222222-2222-2222-2222-222222222222'::uuid,
+  'uid equivalence: legacy request.jwt.claims honoured identically');
+
+select set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', true);
+select ok(hc.uid() = auth.uid()
+      and hc.uid() = '33333333-3333-3333-3333-333333333333'::uuid,
+  'uid equivalence: on conflict, claim.sub wins in both');
+
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claims', '{not json', true);
+select is(pg_temp.errc('select hc.uid()'), pg_temp.errc('select auth.uid()'),
+  'uid equivalence: malformed claims raise the same error class from both');
+select set_config('request.jwt.claims', '', true);
 
 select * from finish();
 rollback;

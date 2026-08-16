@@ -7,7 +7,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(53);
+select plan(54);
 
 -- ----------------------------------------------------------------------------
 -- M1: roles (TSD §1.2 — the load-bearing table of the architecture)
@@ -249,6 +249,18 @@ select index_is_unique('public', 'access_log', 'access_log_circle_id_seq_key',
 
 select is((select count(*)::int from hc.log_event_types), 7,
   'the 1A event-type enumeration is seeded');
+
+-- Round-5 F1: the declaration precedes the subject row it binds, so the
+-- (circle_id, subject_id) FK must be deferrable — checked at commit, when
+-- the preallocated subject exists.
+select ok((
+    select c.condeferrable from pg_constraint c
+    where c.conrelid = 'public.access_log'::regclass and c.contype = 'f'
+      and (select array_agg(a.attname order by a.attname)
+           from unnest(c.conkey) k
+           join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k)
+          = array['circle_id','subject_id']::name[]),
+  'the declaration FK is DEFERRABLE — receipts may precede the rows they bind (round-5 F1)');
 
 select * from finish();
 rollback;

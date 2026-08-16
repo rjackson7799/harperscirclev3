@@ -11,7 +11,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(55);
+select plan(59);
 
 -- Probe helper: run one statement as another role, return its SQLSTATE.
 create function pg_temp.errcode_as(p_role text, p_sql text) returns text
@@ -380,6 +380,35 @@ select ok(
   and not has_function_privilege('hc_pipeline',   'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz)', 'execute')
   and not has_function_privilege('hc_admin',      'hc.adjudicate_freeze(uuid,text,text,text,uuid,text,timestamptz)', 'execute'),
   'no request-path role can execute hc.adjudicate_freeze()');
+
+-- ----------------------------------------------------------------------------
+-- Round-5 F5 (partial adoption): the writer proof rests on catalogs — the
+-- privilege snapshot (002) pins the exact DML roles, and no trigger exists
+-- on either freeze table; the prosrc scan above is the supplemental check.
+-- ----------------------------------------------------------------------------
+select is((
+    select count(*)::int from pg_trigger t
+    where t.tgrelid in ('public.freezes'::regclass, 'public.freeze_claims'::regclass)
+      and not t.tgisinternal), 0,
+  'no trigger writes or rewrites the freeze tables (catalog, round-5 F5)');
+
+-- ----------------------------------------------------------------------------
+-- Round-5 F3: rate limiting keys on a CANONICAL contact — case, whitespace
+-- and punctuation variants share one budget and cannot dodge the
+-- dismissed-claimant prohibition.
+-- ----------------------------------------------------------------------------
+select is((hc.request_freeze(current_setting('t.ca')::uuid,
+                             '  CLAIMANT-1@Example.ORG ', 'variant fifth')) ->> 'disposition',
+  'rate_limited',
+  'a case/whitespace variant counts against the SAME claimant budget (round-5 F3)');
+select is((hc.request_freeze(current_setting('t.cc')::uuid,
+                             ' CLAIMANT-Z@example.org', 'variant repeat')) ->> 'disposition',
+  'rate_limited',
+  'the dismissed-prior refusal survives a textual variant (round-5 F3)');
+select is((
+    select count(*)::int from public.freeze_claims fc
+    where fc.claimant_contact_key is distinct from hc.contact_key(fc.claimant_contact)), 0,
+  'every ledger row stores the canonical key beside the verbatim submitted form');
 
 select * from finish();
 rollback;

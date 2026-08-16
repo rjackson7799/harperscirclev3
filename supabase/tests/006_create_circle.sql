@@ -11,7 +11,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(22);
+select plan(23);
 
 create function pg_temp.mk_user(p_id uuid) returns uuid language plpgsql as $$
 begin
@@ -89,15 +89,19 @@ select is((
       and l.seq in (1, 2) and l.event_type = 'custodianship_declared'), 2,
   'two subjects → seq 1 AND 2 are the declarations, before any other event');
 
+-- Round-5 finding 1: the receipt must be DURABLY subject-bound — a
+-- preallocated subject id written under a deferred FK, not a free-text
+-- name that two same-named subjects could each claim.
 select is((
     select count(*)::int from public.access_log l
+    join public.subjects s
+      on s.id = l.subject_id and s.circle_id = l.circle_id
     where l.circle_id = (current_setting('t.res')::jsonb ->> 'circle_id')::uuid
       and l.event_type = 'custodianship_declared'
-      and l.subject_id is null                       -- precedes the subject row, by design
-      and l.detail ->> 'subject_name' is not null
+      and s.first_name = l.detail ->> 'subject_name'
       and l.detail ->> 'custodian' = 'Founder'
       and l.detail ->> 'declared_on' is not null), 2,
-  'each declaration names subject (by name — its row does not exist yet), custodian and date (PRD §7.5 receipt)');
+  'each declaration is bound to its subject''s preallocated id AND names it (subject-bound receipt, round-5 F1)');
 
 select is((select count(*)::int from public.subjects
            where circle_id = (current_setting('t.res')::jsonb ->> 'circle_id')::uuid), 2,
@@ -167,22 +171,29 @@ select is((
       and l.prev_hash is distinct from prev.entry_hash), 0,
   'every entry links to its predecessor''s hash');
 
+-- Round-5 finding 2: the v1 canonical digest covers EVERY immutable
+-- evidentiary column — session, request and correction linkage included.
+-- collapsed_count/collapsed_until are deliberately outside it: mutable
+-- presentation counters (1D denial collapse), never hashed evidence.
 select is((
     select count(*)::int from public.access_log l
     where l.circle_id = (current_setting('t.res')::jsonb ->> 'circle_id')::uuid
       and l.entry_hash is distinct from extensions.digest(
         coalesce(l.prev_hash, ''::bytea) || convert_to(
           jsonb_build_object(
+            'v', 1,
             'circle_id', l.circle_id, 'seq', l.seq, 'event_type', l.event_type,
             'actor_account_id', l.actor_account_id,
             'actor_display_name', l.actor_display_name,
+            'actor_session_id', l.actor_session_id, 'request_id', l.request_id,
             'subject_id', l.subject_id, 'target_member_id', l.target_member_id,
             'domain', l.domain, 'level_before', l.level_before,
             'level_after', l.level_after, 'object_type', l.object_type,
             'object_id', l.object_id, 'detail', l.detail,
+            'corrects_id', l.corrects_id,
             'occurred_at', extract(epoch from l.occurred_at))::text, 'UTF8'),
         'sha256')), 0,
-  'every entry_hash recomputes from the stored row — the chain is checkable by a third party');
+  'every entry_hash recomputes as the COMPLETE v1 canonical — no unhashed evidentiary column (round-5 F2)');
 
 -- ----------------------------------------------------------------------------
 -- AC-ADMIN-3 as pure constraint (ADR-0002 claim 7), and the §3.13
@@ -225,6 +236,22 @@ select ok(
   and not has_function_privilege('hc_pipeline', 'hc.create_circle(text,jsonb,text[])', 'execute')
   and not has_function_privilege('hc_admin',    'hc.create_circle(text,jsonb,text[])', 'execute'),
   'and by nothing else');
+
+-- Round-5 finding 4: the universal property, driven from CIRCLES — a
+-- circle with no declaration at all must fail this, not pass invisibly.
+-- For every circle: one declaration per subject, occupying exactly the
+-- leading sequence positions 1..n.
+select is((
+    select count(*)::int from public.circles c
+    where (select count(*) from public.subjects s where s.circle_id = c.id)
+          <> (select count(*) from public.access_log l
+              where l.circle_id = c.id and l.event_type = 'custodianship_declared')
+       or exists (select 1 from public.access_log l
+                  where l.circle_id = c.id
+                    and l.event_type = 'custodianship_declared'
+                    and l.seq > (select count(*) from public.subjects s
+                                 where s.circle_id = c.id))), 0,
+  'EVERY circle: one declaration per subject, at seq 1..n exactly (round-5 F4)');
 
 select * from finish();
 rollback;
