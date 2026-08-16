@@ -17,7 +17,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(53);
+select plan(74);
 
 create function pg_temp.errcode_as(p_role text, p_sql text) returns text
 language plpgsql as $$
@@ -524,6 +524,132 @@ select is(pg_temp.errcode_as('authenticated',
 select is(pg_temp.errcode_as('authenticated',
   $$ delete from public.timeline_events $$), '42501',
   'authenticated cannot DELETE timeline_events — deletion is an update nobody request-path can make');
+
+-- ============================================================================
+-- U3 · record_revisions (§2.5 — N2's second half), object_shares (§2.5 —
+-- the one exception to domain-keyed access), provenance_edges (§2.6).
+-- Shapes + closure; behaviour (guard_row, share_object, taint machinery)
+-- lands in M4–M8 with its own files.
+-- ============================================================================
+
+select has_table('public', 'record_revisions', 'record_revisions exists (§2.5, N2)');
+select has_table('public', 'object_shares',    'object_shares exists (§2.5)');
+select has_table('public', 'provenance_edges', 'provenance_edges exists (§2.6)');
+
+-- Revisions: monotone per object, unique per (object, revision_no).
+select lives_ok(format(
+  $$ insert into public.record_revisions
+       (circle_id, object_type, object_id, revision_no, changed_by,
+        changer_display_name, before, after)
+     values (%L, 'document', %L, 1, %L, 'Sarah', '{}', '{}') $$,
+  current_setting('t.c1'), current_setting('t.doc_legal'), current_setting('t.u1')),
+  'a revision row is accepted');
+
+select throws_ok(format(
+  $$ insert into public.record_revisions
+       (circle_id, object_type, object_id, revision_no, changed_by,
+        changer_display_name, before, after)
+     values (%L, 'document', %L, 1, %L, 'Sarah', '{}', '{}') $$,
+  current_setting('t.c1'), current_setting('t.doc_legal'), current_setting('t.u1')),
+  '23505', null,
+  'revision numbers are unique per object — history cannot fork');
+
+-- Shares: one live share per (object, member); revocation reopens the slot.
+select fk_ok('public', 'object_shares', array['circle_id','member_id'],
+             'public', 'circle_members', array['circle_id','id'],
+  'object_shares → circle_members is circle-consistent');
+
+select lives_ok(format(
+  $$ insert into public.object_shares
+       (circle_id, subject_id, object_type, object_id, member_id, granted_by)
+     values (%L, %L, 'document', %L, %L, %L) $$,
+  current_setting('t.c1'), current_setting('t.s1'), current_setting('t.doc_legal'),
+  current_setting('t.m2'), current_setting('t.u1')),
+  'a share names one object and one person');
+
+select throws_ok(format(
+  $$ insert into public.object_shares
+       (circle_id, subject_id, object_type, object_id, member_id, granted_by)
+     values (%L, %L, 'document', %L, %L, %L) $$,
+  current_setting('t.c1'), current_setting('t.s1'), current_setting('t.doc_legal'),
+  current_setting('t.m2'), current_setting('t.u1')),
+  '23505', null,
+  'one LIVE share per (object, member) — object_shares_live');
+
+select is(pg_temp.errcode_as('postgres', format(
+  $$ update public.object_shares set revoked_at = now()
+     where object_id = %L and member_id = %L and revoked_at is null $$,
+  current_setting('t.doc_legal'), current_setting('t.m2'))),
+  'no_error', 'a share is revoked by marking, never by deleting');
+
+select lives_ok(format(
+  $$ insert into public.object_shares
+       (circle_id, subject_id, object_type, object_id, member_id, granted_by)
+     values (%L, %L, 'document', %L, %L, %L) $$,
+  current_setting('t.c1'), current_setting('t.s1'), current_setting('t.doc_legal'),
+  current_setting('t.m2'), current_setting('t.u1')),
+  'a revoked share does not block a fresh grant — the partial unique is on live rows');
+
+select fk_ok('public', 'object_shares', array['circle_id','created_by_assignment_of'],
+             'public', 'tasks', array['circle_id','id'],
+  'assignment-created shares pin their task circle-consistently (PRD §4.5.6)');
+
+-- Edges: a DAG keyed on both endpoints; duplicates collapse into the PK.
+select lives_ok(format(
+  $$ insert into public.provenance_edges
+       (circle_id, child_type, child_id, parent_type, parent_id)
+     values (%L, 'task', %L, 'document', %L) $$,
+  current_setting('t.c1'), current_setting('t.task_fin'), current_setting('t.doc_legal')),
+  'a provenance edge is accepted (fixture-level; hc.link_provenance validates in M5)');
+
+select throws_ok(format(
+  $$ insert into public.provenance_edges
+       (circle_id, child_type, child_id, parent_type, parent_id)
+     values (%L, 'task', %L, 'document', %L) $$,
+  current_setting('t.c1'), current_setting('t.task_fin'), current_setting('t.doc_legal')),
+  '23505', null,
+  'the edge set is a set — the four-column PK refuses duplicates');
+
+-- Closure: no request-path reach on any of the three.
+select is(pg_temp.errcode_as('authenticated', 'select * from public.record_revisions'), '42501',
+  'authenticated cannot read record_revisions (revision surfaces are a later slice)');
+select is(pg_temp.errcode_as('authenticated', 'select * from public.object_shares'), '42501',
+  'authenticated cannot read object_shares — shares reach the caller only through ctx');
+select is(pg_temp.errcode_as('authenticated', 'select * from public.provenance_edges'), '42501',
+  'authenticated cannot read provenance_edges');
+select is(pg_temp.errcode_as('authenticated',
+  $$ insert into public.object_shares (circle_id, subject_id, object_type, object_id, member_id, granted_by)
+     values (gen_random_uuid(), gen_random_uuid(), 'task', gen_random_uuid(),
+             gen_random_uuid(), gen_random_uuid()) $$), '42501',
+  'authenticated cannot mint shares — hc.share_object() is the only writer (M8)');
+select is(pg_temp.errcode_as('authenticated',
+  $$ insert into public.provenance_edges (circle_id, child_type, child_id, parent_type, parent_id)
+     values (gen_random_uuid(), 'task', gen_random_uuid(), 'document', gen_random_uuid()) $$), '42501',
+  'authenticated cannot write edges — hc.link_provenance() is the only writer (M5)');
+select is(pg_temp.errcode_as('hc_pipeline',
+  $$ insert into public.provenance_edges (circle_id, child_type, child_id, parent_type, parent_id)
+     values (gen_random_uuid(), 'task', gen_random_uuid(), 'document', gen_random_uuid()) $$), '42501',
+  'hc_pipeline cannot write edges');
+select is(pg_temp.errcode_as('hc_admin', 'select * from public.record_revisions'), '42501',
+  'hc_admin: permission denied for record_revisions');
+
+-- hc_internal's exact bounds: revisions append-only; shares never deleted;
+-- edges never updated (relink is delete-then-insert, §2.6).
+select ok(coalesce(
+      has_table_privilege('hc_internal', to_regclass('public.record_revisions'), 'select')
+  and has_table_privilege('hc_internal', to_regclass('public.record_revisions'), 'insert')
+  and not has_table_privilege('hc_internal', to_regclass('public.record_revisions'), 'update')
+  and not has_table_privilege('hc_internal', to_regclass('public.record_revisions'), 'delete')
+  and has_table_privilege('hc_internal', to_regclass('public.object_shares'), 'select')
+  and has_table_privilege('hc_internal', to_regclass('public.object_shares'), 'insert')
+  and has_table_privilege('hc_internal', to_regclass('public.object_shares'), 'update')
+  and not has_table_privilege('hc_internal', to_regclass('public.object_shares'), 'delete')
+  and has_table_privilege('hc_internal', to_regclass('public.provenance_edges'), 'select')
+  and has_table_privilege('hc_internal', to_regclass('public.provenance_edges'), 'insert')
+  and not has_table_privilege('hc_internal', to_regclass('public.provenance_edges'), 'update')
+  and has_table_privilege('hc_internal', to_regclass('public.provenance_edges'), 'delete'),
+  false),
+  'hc_internal bounds: revisions append-only; shares revoke-only; edges link/unlink, never update');
 
 select * from finish();
 rollback;
