@@ -230,7 +230,28 @@ insert into snapshot_expected values
   ('hc_internal',   'object_shares',    'UPDATE'),
   ('hc_internal',   'provenance_edges', 'SELECT'),
   ('hc_internal',   'provenance_edges', 'INSERT'),
-  ('hc_internal',   'provenance_edges', 'DELETE');
+  ('hc_internal',   'provenance_edges', 'DELETE'),
+  -- 1C M1: the pipeline machinery's exact reach (ADR-0007). arrivals gains
+  -- its writer role (create_arrival / advance_arrival / claim_stage);
+  -- arrival_events is APPEND-only (no UPDATE row here is the assertion);
+  -- extractions is publish-only; known_senders read-only (gate);
+  -- the outbox is written by adjudication and drained by the relay.
+  ('hc_internal',   'arrivals',        'SELECT'),
+  ('hc_internal',   'arrivals',        'INSERT'),
+  ('hc_internal',   'arrivals',        'UPDATE'),
+  ('hc_internal',   'arrival_events',  'SELECT'),
+  ('hc_internal',   'arrival_events',  'INSERT'),
+  ('hc_internal',   'pipeline_leases', 'SELECT'),
+  ('hc_internal',   'pipeline_leases', 'INSERT'),
+  ('hc_internal',   'pipeline_leases', 'UPDATE'),
+  ('hc_internal',   'extractions',     'SELECT'),
+  ('hc_internal',   'extractions',     'INSERT'),
+  ('hc_internal',   'known_senders',   'SELECT'),
+  ('hc_internal',   'pipeline_outbox', 'SELECT'),
+  ('hc_internal',   'pipeline_outbox', 'INSERT'),
+  ('hc_internal',   'pipeline_outbox', 'UPDATE'),
+  ('hc_internal',   'reason_codes',    'SELECT'),
+  ('hc_internal',   'stage_budgets',   'SELECT');
 
 create temp view snapshot_actual as
   select r.rolname as grantee, c.relname::text as tbl, a.privilege_type as priv
@@ -270,15 +291,23 @@ select is((
         'accounts_internal',
         'approval_attempts_internal','approval_attempts_internal_update',
         'approval_attempts_internal_write',
+        'arrival_events_internal','arrival_events_internal_append',
+        'arrivals_internal','arrivals_internal_advance','arrivals_internal_intake',
         'circle_members_internal','circle_members_internal_create',
         'circles_internal','circles_internal_create',
         'documents_internal','documents_internal_revise',
         'documents_internal_write',
         'episodes_internal','episodes_internal_revise','episodes_internal_write',
+        'extractions_internal','extractions_internal_write',
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
+        'known_senders_internal',
         'object_shares_internal','object_shares_internal_create',
         'object_shares_internal_revoke',
+        'pipeline_leases_internal','pipeline_leases_internal_claim',
+        'pipeline_leases_internal_close',
+        'pipeline_outbox_internal','pipeline_outbox_internal_drain',
+        'pipeline_outbox_internal_enqueue',
         'profile_facts_internal','profile_facts_internal_revise',
         'profile_facts_internal_write',
         'proposal_commits_internal','proposal_commits_internal_claim',
@@ -290,7 +319,7 @@ select is((
         'tasks_internal','tasks_internal_revise','tasks_internal_write',
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated forty-six');
+  'the hc_internal policy list is exactly the enumerated sixty');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
