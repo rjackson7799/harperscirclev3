@@ -203,3 +203,14 @@ upgrade rehearsal, both exact-state checks and the hard db:verify all passed
 in CI. The commit recording these ids is docs-only; the merge gate requires
 green on both events at the final branch head before the owner's sign-off
 review.
+
+**Final branch head:** `5499c3c` — CI green on BOTH events: push run
+**31937780623**, pull_request run **31937783696** (conclusion success).
+Owner sign-off given on this head after review.
+
+**Merged (2026-08-16):** merge commit `27a3f0b`
+(`27a3f0b2efff4ec5e798a963f1a0db468c4e7658`, parents `03a0c12` + `5499c3c`
+— merge commit, never squash; the merged tree is byte-identical to the
+`5499c3c` tree). Pre-push re-verification on merged main: exact-22
+migration state, pgTAP 547/547 (19 files), concurrency 26/26, db:verify
+clean. PR #2 reports merged with this SHA.

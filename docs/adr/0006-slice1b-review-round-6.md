@@ -1,7 +1,8 @@
 # ADR-0006 — Third-party review round 6: the built 1B kernel, findings, dispositions
 
-**Status:** Accepted (owner-directed process; owner merge sign-off pending —
-this round stops before merge)
+**Status:** Accepted — merged at `27a3f0b` (merge commit
+`27a3f0b2efff4ec5e798a963f1a0db468c4e7658`, parents `03a0c12` + `5499c3c`;
+owner sign-off recorded by the merge commit per the gate)
 **Date:** 2026-08-16
 **Packet reviewed:** `docs/review/round-6-packet.md` and the slice branch it
 describes (`slice/1b-record-provenance`, PR #2 @ `cad6151`, base `main` @
