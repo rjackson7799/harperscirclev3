@@ -78,11 +78,11 @@ select is((
   select array_agg(p.proname order by p.proname)
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
-  array['adjudicate_freeze','approve_proposal','create_circle','ctx','ctx_for',
-        'grant_vectors','link_provenance','presence','propagate_taint_growth',
-        'reclassify_taint','request_freeze','revise_object',
-        'share_object','sweep_provenance']::name[],
-  'SECURITY DEFINER is exactly the fourteen boundary functions, nothing else');
+  array['adjudicate_freeze','approve_proposal','assert_claimed','create_circle',
+        'ctx','ctx_for','grant_vectors','link_provenance','presence',
+        'propagate_taint_growth','reclassify_taint','request_freeze',
+        'revise_object','share_object','sweep_provenance']::name[],
+  'SECURITY DEFINER is exactly the fifteen boundary functions, nothing else (assert_claimed: M10 — fires at commit as the committing role)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
