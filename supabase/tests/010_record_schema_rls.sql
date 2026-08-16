@@ -275,7 +275,7 @@ select is(pg_temp.errcode_as('postgres', format(
   current_setting('t.doc_del'))),
   'no_error', 'deleting the parent document succeeds');
 
-select is(pg_temp.read_as(current_setting('t.u2')::uuid, format(
+select is(pg_temp.scalar(format(
   $$ select count(*)::text from public.document_search_content where document_id = %L $$,
   current_setting('t.doc_del'))), '0',
   'the dsc row followed its document (on delete cascade)');

@@ -170,7 +170,20 @@ insert into snapshot_expected values
   ('hc_internal',   'approval_attempts', 'INSERT'),
   ('hc_internal',   'approval_attempts', 'UPDATE'),
   ('hc_internal',   'proposal_commits',  'SELECT'),
-  ('hc_internal',   'proposal_commits',  'INSERT');
+  ('hc_internal',   'proposal_commits',  'INSERT'),
+  -- 1B M2: the record is readable and unwritable until M6 grants the
+  -- writer role its INSERT/UPDATE. document_search_content: NOTHING, for
+  -- anyone, until 1D — its absence from this list is the assertion.
+  ('authenticated', 'episodes',        'SELECT'),
+  ('authenticated', 'documents',       'SELECT'),
+  ('authenticated', 'tasks',           'SELECT'),
+  ('authenticated', 'timeline_events', 'SELECT'),
+  ('authenticated', 'profile_facts',   'SELECT'),
+  ('hc_internal',   'episodes',        'SELECT'),
+  ('hc_internal',   'documents',       'SELECT'),
+  ('hc_internal',   'tasks',           'SELECT'),
+  ('hc_internal',   'timeline_events', 'SELECT'),
+  ('hc_internal',   'profile_facts',   'SELECT');
 
 create temp view snapshot_actual as
   select r.rolname as grantee, c.relname::text as tbl, a.privilege_type as priv
@@ -212,12 +225,15 @@ select is((
         'approval_attempts_internal_write',
         'circle_members_internal','circle_members_internal_create',
         'circles_internal','circles_internal_create',
+        'documents_internal','episodes_internal',
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
+        'profile_facts_internal',
         'proposal_commits_internal','proposal_commits_internal_claim',
         'proposals_internal','proposals_internal_decide',
-        'subjects_internal','subjects_internal_create']::name[],
-  'the hc_internal policy list is exactly the enumerated twenty-three');
+        'subjects_internal','subjects_internal_create',
+        'tasks_internal','timeline_events_internal']::name[],
+  'the hc_internal policy list is exactly the enumerated twenty-eight');
 
 -- ----------------------------------------------------------------------------
 -- Round-5 ruling R1: hc.uid() accepted permanently CONDITIONAL on this
