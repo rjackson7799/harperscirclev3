@@ -183,3 +183,26 @@ Wall clock: subjects 2.9 ms, access_grants 11.2 ms (250 ms tripwire;
   keep the smaller definer inventory?
 - The A.1 hc_admin cases run against identity tables in 1A (record tables
   land in 1B) — is the staged split in coverage.md acceptable?
+
+---
+
+## Addendum — round-5 findings applied (2026-08-15)
+
+Review returned: **safe with named minimum changes**. Dispositions in
+`docs/adr/0004-slice1a-review-round-5.md`; fixes landed red→green on the
+branch (red commit `e7c9e47` with per-finding signatures; green commit
+`8ca294c`, migration `20260815210001_round5_fixes.sql`).
+
+| Finding | Applied as | Proven by |
+|---|---|---|
+| F1 · receipt not subject-bound | Preallocated subject UUIDs; declaration FK DEFERRABLE INITIALLY DEFERRED; declarations written with the bound id, name retained in detail | 001:54 · 006:5, 23 |
+| F2 · digest omitted material columns | v1 versioned canonical over every immutable evidentiary column incl. session/request/correction linkage (`hc.log` +`p_corrects_id`); collapsed_* excluded as mutable presentation, documented | 006:16 · 002:2 |
+| F3 · claimant-key bypass | `hc.contact_key()` canonical key stored beside the verbatim form; all rate-limit dimensions + dismissed-prior rule key on it; variant mutation tests | 007:57–59 |
+| F4 · CIR-01 not universal | Assertion driven from circles: one declaration per subject at exactly seq 1..n | 006:23 |
+| F5 · writer proof textual | Catalog basis: zero triggers on freeze tables + exact privilege snapshot + no-dynamic-SQL; prosrc scan labelled supplemental | 007:56 · 002:8, 10–11 |
+| R1 condition | `hc.uid()` ≡ `auth.uid()` equivalence regression (5 cases incl. conflict and malformed) | 002:14–18 |
+| R2 condition | Exposed-schema pin: `scripts/check-exposed-schemas.mjs` + CI step; `hc` exposure gated on live-denial test or fixed image | CI |
+
+Verification at `8ca294c`: clean reset from empty (10 migrations), suite
+**259/259** across 9 files, lint/typecheck clean, `supabase db lint` no
+schema errors, pin script OK. Awaiting owner sign-off to merge.
