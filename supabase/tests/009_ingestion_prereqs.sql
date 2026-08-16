@@ -17,7 +17,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(37);
+select plan(39);
 
 -- Probe helper: run one statement as another role, return its SQLSTATE.
 create function pg_temp.errcode_as(p_role text, p_sql text) returns text
@@ -172,12 +172,21 @@ select lives_ok(format(
   current_setting('t.c1'), current_setting('t.s1')),
   'a pending proposal is accepted');
 
-select throws_ok(format(
+-- Two independent drafts of one kind from one arrival coexist: a discharge
+-- summary drafting two tasks is the §4.2.9 design (separate proposals,
+-- separate approvals). Each fresh draft is its own lineage root.
+select lives_ok(format(
   $$ insert into public.proposals (arrival_id, circle_id, subject_id, kind, payload, taint)
-     values (%L, %L, %L, 'task', '{}', '{schedule}') $$,
+     values (%L, %L, %L, 'task', '{"title":"second draft"}', '{schedule}') $$,
   current_setting('t.a1'), current_setting('t.c1'), current_setting('t.s1')),
-  '23505', null,
-  'one live pending proposal per (arrival, kind, lineage) — proposals_one_live');
+  'two independent pending drafts of one kind coexist (distinct lineage roots)');
+
+-- Supersession: the predecessor leaves 'pending' first — while p1 is pending,
+-- its lineage key (coalesce → p1) is occupied by p1 itself.
+select is(pg_temp.errcode_as('postgres', format(
+  $$ update public.proposals set status = 'superseded' where id = %L $$,
+  current_setting('t.p1'))), 'no_error',
+  'supersession marks the predecessor before the new version arrives');
 
 select lives_ok(format(
   $$ insert into public.proposals (id, arrival_id, circle_id, subject_id, kind, payload, taint,
@@ -185,7 +194,16 @@ select lives_ok(format(
      values (%L, %L, %L, %L, 'task', '{"title":"t2"}', '{schedule}', 2, %L) $$,
   current_setting('t.psup'), current_setting('t.a1'),
   current_setting('t.c1'), current_setting('t.s1'), current_setting('t.p1')),
-  'a superseding pending proposal is a distinct lineage and is accepted');
+  'the superseding pending proposal is accepted once the predecessor has moved on');
+
+select throws_ok(format(
+  $$ insert into public.proposals (arrival_id, circle_id, subject_id, kind, payload, taint,
+                                   version, supersedes_id)
+     values (%L, %L, %L, 'task', '{}', '{schedule}', 2, %L) $$,
+  current_setting('t.a1'), current_setting('t.c1'), current_setting('t.s1'),
+  current_setting('t.p1')),
+  '23505', null,
+  'one live pending head per lineage: a second pending superseder of p1 is refused');
 
 select throws_ok(format(
   $$ insert into public.proposals (arrival_id, circle_id, subject_id, kind, payload, taint)

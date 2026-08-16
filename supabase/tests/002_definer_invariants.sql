@@ -161,7 +161,16 @@ insert into snapshot_expected values
   ('hc_internal',   'freeze_claims',   'INSERT'),
   ('hc_internal',   'access_log',      'SELECT'),
   ('hc_internal',   'access_log',      'INSERT'),
-  ('hc_internal',   'log_event_types', 'SELECT');
+  ('hc_internal',   'log_event_types', 'SELECT'),
+  -- 1B M1 (ADR-0005 D1): exactly what hc.approve_proposal() needs; arrivals
+  -- deliberately absent — no role of ours reads or writes it until 1C.
+  ('hc_internal',   'proposals',         'SELECT'),
+  ('hc_internal',   'proposals',         'UPDATE'),
+  ('hc_internal',   'approval_attempts', 'SELECT'),
+  ('hc_internal',   'approval_attempts', 'INSERT'),
+  ('hc_internal',   'approval_attempts', 'UPDATE'),
+  ('hc_internal',   'proposal_commits',  'SELECT'),
+  ('hc_internal',   'proposal_commits',  'INSERT');
 
 create temp view snapshot_actual as
   select r.rolname as grantee, c.relname::text as tbl, a.privilege_type as priv
@@ -198,12 +207,17 @@ select is((
   where 'hc_internal'::regrole::oid = any (p.polroles)),
   array['access_grants_internal','access_grants_internal_create',
         'access_log_internal','access_log_internal_append',
-        'accounts_internal','circle_members_internal','circle_members_internal_create',
+        'accounts_internal',
+        'approval_attempts_internal','approval_attempts_internal_update',
+        'approval_attempts_internal_write',
+        'circle_members_internal','circle_members_internal_create',
         'circles_internal','circles_internal_create',
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
+        'proposal_commits_internal','proposal_commits_internal_claim',
+        'proposals_internal','proposals_internal_decide',
         'subjects_internal','subjects_internal_create']::name[],
-  'the hc_internal policy list is exactly the enumerated sixteen');
+  'the hc_internal policy list is exactly the enumerated twenty-three');
 
 -- ----------------------------------------------------------------------------
 -- Round-5 ruling R1: hc.uid() accepted permanently CONDITIONAL on this
