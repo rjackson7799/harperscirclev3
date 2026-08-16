@@ -196,6 +196,10 @@ implemented in M12, and pinned by concurrency cases 5–10.
   case8 `title=stale edit` (the revise defect), case9 completed-not-refused,
   case10 `title=frozen edit`.
 
-**Post-push verification (appended):** head CI runs at the final branch head
-are recorded by the disposition report; the merge gate requires green on both
-events at that head before the owner's sign-off review.
+**Post-push verification:** evidence head `243ebbb` — CI green on BOTH
+events: push run **31937623471**, pull_request run **31937625627**
+(conclusion success), and this was the first run of the new gates: the
+upgrade rehearsal, both exact-state checks and the hard db:verify all passed
+in CI. The commit recording these ids is docs-only; the merge gate requires
+green on both events at the final branch head before the owner's sign-off
+review.
