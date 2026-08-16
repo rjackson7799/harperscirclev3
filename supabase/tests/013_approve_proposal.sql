@@ -156,12 +156,14 @@ begin
   perform set_config('t.prop_frz',  gen_random_uuid()::text, true);
   perform set_config('t.prop_unr',  gen_random_uuid()::text, true);
   insert into public.proposals (id, arrival_id, circle_id, subject_id, kind, payload, taint) values
+    -- drafted taint covers the parent (1C drafting folds parents-at-draft
+    -- in; a parent grown PAST the draft refuses — 018, D7 as amended)
     (current_setting('t.prop_task')::uuid, a1, c1, s1, 'task',
      jsonb_build_object('title', 'Pay the invoice', 'due_on', '2026-09-01',
                         'due_zone', 'America/New_York',
                         'parents', jsonb_build_array(
                           jsonb_build_object('type', 'document', 'id', doc_p))),
-     '{schedule}'),
+     '{schedule,finances}'),
     (current_setting('t.prop_doc')::uuid, a1, c1, s1, 'document',
      jsonb_build_object('title', 'Discharge summary', 'category', 'medical',
                         'summary_text', 'Home with follow-up.'),
@@ -220,7 +222,7 @@ select is(pg_temp.scalar(format(
      join public.proposal_commits pc on pc.object_id = t.id
      where pc.proposal_id = %L $$,
   current_setting('t.prop_task'))), '{schedule,finances}',
-  'the object''s taint is the D7 union: own domain ∪ drafted ∪ parents — the invoice''s finances arrived');
+  'the object''s taint is the D7 union: own domain ∪ drafted ∪ parents — the invoice''s finances carried');
 
 select is(pg_temp.scalar(format(
   $$ select (t.approved_by = %L and t.approver_display_name = 'Sarah'

@@ -229,11 +229,11 @@ async function case2(admin) {
          values ($1, $2, $3, $4, 'task',
                  jsonb_build_object('title', 'A' || $5::text, 'parents',
                    jsonb_build_array(jsonb_build_object('type', 'document', 'id', $6::uuid))),
-                 '{schedule}'),
+                 '{schedule,finances}'),
                 ($7, $2, $3, $4, 'task',
                  jsonb_build_object('title', 'B' || $5::text, 'parents',
                    jsonb_build_array(jsonb_build_object('type', 'document', 'id', $6::uuid))),
-                 '{schedule}')`,
+                 '{schedule,finances}')`,
         [pA, fx.a, fx.c, fx.s, String(round), fx.doc, pB]);
       await admin.query(`set session_replication_role = default`);
 
@@ -368,6 +368,21 @@ async function withClaims(client, userId) {
     [JSON.stringify({ sub: userId, role: 'authenticated' })]);
 }
 
+// The fired query may not have reached pg_stat_activity yet when we look
+// for it — poll for the backend before polling for its lock wait.
+async function findActivePid(admin, likePattern, label) {
+  const deadline = Date.now() + 5_000;
+  for (;;) {
+    const r = await admin.query(
+      `select pid from pg_stat_activity
+       where query like $1 and state = 'active'
+       order by query_start desc limit 1`, [likePattern]);
+    if (r.rows[0]?.pid) return r.rows[0].pid;
+    if (Date.now() > deadline) throw new Error(`backend never appeared: ${label}`);
+    await new Promise(res => setTimeout(res, 50));
+  }
+}
+
 // --- case 5: a freeze racing an in-flight approval (round-6 F1) --------------
 //
 // The serialization rule (ADR-0006 R-rule): security-state transitions and
@@ -398,12 +413,9 @@ async function case5(admin) {
     await asUser(s2, fx.u2);
     const p2 = s2.query(`select hc.approve_proposal($1, 1, $2)`, [pA, `k-${pA}`])
       .then(() => null).catch(e => e);
-    const pid2 = (await admin.query(
-      `select pid from pg_stat_activity
-       where query like 'select hc.approve_proposal%' and state = 'active'
-       order by query_start desc limit 1`)).rows[0]?.pid;
-    let blocked = false;
-    if (pid2) { await waitForLockWait(admin, pid2, 's2 approval on the circle lock'); blocked = true; }
+    const pid2 = await findActivePid(admin, 'select hc.approve_proposal%', 'approval backend');
+    await waitForLockWait(admin, pid2, 's2 approval on the circle lock');
+    const blocked = true;
     check('case5: the approval blocks on the per-circle lock', blocked,
       'pg_locks never showed the wait');
 
@@ -450,11 +462,8 @@ async function case6(admin) {
     await asUser(s2, fx.u2);
     const p2 = s2.query(`select hc.approve_proposal($1, 1, $2)`, [pA, `k-${pA}`])
       .then(() => null).catch(e => e);
-    const pid2 = (await admin.query(
-      `select pid from pg_stat_activity
-       where query like 'select hc.approve_proposal%' and state = 'active'
-       order by query_start desc limit 1`)).rows[0]?.pid;
-    if (pid2) await waitForLockWait(admin, pid2, 's2 approval on the circle lock');
+    const pid2 = await findActivePid(admin, 'select hc.approve_proposal%', 'approval backend');
+    await waitForLockWait(admin, pid2, 's2 approval on the circle lock');
 
     await admin.query(`delete from public.access_grants where member_id = $1`, [fx.m2]);
 
@@ -494,11 +503,8 @@ async function case7(admin) {
     await asUser(s2, fx.u2);
     const p2 = s2.query(`select hc.approve_proposal($1, 1, $2)`, [pA, `k-${pA}`])
       .then(() => null).catch(e => e);
-    const pid2 = (await admin.query(
-      `select pid from pg_stat_activity
-       where query like 'select hc.approve_proposal%' and state = 'active'
-       order by query_start desc limit 1`)).rows[0]?.pid;
-    if (pid2) await waitForLockWait(admin, pid2, 's2 approval on the circle lock');
+    const pid2 = await findActivePid(admin, 'select hc.approve_proposal%', 'approval backend');
+    await waitForLockWait(admin, pid2, 's2 approval on the circle lock');
 
     await admin.query(
       `update public.circle_members set removed_at = now(), removed_by = $2 where id = $1`,
@@ -544,12 +550,9 @@ async function case8(admin) {
     await asUser(s2, fx.u2);
     const p2 = s2.query(`select hc.revise_object('task', $1, '{"title": "stale edit"}')`,
       [fx.task]).then(() => null).catch(e => e);
-    const pid2 = (await admin.query(
-      `select pid from pg_stat_activity
-       where query like 'select hc.revise_object%' and state = 'active'
-       order by query_start desc limit 1`)).rows[0]?.pid;
-    let blocked = false;
-    if (pid2) { await waitForLockWait(admin, pid2, 's2 revision behind the growth'); blocked = true; }
+    const pid2 = await findActivePid(admin, 'select hc.revise_object%', 'revision backend');
+    await waitForLockWait(admin, pid2, 's2 revision behind the growth');
+    const blocked = true;
     check('case8: the revision blocks behind the in-flight growth', blocked,
       'pg_locks never showed the wait');
 
@@ -593,11 +596,8 @@ async function case9(admin) {
     await withClaims(s2, fx.u2);
     const p2 = s2.query(`select hc.reclassify_taint('task', $1)`, [fx.task])
       .then(() => null).catch(e => e);
-    const pid2 = (await admin.query(
-      `select pid from pg_stat_activity
-       where query like 'select hc.reclassify_taint%' and state = 'active'
-       order by query_start desc limit 1`)).rows[0]?.pid;
-    if (pid2) await waitForLockWait(admin, pid2, 's2 reclassify on the circle lock');
+    const pid2 = await findActivePid(admin, 'select hc.reclassify_taint%', 'reclassify backend');
+    await waitForLockWait(admin, pid2, 's2 reclassify on the circle lock');
 
     await s1.query('commit');
     const e2 = await withTimeout(p2, 'case9 reclassify after growth');
@@ -630,10 +630,7 @@ async function case10(admin) {
       [fx.task]).then(() => null).catch(e => e);
     // Tolerant wait: pre-fix the revision never blocks (it commits straight
     // through), which IS the defect — the check below names it either way.
-    const pid2 = (await admin.query(
-      `select pid from pg_stat_activity
-       where query like 'select hc.revise_object%' and state = 'active'
-       order by query_start desc limit 1`)).rows[0]?.pid;
+    const pid2 = await findActivePid(admin, 'select hc.revise_object%', 'revision backend');
     if (pid2) {
       try { await waitForLockWait(admin, pid2, 's2 revision on the circle lock'); }
       catch { /* not blocked — the pre-fix path */ }
