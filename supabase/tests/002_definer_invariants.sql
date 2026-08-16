@@ -45,6 +45,7 @@ select is((
     'approve_proposal(p_proposal_id uuid, p_expected_version integer, p_idempotency_key text, p_edits jsonb, p_step_up_token text)',
     'assert_claimed()',
     'circle_frozen(p_circle uuid, p_subject uuid)',
+    'claim_stage(p_arrival uuid, p_stage text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
     'contact_key(p text)',
     'create_arrival(p_circle_id uuid, p_subject_id uuid, p_channel text, p_parent_arrival_id uuid, p_sender_address text, p_sender_display_name text, p_message_id text, p_auth_result text, p_auth_detail jsonb, p_mime_declared text, p_byte_size bigint, p_page_count integer, p_ingest_idempotency_key text)',
     'create_circle(p_name text, p_subjects jsonb, p_opening_context text[])',
@@ -84,11 +85,11 @@ select is((
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
   array['adjudicate_freeze','advance_arrival','approve_proposal','assert_claimed',
-        'create_arrival','create_circle',
+        'claim_stage','create_arrival','create_circle',
         'ctx','ctx_for','grant_vectors','link_provenance','presence',
         'propagate_taint_growth','reclassify_taint','request_freeze',
         'revise_object','sender_recognised','share_object','sweep_provenance']::name[],
-  'SECURITY DEFINER is exactly the eighteen boundary functions, nothing else (assert_claimed: M10 — fires at commit as the committing role)');
+  'SECURITY DEFINER is exactly the nineteen boundary functions, nothing else (assert_claimed: M10 — fires at commit as the committing role)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -132,6 +133,7 @@ with actual as (
   -- 1C: the pipeline boundary (§3.10 posture) — workers hold EXECUTE on the
   -- transition primitive, intake and the gate question, nothing else.
   union all select 'advance_arrival', 'hc_pipeline'
+  union all select 'claim_stage', 'hc_pipeline'
   union all select 'create_arrival', 'hc_pipeline'
   union all select 'sender_recognised', 'hc_pipeline'
   -- the pure visibility functions: policies evaluate these as the caller

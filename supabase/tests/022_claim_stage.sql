@@ -181,6 +181,15 @@ select is(pg_temp.scalar(format(
 -- 10–13 · Budget exhaustion: terminal state, stated reason, no provider call,
 -- and the counter that survives crashes.
 -- ----------------------------------------------------------------------------
+do $$
+begin
+  -- attempt 2's worker also dies (test 7 left it live)
+  update public.pipeline_leases set deadline = now() - interval '1 second'
+   where arrival_id = current_setting('t.a2')::uuid
+     and stage = 'scan' and closed_at is null;
+exception when others then null;
+end $$;
+
 select is(pg_temp.scalar(format(
   $$ select pg_temp.claim_and_expire(%L, 'scan') || ':' ||
             pg_temp.claim_and_expire(%L, 'scan') $$,
@@ -226,10 +235,11 @@ select is(pg_temp.scalar(format(
 -- mid-flight death.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.scalar(format(
-  $$ select result::text || ':' ||
-            (select state::text from public.arrivals where id = %L)
-     from hc.claim_stage(%L, 'interpret') $$,
-  current_setting('t.a3'), current_setting('t.a3'))),
+  $$ select result::text from hc.claim_stage(%L, 'interpret') $$,
+  current_setting('t.a3'))) || ':' ||
+  pg_temp.scalar(format(
+  $$ select state::text from public.arrivals where id = %L $$,
+  current_setting('t.a3'))),
   'claimed:interpreting',
   'claiming interpret moves extracted → interpreting AT claim (§4.3 entry/exit holds, one lease spans the stage)');
 
