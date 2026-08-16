@@ -112,8 +112,9 @@ end $$;
 -- 1 · The §4.2 enum, verbatim at this boundary.
 -- ----------------------------------------------------------------------------
 select enum_has_labels('hc', 'advance_result',
-  array['advanced','already_advanced','cancelled','frozen','invalid_state','stale_lease'],
-  'hc.advance_result carries the §4.2 six, in order — claim vocabulary is U3''s ADD VALUE');
+  array['advanced','already_advanced','cancelled','frozen','invalid_state',
+        'stale_lease','claimed','exhausted'],
+  'hc.advance_result: M2 created the §4.2 six verbatim; M3''s ADD VALUE appended the claim pair');
 
 -- ----------------------------------------------------------------------------
 -- 2–5 · Intake: hc.create_arrival happy path + idempotency.
