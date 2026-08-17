@@ -265,5 +265,13 @@ is the evidence record.
 
 ### CI at the round-7 heads (public API, both events)
 
-- Recorded here after push: the docs head's push and pull_request runs.
-  The merge session re-verifies the final head as always.
+- **Round-7 docs head `7c94acb`** (`7c94acbd0e617f9e6f94210c074215a95b26d1b7`
+  — carries e65c6a1 + bf5c4e8 + cd73127 + the disposition docs): push run
+  **32002148243** — success; pull_request run **32002151694** — success.
+  Both include the full upgrade rehearsal, the exact-state verifier, both
+  suites, the db:verify hard gate, and (new at this head) the E3
+  artifact-retention steps.
+- This record lands as the final docs-only commit (run-id recording only;
+  no SQL, no tests, no packet-substance change). Its own both-event runs
+  are verified in the disposition session via the public API and reported
+  to the owner; the merge session re-verifies the final head as always.
