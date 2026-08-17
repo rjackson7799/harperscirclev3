@@ -212,10 +212,14 @@ begin
 exception when others then null;
 end $$;
 
-select is(pg_temp.scalar(format(
-  $$ with f as (insert into public.freezes (circle_id) values (%L) returning 1)
-     select (hc.sweeper_pass() -> 'terminalized')::text $$,
-  current_setting('t.c1'))),
+do $$
+begin
+  insert into public.freezes (circle_id) values (current_setting('t.c1')::uuid);
+exception when others then null;
+end $$;
+
+select is(pg_temp.scalar($$
+  select (hc.sweeper_pass() -> 'terminalized')::text $$),
   '[]',
   'a frozen circle''s budget-spent arrival is NOT age-exhausted — the sweeper skips parked work for exhaustion too');
 
@@ -229,10 +233,12 @@ exception when others then null;
 end $$;
 
 select is(pg_temp.scalar(format(
-  $$ select (select count(*) from jsonb_array_elements(hc.sweeper_pass() -> 'terminalized') e
-             where e ->> 'arrival_id' = %L)::text || ':' ||
-            (select state::text from public.arrivals where id = %L) $$,
-  current_setting('t.ac'), current_setting('t.ac'))),
+  $$ select count(*)::text from jsonb_array_elements(hc.sweeper_pass() -> 'terminalized') e
+     where e ->> 'arrival_id' = %L $$,
+  current_setting('t.ac'))) || ':' ||
+  pg_temp.scalar(format(
+  $$ select state::text from public.arrivals where id = %L $$,
+  current_setting('t.ac'))),
   '1:extract_failed',
   'once unfrozen, the sweeper moves the budget-spent arrival to its terminal state (§4.11)');
 
@@ -272,11 +278,15 @@ select is(pg_temp.scalar($$
   'true',
   'queue age over 4 h raises the alert (the 25 h parent is unfrozen and unprocessed)');
 
-select is(pg_temp.scalar(format(
-  $$ with f as (insert into public.freezes (circle_id) values (%L) returning 1)
-     select (hc.sweeper_pass() ->> 'queue_age_alert') || ':' ||
-            (hc.sweeper_pass() -> 'stuck')::text $$,
-  current_setting('t.c1'))),
+do $$
+begin
+  insert into public.freezes (circle_id) values (current_setting('t.c1')::uuid);
+exception when others then null;
+end $$;
+
+select is(pg_temp.scalar($$
+  select (hc.sweeper_pass() ->> 'queue_age_alert') || ':' ||
+         (hc.sweeper_pass() -> 'stuck')::text $$),
   'false:[]',
   'parked work is EXCLUDED from queue-age and stuck signals — a frozen record must not mask a real backlog');
 
