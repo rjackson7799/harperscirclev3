@@ -32,6 +32,12 @@
 --       empty in 1D; probe proven.
 --   4 · hc_admin holds EXECUTE on nothing, anywhere; admin_ops holds
 --       zero functions (moves when ADM-01 lands).
+--   2b· (round-8 F1, ADR-0010) The walk's recorded blind spot — a
+--       relation-level (refobjsubid = 0) whole-row reference to a mixed
+--       table (to_jsonb(t.*)) — is probe-CONFIRMED real (24) and closed
+--       by pinning every admin_meta view definition (25): any definition
+--       change, a future whole-row blob included, reds the pin and
+--       forces the review the residual depends on.
 --
 -- RED (U4): admin_ops absent, no views, hc_admin reaches nothing —
 -- inventory and reach pins fail; the walks pass vacuously until views
@@ -41,7 +47,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(23);
+select plan(25);
 
 create function pg_temp.errcode_as(p_role text, p_sql text) returns text
 language plpgsql as $$
@@ -430,6 +436,51 @@ select is((
     and a.attnum > 0 and not a.attisdropped
     and a.attname ~* 'sender|title|email|first_name|display_name|summary|detail|note|filename'), 0,
   'no admin_meta column NAME even suggests content — the sender of the email arrival is structurally unreachable (§9.2 costume cases)');
+
+-- ----------------------------------------------------------------------------
+-- 24–25 · Round-8 F1 (ADR-0010): the subid-0 whole-row residual is REAL,
+-- and the definition pin is the mechanical backstop that closes it.
+-- ----------------------------------------------------------------------------
+-- The recorded blind spot, probe-confirmed: a whole-row to_jsonb(t.*)
+-- view over a MIXED table registers only a relation-level
+-- (refobjsubid = 0) dependency — indistinguishable in pg_depend from a
+-- legitimate FROM-clause entry, so the walk cannot reject it without
+-- redding the shipped views — and its column NAMES trip no scan. The
+-- walk is honest about what it catches (column refs, nested views,
+-- function indirection); THIS shape it cannot catch, which is why the
+-- next assertion pins the definitions themselves.
+do $$
+begin
+  execute 'create view admin_meta.zz_wholerow as
+             select s.circle_id, to_jsonb(s.*) as meta from public.subjects s';
+end $$;
+
+select ok(
+      pg_temp.forbidden_reached() = 0
+  and (select count(*) from pg_attribute a
+       join pg_class c on c.oid = a.attrelid
+       join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'admin_meta' and c.relkind = 'v'
+         and a.attnum > 0 and not a.attisdropped
+         and a.attname ~* 'sender|title|email|first_name|display_name|summary|detail|note|filename') = 0,
+  'the residual is REAL (round-8 F1): a whole-row to_jsonb view over a mixed table escapes BOTH the walk (subid-0) and the name scan — the mechanical guarantee stops here; the definition pin below is what closes it');
+
+do $$
+begin
+  execute 'drop view admin_meta.zz_wholerow';
+end $$;
+
+select is((
+  select jsonb_object_agg(c.relname, md5(pg_get_viewdef(c.oid)))
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'admin_meta' and c.relkind = 'v'),
+  jsonb_build_object(
+    'circle_shapes',   'be637c670fee2f2de5331518442879d5',
+    'pipeline_health', '9b012f7d8e69870537440982a63da019',
+    'platform_stats',  '1ef3ac59fd38c235d38d7ca9f5b1dd38',
+    'stage_outcomes',  '6ccfd438da0000d71c93232576aad48c',
+    'sweep_health',    '4ac9a273c38e65c397df5ee48bdcc498'),
+  'CI-2b (round-8 F1): every admin_meta view definition is PINNED (md5 of pg_get_viewdef) — a changed or added definition reds this assertion and forces the manual review the subid-0 residual depends on; re-pin only after reviewing the new definition for whole-row or content reach');
 
 select * from finish();
 rollback;
