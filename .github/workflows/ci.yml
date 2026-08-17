@@ -45,11 +45,14 @@ jobs:
       - name: Verify exact migration state (clean leg)
         run: node scripts/verify-migration-state.mjs supabase/migrations
 
+      # Round-7 E3: full failing output is ALWAYS retained as an artifact —
+      # a flake must be classifiable from what the run kept, not from
+      # re-runs. The grep-free tee preserves per-test detail and durations.
       - name: Database tests (pgTAP)
-        run: npm run test:db
+        run: set -o pipefail; npm run test:db 2>&1 | tee pgtap-clean.log
 
       - name: Database tests (two-session concurrency layer)
-        run: npm run test:concurrency
+        run: set -o pipefail; npm run test:concurrency 2>&1 | tee concurrency-clean.log
 
       - name: Schema lint (db:verify, warnings fail)
         run: npm run db:verify
@@ -70,9 +73,30 @@ jobs:
           node scripts/verify-migration-state.mjs /tmp/upgrade-base/supabase/migrations
           npx supabase migration up
           node scripts/verify-migration-state.mjs supabase/migrations
-          npm run test:db
-          npm run test:concurrency
+          set -o pipefail
+          npm run test:db 2>&1 | tee pgtap-upgrade.log
+          npm run test:concurrency 2>&1 | tee concurrency-upgrade.log
           git worktree remove /tmp/upgrade-base
+
+      # Round-7 E3: database logs and lock/activity diagnostics on failure —
+      # the two-session layer's flakes are classifiable only with them.
+      - name: Capture database logs (on failure)
+        if: failure()
+        run: |
+          docker ps --filter name=supabase_db --format '{{.Names}}' \
+            | xargs -r -n1 -I{} sh -c 'docker logs --tail 1000 {} > db-{}.log 2>&1' || true
+
+      - name: Retain full test output (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            pgtap-*.log
+            concurrency-*.log
+            db-*.log
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Lint
         run: npm run lint
