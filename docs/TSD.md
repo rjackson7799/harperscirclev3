@@ -2892,6 +2892,54 @@ fail-closed `coalesce(…, true)`. The §3.2 ctx `shares` key is populated from
 `object_shares` (live membership, unrevoked) in both `hc.ctx()` and
 `hc.ctx_for()` (CTX-07).
 
+### A5 — §2.2/§2.4/§3.4/§4: the 1C ingestion deltas (ADR-0007; MNL model per ADR-0006 F9/Q12)
+
+- **§2.4 `arrivals.channel`:** the CHECK gains `'manual'` —
+  `check (channel in ('upload','email','manual'))`. A manual arrival is
+  SYNTHETIC, created only inside `hc.create_manual_proposal`'s transaction
+  with its proposal (`hc.create_arrival` refuses the channel). The payload
+  `manual` flag must AGREE with the arrival's channel, both directions,
+  enforced by the `hc.assert_manual_flag` trigger on `proposals`.
+  `proposals.arrival_id` stays NOT NULL, as ruled.
+- **§2.4/§4.3 as data:** `hc.reason_codes` (the fixed enumeration
+  `arrival_events.reason_code` references) and `hc.stage_budgets` (stage →
+  entry state, optional in-flight state, attempt budget, lease wall clock,
+  exhaustion state + reason) are seeded tables in `hc`, append-by-migration.
+- **§4.2 `hc.advance_result`:** gains `'claimed'` and `'exhausted'` (the
+  first ALTER TYPE … ADD VALUE migration; usage begins in the next — the
+  55P04 rule, PLT-03). `hc.claim_stage` speaks the same vocabulary;
+  `stale_lease` additionally means "a live attempt owns the arrival" at
+  claim time.
+- **§4.2 body:** the `cancelled` diagnosis runs BEFORE the fence — the
+  §4.5 cancel path closes the worker's lease, and fence-first would
+  swallow the discard-and-GC signal into `stale_lease`.
+- **§4.3 `hc.claim_stage`:** exhaustion's terminal move executes inside
+  the claim (the caller holds no lease that could pass the fence; its
+  obligation reduces to ack-without-provider-call); interpret's declared
+  in-flight transition (extracted → interpreting) happens at claim so one
+  lease spans the stage; interpret/gate exhaustion lands in
+  `extract_failed` with distinguishing reason codes.
+- **§4.5:** `hc.finalize_interpretation(p_arrival, p_lease, p_proposals)`
+  applies the same transition-gated publication to
+  `interpreting → proposals_ready`. `hc.cancel_arrival` may also cancel at
+  `extracted` (between stages — the member's window must not depend on
+  queue timing). The write halves are owner-only, non-definer, and
+  validate their lease binds to the arrival.
+- **§3.4 map:** arrivals (summary) and extractions (view) evaluate
+  `hc.visible_at` over the fail-closed **all-domain taint** — pipeline
+  material is unclassified until approved. **Proposals read at `manage`
+  over the proposal's own drafted taint** (the approval audience; the map
+  had no row). `arrival.auth_detail` (and the internal `current_lease_id`)
+  are excluded from the authenticated **column grant**; auth_detail is
+  served at view by `hc.arrival_auth_detail` with the DEF-10 one-shape
+  refusal.
+- **§4.2 freeze re-enqueue:** the outbox is `public.pipeline_outbox`,
+  written by `hc.adjudicate_freeze`'s dismissed arm for every worker-state
+  arrival in the circle; drained exactly-once by `hc.outbox_drain`;
+  `hc.sweeper_pass` implements §4.11's four duties with parked work
+  excluded from re-queueing, exhaustion, stuck and queue-age signals.
+  "Parked" = the `hc.pipeline_worker_states()` list.
+
 ### A3 — §3.7 `hc.approve_proposal()`: recorded order and round-6 hardening (ADR-0005; ADR-0006 F1/F6/F8, Q4/Q5)
 
 The signature stays verbatim. Deltas to the commented seven steps:
