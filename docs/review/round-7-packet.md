@@ -185,7 +185,11 @@ freeze-parking family, nothing else; restored by clean reset, suite green.
   20 s, per-case timeout 45 s — mechanics, not assertions; a real
   deadlock still fails. Both-event runs at the fixed head are recorded
   below; the merge session re-verifies the final head as always.
-- **CI, both events at the fixed head:** _run ids recorded on completion._
+- **CI, both events at the fixed head `9890795`:** push run
+  **31991564826** — success; pull_request run **31991568425** — success.
+  This record lands as the final docs-only commit; its own re-triggered
+  runs are confirmable via the public API and the merge session
+  re-verifies the final head regardless.
 - **Local evidence at `198d4fd`:** clean leg — reset, verifier exact
   **30 == 30**, pgTAP **730/730** (27 files, 9 s), concurrency
   **33/33**, `db:verify` **No schema errors found** (hard gate); upgrade
