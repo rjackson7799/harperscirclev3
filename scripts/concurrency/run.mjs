@@ -25,6 +25,21 @@
 //   Case 9  The shrink path re-authorizes under the lock: a schedule-only
 //           actor is refused once the taint grew.
 //   Case 10 A freeze committing while a revision waits defeats it.
+//   Case 11 1C A.5 late worker, BOTH orders: attempt 1 expires, attempt 2
+//           claims; only attempt 2 may publish — attempt 1 gets stale_lease
+//           even when it reaches finalization first.
+//   Case 12 1C A.5: claim_stage commits standalone — a rollback of the
+//           worker's own transaction leaves attempt_no advanced.
+//   Case 13 1C R-rule: a freeze committing while advance_arrival waits on
+//           the per-circle lock parks the arrival (frozen).
+//   Case 14 1C R-rule + FRZ-15: a freeze committing while claim_stage
+//           waits parks the claim AND consumes no attempt.
+//   Case 15 1C R-rule + MNL-01: a freeze committing while a manual draft
+//           waits defeats it — neither the synthetic arrival nor the
+//           proposal survives (freeze_active, one-transaction unity).
+//   Case 16 1C §4.5: a cancellation committing while finalization waits
+//           wins the swap — the provider's result is discarded, zero
+//           extractions and zero proposals land.
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -653,6 +668,260 @@ async function case10(admin) {
   }
 }
 
+// --- 1C fixtures ---------------------------------------------------------------
+
+// an arrival at 'extracting' with a claimed extract lease, via the machinery
+async function mkExtracting(admin, fx, key) {
+  const a = (await admin.query(
+    `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => $3) as id`,
+    [fx.c, fx.s, key])).rows[0].id;
+  await admin.query(`update public.arrivals set state = 'extracting' where id = $1`, [a]);
+  const r = (await admin.query(`select * from hc.claim_stage($1, 'extract')`, [a])).rows[0];
+  return { arrival: a, lease: r.lease_id };
+}
+
+const FACTS = JSON.stringify([{
+  field: 'total', value: '812', confidence: 0.9, risk_class: 'standard',
+  citation: { page: 1 }, model_id: 'm1', prompt_version: 'p1',
+}]);
+
+// --- case 11: late worker, both orders (1C A.5) --------------------------------
+
+async function case11(admin) {
+  const fx = await mkCircle(admin, 'c11');
+  try {
+    // Round A: the superseded worker reaches finalization FIRST.
+    let w = await mkExtracting(admin, fx, 'c11-a');
+    await admin.query(
+      `update public.pipeline_leases set deadline = now() - interval '1 second'
+       where id = $1`, [w.lease]);
+    const l2 = (await admin.query(`select * from hc.claim_stage($1, 'extract')`,
+      [w.arrival])).rows[0].lease_id;
+    const rA1 = (await admin.query(
+      `select hc.finalize_extraction($1, $2, $3::jsonb, '[]'::jsonb) as r`,
+      [w.arrival, w.lease, FACTS])).rows[0].r;
+    const rA2 = (await admin.query(
+      `select hc.finalize_extraction($1, $2, $3::jsonb, '[]'::jsonb) as r`,
+      [w.arrival, l2, FACTS])).rows[0].r;
+    const nA = (await admin.query(
+      `select count(*)::int as n from public.extractions where arrival_id = $1`,
+      [w.arrival])).rows[0].n;
+    check('case11 order A: the expired attempt finalizing FIRST gets stale_lease; attempt 2 publishes once',
+      rA1 === 'stale_lease' && rA2 === 'advanced' && nA === 1,
+      `a1=${rA1} a2=${rA2} extractions=${nA}`);
+
+    // Round B: attempt 2 publishes first; the late worker comes back after.
+    w = await mkExtracting(admin, fx, 'c11-b');
+    await admin.query(
+      `update public.pipeline_leases set deadline = now() - interval '1 second'
+       where id = $1`, [w.lease]);
+    const l2b = (await admin.query(`select * from hc.claim_stage($1, 'extract')`,
+      [w.arrival])).rows[0].lease_id;
+    const rB2 = (await admin.query(
+      `select hc.finalize_extraction($1, $2, $3::jsonb, '[]'::jsonb) as r`,
+      [w.arrival, l2b, FACTS])).rows[0].r;
+    const rB1 = (await admin.query(
+      `select hc.finalize_extraction($1, $2, $3::jsonb, '[]'::jsonb) as r`,
+      [w.arrival, w.lease, FACTS])).rows[0].r;
+    const nB = (await admin.query(
+      `select count(*)::int as n from public.extractions where arrival_id = $1`,
+      [w.arrival])).rows[0].n;
+    check('case11 order B: attempt 2 publishes; the late worker still gets stale_lease, nothing doubles',
+      rB2 === 'advanced' && rB1 === 'stale_lease' && nB === 1,
+      `a2=${rB2} a1=${rB1} extractions=${nB}`);
+  } finally {
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 12: the claim commits standalone (1C A.5) ----------------------------
+
+async function case12(admin) {
+  const fx = await mkCircle(admin, 'c12');
+  const s1 = await connect();
+  try {
+    const a = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c12-a') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    // the worker's calling pattern: claim (autocommit) → begin work → CRASH
+    const r = (await s1.query(`select * from hc.claim_stage($1, 'store')`, [a])).rows[0];
+    await s1.query('begin');
+    await s1.query(`select 1`); // provider work would happen here
+    await s1.query('rollback');
+    const n = (await admin.query(
+      `select count(*)::int as n, max(attempt_no)::int as att
+       from public.pipeline_leases where arrival_id = $1 and stage = 'store'`,
+      [a])).rows[0];
+    check('case12: claim_stage committed standalone — the rolled-back worker still burned attempt 1',
+      r.result === 'claimed' && n.n === 1 && n.att === 1,
+      `claim=${r.result} leases=${n.n} attempt=${n.att}`);
+  } finally {
+    await s1.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 13: freeze vs advance mid-wait (1C R-rule) ---------------------------
+
+async function case13(admin) {
+  const fx = await mkCircle(admin, 'c13');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const a = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c13-a') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    await admin.query(`update public.arrivals set state = 'scanned' where id = $1`, [a]);
+    const lease = (await admin.query(`select * from hc.claim_stage($1, 'gate')`, [a]))
+      .rows[0].lease_id;
+
+    // S1 holds the per-circle lock in an open transaction.
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+
+    // S2's advance blocks on the lock…
+    const p2 = s2.query(
+      `select hc.advance_arrival($1, 'scanned', 'extracting', $2, 'sender_recognised') as r`,
+      [a, lease]).then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.advance_arrival%', 'advance backend');
+    await waitForLockWait(admin, pid2, 's2 advance on the circle lock');
+
+    // …a freeze commits mid-wait…
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fx.c]);
+    await s1.query('commit');
+
+    const r2 = await withTimeout(p2, 'case13 advance after freeze');
+    const st = (await admin.query(`select state::text as s from public.arrivals where id = $1`,
+      [a])).rows[0].s;
+    check('case13 (R-rule): a freeze committed while the advance waited PARKS it — frozen, state unchanged',
+      r2 === 'frozen' && st === 'scanned', `r=${r2} state=${st}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 14: freeze vs claim mid-wait consumes NOTHING (1C R-rule, FRZ-15) ----
+
+async function case14(admin) {
+  const fx = await mkCircle(admin, 'c14');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const a = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c14-a') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    await admin.query(`update public.arrivals set state = 'stored' where id = $1`, [a]);
+
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+
+    const p2 = s2.query(`select result::text as r from hc.claim_stage($1, 'scan')`, [a])
+      .then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select result::text as r from hc.claim_stage%',
+      'claim backend');
+    await waitForLockWait(admin, pid2, 's2 claim on the circle lock');
+
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fx.c]);
+    await s1.query('commit');
+
+    const r2 = await withTimeout(p2, 'case14 claim after freeze');
+    const n = (await admin.query(
+      `select count(*)::int as n from public.pipeline_leases where arrival_id = $1`,
+      [a])).rows[0].n;
+    check('case14 (FRZ-15): a freeze committed while the claim waited parks it — frozen, NO attempt consumed',
+      r2 === 'frozen' && n === 0, `r=${r2} leases=${n}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 15: freeze vs manual draft mid-wait (1C R-rule, MNL-01) --------------
+
+async function case15(admin) {
+  const fx = await mkCircle(admin, 'c15');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+
+    await asUser(s2, fx.u1);
+    const p2 = s2.query(
+      `select hc.create_manual_proposal($1, $2, 'task', '{"title":"race the freeze"}')`,
+      [fx.c, fx.s]).then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.create_manual_proposal%',
+      'manual draft backend');
+    await waitForLockWait(admin, pid2, 's2 manual draft on the circle lock');
+
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fx.c]);
+    await s1.query('commit');
+
+    const e2 = await withTimeout(p2, 'case15 draft after freeze');
+    const n = (await admin.query(
+      `select (select count(*) from public.arrivals
+               where circle_id = $1 and channel = 'manual')::int as a,
+              (select count(*) from public.proposals where circle_id = $1)::int as p`,
+      [fx.c])).rows[0];
+    check('case15 (MNL-01): a freeze committed while the draft waited DEFEATS it — freeze_active, neither row survives',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'freeze_active'
+        && n.a === 0 && n.p === 0,
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'} arrivals=${n.a} proposals=${n.p}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 16: cancellation racing finalization (1C §4.5, A.5) ------------------
+
+async function case16(admin) {
+  const fx = await mkCircle(admin, 'c16');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const w = await mkExtracting(admin, fx, 'c16-a');
+
+    // S1: a member's cancellation, held open — it owns the row and circle locks.
+    await asUser(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.cancel_arrival($1)`, [w.arrival]);
+
+    // S2: the worker's finalization blocks behind it…
+    const p2 = s2.query(
+      `select hc.finalize_extraction($1, $2, $3::jsonb, '[]'::jsonb) as r`,
+      [w.arrival, w.lease, FACTS]).then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.finalize_extraction%',
+      'finalize backend');
+    await waitForLockWait(admin, pid2, 's2 finalize behind the cancel');
+
+    // …and the cancellation commits first.
+    await s1.query('commit');
+
+    const r2 = await withTimeout(p2, 'case16 finalize after cancel');
+    const n = (await admin.query(
+      `select (select count(*) from public.extractions where arrival_id = $1)::int as e,
+              (select count(*) from public.proposals   where arrival_id = $1)::int as p,
+              (select state::text from public.arrivals where id = $1) as s`,
+      [w.arrival])).rows[0];
+    check('case16 (§4.5): cancellation wins the swap — the late result is DISCARDED, nothing lands',
+      r2 === 'cancelled' && n.e === 0 && n.p === 0 && n.s === 'cancelled',
+      `r=${r2} extractions=${n.e} proposals=${n.p} state=${n.s}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -668,6 +937,12 @@ try {
   await case8(admin);
   await case9(admin);
   await case10(admin);
+  await case11(admin);
+  await case12(admin);
+  await case13(admin);
+  await case14(admin);
+  await case15(admin);
+  await case16(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;
