@@ -46,6 +46,7 @@ select is((
     'arrival_auth_detail(p_arrival uuid)',
     'assert_claimed()',
     'assert_manual_flag()',
+    'build_dsc()',
     'cancel_arrival(p_arrival uuid)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
     'claim_stage(p_arrival uuid, p_stage text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
@@ -80,9 +81,13 @@ select is((
     'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid)',
     'sweep_provenance()',
     'sweeper_pass()',
+    'sync_search_content()',
     'taint_union(a hc.domain[], b hc.domain[])',
     'taint_union_2(a hc.domain[], b hc.domain[])',
     'taint_union_agg(hc.domain[])',
+    'tsv_documents()',
+    'tsv_tasks()',
+    'tsv_timeline_events()',
     'uid()',
     'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)',
     'write_extractions(p_arrival uuid, p_lease uuid, p_facts jsonb)',
@@ -294,6 +299,12 @@ insert into snapshot_expected values
   ('hc_internal',   'stage_budgets',   'SELECT'),
   -- 1C M9 (round-7 B1): the transition graph as data — read by the CAS only
   ('hc_internal',   'arrival_transitions', 'SELECT'),
+  -- 1D M1: the search writer allowlist finalized (REC-05 → DSC-01) —
+  -- hc_internal read/insert/update on dsc, DELETE for nobody (the
+  -- document cascade is the only remover).
+  ('hc_internal',   'document_search_content', 'SELECT'),
+  ('hc_internal',   'document_search_content', 'INSERT'),
+  ('hc_internal',   'document_search_content', 'UPDATE'),
   -- 1C M7 (ING-02/03): table-level read grants; arrivals is COLUMN-granted
   -- (auth_detail and current_lease_id excluded), which lives in
   -- pg_attribute.attacl and is asserted in 025 — deliberately absent here.
@@ -344,6 +355,7 @@ select is((
         'circles_internal','circles_internal_create',
         'documents_internal','documents_internal_revise',
         'documents_internal_write',
+        'dsc_internal','dsc_internal_update','dsc_internal_write',
         'episodes_internal','episodes_internal_revise','episodes_internal_write',
         'extractions_internal','extractions_internal_write',
         'freeze_claims_internal','freeze_claims_internal_write',
@@ -366,7 +378,7 @@ select is((
         'tasks_internal','tasks_internal_revise','tasks_internal_write',
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated sixty-one');
+  'the hc_internal policy list is exactly the enumerated sixty-four');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
@@ -384,11 +396,14 @@ select is((
   where g.table_schema = 'public'
     and g.table_name in ('documents', 'document_search_content')
     and g.grantee in ('anon', 'authenticated', 'hc_pipeline', 'hc_admin', 'hc_internal')),
-  array['authenticated:documents:SELECT',
+  array['hc_internal:document_search_content:INSERT',
+        'hc_internal:document_search_content:SELECT',
+        'hc_internal:document_search_content:UPDATE',
+        'authenticated:documents:SELECT',
         'hc_internal:documents:INSERT',
         'hc_internal:documents:SELECT',
         'hc_internal:documents:UPDATE'],
-  'writer allowlist: documents = authenticated read + hc_internal read/insert/update; dsc = NOTHING for any of our five roles');
+  'writer allowlist FINALIZED (1D): documents = authenticated read + hc_internal read/insert/update; dsc = hc_internal read/insert/update alone, DELETE for nobody');
 
 select is((
   select coalesce(array_agg(c.relname || ':' || t.tgname order by c.relname, t.tgname),
@@ -398,8 +413,10 @@ select is((
   join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'public' and not t.tgisinternal
     and c.relname in ('documents', 'document_search_content')),
-  array['documents:hc_claim_documents', 'documents:hc_guard_documents'],
-  'writer allowlist: documents carries exactly the claim + guard triggers; dsc carries none');
+  array['document_search_content:hc_build_dsc',
+        'documents:hc_claim_documents', 'documents:hc_guard_documents',
+        'documents:hc_sync_search_documents', 'documents:hc_tsv_documents'],
+  'writer allowlist: documents carries claim + guard + the 1D tsv builder and dsc sync; dsc carries exactly its builder (§7.1 one place)');
 
 -- ----------------------------------------------------------------------------
 -- Round-5 ruling R1: hc.uid() accepted permanently CONDITIONAL on this

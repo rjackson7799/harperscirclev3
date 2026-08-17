@@ -7,8 +7,9 @@
 -- Fixtures are written directly as postgres: the ONLY write path for these
 -- tables (hc.approve_proposal(), M6) does not exist yet, and when it does,
 -- request-path write privilege remains absent — which is exactly what the
--- closure probes here assert. document_search_content carries ZERO grants
--- for every role including hc_internal until 1D (fail-closed staging).
+-- closure probes here assert. document_search_content carried ZERO grants
+-- for every role until 1D M1 finalized the allowlist: hc_internal
+-- read/insert/update alone, DELETE for nobody (REC-05 → DSC-01).
 --
 -- RED (U2): tables absent — has_table ×6 fail, catalog sweeps count 0
 -- conforming columns, every probe reports 42P01 where its code is expected.
@@ -263,12 +264,13 @@ select fk_ok('public', 'document_search_content',
              array['circle_id','subject_id','id'],
   'dsc → documents pins circle AND subject — a row cannot claim a different subject (§2.5)');
 
-select is(pg_temp.errcode_as('postgres', format(
-  $$ insert into public.document_search_content
-       (document_id, circle_id, subject_id, extracted_text)
-     values (%L, %L, %L, 'extracted body text') $$,
+-- 1D M1: the documents→dsc sync trigger creates this row WITH the fixture
+-- document, so consistency is now proven by the machinery, not a probe.
+select is(pg_temp.scalar(format(
+  $$ select count(*)::text from public.document_search_content
+     where document_id = %L and circle_id = %L and subject_id = %L $$,
   current_setting('t.doc_del'), current_setting('t.c1'), current_setting('t.s1'))),
-  'no_error', 'a consistent dsc row is accepted (as postgres — no role holds the privilege)');
+  '1', 'the consistent dsc row exists — written by the 1D sync trigger in the document''s own transaction');
 
 select is(pg_temp.errcode_as('postgres', format(
   $$ delete from public.documents where id = %L $$,
@@ -483,12 +485,14 @@ select is(pg_temp.errcode_as('hc_admin', 'select * from public.episodes'), '4250
   'hc_admin: permission denied for episodes');
 
 -- ----------------------------------------------------------------------------
--- 44–48 · document_search_content: ZERO reach for every role until 1D.
--- Write paths revoked is the 1B invariant; reads are staged with them.
+-- 44–48 · document_search_content: request-path writes stay revoked after
+-- 1D M1 finalizes the allowlist (REC-05 → DSC-01); the authenticated READ
+-- arrives with M2's view-level policy, so the select probe moved to 029.
+-- hc_internal now holds exactly read/insert/update — never DELETE.
 -- ----------------------------------------------------------------------------
-select is(pg_temp.errcode_as('authenticated',
+select is(pg_temp.errcode_as('anon',
   $$ select * from public.document_search_content $$), '42501',
-  'dsc: authenticated cannot even select until 1D lands the view-level policy');
+  'dsc: anon holds nothing at any slice');
 select is(pg_temp.errcode_as('authenticated',
   $$ insert into public.document_search_content (document_id, circle_id, subject_id)
      values (gen_random_uuid(), gen_random_uuid(), gen_random_uuid()) $$), '42501',
@@ -501,12 +505,12 @@ select is(pg_temp.errcode_as('hc_admin',
   $$ update public.document_search_content set extracted_text = 'x' $$), '42501',
   'dsc: hc_admin cannot update');
 select ok(coalesce(
-      not has_table_privilege('hc_internal', to_regclass('public.document_search_content'), 'select')
-  and not has_table_privilege('hc_internal', to_regclass('public.document_search_content'), 'insert')
-  and not has_table_privilege('hc_internal', to_regclass('public.document_search_content'), 'update')
+      has_table_privilege('hc_internal', to_regclass('public.document_search_content'), 'select')
+  and has_table_privilege('hc_internal', to_regclass('public.document_search_content'), 'insert')
+  and has_table_privilege('hc_internal', to_regclass('public.document_search_content'), 'update')
   and not has_table_privilege('hc_internal', to_regclass('public.document_search_content'), 'delete'),
   false),
-  'dsc: hc_internal holds NOTHING — the writer allowlist for this table is empty until 1D');
+  'dsc: hc_internal holds exactly read/insert/update — DELETE for nobody, the cascade is the only remover (1D M1)');
 
 -- ----------------------------------------------------------------------------
 -- 49–51 · Record-table write closure for request-path roles (§3.7 begins).
