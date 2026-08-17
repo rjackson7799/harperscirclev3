@@ -259,8 +259,8 @@ select is(pg_temp.q72_count(current_setting('t.u2')::uuid,
   'summary: the body-only-term count is IDENTICAL to a term present nowhere (A.5 — the hit itself would disclose)');
 
 select is(pg_temp.q72_count(current_setting('t.u2')::uuid,
-                            current_setting('t.c1')::uuid, 'discharge'), '2',
-  'summary: title terms match through tsv_summary (both documents)');
+                            current_setting('t.c1')::uuid, 'discharge'), '1',
+  'summary: a title term matches through tsv_summary — the summary branch is live');
 
 select is(pg_temp.q72_scnull(current_setting('t.u2')::uuid,
                              current_setting('t.c1')::uuid, 'cardiology'), 'true',

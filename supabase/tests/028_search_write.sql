@@ -175,8 +175,9 @@ select is((
   from information_schema.role_table_grants g
   where g.table_schema = 'public' and g.table_name = 'document_search_content'
     and g.grantee in ('anon', 'authenticated', 'hc_pipeline', 'hc_admin', 'hc_internal')),
-  array['hc_internal:INSERT', 'hc_internal:SELECT', 'hc_internal:UPDATE'],
-  'dsc writer allowlist FINALIZED: hc_internal read/insert/update, nothing else, DELETE for nobody (cascade is the only remover)');
+  array['authenticated:SELECT',
+        'hc_internal:INSERT', 'hc_internal:SELECT', 'hc_internal:UPDATE'],
+  'dsc writer allowlist FINALIZED: hc_internal read/insert/update + the M2 view-level read, nothing else, DELETE for nobody (cascade is the only remover)');
 
 -- ----------------------------------------------------------------------------
 -- 6–8 · The §2.11 indexes exist; the hc_internal policy set for dsc is the

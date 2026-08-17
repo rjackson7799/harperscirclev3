@@ -301,10 +301,11 @@ insert into snapshot_expected values
   ('hc_internal',   'arrival_transitions', 'SELECT'),
   -- 1D M1: the search writer allowlist finalized (REC-05 → DSC-01) —
   -- hc_internal read/insert/update on dsc, DELETE for nobody (the
-  -- document cascade is the only remover).
+  -- document cascade is the only remover). 1D M2: the view-level read.
   ('hc_internal',   'document_search_content', 'SELECT'),
   ('hc_internal',   'document_search_content', 'INSERT'),
   ('hc_internal',   'document_search_content', 'UPDATE'),
+  ('authenticated', 'document_search_content', 'SELECT'),
   -- 1C M7 (ING-02/03): table-level read grants; arrivals is COLUMN-granted
   -- (auth_detail and current_lease_id excluded), which lives in
   -- pg_attribute.attacl and is asserted in 025 — deliberately absent here.
@@ -396,14 +397,15 @@ select is((
   where g.table_schema = 'public'
     and g.table_name in ('documents', 'document_search_content')
     and g.grantee in ('anon', 'authenticated', 'hc_pipeline', 'hc_admin', 'hc_internal')),
-  array['hc_internal:document_search_content:INSERT',
+  array['authenticated:document_search_content:SELECT',
+        'hc_internal:document_search_content:INSERT',
         'hc_internal:document_search_content:SELECT',
         'hc_internal:document_search_content:UPDATE',
         'authenticated:documents:SELECT',
         'hc_internal:documents:INSERT',
         'hc_internal:documents:SELECT',
         'hc_internal:documents:UPDATE'],
-  'writer allowlist FINALIZED (1D): documents = authenticated read + hc_internal read/insert/update; dsc = hc_internal read/insert/update alone, DELETE for nobody');
+  'writer allowlist FINALIZED (1D): documents = authenticated read + hc_internal read/insert/update; dsc adds the M2 view-level read — writes stay hc_internal alone, DELETE for nobody');
 
 select is((
   select coalesce(array_agg(c.relname || ':' || t.tgname order by c.relname, t.tgname),
