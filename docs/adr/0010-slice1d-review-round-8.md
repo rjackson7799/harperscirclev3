@@ -82,8 +82,12 @@ unchanged, the round-8 head-ledger pattern):
   attempt also failed transiently at container restart (empty database, the
   known interrupted-reset state) and was re-run to a clean 31 — the
   verifier arbitrated both times.
-- **Push CI at the final head:** recorded in the closing docs-only commit
-  (the round-8 pattern).
+- **Push CI at the disposition docs head:** run **32078156882** @
+  `d1583d2` (the ADR/coverage/annex commit atop `c327e7e`, docs-only —
+  same SQL/test tree) — **success**, confirmed via the public API
+  in-session. The run-id-record regress terminates the round-7 way: this
+  commit changes only the run-id record, and its own push run is verified
+  in-session and recorded in the vault ledger.
 
 ## Consequences
 
