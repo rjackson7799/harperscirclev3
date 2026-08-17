@@ -2981,6 +2981,62 @@ fail-closed `coalesce(…, true)`. The §3.2 ctx `shares` key is populated from
   view (ADR-0008 Q5), and D7's all-domain taint is approved conditional on
   the UXA-01 availability gate.
 
+### A7 — §2.6/§2.8/§2.9/§3.3/§3.9/§7.1: the 1D derived-surfaces deltas (ADR-0009)
+
+- **§2.8 read:** the family read policy is concrete — circle-level
+  entries (`subject_id` null) visible to every live member (the freeze's
+  own trail stays readable under the freeze, PRD §7.5); subject entries
+  at `hc.visible_at(…, {entry.domain}, …) ≥ log`; a subject entry with
+  no domain fails closed to all-domains. Field-level rendering at the
+  reader's level is an application duty (A.4's read-time re-evaluation).
+- **§2.8 append-only:** "raises unconditionally" is amended — the
+  immutability trigger admits exactly the denial-collapse increment
+  (denial rows only, the two unhashed presentation columns, +1, window
+  monotone; DELETE unconditional). `hc.log_denied` is the one denial
+  writer: actor = `hc.uid()`, live membership required, 1-hour collapse
+  window (AC-PPL-7). `hc_internal`'s UPDATE is column-scoped.
+- **§2.8 signing / §2.9 ledger:** `hc.log_chain_heads()` +
+  `ledger.log_head_signatures` are the signing interface (worker =
+  SIG-01, staged). Schema `ledger` is the LOCAL STAND-IN for the ledger
+  instance — no FKs into `public`, deliberately. `hc.record_tombstone`
+  is §2.9's synchronous writer, owner-only until DEL-01; tombstones are
+  append-only except the purge job's one `executed_at` mark.
+- **§3.9 as bindable:** schema `public` carries PUBLIC USAGE by image
+  packaging; the revoke-from-hc_admin cannot bind and the boundary that
+  binds is table/function ACL ABSENCE (the A.1 failure mode), plus no
+  direct hc_admin entry in public's ACL. `admin_ops` lands EMPTY —
+  every §9.3 wrapper needs the auth slice's operation-bound step-up +
+  dual control (ADM-01, staged); §9.2 stats not derivable from safe
+  columns land with their machinery. The CI-2 forbidden set additionally
+  covers dsc (any reference), `arrivals.auth_detail/message_id`,
+  `circles.opening_context`, `invites.token_hash/invited_email/note`,
+  `access_log.detail/actor_display_name`.
+- **§2.6 reclassify (TNT-08):** `hc.reclassify_taint` is the
+  re-categorisation surface's entry point (EXECUTE to authenticated) and
+  authorizes through `hc.visible_at ≥ manage` under the per-circle lock
+  — freeze, cap, ceiling and containment bind; unresolved objects
+  require manage-on-five (VIS-02's arithmetic); RAC-06 gains the
+  freeze-mid-wait and revocation-mid-wait cases. Sweep scheduling:
+  `hc.run_taint_sweep()` (hc_pipeline; recorded in `hc.sweep_runs`;
+  `admin_meta.sweep_health` alerts on findings > 0 and staleness > 24 h
+  — the OPS-01 ruling, ADR-0009 D6).
+- **§3.3/§3.12 (PRF-06 breach clause executed):** `hc.ladder` resolves
+  rungs by jsonb containment and `hc.visible_at` is one CTE-free
+  expression calling it (ladder/all_domains inline into the body; the
+  top-level call's ctx-sublink argument keeps it a call — recorded).
+  Clause order, the FRZ-13 last-position cap, and every §3.13 truth-
+  table decision are unchanged; §3.13's suite is the binding oracle.
+  Page indexes `documents_page`/`tasks_page`/`timeline_events_page`
+  serve ORDER BY … LIMIT. Measured post-rewrite: page p95 ≤ 216 ms
+  (bound 250), search/count p95 ≤ 1,915 ms (bound 2,500), cold worst
+  1,630 ms.
+- **§7.1/§2.11:** `episodes.tsv`/`profile_facts.tsv` stay unmaintained
+  (three search relations, four indexes — as written);
+  `dsc.extracted_text` is derived-only from the source proposal's
+  extraction values by the ONE builder; `ocr_text` is caller-supplied
+  and preserved; the documents→dsc sync adds no advisory-lock edge and
+  preserves the c3 documents-first order by construction.
+
 ### A3 — §3.7 `hc.approve_proposal()`: recorded order and round-6 hardening (ADR-0005; ADR-0006 F1/F6/F8, Q4/Q5)
 
 The signature stays verbatim. Deltas to the commented seven steps:
