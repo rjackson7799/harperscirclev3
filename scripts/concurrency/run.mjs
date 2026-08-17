@@ -40,6 +40,27 @@
 //   Case 16 1C §4.5: a cancellation committing while finalization waits
 //           wins the swap — the provider's result is discarded, zero
 //           extractions and zero proposals land.
+//   Case 17 Round-7 B2: a cancellation committing while the sweeper waits
+//           on the per-circle lock defeats terminalization — the sweeper
+//           re-reads under the lock and leaves the cancelled row alone.
+//   Case 18 Round-7 B2: a claim-internal exhaustion committing while the
+//           sweeper waits produces exactly ONE terminal event — the
+//           sweeper sees the terminal state and skips.
+//   Case 19 Round-7 B2 (confirmation): a freeze committing while the
+//           sweeper waits parks the arrival — the frozen re-check under
+//           the lock predates round 7 and holds.
+//   Case 20 Round-7 B2: a claim+finalize committing while the sweeper
+//           waits must NOT be clobbered — the sweeper re-derives the
+//           stage from the LIVE state and skips the extracted arrival.
+//   Case 21 Round-7 B2: two sweepers over one budget-spent arrival
+//           terminalize it exactly ONCE (advisory-lock serialization +
+//           live re-read).
+//   Case 22 Round-7 B3: concurrent drains hand out DISJOINT rows (SKIP
+//           LOCKED); after the claim window only UNACKED rows re-deliver.
+//   Case 23 Round-7 F5: two concurrent intakes of one key with
+//           CONFLICTING identity — the loser gets idempotency_conflict,
+//           never the winner's id; a matching concurrent replay still
+//           aliases.
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -926,6 +947,352 @@ async function case16(admin) {
   }
 }
 
+// --- round-7 fixtures ----------------------------------------------------------
+
+// an arrival at 'extracting' whose extract budget is spent: `spent` closed,
+// expired leases — the sweeper-terminalization candidate shape
+async function mkSpentExtract(admin, fx, key, spent = 3) {
+  const a = (await admin.query(
+    `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => $3) as id`,
+    [fx.c, fx.s, key])).rows[0].id;
+  await admin.query(`update public.arrivals set state = 'extracting' where id = $1`, [a]);
+  for (let i = 1; i <= spent; i++) {
+    await admin.query(
+      `insert into public.pipeline_leases (arrival_id, circle_id, stage, attempt_no,
+         deadline, outcome, closed_at)
+       values ($1, $2, 'extract', $3, now() - interval '1 minute', 'expired', now())`,
+      [a, fx.c, i]);
+  }
+  return a;
+}
+
+async function waitForLockWaitN(admin, likePattern, n, label) {
+  const deadline = Date.now() + DISCOVERY_MS;
+  for (;;) {
+    const r = await admin.query(
+      `select count(*)::int as n from pg_locks l
+       join pg_stat_activity s on s.pid = l.pid
+       where s.query like $1 and not l.granted`, [likePattern]);
+    if (r.rows[0].n >= n) return;
+    if (Date.now() > deadline) throw new Error(`never blocked ×${n}: ${label}`);
+    await new Promise(res => setTimeout(res, 100));
+  }
+}
+
+// --- case 17: sweeper vs cancellation (round-7 B2) -----------------------------
+
+async function case17(admin) {
+  const fx = await mkCircle(admin, 'c17');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const a = await mkSpentExtract(admin, fx, 'c17-a');
+
+    // S1: a member's cancellation, held open — it owns the circle lock.
+    await asUser(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.cancel_arrival($1)`, [a]);
+
+    // S2: the sweeper blocks on the circle lock…
+    const p2 = s2.query(`select hc.sweeper_pass() as r`)
+      .then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.sweeper_pass%', 'sweeper backend');
+    await waitForLockWait(admin, pid2, 's2 sweeper on the circle lock');
+
+    // …and the cancellation commits first.
+    await s1.query('commit');
+    const r2 = await withTimeout(p2, 'case17 sweeper after cancel');
+
+    const n = (await admin.query(
+      `select (select state::text from public.arrivals where id = $1) as s,
+              (select count(*) from public.arrival_events
+               where arrival_id = $1 and to_state = 'extract_failed')::int as ex,
+              (select count(*) from public.arrival_events
+               where arrival_id = $1 and to_state = 'cancelled')::int as cn`,
+      [a])).rows[0];
+    check('case17 (B2): a cancellation committed while the sweeper waited DEFEATS terminalization — cancelled stands, no exhaust event',
+      !(r2 instanceof Error) && n.s === 'cancelled' && n.ex === 0 && n.cn === 1,
+      `r=${r2 instanceof Error ? r2.message : 'ok'} state=${n.s} exhaust_events=${n.ex} cancel_events=${n.cn}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 18: sweeper vs claim-internal exhaustion (round-7 B2) ----------------
+
+async function case18(admin) {
+  const fx = await mkCircle(admin, 'c18');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const a = await mkSpentExtract(admin, fx, 'c18-a');
+
+    // S1: a claim that EXHAUSTS inside its own row lock, held open.
+    await s1.query('begin');
+    const rc = (await s1.query(`select result::text as r from hc.claim_stage($1, 'extract')`,
+      [a])).rows[0].r;
+
+    // S2: the sweeper blocks on the circle lock…
+    const p2 = s2.query(`select hc.sweeper_pass() as r`)
+      .then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.sweeper_pass%', 'sweeper backend');
+    await waitForLockWait(admin, pid2, 's2 sweeper on the circle lock');
+
+    // …the exhaustion commits first.
+    await s1.query('commit');
+    const r2 = await withTimeout(p2, 'case18 sweeper after claim-exhaust');
+
+    const n = (await admin.query(
+      `select (select state::text from public.arrivals where id = $1) as s,
+              (select count(*) from public.arrival_events
+               where arrival_id = $1 and to_state = 'extract_failed')::int as ex`,
+      [a])).rows[0];
+    check('case18 (B2): claim-exhaust committed while the sweeper waited — exactly ONE terminal event, never two',
+      rc === 'exhausted' && !(r2 instanceof Error) && n.s === 'extract_failed' && n.ex === 1,
+      `claim=${rc} r=${r2 instanceof Error ? r2.message : 'ok'} state=${n.s} exhaust_events=${n.ex}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 19: sweeper vs freeze (round-7 confirmation) -------------------------
+// The frozen re-check under the per-circle lock predates round 7 (M8 shipped
+// it); this case CONFIRMS it holds mid-wait rather than fixing it.
+
+async function case19(admin) {
+  const fx = await mkCircle(admin, 'c19');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const a = await mkSpentExtract(admin, fx, 'c19-a');
+
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+
+    const p2 = s2.query(`select hc.sweeper_pass() as r`)
+      .then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.sweeper_pass%', 'sweeper backend');
+    await waitForLockWait(admin, pid2, 's2 sweeper on the circle lock');
+
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fx.c]);
+    await s1.query('commit');
+    const r2 = await withTimeout(p2, 'case19 sweeper after freeze');
+
+    const n = (await admin.query(
+      `select (select state::text from public.arrivals where id = $1) as s,
+              (select count(*) from public.arrival_events
+               where arrival_id = $1 and to_state = 'extract_failed')::int as ex`,
+      [a])).rows[0];
+    check('case19 (FRZ-15 confirmation): a freeze committed while the sweeper waited PARKS the budget-spent arrival',
+      !(r2 instanceof Error) && n.s === 'extracting' && n.ex === 0,
+      `r=${r2 instanceof Error ? r2.message : 'ok'} state=${n.s} exhaust_events=${n.ex}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 20: sweeper vs claim+finalize (round-7 B2, the clobber) --------------
+
+async function case20(admin) {
+  const fx = await mkCircle(admin, 'c20');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // spent 2 of 3: attempt 3 is claimable
+    const a = await mkSpentExtract(admin, fx, 'c20-a', 2);
+
+    // S1: claim attempt 3 AND finalize, both uncommitted — the worker's
+    // whole win happens while the sweeper is queued behind the lock.
+    await s1.query('begin');
+    const lease = (await s1.query(`select lease_id from hc.claim_stage($1, 'extract')`,
+      [a])).rows[0].lease_id;
+    const rf = (await s1.query(
+      `select hc.finalize_extraction($1, $2, $3::jsonb, '[]'::jsonb) as r`,
+      [a, lease, FACTS])).rows[0].r;
+
+    // S2: the sweeper's candidate list was built from the committed state
+    // (extracting, no live lease, spent 2) — it blocks on the circle lock…
+    const p2 = s2.query(`select hc.sweeper_pass() as r`)
+      .then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.sweeper_pass%', 'sweeper backend');
+    await waitForLockWait(admin, pid2, 's2 sweeper on the circle lock');
+
+    // …and the worker's win commits first: spent is now 3, state extracted.
+    await s1.query('commit');
+    const r2 = await withTimeout(p2, 'case20 sweeper after finalize');
+
+    const n = (await admin.query(
+      `select (select state::text from public.arrivals where id = $1) as s,
+              (select count(*) from public.arrival_events
+               where arrival_id = $1 and to_state = 'extract_failed')::int as ex,
+              (select count(*) from public.extractions where arrival_id = $1)::int as fx`,
+      [a])).rows[0];
+    check('case20 (B2): a finalization committed while the sweeper waited is NOT clobbered — extracted stands, facts kept',
+      rf === 'advanced' && !(r2 instanceof Error) && n.s === 'extracted' && n.ex === 0 && n.fx === 1,
+      `finalize=${rf} r=${r2 instanceof Error ? r2.message : 'ok'} state=${n.s} exhaust_events=${n.ex} extractions=${n.fx}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 21: two sweepers, one terminalization (round-7 B2) -------------------
+
+async function case21(admin) {
+  const fx = await mkCircle(admin, 'c21');
+  const s1 = await connect();
+  const s2 = await connect();
+  const s3 = await connect();
+  try {
+    const a = await mkSpentExtract(admin, fx, 'c21-a');
+
+    // S1 holds the circle lock; BOTH sweepers build their candidate lists
+    // and queue behind it.
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+
+    const p2 = s2.query(`select hc.sweeper_pass() as r`)
+      .then(r => r.rows[0].r).catch(e => e);
+    const p3 = s3.query(`select hc.sweeper_pass() as r`)
+      .then(r => r.rows[0].r).catch(e => e);
+    await waitForLockWaitN(admin, 'select hc.sweeper_pass%', 2, 'both sweepers queued');
+
+    await s1.query('commit');
+    const [r2, r3] = await withTimeout(Promise.all([p2, p3]), 'case21 both sweepers');
+
+    const n = (await admin.query(
+      `select (select state::text from public.arrivals where id = $1) as s,
+              (select count(*) from public.arrival_events
+               where arrival_id = $1 and to_state = 'extract_failed')::int as ex`,
+      [a])).rows[0];
+    const term = [r2, r3]
+      .filter(r => !(r instanceof Error))
+      .flatMap(r => r.terminalized ?? [])
+      .filter(t => t.arrival_id === a).length;
+    check('case21 (B2): two sweepers terminalize a spent arrival exactly ONCE — one event, one report',
+      n.s === 'extract_failed' && n.ex === 1 && term === 1,
+      `state=${n.s} exhaust_events=${n.ex} reported=${term}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await s3.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 22: drain concurrency + the ack boundary (round-7 B3) ----------------
+
+async function case22(admin) {
+  const fx = await mkCircle(admin, 'c22');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // three undrained outbox rows, oldest first
+    const ids = [];
+    for (let i = 0; i < 3; i++) {
+      const r = await admin.query(
+        `insert into public.pipeline_outbox (circle_id, arrival_id, reason_code, created_at)
+         values ($1, $2, 'sweeper_requeue', now() - make_interval(secs => $3))
+         returning id`, [fx.c, fx.a, 30 - i]);
+      ids.push(r.rows[0].id);
+    }
+    await admin.query(`update public.arrivals set state = 'stored' where id = $1`, [fx.a]);
+
+    // S1 claims two rows and HOLDS the transaction open; S2's concurrent
+    // drain must skip the locked rows and take only the third.
+    await s1.query('begin');
+    const d1 = (await s1.query(`select outbox_id from hc.outbox_drain(2)`)).rows
+      .map(r => r.outbox_id);
+    const d2 = (await s2.query(`select outbox_id from hc.outbox_drain(10)`)).rows
+      .map(r => r.outbox_id);
+    await s1.query('commit');
+    const disjoint = d1.length === 2 && d2.length === 1
+      && !d1.includes(d2[0]) && ids.every(i => [...d1, ...d2].includes(i));
+    check('case22 (B3): concurrent drains hand out DISJOINT rows — SKIP LOCKED, no double claim',
+      disjoint, `d1=${JSON.stringify(d1)} d2=${JSON.stringify(d2)}`);
+
+    // Crash boundary: ack S1's two rows; expire every claim window; only
+    // the UNACKED row re-delivers.
+    const ack = await admin.query(`select hc.outbox_ack($1::uuid[]) as n`, [d1])
+      .then(r => r.rows[0].n).catch(e => e);
+    await admin.query(
+      `update public.pipeline_outbox set drained_at = now() - interval '10 minutes'
+       where id = any($1::uuid[])`, [ids]);
+    const redelivered = (await s2.query(`select outbox_id from hc.outbox_drain(10)`)).rows
+      .map(r => r.outbox_id);
+    check('case22 (B3): after the claim window, ONLY the unacked row re-delivers — the ack is the delivery boundary',
+      ack === 2 && redelivered.length === 1 && redelivered[0] === d2[0],
+      `ack=${ack instanceof Error ? ack.message : ack} redelivered=${JSON.stringify(redelivered)}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 23: concurrent conflicting intake (round-7 F5) -----------------------
+
+async function case23(admin) {
+  const fx = await mkCircle(admin, 'c23');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // S1 inserts the key and holds its transaction open.
+    await s1.query('begin');
+    const winner = (await s1.query(
+      `select hc.create_arrival($1, $2, 'email', p_message_id => 'm-1',
+         p_ingest_idempotency_key => 'race-k') as id`, [fx.c, fx.s])).rows[0].id;
+
+    // S2's CONFLICTING intake of the same key blocks on the unique index…
+    const p2 = s2.query(
+      `select hc.create_arrival($1, $2, 'email', p_message_id => 'm-2',
+         p_ingest_idempotency_key => 'race-k') as id`, [fx.c, fx.s])
+      .then(r => r.rows[0].id).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.create_arrival%', 'intake backend');
+    await waitForLockWait(admin, pid2, 's2 intake on the unique key');
+
+    // …the winner commits, and the loser must CONFLICT, not alias.
+    await s1.query('commit');
+    const r2 = await withTimeout(p2, 'case23 loser after winner commit');
+
+    const n = (await admin.query(
+      `select count(*)::int as n,
+              max(message_id) as mid
+       from public.arrivals
+       where circle_id = $1 and ingest_idempotency_key = 'race-k'`, [fx.c])).rows[0];
+    check(`case23 (F5): the concurrent CONFLICTING replay raises idempotency_conflict — never the winner's id`,
+      r2 instanceof Error && r2.code === 'P0001' && r2.message === 'idempotency_conflict'
+        && n.n === 1 && n.mid === 'm-1',
+      `r=${r2 instanceof Error ? r2.code + ':' + r2.message : 'id:' + r2} rows=${n.n} mid=${n.mid}`);
+
+    // A MATCHING concurrent replay still aliases to the winner.
+    const alias = await s2.query(
+      `select hc.create_arrival($1, $2, 'email', p_message_id => 'm-1',
+         p_ingest_idempotency_key => 'race-k') as id`, [fx.c, fx.s])
+      .then(r => r.rows[0].id).catch(e => e);
+    check('case23 (F5): a MATCHING replay still returns the winner — idempotency survives the identity check',
+      alias === winner, `alias=${alias instanceof Error ? alias.message : alias}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -947,6 +1314,13 @@ try {
   await case14(admin);
   await case15(admin);
   await case16(admin);
+  await case17(admin);
+  await case18(admin);
+  await case19(admin);
+  await case20(admin);
+  await case21(admin);
+  await case22(admin);
+  await case23(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;
