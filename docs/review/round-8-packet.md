@@ -277,5 +277,12 @@ lines, no grep-filtered chains:
   upgrade leg per `ci.yml` (worktree at merge-base, base reset, exact
   list, `supabase migration up`, exact list, both suites) · benchmark
   `node scripts/bench/prf06.mjs setup|cold|warm|cleanup`.
-- **CI at the final head (filled after push):** _push run: TBD ·
-  pull_request run (after the owner opens the PR): TBD._
+- **CI at the final head:** push run **32056816540** @ `85a0870` —
+  conclusion **success** (secret scan, containment, schema pin, clean
+  reset, exact-state verifier, pgTAP, concurrency, db:verify hard gate,
+  the full upgrade rehearsal, lint, typecheck; full test output retained
+  as artifacts per round-7 E3). The **pull_request** run fires when the
+  owner opens the PR — its id is confirmable via the public API then,
+  and the merge session re-verifies the final head regardless (the
+  round-7 precedent). This record lands as a docs-only commit on
+  `85a0870`; the SQL tree is unchanged by it.
