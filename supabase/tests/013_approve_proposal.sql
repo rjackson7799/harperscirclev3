@@ -87,6 +87,7 @@ declare
   c1 uuid; c2 uuid; c3 uuid; s1 uuid; s2 uuid; s3 uuid;
   m1 uuid; m2 uuid; m3 uuid; mf2 uuid; mf3 uuid;
   a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid(); a3 uuid := gen_random_uuid();
+  a_manual uuid := gen_random_uuid();  -- 1C MNL-01: manual = synthetic arrival
   doc_p uuid := gen_random_uuid();
   pf_old uuid := gen_random_uuid();
   d text;
@@ -131,6 +132,11 @@ begin
   end loop;
   insert into public.arrivals (id, circle_id, subject_id, channel) values
     (a1, c1, s1, 'upload'), (a2, c2, s2, 'upload'), (a3, c3, s3, 'upload');
+  -- 1C M6 (MNL-01, ADR-0006 Q12): a manual-flagged proposal must sit on a
+  -- manual-channel synthetic arrival — the flag/channel agreement trigger
+  -- makes the 1B flag-only fixture shape unrepresentable.
+  insert into public.arrivals (id, circle_id, subject_id, channel, state) values
+    (a_manual, c1, s1, 'manual', 'proposals_ready');
 
   -- the freeze states: c2 open; c3 unresolved (unnarrowed)
   insert into public.freezes (circle_id) values (c2);
@@ -172,7 +178,7 @@ begin
      jsonb_build_object('field', 'medications', 'value', 'metoprolol 25mg',
                         'risk_class', 'high', 'domain', 'health'),
      '{health}'),
-    (current_setting('t.prop_tl')::uuid, a1, c1, s1, 'timeline_event',
+    (current_setting('t.prop_tl')::uuid, a_manual, c1, s1, 'timeline_event',
      jsonb_build_object('kind', 'care', 'summary', 'Hand-typed entry',
                         'occurred_on', '2026-08-14', 'occurred_zone', 'America/New_York',
                         'manual', true),

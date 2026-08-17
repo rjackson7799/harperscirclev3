@@ -264,8 +264,8 @@ select throws_ok(format(
 -- ----------------------------------------------------------------------------
 select is(pg_temp.errcode_as('authenticated', 'select * from public.arrivals'), '42501',
   'authenticated cannot select arrivals (1C stages the §3.4 read policy)');
-select is(pg_temp.errcode_as('authenticated', 'select * from public.proposals'), '42501',
-  'authenticated cannot select proposals');
+select is(pg_temp.errcode_as('authenticated', 'select * from public.proposals'), 'no_error',
+  'authenticated reads proposals through 1C M7''s manage-level policy (this memberless fixture sees zero rows)');
 select is(pg_temp.errcode_as('authenticated', 'select * from public.approval_attempts'), '42501',
   'authenticated cannot select approval_attempts');
 select is(pg_temp.errcode_as('authenticated', 'select * from public.proposal_commits'), '42501',
@@ -307,16 +307,18 @@ select is(pg_temp.errcode_as('hc_admin',
 -- ----------------------------------------------------------------------------
 -- 36 · DELETE is granted to nobody at all on the four tables — including
 -- hc_internal (the §3.7 posture extended to the write path's own tables).
+-- 1C M1 grants hc_internal select/insert/update on arrivals (the state
+-- machine's writer role, ADR-0007); DELETE stays absent everywhere.
 -- ----------------------------------------------------------------------------
 select ok(coalesce(
       not has_table_privilege('hc_internal', to_regclass('public.arrivals'),          'delete')
   and not has_table_privilege('hc_internal', to_regclass('public.proposals'),         'delete')
   and not has_table_privilege('hc_internal', to_regclass('public.approval_attempts'), 'delete')
   and not has_table_privilege('hc_internal', to_regclass('public.proposal_commits'),  'delete')
-  and not has_table_privilege('hc_internal', to_regclass('public.arrivals'),          'update')
-  and not has_table_privilege('hc_internal', to_regclass('public.arrivals'),          'insert'),
+  and     has_table_privilege('hc_internal', to_regclass('public.arrivals'),          'update')
+  and     has_table_privilege('hc_internal', to_regclass('public.arrivals'),          'insert'),
   false),
-  'DELETE absent for hc_internal on all four; arrivals is read-nothing/write-nothing in 1B');
+  'DELETE absent for hc_internal on all four; arrivals writable ONLY by the definer role since 1C M1');
 
 select * from finish();
 rollback;

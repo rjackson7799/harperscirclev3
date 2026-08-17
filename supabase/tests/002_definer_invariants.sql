@@ -39,15 +39,26 @@ select is((
   array[
     'access_log_immutable()',
     'adjudicate_freeze(p_freeze_id uuid, p_outcome text, p_adjudicated_by text, p_outcome_note text, p_subject_id uuid, p_narrowing_rationale text, p_contact_attempted_at timestamp with time zone, p_objected_to_member_id uuid)',
+    'advance_arrival(p_arrival uuid, p_from hc.arrival_state, p_to hc.arrival_state, p_lease uuid, p_reason text)',
     'all_domains()',
     'apply_taint(p_type hc.object_type, p_id uuid, p_taint hc.domain[], p_resolved boolean)',
     'approve_proposal(p_proposal_id uuid, p_expected_version integer, p_idempotency_key text, p_edits jsonb, p_step_up_token text)',
+    'arrival_auth_detail(p_arrival uuid)',
     'assert_claimed()',
+    'assert_manual_flag()',
+    'cancel_arrival(p_arrival uuid)',
+    'circle_frozen(p_circle uuid, p_subject uuid)',
+    'claim_stage(p_arrival uuid, p_stage text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
     'contact_key(p text)',
+    'create_arrival(p_circle_id uuid, p_subject_id uuid, p_channel text, p_parent_arrival_id uuid, p_sender_address text, p_sender_display_name text, p_message_id text, p_auth_result text, p_auth_detail jsonb, p_mime_declared text, p_byte_size bigint, p_page_count integer, p_ingest_idempotency_key text)',
     'create_circle(p_name text, p_subjects jsonb, p_opening_context text[])',
+    'create_manual_proposal(p_circle_id uuid, p_subject_id uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'ctx()',
     'ctx_for(p_account uuid)',
     'dom(p jsonb)',
+    'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
+    'finalize_extraction(p_arrival uuid, p_lease uuid, p_facts jsonb, p_proposals jsonb)',
+    'finalize_interpretation(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
     'grant_vectors(p_account uuid)',
     'guard_row()',
     'ladder(p_s jsonb, p_taint hc.domain[])',
@@ -55,20 +66,27 @@ select is((
     'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text, p_corrects_id uuid)',
     'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
     'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
+    'outbox_ack(p_outbox_ids uuid[])',
+    'outbox_drain(p_limit integer)',
     'own_domain(p_type hc.object_type, p_category hc.doc_category, p_kind hc.timeline_kind, p_declared hc.domain)',
+    'pipeline_worker_states()',
     'presence(p_subject uuid)',
     'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
     'resolve_object(p_type hc.object_type, p_id uuid)',
     'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
+    'sender_recognised(p_arrival uuid)',
     'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid)',
     'sweep_provenance()',
+    'sweeper_pass()',
     'taint_union(a hc.domain[], b hc.domain[])',
     'taint_union_2(a hc.domain[], b hc.domain[])',
     'taint_union_agg(hc.domain[])',
     'uid()',
-    'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)'
+    'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)',
+    'write_extractions(p_arrival uuid, p_lease uuid, p_facts jsonb)',
+    'write_proposals(p_arrival uuid, p_lease uuid, p_proposals jsonb)'
   ],
   'the hc function inventory is exactly the enumerated set — no stray overloads');
 
@@ -78,11 +96,16 @@ select is((
   select array_agg(p.proname order by p.proname)
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
-  array['adjudicate_freeze','approve_proposal','assert_claimed','create_circle',
-        'ctx','ctx_for','grant_vectors','link_provenance','presence',
+  array['adjudicate_freeze','advance_arrival','approve_proposal',
+        'arrival_auth_detail','assert_claimed',
+        'assert_manual_flag','cancel_arrival','claim_stage','create_arrival',
+        'create_circle','create_manual_proposal',
+        'ctx','ctx_for','finalize_extraction','finalize_interpretation',
+        'grant_vectors','link_provenance','outbox_ack','outbox_drain','presence',
         'propagate_taint_growth','reclassify_taint','request_freeze',
-        'revise_object','share_object','sweep_provenance']::name[],
-  'SECURITY DEFINER is exactly the fifteen boundary functions, nothing else (assert_claimed: M10 — fires at commit as the committing role)');
+        'revise_object','sender_recognised','share_object','sweep_provenance',
+        'sweeper_pass']::name[],
+  'SECURITY DEFINER is exactly the twenty-eight boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -123,6 +146,20 @@ with actual as (
   union all select 'revise_object', 'authenticated'
   union all select 'share_object', 'authenticated'
   union all select 'presence', 'authenticated'
+  -- 1C: the pipeline boundary (§3.10 posture) — workers hold EXECUTE on the
+  -- transition primitive, intake and the gate question, nothing else.
+  union all select 'advance_arrival', 'hc_pipeline'
+  union all select 'claim_stage', 'hc_pipeline'
+  union all select 'create_arrival', 'hc_pipeline'
+  union all select 'finalize_extraction', 'hc_pipeline'
+  union all select 'finalize_interpretation', 'hc_pipeline'
+  union all select 'outbox_ack', 'hc_pipeline'
+  union all select 'outbox_drain', 'hc_pipeline'
+  union all select 'sender_recognised', 'hc_pipeline'
+  union all select 'sweeper_pass', 'hc_pipeline'
+  union all select 'cancel_arrival', 'authenticated'
+  union all select 'create_manual_proposal', 'authenticated'
+  union all select 'arrival_auth_detail', 'authenticated'
   -- the pure visibility functions: policies evaluate these as the caller
   union all select 'dom', 'authenticated'
   union all select 'all_domains', 'authenticated'
@@ -191,6 +228,9 @@ insert into snapshot_expected values
   -- deliberately absent — no role of ours reads or writes it until 1C.
   ('hc_internal',   'proposals',         'SELECT'),
   ('hc_internal',   'proposals',         'UPDATE'),
+  -- 1C M5: drafting inserts pending proposals (write_proposals /
+  -- create_manual_proposal, via hc.draft_proposal)
+  ('hc_internal',   'proposals',         'INSERT'),
   ('hc_internal',   'approval_attempts', 'SELECT'),
   ('hc_internal',   'approval_attempts', 'INSERT'),
   ('hc_internal',   'approval_attempts', 'UPDATE'),
@@ -230,7 +270,35 @@ insert into snapshot_expected values
   ('hc_internal',   'object_shares',    'UPDATE'),
   ('hc_internal',   'provenance_edges', 'SELECT'),
   ('hc_internal',   'provenance_edges', 'INSERT'),
-  ('hc_internal',   'provenance_edges', 'DELETE');
+  ('hc_internal',   'provenance_edges', 'DELETE'),
+  -- 1C M1: the pipeline machinery's exact reach (ADR-0007). arrivals gains
+  -- its writer role (create_arrival / advance_arrival / claim_stage);
+  -- arrival_events is APPEND-only (no UPDATE row here is the assertion);
+  -- extractions is publish-only; known_senders read-only (gate);
+  -- the outbox is written by adjudication and drained by the relay.
+  ('hc_internal',   'arrivals',        'SELECT'),
+  ('hc_internal',   'arrivals',        'INSERT'),
+  ('hc_internal',   'arrivals',        'UPDATE'),
+  ('hc_internal',   'arrival_events',  'SELECT'),
+  ('hc_internal',   'arrival_events',  'INSERT'),
+  ('hc_internal',   'pipeline_leases', 'SELECT'),
+  ('hc_internal',   'pipeline_leases', 'INSERT'),
+  ('hc_internal',   'pipeline_leases', 'UPDATE'),
+  ('hc_internal',   'extractions',     'SELECT'),
+  ('hc_internal',   'extractions',     'INSERT'),
+  ('hc_internal',   'known_senders',   'SELECT'),
+  ('hc_internal',   'pipeline_outbox', 'SELECT'),
+  ('hc_internal',   'pipeline_outbox', 'INSERT'),
+  ('hc_internal',   'pipeline_outbox', 'UPDATE'),
+  ('hc_internal',   'reason_codes',    'SELECT'),
+  ('hc_internal',   'stage_budgets',   'SELECT'),
+  -- 1C M9 (round-7 B1): the transition graph as data — read by the CAS only
+  ('hc_internal',   'arrival_transitions', 'SELECT'),
+  -- 1C M7 (ING-02/03): table-level read grants; arrivals is COLUMN-granted
+  -- (auth_detail and current_lease_id excluded), which lives in
+  -- pg_attribute.attacl and is asserted in 025 — deliberately absent here.
+  ('authenticated', 'extractions',     'SELECT'),
+  ('authenticated', 'proposals',       'SELECT');
 
 create temp view snapshot_actual as
   select r.rolname as grantee, c.relname::text as tbl, a.privilege_type as priv
@@ -270,19 +338,27 @@ select is((
         'accounts_internal',
         'approval_attempts_internal','approval_attempts_internal_update',
         'approval_attempts_internal_write',
+        'arrival_events_internal','arrival_events_internal_append',
+        'arrivals_internal','arrivals_internal_advance','arrivals_internal_intake',
         'circle_members_internal','circle_members_internal_create',
         'circles_internal','circles_internal_create',
         'documents_internal','documents_internal_revise',
         'documents_internal_write',
         'episodes_internal','episodes_internal_revise','episodes_internal_write',
+        'extractions_internal','extractions_internal_write',
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
+        'known_senders_internal',
         'object_shares_internal','object_shares_internal_create',
         'object_shares_internal_revoke',
+        'pipeline_leases_internal','pipeline_leases_internal_claim',
+        'pipeline_leases_internal_close',
+        'pipeline_outbox_internal','pipeline_outbox_internal_drain',
+        'pipeline_outbox_internal_enqueue',
         'profile_facts_internal','profile_facts_internal_revise',
         'profile_facts_internal_write',
         'proposal_commits_internal','proposal_commits_internal_claim',
-        'proposals_internal','proposals_internal_decide',
+        'proposals_internal','proposals_internal_decide','proposals_internal_draft',
         'provenance_edges_internal','provenance_edges_internal_link',
         'provenance_edges_internal_unlink',
         'record_revisions_internal','record_revisions_internal_append',
@@ -290,7 +366,7 @@ select is((
         'tasks_internal','tasks_internal_revise','tasks_internal_write',
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated forty-six');
+  'the hc_internal policy list is exactly the enumerated sixty-one');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
