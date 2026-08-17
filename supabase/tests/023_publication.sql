@@ -185,10 +185,17 @@ select is(pg_temp.scalar(format(
   current_setting('t.a1'))),
   'pending:1', 'the draft is a pending version-1 proposal');
 
+do $$
+begin
+  perform set_config('t.p1', coalesce(
+    (select p.id::text from public.proposals p
+     where p.arrival_id = current_setting('t.a1')::uuid and p.kind = 'task'),
+    gen_random_uuid()::text), true);
+end $$;
+
 select is(pg_temp.msg_as_member(current_setting('t.u1')::uuid, format(
-  $$ select hc.approve_proposal(p.id, 1, 'pub-idem-1')
-     from public.proposals p where p.arrival_id = %L and p.kind = 'task' $$,
-  current_setting('t.a1'))),
+  $$ select hc.approve_proposal(%L, 1, 'pub-idem-1') $$,
+  current_setting('t.p1'))),
   'no_error',
   'a machinery-drafted proposal approves cleanly — drafted covers parents, no drift refusal (APR-09 contract)');
 
@@ -252,10 +259,19 @@ select is(pg_temp.msg_as_member(current_setting('t.u1')::uuid, format(
   'cancel_refused:cancel_refused',
   'nonexistent and unauthorized cancels share ONE shape (DEF-10; u2 manages schedule only)');
 
+do $$
+begin
+  perform set_config('t.arr0', coalesce(
+    (select a.id::text from public.arrivals a
+     where a.circle_id = current_setting('t.c1')::uuid
+       and a.ingest_idempotency_key = 'pub-doc'),
+    gen_random_uuid()::text), true);
+end $$;
+
 select is(pg_temp.msg_as_member(current_setting('t.u1')::uuid, format(
-  $$ select hc.cancel_arrival(%L) $$, current_setting('t.a1'))),
+  $$ select hc.cancel_arrival(%L) $$, current_setting('t.arr0'))),
   'cancel_invalid_state',
-  'a concluded arrival (extracted) is not cancellable — post-authorization shape, like proposal_version_changed');
+  'an arrival still at received is not cancellable (§4.5: extracting/extracted/interpreting only) — post-authorization shape');
 
 -- ----------------------------------------------------------------------------
 -- 13 · Freeze-first (Q5 order): freeze_active names itself to the authorized.

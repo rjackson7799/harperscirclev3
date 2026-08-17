@@ -93,7 +93,13 @@ begin
     into v_state, v_circle, v_current, v_frozen
     from public.arrivals a where a.id = p_arrival for update;
 
-  -- FENCE FIRST. A worker past its deadline must lose even if it arrives
+  -- Cancellation outranks the fence (recorded reorder, ADR-0007): the §4.5
+  -- cancel path closes the worker's lease, so fence-first would report the
+  -- weaker stale_lease and the worker would miss the GC-your-staged-
+  -- artifacts signal. Both mean discard-and-ack; 'cancelled' says why.
+  if v_state = 'cancelled'                     then return 'cancelled'::hc.advance_result;        end if;
+
+  -- FENCE. A worker past its deadline must lose even if it arrives
   -- here before the worker that superseded it. Validated, not merely joined.
   select l.attempt_no into v_attempt
     from public.pipeline_leases l
@@ -104,7 +110,6 @@ begin
      and l.deadline > now();           -- not expired
   if v_attempt is null then return 'stale_lease'::hc.advance_result; end if;
 
-  if v_state = 'cancelled'                     then return 'cancelled'::hc.advance_result;        end if;
   -- A frozen record accepts and stores mail but does not process it
   -- (PRD §7.5). One choke point, so no stage can forget — and the arrival
   -- is PARKED, not failed: the terminal transition is refused too.

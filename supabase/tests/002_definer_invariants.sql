@@ -44,6 +44,7 @@ select is((
     'apply_taint(p_type hc.object_type, p_id uuid, p_taint hc.domain[], p_resolved boolean)',
     'approve_proposal(p_proposal_id uuid, p_expected_version integer, p_idempotency_key text, p_edits jsonb, p_step_up_token text)',
     'assert_claimed()',
+    'cancel_arrival(p_arrival uuid)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
     'claim_stage(p_arrival uuid, p_stage text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
     'contact_key(p text)',
@@ -52,6 +53,9 @@ select is((
     'ctx()',
     'ctx_for(p_account uuid)',
     'dom(p jsonb)',
+    'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
+    'finalize_extraction(p_arrival uuid, p_lease uuid, p_facts jsonb, p_proposals jsonb)',
+    'finalize_interpretation(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
     'grant_vectors(p_account uuid)',
     'guard_row()',
     'ladder(p_s jsonb, p_taint hc.domain[])',
@@ -74,7 +78,9 @@ select is((
     'taint_union_2(a hc.domain[], b hc.domain[])',
     'taint_union_agg(hc.domain[])',
     'uid()',
-    'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)'
+    'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)',
+    'write_extractions(p_arrival uuid, p_lease uuid, p_facts jsonb)',
+    'write_proposals(p_arrival uuid, p_lease uuid, p_proposals jsonb)'
   ],
   'the hc function inventory is exactly the enumerated set — no stray overloads');
 
@@ -85,11 +91,12 @@ select is((
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
   array['adjudicate_freeze','advance_arrival','approve_proposal','assert_claimed',
-        'claim_stage','create_arrival','create_circle',
-        'ctx','ctx_for','grant_vectors','link_provenance','presence',
+        'cancel_arrival','claim_stage','create_arrival','create_circle',
+        'ctx','ctx_for','finalize_extraction','finalize_interpretation',
+        'grant_vectors','link_provenance','presence',
         'propagate_taint_growth','reclassify_taint','request_freeze',
         'revise_object','sender_recognised','share_object','sweep_provenance']::name[],
-  'SECURITY DEFINER is exactly the nineteen boundary functions, nothing else (assert_claimed: M10 — fires at commit as the committing role)');
+  'SECURITY DEFINER is exactly the twenty-two boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -135,7 +142,10 @@ with actual as (
   union all select 'advance_arrival', 'hc_pipeline'
   union all select 'claim_stage', 'hc_pipeline'
   union all select 'create_arrival', 'hc_pipeline'
+  union all select 'finalize_extraction', 'hc_pipeline'
+  union all select 'finalize_interpretation', 'hc_pipeline'
   union all select 'sender_recognised', 'hc_pipeline'
+  union all select 'cancel_arrival', 'authenticated'
   -- the pure visibility functions: policies evaluate these as the caller
   union all select 'dom', 'authenticated'
   union all select 'all_domains', 'authenticated'
@@ -204,6 +214,9 @@ insert into snapshot_expected values
   -- deliberately absent — no role of ours reads or writes it until 1C.
   ('hc_internal',   'proposals',         'SELECT'),
   ('hc_internal',   'proposals',         'UPDATE'),
+  -- 1C M5: drafting inserts pending proposals (write_proposals /
+  -- create_manual_proposal, via hc.draft_proposal)
+  ('hc_internal',   'proposals',         'INSERT'),
   ('hc_internal',   'approval_attempts', 'SELECT'),
   ('hc_internal',   'approval_attempts', 'INSERT'),
   ('hc_internal',   'approval_attempts', 'UPDATE'),
@@ -324,7 +337,7 @@ select is((
         'profile_facts_internal','profile_facts_internal_revise',
         'profile_facts_internal_write',
         'proposal_commits_internal','proposal_commits_internal_claim',
-        'proposals_internal','proposals_internal_decide',
+        'proposals_internal','proposals_internal_decide','proposals_internal_draft',
         'provenance_edges_internal','provenance_edges_internal_link',
         'provenance_edges_internal_unlink',
         'record_revisions_internal','record_revisions_internal_append',
@@ -332,7 +345,7 @@ select is((
         'tasks_internal','tasks_internal_revise','tasks_internal_write',
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated sixty');
+  'the hc_internal policy list is exactly the enumerated sixty-one');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
