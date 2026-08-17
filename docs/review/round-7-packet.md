@@ -169,12 +169,16 @@ freeze-parking family, nothing else; restored by clean reset, suite green.
   **success** (secret scan, containment, schema pin, clean reset,
   exact-state verifier, pgTAP, concurrency, db:verify hard gate, the
   full upgrade rehearsal, lint, typecheck).
-- **PR:** NOT yet open — `gh` is unauthenticated in the build session
-  and raw-token extraction is out of bounds, so the PR click is the
-  owner's step:
-  https://github.com/rjackson7799/harperscirclev3/pull/new/slice/1c-ingestion
-  The pull_request-event run id and the PR number are recorded here once
-  it exists (this packet assumes #3).
+- **PR: #3** — https://github.com/rjackson7799/harperscirclev3/pull/3,
+  opened by the owner (gh was unauthenticated in the build session;
+  raw-token extraction is out of bounds), base `main` @ `bfa1ad4`,
+  **DO NOT MERGE** banner in the description.
+- **CI, both events at the branch head `30b3f79`:** push run
+  **31990775900** — success; pull_request run **31991091966** — success.
+  (Push at the build head `198d4fd`: run 31990555583, success.) This
+  addendum lands as one further docs-only commit whose re-triggered runs
+  are confirmable via the public API — the round-6 `5499c3c` precedent;
+  the merge session re-verifies the final head as always.
 - **Local evidence at `198d4fd`:** clean leg — reset, verifier exact
   **30 == 30**, pgTAP **730/730** (27 files, 9 s), concurrency
   **33/33**, `db:verify` **No schema errors found** (hard gate); upgrade
