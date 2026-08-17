@@ -157,14 +157,23 @@ select is(pg_temp.call_as(current_setting('t.u2')::uuid, format(
 select ok((select count(*) from pg_namespace where nspname = 'admin_ops') = 1,
   'admin_ops exists — one narrowly-granted wrapper per permitted operation (zero today, ADM-01)');
 
+-- §3.9 as bindable on this platform (ADR-0009): schema `public` carries
+-- USAGE for the PUBLIC pseudo-role by image packaging — a per-role revoke
+-- cannot remove it, and revoking PUBLIC's would break the request paths.
+-- The boundary that BINDS is table/function ACL absence (CI-1/CI-4),
+-- which is precisely what produces A.1's 'permission denied for table'.
+-- hc and storage carry no PUBLIC usage, so there resolution itself dies.
 select ok(coalesce(
       has_schema_privilege('hc_admin', 'admin_meta', 'usage')
   and has_schema_privilege('hc_admin', 'admin_ops', 'usage')
-  and not has_schema_privilege('hc_admin', 'public', 'usage')
   and not has_schema_privilege('hc_admin', 'hc', 'usage')
-  and not has_schema_privilege('hc_admin', 'storage', 'usage'),
+  and not has_schema_privilege('hc_admin', 'storage', 'usage')
+  and not exists (
+        select 1 from pg_namespace n
+        cross join lateral aclexplode(n.nspacl) a
+        where n.nspname = 'public' and a.grantee = 'hc_admin'::regrole::oid),
   false),
-  'hc_admin resolves admin_meta and admin_ops, and CANNOT resolve public, hc or storage (§3.9)');
+  'hc_admin resolves admin_meta and admin_ops; hc and storage are unresolvable; public carries NO direct hc_admin entry — its PUBLIC usage is bounded by CI-1''s ACL absence (§3.9 as amended, ADR-0009)');
 
 select is((
   select count(*)::int
