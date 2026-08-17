@@ -65,6 +65,8 @@ select is((
     'ladder(p_s jsonb, p_taint hc.domain[])',
     'link_provenance(p_child_type hc.object_type, p_child_id uuid, p_parent_type hc.object_type, p_parent_id uuid)',
     'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text, p_corrects_id uuid)',
+    'log_chain_heads()',
+    'log_denied(p_circle_id uuid, p_domain hc.domain, p_subject_id uuid)',
     'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
     'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
     'outbox_ack(p_outbox_ids uuid[])',
@@ -106,11 +108,12 @@ select is((
         'assert_manual_flag','cancel_arrival','claim_stage','create_arrival',
         'create_circle','create_manual_proposal',
         'ctx','ctx_for','finalize_extraction','finalize_interpretation',
-        'grant_vectors','link_provenance','outbox_ack','outbox_drain','presence',
+        'grant_vectors','link_provenance','log_chain_heads','log_denied',
+        'outbox_ack','outbox_drain','presence',
         'propagate_taint_growth','reclassify_taint','request_freeze',
         'revise_object','sender_recognised','share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the twenty-eight boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the thirty boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -165,6 +168,8 @@ with actual as (
   union all select 'cancel_arrival', 'authenticated'
   union all select 'create_manual_proposal', 'authenticated'
   union all select 'arrival_auth_detail', 'authenticated'
+  -- 1D M3: the denial writer — actor forced to hc.uid(), membership-gated
+  union all select 'log_denied', 'authenticated'
   -- the pure visibility functions: policies evaluate these as the caller
   union all select 'dom', 'authenticated'
   union all select 'all_domains', 'authenticated'
@@ -228,6 +233,10 @@ insert into snapshot_expected values
   ('hc_internal',   'freeze_claims',   'INSERT'),
   ('hc_internal',   'access_log',      'SELECT'),
   ('hc_internal',   'access_log',      'INSERT'),
+  -- 1D M3: the family read (policy-filtered); hc_internal's collapse
+  -- UPDATE is COLUMN-scoped (attacl, not relacl) so it is deliberately
+  -- absent here — the strict trigger carve-out is asserted in 030.
+  ('authenticated', 'access_log',      'SELECT'),
   ('hc_internal',   'log_event_types', 'SELECT'),
   -- 1B M1 (ADR-0005 D1): exactly what hc.approve_proposal() needs; arrivals
   -- deliberately absent — no role of ours reads or writes it until 1C.
@@ -347,6 +356,7 @@ select is((
   where 'hc_internal'::regrole::oid = any (p.polroles)),
   array['access_grants_internal','access_grants_internal_create',
         'access_log_internal','access_log_internal_append',
+        'access_log_internal_collapse',
         'accounts_internal',
         'approval_attempts_internal','approval_attempts_internal_update',
         'approval_attempts_internal_write',
@@ -379,7 +389,7 @@ select is((
         'tasks_internal','tasks_internal_revise','tasks_internal_write',
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated sixty-four');
+  'the hc_internal policy list is exactly the enumerated sixty-five');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:

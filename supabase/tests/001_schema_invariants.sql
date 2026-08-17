@@ -231,8 +231,8 @@ select throws_ok(format(
 select is((select hc.log(current_setting('t001.c')::uuid, 'member_joined', 'Log fixture')),
   2::bigint, 'seq is per-circle and gapless — second entry is 2');
 
-select ok(not has_table_privilege('authenticated', 'public.access_log', 'select'),
-  'no family read path on access_log until 1D''s filtered policy (fail closed)');
+select ok(has_table_privilege('authenticated', 'public.access_log', 'select'),
+  'the 1D filtered family read is live — SELECT granted, rows decided by the §2.8 policy (030)');
 select ok(not has_table_privilege('authenticated', 'public.access_log', 'insert'),
   'authenticated cannot write the log — hc.log() is the only writer');
 select ok(not has_table_privilege('hc_admin', 'public.access_log', 'select'),
