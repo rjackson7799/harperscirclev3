@@ -275,3 +275,26 @@ is the evidence record.
   no SQL, no tests, no packet-substance change). Its own both-event runs
   are verified in the disposition session via the public API and reported
   to the owner; the merge session re-verifies the final head as always.
+
+### Merge block (the ADR-0006 gate discharged)
+
+- **Run-id-recording head `e31138a`:** both events verified in-session via
+  the public API — push run **32002448584** — success; pull_request run
+  **32002451407** — success.
+- **PR #3 MERGED** into `main` via merge commit **`3c703a7`**
+  (`3c703a7d9a7e3c2b6d491c92be647ddb08681061`, parents `bfa1ad4` +
+  `e31138a` — red history preserved; merge commit, never squash). Owner
+  sign-off recorded by the merge commit per the gate; GitHub marks PR #3
+  merged at exactly that SHA. The merged tree is IDENTICAL to `e31138a`'s
+  tree (verified by tree-hash equality before push).
+- **Pre-push re-verification on merged main (local):** `db:reset` (one
+  cosmetic storage-api health flap; the exact-state verifier confirmed
+  the database intact) → verifier exact **31 == 31** → pgTAP **762/762**
+  (28 files) → concurrency **42/42** → `db:verify` **No schema errors
+  found** (hard gate).
+- **CI green on main at the merge commit:** push run **32006873526** —
+  success (the upgrade-leg step self-skips when HEAD == base — expected
+  on main pushes).
+- This merge block lands as a docs-only commit on main (the round-6
+  `bfa1ad4` precedent); its CI revalidation run id is verified via the
+  public API in the merge session.

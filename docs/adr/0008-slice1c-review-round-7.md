@@ -1,7 +1,8 @@
 # ADR-0008 — Third-party review round 7: the built 1C state machine, findings, dispositions
 
-**Status:** Proposed (fixes built and green on `slice/1c-ingestion`; awaiting
-owner sign-off and merge — DO NOT MERGE holds until then)
+**Status:** Accepted — merged at `3c703a7` (merge commit
+`3c703a7d9a7e3c2b6d491c92be647ddb08681061`, parents `bfa1ad4` + `e31138a`;
+owner sign-off recorded by the merge commit per the gate)
 **Date:** 2026-08-16
 **Packet reviewed:** `docs/review/round-7-packet.md` and the slice it describes
 (`slice/1c-ingestion`, PR #3, base `main` @ `bfa1ad4`, reviewed build head
