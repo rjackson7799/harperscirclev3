@@ -2938,7 +2938,48 @@ fail-closed `coalesce(…, true)`. The §3.2 ctx `shares` key is populated from
   arrival in the circle; drained exactly-once by `hc.outbox_drain`;
   `hc.sweeper_pass` implements §4.11's four duties with parked work
   excluded from re-queueing, exhaustion, stuck and queue-age signals.
-  "Parked" = the `hc.pipeline_worker_states()` list.
+  "Parked" = the `hc.pipeline_worker_states()` list. *(The "exactly-once"
+  drain clause of this annex is superseded by annex A6 — the handoff is
+  claim/ack at-least-once.)*
+
+### A6 — §4.1/§4.2/§4.11: the round-7 dispositions (ADR-0008)
+
+- **§4.2 transition graph:** the CAS enforces a CLOSED allowlist —
+  `hc.arrival_transitions` (stage, from_state, to_state), seeded with the
+  §4.3 stage-exit graph, append-by-migration. The fence binds the lease's
+  stage, and the requested edge must be that stage's row; violations return
+  `invalid_state` (the §4.2 defect signal — no new enum label).
+  §4.7's duplicate-detection edges and the duplicate-resolution /
+  held-mail-release re-entries append with their machinery.
+- **§4.2 vocabulary:** `hc.advance_result` is the general WORKER-OPERATION
+  result vocabulary (transitions and claims), not strictly the six-result
+  transition type (ADR-0008 Q1).
+- **§4.2 freeze re-enqueue / outbox contract:** the handoff is **claim/ack
+  at-least-once** — annex A5's "drained exactly-once" clause and §4.2's
+  durable-re-enqueue description are amended accordingly. `drained_at` is
+  the claim timestamp; an unacked claim past a 300 s window re-delivers;
+  `hc.outbox_ack(uuid[])` closes delivery and binds to a claim; duplicate
+  deliveries are absorbed by `hc.claim_stage` (`already_advanced` /
+  `stale_lease`). A relay crash between drain-commit and enqueue delays a
+  row, never loses it; the §4.11 sweeper remains the recovery backstop.
+- **§4.1 intake idempotency:** a key replay returns the prior arrival ONLY
+  when the request identity agrees — subject, channel, parent, message id,
+  sender address (case-blind); disagreement raises the normalized
+  `idempotency_conflict` and writes nothing, in the fast path and the
+  concurrent unique-violation path both.
+- **§4.11 sweeper discipline:** terminalization re-validates EVERYTHING
+  under the per-circle lock against the row-locked live row (state, stage
+  from live state, live lease, freeze, deletion, spent budget) and updates
+  conditionally on the re-read state; the requeue/stuck/queue-age outputs
+  are read-only advisory listings revalidated by `hc.claim_stage` at claim
+  time.
+- **1C completion claim (scope):** 1C delivers the **database
+  state-machine substrate**; the **operational ingestion pipeline is not
+  complete** — no worker runtime, scheduler, or relay exists, and nothing
+  invokes the pipeline in production until RLY-01 lands. The Care Inbox
+  read model additionally does NOT promise draft-proposal visibility at
+  view (ADR-0008 Q5), and D7's all-domain taint is approved conditional on
+  the UXA-01 availability gate.
 
 ### A3 — §3.7 `hc.approve_proposal()`: recorded order and round-6 hardening (ADR-0005; ADR-0006 F1/F6/F8, Q4/Q5)
 

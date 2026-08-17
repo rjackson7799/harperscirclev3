@@ -88,9 +88,13 @@ freeze-parking family, nothing else; restored by clean reset, suite green.
 ## Verification evidence (local, at the branch head)
 
 - Clean leg: `npm run db:reset` → `verify-migration-state.mjs` exact
-  **30 == 30**; `npm run test:db` **PASS (26 files, 730 assertions)**;
+  **30 == 30**; `npm run test:db` **PASS (27 files, 730 assertions)**;
   `npm run test:concurrency` **33/33**; `npm run db:verify` **0 issues**
   (hard gate, `--fail-on warning`).
+  *(Round-7 E1 reconciliation: this line originally said "26 files" — a
+  stale carry-over from before U8 added 026. The harness counts one file
+  per test script, nothing is counted differently anywhere; 27/730 was
+  correct at `198d4fd`, and the post-fix head is 28 files / 762.)*
 - Upgrade leg (CI rehearses on every run; also run locally): worktree at
   `bfa1ad4` → base reset → exact 22 → `supabase migration up` → exact 30 →
   both suites green against the upgraded database.
@@ -212,3 +216,54 @@ freeze-parking family, nothing else; restored by clean reset, suite green.
   `npm run test:db` · `npm run test:concurrency` · `npm run db:verify` ·
   upgrade leg per `ci.yml` (worktree at merge-base, base reset, exact
   list, `supabase migration up`, exact list, both suites).
+
+---
+
+## Round-7 disposition addendum (ADR-0008)
+
+The round-7 review returned **not merge-ready** with four minimum
+pre-approval items. Every finding is dispositioned in
+`docs/adr/0008-slice1c-review-round-7.md`; accepted fixes landed on this
+branch as one red→green pair plus CI evidence gates. The reviewed feedback,
+the dispositions and the merge-gate matrix live in the ADR — this addendum
+is the evidence record.
+
+### Head ledger (round-7 E2)
+
+| Purpose | SHA | Tree relationship | CI status |
+|---|---|---|---|
+| Reviewed build head (round-7 input) | `198d4fd` | 18 red→green commits from base `bfa1ad4` + docs | push run 31990555583 — success |
+| PR-opened head | `30b3f79` | docs-only on `198d4fd` | push 31990775900, pull_request 31991091966 — both success |
+| Runner-bounds fix (the recorded flake) | `9890795` | mechanics-only change to run.mjs discovery/timeout bounds; SQL-identical | push 31991564826, pull_request 31991568425 — both success |
+| Pre-disposition docs head | `a7f949b` | docs-only | recorded green both events (run ids via public API) |
+| Round-7 RED (failure signatures) | `e65c6a1` | +027 (19/32 red) + run.mjs cases 17–23 (6 red) — tests only | not pushed individually; part of the disposition push |
+| Round-7 GREEN (M9) | `bf5c4e8` | +`20260816010009_round7_fixes.sql` + pinned-inventory moves | idem |
+| CI evidence gates (E3) | `cd73127` | ci.yml only — artifact retention + db logs | idem |
+| Round-7 docs head | *(this commit)* | ADR-0008, TSD annex A6, coverage rows, this addendum — docs-only on `cd73127` | both-event run ids recorded below after push |
+
+### Re-verification at the post-fix head (local, at `cd73127`'s tree)
+
+- **Clean leg:** `db:reset` → verifier exact **31 == 31** → `test:db`
+  **PASS (28 files, 762 assertions)** → `test:concurrency` **42/42**
+  (23 cases) → `db:verify` **No schema errors found** (hard gate).
+- **Upgrade leg:** worktree @ `bfa1ad4` → base reset → exact **22** →
+  `supabase migration up` → exact **31** → `test:db` PASS →
+  `test:concurrency` **42/42** → worktree removed.
+- **Interrupted-reset hazard, hit again and caught:** the FIRST base reset
+  of the upgrade leg died on a docker-log copy error and left an empty
+  database; the exact-state verifier refused it mechanically
+  (`schema_migrations` absent), the reset was re-run, and the leg
+  proceeded — the ADR-0006 F5 gate doing its job, recorded not hidden.
+- **Red evidence retained:** the red run's full outputs (19/32 with the
+  five graph violations landing, the sweeper clobbers, the 42883 family,
+  the aliasing conflicts) are quoted signature-by-signature in `e65c6a1`'s
+  commit message; from this head forward CI retains full logs as
+  artifacts (E3, `cd73127`).
+- **Pins:** unchanged — Supabase CLI 2.100.1; image
+  `public.ecr.aws/supabase/postgres:17.6.1.106`; Node 22.15.0 / npm
+  10.9.2; pg 8.16.3.
+
+### CI at the round-7 heads (public API, both events)
+
+- Recorded here after push: the docs head's push and pull_request runs.
+  The merge session re-verifies the final head as always.
