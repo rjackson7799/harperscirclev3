@@ -91,7 +91,10 @@ declare
   u1 uuid := pg_temp.mk_user(gen_random_uuid());  -- coordinator, manage×5
   u2 uuid := pg_temp.mk_user(gen_random_uuid());  -- family, summary×5
   u3 uuid := pg_temp.mk_user(gen_random_uuid());  -- family, view×5
-  u4 uuid := pg_temp.mk_user(gen_random_uuid());  -- care_circle, schedule manage only
+  u4 uuid := pg_temp.mk_user(gen_random_uuid());  -- family, schedule manage only
+                                                  -- (family tier: the taint
+                                                  -- arithmetic is under test,
+                                                  -- not the care_circle ceiling)
   c1 uuid; c2 uuid; s1 uuid; s2 uuid;
   m1 uuid; m2 uuid; m3 uuid; m4 uuid; mf uuid;
   a1 uuid; a2 uuid;
@@ -117,7 +120,7 @@ begin
   insert into public.circle_members (circle_id, account_id, tier, display_name_at_join)
   values (c1, u3, 'family', 'Marisol') returning id into m3;
   insert into public.circle_members (circle_id, account_id, tier, display_name_at_join)
-  values (c1, u4, 'care_circle', 'Dee') returning id into m4;
+  values (c1, u4, 'family', 'Dee') returning id into m4;
   insert into public.circle_members (circle_id, account_id, tier, display_name_at_join)
   values (c2, u1, 'coordinator', 'Sarah') returning id into mf;
   foreach d in array enum_range(null::hc.domain) loop

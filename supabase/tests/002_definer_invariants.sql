@@ -43,6 +43,7 @@ select is((
     'all_domains()',
     'apply_taint(p_type hc.object_type, p_id uuid, p_taint hc.domain[], p_resolved boolean)',
     'approve_proposal(p_proposal_id uuid, p_expected_version integer, p_idempotency_key text, p_edits jsonb, p_step_up_token text)',
+    'arrival_auth_detail(p_arrival uuid)',
     'assert_claimed()',
     'assert_manual_flag()',
     'cancel_arrival(p_arrival uuid)',
@@ -92,14 +93,15 @@ select is((
   select array_agg(p.proname order by p.proname)
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
-  array['adjudicate_freeze','advance_arrival','approve_proposal','assert_claimed',
+  array['adjudicate_freeze','advance_arrival','approve_proposal',
+        'arrival_auth_detail','assert_claimed',
         'assert_manual_flag','cancel_arrival','claim_stage','create_arrival',
         'create_circle','create_manual_proposal',
         'ctx','ctx_for','finalize_extraction','finalize_interpretation',
         'grant_vectors','link_provenance','presence',
         'propagate_taint_growth','reclassify_taint','request_freeze',
         'revise_object','sender_recognised','share_object','sweep_provenance']::name[],
-  'SECURITY DEFINER is exactly the twenty-four boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the twenty-five boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -150,6 +152,7 @@ with actual as (
   union all select 'sender_recognised', 'hc_pipeline'
   union all select 'cancel_arrival', 'authenticated'
   union all select 'create_manual_proposal', 'authenticated'
+  union all select 'arrival_auth_detail', 'authenticated'
   -- the pure visibility functions: policies evaluate these as the caller
   union all select 'dom', 'authenticated'
   union all select 'all_domains', 'authenticated'
@@ -281,7 +284,12 @@ insert into snapshot_expected values
   ('hc_internal',   'pipeline_outbox', 'INSERT'),
   ('hc_internal',   'pipeline_outbox', 'UPDATE'),
   ('hc_internal',   'reason_codes',    'SELECT'),
-  ('hc_internal',   'stage_budgets',   'SELECT');
+  ('hc_internal',   'stage_budgets',   'SELECT'),
+  -- 1C M7 (ING-02/03): table-level read grants; arrivals is COLUMN-granted
+  -- (auth_detail and current_lease_id excluded), which lives in
+  -- pg_attribute.attacl and is asserted in 025 — deliberately absent here.
+  ('authenticated', 'extractions',     'SELECT'),
+  ('authenticated', 'proposals',       'SELECT');
 
 create temp view snapshot_actual as
   select r.rolname as grantee, c.relname::text as tbl, a.privilege_type as priv

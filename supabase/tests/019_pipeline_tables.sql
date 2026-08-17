@@ -292,8 +292,8 @@ select is(pg_temp.errcode_as('authenticated', 'select * from public.pipeline_lea
   'authenticated cannot select pipeline_leases');
 select is(pg_temp.errcode_as('authenticated', 'select * from public.known_senders'), '42501',
   'authenticated cannot select known_senders (accept surface is a later slice)');
-select is(pg_temp.errcode_as('authenticated', 'select * from public.extractions'), '42501',
-  'authenticated cannot select extractions until U7 lands the §3.4 view policy');
+select is(pg_temp.errcode_as('authenticated', 'select * from public.extractions'), 'no_error',
+  'authenticated reads extractions through U7''s view-level policy (this memberless probe sees zero rows)');
 select is(pg_temp.errcode_as('authenticated', 'select * from public.pipeline_outbox'), '42501',
   'authenticated cannot select pipeline_outbox');
 select is(pg_temp.errcode_as('authenticated', 'select * from hc.stage_budgets'), '42501',

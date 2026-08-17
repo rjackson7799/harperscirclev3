@@ -264,8 +264,8 @@ select throws_ok(format(
 -- ----------------------------------------------------------------------------
 select is(pg_temp.errcode_as('authenticated', 'select * from public.arrivals'), '42501',
   'authenticated cannot select arrivals (1C stages the §3.4 read policy)');
-select is(pg_temp.errcode_as('authenticated', 'select * from public.proposals'), '42501',
-  'authenticated cannot select proposals');
+select is(pg_temp.errcode_as('authenticated', 'select * from public.proposals'), 'no_error',
+  'authenticated reads proposals through 1C M7''s manage-level policy (this memberless fixture sees zero rows)');
 select is(pg_temp.errcode_as('authenticated', 'select * from public.approval_attempts'), '42501',
   'authenticated cannot select approval_attempts');
 select is(pg_temp.errcode_as('authenticated', 'select * from public.proposal_commits'), '42501',
