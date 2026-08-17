@@ -173,12 +173,19 @@ freeze-parking family, nothing else; restored by clean reset, suite green.
   opened by the owner (gh was unauthenticated in the build session;
   raw-token extraction is out of bounds), base `main` @ `bfa1ad4`,
   **DO NOT MERGE** banner in the description.
-- **CI, both events at the branch head `30b3f79`:** push run
+- **CI, both events at the PR-opened head `30b3f79`:** push run
   **31990775900** — success; pull_request run **31991091966** — success.
-  (Push at the build head `198d4fd`: run 31990555583, success.) This
-  addendum lands as one further docs-only commit whose re-triggered runs
-  are confirmable via the public API — the round-6 `5499c3c` precedent;
-  the merge session re-verifies the final head as always.
+  (Push at the build head `198d4fd`: run 31990555583, success.)
+- **One CI flake, recorded and fixed:** the docs-only addendum commit
+  `efba888` (tree-identical SQL) failed its pull_request run
+  **31991291130** in the two-session layer — the same layer that passed
+  at `198d4fd` and `30b3f79` and locally 4+ times. Cause class: the
+  runner's 5 s pg_stat_activity/pg_locks discovery bounds under load
+  (the 1C cases doubled the lock-wait sequences). Fix: discovery bounds
+  20 s, per-case timeout 45 s — mechanics, not assertions; a real
+  deadlock still fails. Both-event runs at the fixed head are recorded
+  below; the merge session re-verifies the final head as always.
+- **CI, both events at the fixed head:** _run ids recorded on completion._
 - **Local evidence at `198d4fd`:** clean leg — reset, verifier exact
   **30 == 30**, pgTAP **730/730** (27 files, 9 s), concurrency
   **33/33**, `db:verify` **No schema errors found** (hard gate); upgrade

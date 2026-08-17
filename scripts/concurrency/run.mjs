@@ -43,7 +43,7 @@
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
-// pg_locks (100 ms poll, 5 s bound) before release; per-case timeout 15 s;
+// pg_locks (100 ms poll, 20 s bound) before release; per-case timeout 45 s;
 // failure signatures distinguished by SQLSTATE (40P01 vs timeout vs
 // assertion); fixtures use fresh uuids per run, are written as postgres
 // under session_replication_role=replica (triggers off for setup ONLY),
@@ -56,7 +56,11 @@ import { randomUUID } from 'node:crypto';
 const DB_URL = process.env.DATABASE_URL
   ?? 'postgresql://postgres:postgres@127.0.0.1:54342/postgres';
 
-const CASE_TIMEOUT_MS = 15_000;
+// Bounds are MECHANICS, not assertions: generous enough for a loaded CI
+// runner (a 5 s discovery window flaked once at 33 cases — round-7 packet),
+// tight enough that a real deadlock still fails the case.
+const CASE_TIMEOUT_MS = 45_000;
+const DISCOVERY_MS = 20_000;
 const DOMAINS = ['memories', 'health', 'schedule', 'documents', 'finances'];
 
 let failures = 0;
@@ -77,12 +81,12 @@ function withTimeout(promise, label) {
   return Promise.race([
     promise,
     new Promise((_, rej) =>
-      setTimeout(() => rej(new Error(`case timeout (15 s): ${label}`)), CASE_TIMEOUT_MS)),
+      setTimeout(() => rej(new Error(`case timeout (${CASE_TIMEOUT_MS / 1000} s): ${label}`)), CASE_TIMEOUT_MS)),
   ]);
 }
 
 async function waitForLockWait(admin, pid, label) {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + DISCOVERY_MS;
   for (;;) {
     const r = await admin.query(
       `select count(*)::int as n from pg_locks where pid = $1 and not granted`, [pid]);
@@ -386,7 +390,7 @@ async function withClaims(client, userId) {
 // The fired query may not have reached pg_stat_activity yet when we look
 // for it — poll for the backend before polling for its lock wait.
 async function findActivePid(admin, likePattern, label) {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + DISCOVERY_MS;
   for (;;) {
     const r = await admin.query(
       `select pid from pg_stat_activity
