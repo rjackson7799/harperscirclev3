@@ -159,15 +159,40 @@ freeze-parking family, nothing else; restored by clean reset, suite green.
 
 ---
 
-## Addendum — auditability block (filled at the PR head)
+## Addendum — auditability block
 
-- Branch head: _recorded after push_
-- PR: #3 — _URL after open_
-- CI run ids (push + pull_request at the head): _recorded after CI green_
-- Pins: Supabase CLI 2.100.1; image
-  `public.ecr.aws/supabase/postgres:17.6.1.106`; Node 22.15.x / npm
-  10.9.x; pg 8.16.3.
-- Commands per leg: `npm run db:reset` ·
+- **Reviewed build head:** `198d4fd`
+  (`198d4fdb1f650a7dd9fd3da6501a827a9eab29cc`) — 18 red→green commits
+  from base `main` @ `bfa1ad4` plus the docs commit; this addendum lands
+  as a docs-only commit on top (the round-6 `5499c3c` precedent).
+- **CI, push event @ `198d4fd`:** run **31990555583** — conclusion
+  **success** (secret scan, containment, schema pin, clean reset,
+  exact-state verifier, pgTAP, concurrency, db:verify hard gate, the
+  full upgrade rehearsal, lint, typecheck).
+- **PR:** NOT yet open — `gh` is unauthenticated in the build session
+  and raw-token extraction is out of bounds, so the PR click is the
+  owner's step:
+  https://github.com/rjackson7799/harperscirclev3/pull/new/slice/1c-ingestion
+  The pull_request-event run id and the PR number are recorded here once
+  it exists (this packet assumes #3).
+- **Local evidence at `198d4fd`:** clean leg — reset, verifier exact
+  **30 == 30**, pgTAP **730/730** (27 files, 9 s), concurrency
+  **33/33**, `db:verify` **No schema errors found** (hard gate); upgrade
+  leg — worktree @ `bfa1ad4`, base reset, exact **22**, `supabase
+  migration up`, exact **30**, both suites green against the upgraded
+  database, worktree removed. One transient local FAIL was observed on a
+  test:db run that overlapped foreground work (the PRF wall-clock
+  tripwires' documented 1:4 load variance is the suspected surface — the
+  grep-filtered chain swallowed the per-test detail); two immediately
+  subsequent quiet full runs and the CI run at the same tree are green.
+  Recorded rather than hidden.
+- **Interrupted-reset hazard:** hit twice this session; the exact-state
+  verifier caught both mechanically (re-reset, verified, proceeded) —
+  the ADR-0006 F5 gate doing its job locally.
+- **Pins:** Supabase CLI 2.100.1; image
+  `public.ecr.aws/supabase/postgres:17.6.1.106`; Node 22.15.0 / npm
+  10.9.2; pg 8.16.3.
+- **Commands per leg:** `npm run db:reset` ·
   `node scripts/verify-migration-state.mjs supabase/migrations` ·
   `npm run test:db` · `npm run test:concurrency` · `npm run db:verify` ·
   upgrade leg per `ci.yml` (worktree at merge-base, base reset, exact
