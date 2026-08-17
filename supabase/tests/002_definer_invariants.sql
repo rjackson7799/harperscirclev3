@@ -62,6 +62,7 @@ select is((
     'finalize_interpretation(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
     'grant_vectors(p_account uuid)',
     'guard_row()',
+    'head_signature_immutable()',
     'ladder(p_s jsonb, p_taint hc.domain[])',
     'link_provenance(p_child_type hc.object_type, p_child_id uuid, p_parent_type hc.object_type, p_parent_id uuid)',
     'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text, p_corrects_id uuid)',
@@ -76,9 +77,11 @@ select is((
     'presence(p_subject uuid)',
     'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
+    'record_tombstone(p_circle_id uuid, p_object_type text, p_object_id uuid, p_storage_keys text[], p_scope text, p_requested_by uuid, p_reason text)',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
     'resolve_object(p_type hc.object_type, p_id uuid)',
     'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
+    'run_taint_sweep()',
     'sender_recognised(p_arrival uuid)',
     'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid)',
     'sweep_provenance()',
@@ -87,6 +90,7 @@ select is((
     'taint_union(a hc.domain[], b hc.domain[])',
     'taint_union_2(a hc.domain[], b hc.domain[])',
     'taint_union_agg(hc.domain[])',
+    'tombstone_guard()',
     'tsv_documents()',
     'tsv_tasks()',
     'tsv_timeline_events()',
@@ -110,10 +114,11 @@ select is((
         'ctx','ctx_for','finalize_extraction','finalize_interpretation',
         'grant_vectors','link_provenance','log_chain_heads','log_denied',
         'outbox_ack','outbox_drain','presence',
-        'propagate_taint_growth','reclassify_taint','request_freeze',
-        'revise_object','sender_recognised','share_object','sweep_provenance',
+        'propagate_taint_growth','reclassify_taint','record_tombstone',
+        'request_freeze','revise_object','run_taint_sweep',
+        'sender_recognised','share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the thirty boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the thirty-two boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -170,6 +175,10 @@ with actual as (
   union all select 'arrival_auth_detail', 'authenticated'
   -- 1D M3: the denial writer — actor forced to hc.uid(), membership-gated
   union all select 'log_denied', 'authenticated'
+  -- 1D M5: the re-categorisation surface (TNT-08 — visible_at authorizes
+  -- inside) and the OPS-01 scheduler identity
+  union all select 'reclassify_taint', 'authenticated'
+  union all select 'run_taint_sweep', 'hc_pipeline'
   -- the pure visibility functions: policies evaluate these as the caller
   union all select 'dom', 'authenticated'
   union all select 'all_domains', 'authenticated'
@@ -308,6 +317,10 @@ insert into snapshot_expected values
   ('hc_internal',   'stage_budgets',   'SELECT'),
   -- 1C M9 (round-7 B1): the transition graph as data — read by the CAS only
   ('hc_internal',   'arrival_transitions', 'SELECT'),
+  -- 1D M5 (OPS-01): recorded sweep runs, written by hc.run_taint_sweep
+  ('hc_internal',   'sweep_runs',      'SELECT'),
+  ('hc_internal',   'sweep_runs',      'INSERT'),
+  ('hc_internal',   'sweep_runs',      'UPDATE'),
   -- 1D M1: the search writer allowlist finalized (REC-05 → DSC-01) —
   -- hc_internal read/insert/update on dsc, DELETE for nobody (the
   -- document cascade is the only remover). 1D M2: the view-level read.
@@ -388,8 +401,9 @@ select is((
         'subjects_internal','subjects_internal_create',
         'tasks_internal','tasks_internal_revise','tasks_internal_write',
         'timeline_events_internal','timeline_events_internal_revise',
-        'timeline_events_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated sixty-five');
+        'timeline_events_internal_write',
+        'tombstones_internal','tombstones_internal_write']::name[],
+  'the hc_internal policy list is exactly the enumerated sixty-seven');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:

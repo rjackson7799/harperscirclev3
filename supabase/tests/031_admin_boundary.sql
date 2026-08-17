@@ -203,8 +203,9 @@ select is((
   select coalesce(array_agg(c.relname order by c.relname), '{}'::name[])
   from pg_class c join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'admin_meta' and c.relkind = 'v'),
-  array['circle_shapes','pipeline_health','platform_stats','stage_outcomes']::name[],
-  'admin_meta view inventory, exactly (§9.2''s remaining stats land with their machinery — ADR-0009)');
+  array['circle_shapes','pipeline_health','platform_stats',
+        'stage_outcomes','sweep_health']::name[],
+  'admin_meta view inventory, exactly (§9.2''s remaining stats land with their machinery — ADR-0009; sweep_health is M5''s OPS-01 alert surface)');
 
 select is((
   select count(*)::int

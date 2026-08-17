@@ -61,6 +61,12 @@
 //           CONFLICTING identity — the loser gets idempotency_conflict,
 //           never the winner's id; a matching concurrent replay still
 //           aliases.
+//   Case 24 1D TNT-08 (RAC-06 joins): a freeze committing while the
+//           request-path reclassify waits on the per-circle lock defeats
+//           it — visible_at evaluates frozen UNDER the lock.
+//   Case 25 1D TNT-08: a grant revocation committing while the reclassify
+//           waits defeats it — ctx evaluates under the lock (RAC-02's
+//           shape, on the 1D writer).
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -1304,6 +1310,84 @@ async function case23(admin) {
   }
 }
 
+// --- case 24: 1D TNT-08 — a freeze racing the request-path reclassify --------
+// M5 made hc.reclassify_taint a request-path writer (EXECUTE to
+// authenticated, visible_at authorization). The R-rule binds it: a freeze
+// committing while the reclassify waits on the per-circle lock defeats it
+// — visible_at evaluates frozen under the lock (RAC-06 joins).
+
+async function case24(admin) {
+  const fx = await mkCircle(admin, 'c24');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // S1: open transaction holds the circle's taint lock.
+    await withClaims(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.link_provenance('task', $1, 'document', $2)`,
+      [fx.task, fx.doc]);
+
+    // S2: the manage×5 coordinator reclassifies AS AUTHENTICATED — the 1D
+    // request path — and blocks on the lock.
+    await asUser(s2, fx.u1);
+    const p2 = s2.query(`select hc.reclassify_taint('document', $1)`, [fx.doc])
+      .then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.reclassify_taint%', 'reclassify backend');
+    await waitForLockWait(admin, pid2, 's2 reclassify on the circle lock');
+
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fx.c]);
+
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case24 reclassify after freeze');
+    check('case24 (TNT-08): a freeze committed while the request-path reclassify waited DEFEATS it (reclassify_refused)',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'reclassify_refused',
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 25: 1D TNT-08 — a grant revocation racing the reclassify -----------
+// ctx evaluates UNDER the lock: a revocation committed mid-wait means the
+// authorization sees the revoked state, exactly as RAC-02 proved for
+// approvals.
+
+async function case25(admin) {
+  const fx = await mkCircle(admin, 'c25');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    await withClaims(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.link_provenance('task', $1, 'document', $2)`,
+      [fx.task, fx.doc]);
+
+    // S2: u2 (manage×5 in the fixture) reclassifies the document as
+    // authenticated, and blocks.
+    await asUser(s2, fx.u2);
+    const p2 = s2.query(`select hc.reclassify_taint('document', $1)`, [fx.doc])
+      .then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.reclassify_taint%', 'reclassify backend');
+    await waitForLockWait(admin, pid2, 's2 reclassify on the circle lock');
+
+    await admin.query(`delete from public.access_grants where member_id = $1`, [fx.m2]);
+
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case25 reclassify after revocation');
+    check('case25 (TNT-08): a revocation committed while the reclassify waited DEFEATS it — ctx evaluates under the lock',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'reclassify_refused',
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -1332,6 +1416,8 @@ try {
   await case21(admin);
   await case22(admin);
   await case23(admin);
+  await case24(admin);
+  await case25(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;
