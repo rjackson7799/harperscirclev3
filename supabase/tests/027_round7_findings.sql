@@ -211,17 +211,18 @@ end $$;
 select has_table('hc', 'arrival_transitions',
   'hc.arrival_transitions exists — the closed CAS allowlist (round-7 B1)');
 
+-- ordered by stage, then ENUM ordinal (collation-independent)
 select is(pg_temp.scalar($$
   select string_agg(t.stage || ':' || t.from_state || '>' || t.to_state, ','
                     order by t.stage, t.from_state, t.to_state)
   from hc.arrival_transitions t $$),
-  'extract:extracting>extract_failed,extract:extracting>extract_timeout,'
+  'extract:extracting>extract_timeout,extract:extracting>extract_failed,'
   || 'extract:extracting>extracted,extract:extracting>needs_password,'
   || 'extract:extracting>unsupported_type,'
   || 'gate:scanned>extracting,gate:scanned>held_unknown_sender,'
   || 'interpret:interpreting>proposals_ready,'
-  || 'scan:stored>quarantined,scan:stored>scan_inconclusive,'
-  || 'scan:stored>scan_unavailable,scan:stored>scanned,'
+  || 'scan:stored>quarantined,scan:stored>scan_unavailable,'
+  || 'scan:stored>scan_inconclusive,scan:stored>scanned,'
   || 'store:received>store_failed,store:received>stored',
   'the seeded allowlist is exactly the §4.3 stage-exit graph — closed; §4.7 duplicate rows append with their machinery');
 

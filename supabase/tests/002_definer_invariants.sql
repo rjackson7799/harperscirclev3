@@ -66,6 +66,7 @@ select is((
     'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text, p_corrects_id uuid)',
     'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
     'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
+    'outbox_ack(p_outbox_ids uuid[])',
     'outbox_drain(p_limit integer)',
     'own_domain(p_type hc.object_type, p_category hc.doc_category, p_kind hc.timeline_kind, p_declared hc.domain)',
     'pipeline_worker_states()',
@@ -100,11 +101,11 @@ select is((
         'assert_manual_flag','cancel_arrival','claim_stage','create_arrival',
         'create_circle','create_manual_proposal',
         'ctx','ctx_for','finalize_extraction','finalize_interpretation',
-        'grant_vectors','link_provenance','outbox_drain','presence',
+        'grant_vectors','link_provenance','outbox_ack','outbox_drain','presence',
         'propagate_taint_growth','reclassify_taint','request_freeze',
         'revise_object','sender_recognised','share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the twenty-seven boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the twenty-eight boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -152,6 +153,7 @@ with actual as (
   union all select 'create_arrival', 'hc_pipeline'
   union all select 'finalize_extraction', 'hc_pipeline'
   union all select 'finalize_interpretation', 'hc_pipeline'
+  union all select 'outbox_ack', 'hc_pipeline'
   union all select 'outbox_drain', 'hc_pipeline'
   union all select 'sender_recognised', 'hc_pipeline'
   union all select 'sweeper_pass', 'hc_pipeline'
@@ -290,6 +292,8 @@ insert into snapshot_expected values
   ('hc_internal',   'pipeline_outbox', 'UPDATE'),
   ('hc_internal',   'reason_codes',    'SELECT'),
   ('hc_internal',   'stage_budgets',   'SELECT'),
+  -- 1C M9 (round-7 B1): the transition graph as data — read by the CAS only
+  ('hc_internal',   'arrival_transitions', 'SELECT'),
   -- 1C M7 (ING-02/03): table-level read grants; arrivals is COLUMN-granted
   -- (auth_detail and current_lease_id excluded), which lives in
   -- pg_attribute.attacl and is asserted in 025 — deliberately absent here.

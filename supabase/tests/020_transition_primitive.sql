@@ -140,12 +140,14 @@ select is(pg_temp.scalar(format(
   'the arrival lands at received with its creation event (from_state null)');
 
 select is(pg_temp.scalar(format(
-  $$ select (hc.create_arrival(%L, %L, 'email', p_ingest_idempotency_key => 'msg-001')
+  $$ select (hc.create_arrival(%L, %L, 'email',
+               p_sender_address => 'dr@clinic.example',
+               p_ingest_idempotency_key => 'msg-001')
              = (select id from public.arrivals
                 where circle_id = %L and ingest_idempotency_key = 'msg-001'))::text $$,
   current_setting('t.c1'), current_setting('t.s1'), current_setting('t.c1'))),
   'true',
-  'a re-delivered intake returns the SAME arrival id — idempotent, no second row');
+  'a re-delivered intake (same request identity, round-7 F5) returns the SAME arrival id — idempotent, no second row');
 
 select is(pg_temp.scalar(format(
   $$ select count(*)::text from public.arrivals

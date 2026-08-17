@@ -4,7 +4,8 @@
 --   · dismissal writes the outbox IN the adjudication transaction, covering
 --     every parked (worker-state) arrival in the circle including children;
 --     upheld and unresolved write NOTHING (they leave arrivals parked);
---   · hc.outbox_drain hands each row to the relay exactly once;
+--   · hc.outbox_drain CLAIMS rows for the relay (claim/ack at-least-once,
+--     round-7 B3; the kill-point family lives in 027);
 --   · the sweeper skips frozen arrivals for BOTH re-queueing and age
 --     exhaustion; parked time consumes no attempt;
 --   · a lost outbox message is a delay, not a lost document: once no freeze
@@ -183,7 +184,7 @@ select is(pg_temp.scalar(format(
 select is(pg_temp.scalar($$
   select count(*)::text from hc.outbox_drain(10) $$),
   '0',
-  'a second drain returns nothing — exactly-once handoff to the relay');
+  'a second drain inside the claim window returns nothing — no double handoff while the claim is live (B3)');
 
 -- ----------------------------------------------------------------------------
 -- 10 · Lost-message recovery: the messages are gone (drained) and nothing

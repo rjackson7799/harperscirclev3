@@ -183,6 +183,12 @@ async function mkCircle(admin, tag) {
 async function cleanupCircle(admin, c) {
   await admin.query(`set session_replication_role = replica`);
   const del = [
+    // explicit pipeline deletes: replica mode disables the internal
+    // FK-cascade triggers, so "cascade from arrivals" does NOT happen here
+    `delete from public.pipeline_outbox where circle_id = $1`,
+    `delete from public.arrival_events where circle_id = $1`,
+    `delete from public.pipeline_leases where circle_id = $1`,
+    `delete from public.extractions where circle_id = $1`,
     `delete from public.access_log where circle_id = $1`,
     `delete from public.approval_attempts where proposal_id in
        (select id from public.proposals where circle_id = $1)`,
@@ -1199,6 +1205,11 @@ async function case22(admin) {
   const s1 = await connect();
   const s2 = await connect();
   try {
+    // the drain is GLOBAL by design — start from an empty outbox so the
+    // case is deterministic (earlier runs' replica-mode cleanup could not
+    // cascade-delete outbox rows; see cleanupCircle)
+    await admin.query(`delete from public.pipeline_outbox`);
+
     // three undrained outbox rows, oldest first
     const ids = [];
     for (let i = 0; i < 3; i++) {
