@@ -33,6 +33,11 @@ subject's domains" without fixing the row-level rule. As built (M3,
   "descriptions re-evaluated at read time" duty binds the app layer and
   is restated in the annex.
 
+*Amended by ADR-0010 (round-8 F4): a domained entry with no subject fails
+closed to ALL SUBJECTS — the mirror of the all-domains rule; the
+`subject_id is null` branch is member-visible only when the entry is also
+domain-less.*
+
 ## D2 · §2.8 — denial collapse and the "unconditionally" delta
 
 1A's M6 staged denial collapse to 1D. As built (M3):
@@ -56,6 +61,10 @@ subject's domains" without fixing the row-level rule. As built (M3,
 - Callers: `authenticated` (the route layer logs the denials it
   observes). Flood exposure is bounded by the collapse window per
   (actor, domain, subject) tuple.
+
+*Amended by ADR-0010 (round-8 F3): the named subject is validated as the
+circle's own at call time in the same `denied_log_refused` shape; the
+deferred declaration FK stays as the commit-time belt.*
 
 ## D3 · §2.8/§2.9 — signing and deletion-ledger interfaces; the local stand-in
 
@@ -119,6 +128,10 @@ subject's domains" without fixing the row-level rule. As built (M3,
   whole-row var by `pg_depend` alone; mitigated by the exact
   view-column-list pins, the column-NAME scan (031:23), and review of
   view definitions — recorded as a known limit of the mechanical check.
+  *ADR-0010 (round-8 F1): the residual is probe-CONFIRMED reachable
+  (031:24) and the review is made mechanical by CI-2b — every view
+  definition pinned by content hash (031:25); "probe-proven in both
+  directions" is superseded by ADR-0010's precise claim.*
 
 ## D5 · §2.6 — the reclassify request path (TNT-08) and its hardening
 
@@ -199,9 +212,14 @@ them).
      `timeline_events_page` (`circle_id, <time> desc`, partial on
      `deleted_at is null`) — ORDER BY … LIMIT stops at 20 visible rows
      instead of filtering and sorting the whole circle.
-  **Post-rewrite, ALL BOUNDS MET**: warm page p95 6–216 ms; warm
-  search/count p95 129–1,915 ms; cold worst case 1,630 ms
-  (search_narrow). Full tables in the round-8 packet.
+  **Post-rewrite, the GATE (warm 25-run p95) is ALL BOUNDS MET**: warm
+  page p95 6–216 ms; warm search/count p95 129–1,915 ms. Full tables in
+  the round-8 packet. *ADR-0010 (round-8 F2): the cold leg is a
+  report-only diagnostic (its recorded worst 1,630 ms is that host's
+  fact); cold warm-up can transiently exceed the 250 ms page tripwire on
+  a cold or contended host while staying far inside §13.2's 1.5 s page
+  budget, and the "≥ 3×" margins are the scan queries', not the page
+  tripwire's.*
   **Equivalence:** clause order and the FRZ-13 cap are decision-for-
   decision identical; the binding oracles are 003's truth table (36
   cases), 016, and 033's in-file grid — all green over the rewrite. The

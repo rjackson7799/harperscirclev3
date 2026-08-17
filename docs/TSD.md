@@ -2984,17 +2984,26 @@ fail-closed `coalesce(…, true)`. The §3.2 ctx `shares` key is populated from
 ### A7 — §2.6/§2.8/§2.9/§3.3/§3.9/§7.1: the 1D derived-surfaces deltas (ADR-0009)
 
 - **§2.8 read:** the family read policy is concrete — circle-level
-  entries (`subject_id` null) visible to every live member (the freeze's
-  own trail stays readable under the freeze, PRD §7.5); subject entries
-  at `hc.visible_at(…, {entry.domain}, …) ≥ log`; a subject entry with
-  no domain fails closed to all-domains. Field-level rendering at the
-  reader's level is an application duty (A.4's read-time re-evaluation).
+  entries (`subject_id` null **and no domain**) visible to every live
+  member (the freeze's own trail stays readable under the freeze, PRD
+  §7.5); subject entries at `hc.visible_at(…, {entry.domain}, …) ≥ log`;
+  a subject entry with no domain fails closed to all-domains — and,
+  mirror-wise (ADR-0010, round-8 F4), a **domained entry with no
+  subject fails closed to ALL SUBJECTS**: visible only to a reader ≥ log
+  on that domain for every live subject of the circle, an empty subject
+  set staying dark, freeze closing it through the same one function.
+  Field-level rendering at the reader's level is an application duty
+  (A.4's read-time re-evaluation).
 - **§2.8 append-only:** "raises unconditionally" is amended — the
   immutability trigger admits exactly the denial-collapse increment
   (denial rows only, the two unhashed presentation columns, +1, window
   monotone; DELETE unconditional). `hc.log_denied` is the one denial
-  writer: actor = `hc.uid()`, live membership required, 1-hour collapse
-  window (AC-PPL-7). `hc_internal`'s UPDATE is column-scoped.
+  writer: actor = `hc.uid()`, live membership required, the named
+  subject validated as the circle's own at CALL time in the same
+  refusal shape — nonexistent and cross-circle indistinguishable,
+  writing nothing; the deferred declaration FK stays as the commit-time
+  belt (ADR-0010, round-8 F3) — 1-hour collapse window (AC-PPL-7).
+  `hc_internal`'s UPDATE is column-scoped.
 - **§2.8 signing / §2.9 ledger:** `hc.log_chain_heads()` +
   `ledger.log_head_signatures` are the signing interface (worker =
   SIG-01, staged). Schema `ledger` is the LOCAL STAND-IN for the ledger
@@ -3010,7 +3019,12 @@ fail-closed `coalesce(…, true)`. The §3.2 ctx `shares` key is populated from
   columns land with their machinery. The CI-2 forbidden set additionally
   covers dsc (any reference), `arrivals.auth_detail/message_id`,
   `circles.opening_context`, `invites.token_hash/invited_email/note`,
-  `access_log.detail/actor_display_name`.
+  `access_log.detail/actor_display_name`. The walk's recorded residual —
+  a relation-level (subid-0) whole-row reference to a mixed table — is
+  probe-confirmed uncatchable by the walk and the name scan, and is
+  closed mechanically by **CI-2b**: every admin_meta view definition
+  pinned by content hash, any change redding the suite and forcing
+  review (ADR-0010, round-8 F1).
 - **§2.6 reclassify (TNT-08):** `hc.reclassify_taint` is the
   re-categorisation surface's entry point (EXECUTE to authenticated) and
   authorizes through `hc.visible_at ≥ manage` under the per-circle lock
@@ -3027,9 +3041,12 @@ fail-closed `coalesce(…, true)`. The §3.2 ctx `shares` key is populated from
   Clause order, the FRZ-13 last-position cap, and every §3.13 truth-
   table decision are unchanged; §3.13's suite is the binding oracle.
   Page indexes `documents_page`/`tasks_page`/`timeline_events_page`
-  serve ORDER BY … LIMIT. Measured post-rewrite: page p95 ≤ 216 ms
-  (bound 250), search/count p95 ≤ 1,915 ms (bound 2,500), cold worst
-  1,630 ms.
+  serve ORDER BY … LIMIT. Measured post-rewrite, the GATE (warm 25-run
+  p95): page p95 ≤ 216 ms (bound 250), search/count p95 ≤ 1,915 ms
+  (bound 2,500) — the ≥ 3× margins are the scan queries'. The cold leg
+  is a report-only diagnostic: cold warm-up can transiently exceed the
+  250 ms page tripwire on a cold or contended host while staying far
+  inside §13.2's 1.5 s p95 page budget (ADR-0010, round-8 F2).
 - **§7.1/§2.11:** `episodes.tsv`/`profile_facts.tsv` stay unmaintained
   (three search relations, four indexes — as written);
   `dsc.extracted_text` is derived-only from the source proposal's
