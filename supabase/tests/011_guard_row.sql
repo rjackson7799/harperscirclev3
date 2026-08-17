@@ -250,11 +250,12 @@ select is((
          'profile_facts:hc_claim_profile_facts',
          'profile_facts:hc_guard_profile_facts',
          'proposals:hc_guard_proposals',
+         'proposals:hc_manual_flag_proposals',
          'tasks:hc_claim_tasks',
          'tasks:hc_guard_tasks',
          'timeline_events:hc_claim_timeline_events',
          'timeline_events:hc_guard_timeline_events'],
-  'trigger inventory: one guard per guarded table + one claim trigger per record table; dsc carries none');
+  'trigger inventory: one guard per guarded table + one claim trigger per record table + the 1C manual-flag agreement trigger (MNL-01); dsc carries none');
 
 select * from finish();
 rollback;

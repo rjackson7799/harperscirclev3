@@ -143,7 +143,8 @@ select is(pg_temp.scalar(format(
                and e.to_state = 'proposals_ready'
                and e.reason_code = 'manual_entry')::text
      from public.arrivals a
-     where a.circle_id = %L and a.channel = 'manual' $$,
+     where a.circle_id = %L and a.channel = 'manual'
+       and exists (select 1 from public.proposals p where p.arrival_id = a.id) $$,
   current_setting('t.c1'))),
   'manual:proposals_ready:true:1',
   'the synthetic arrival: manual channel, proposals_ready, no artifact, evented as manual_entry');
