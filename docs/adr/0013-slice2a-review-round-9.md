@@ -1,7 +1,11 @@
 # ADR-0013 — Third-party review round 9: the built 2A auth machinery, findings, dispositions
 
-**Status:** Proposed — fixes applied and green; owner sign-off and the
-merge commit pending (each in its own session, per the gate)
+**Status:** Accepted — merged at `fbd1d7f` (merge commit
+`fbd1d7f588b7a9c9a74b2e7f501fd4d3768cdacc`, parents `4e4bbca` + `5a365c9`;
+owner sign-off in the merge session — dispositions (a)–(e) ratified, the
+1C round-7 precedent path chosen over a reviewer confirmation pass;
+merged tree verified identical to `5a365c9`'s; CI green on main at the
+merge commit, run 32114061495)
 **Deciders:** owner (sole merge authority, per ADR-0006)
 **Date:** 2026-08-17
 **Packet reviewed:** `docs/review/round-9-findings.md` — the adversarial

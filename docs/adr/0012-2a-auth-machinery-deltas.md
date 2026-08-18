@@ -1,6 +1,9 @@
 # ADR-0012 — 2A auth machinery: design deltas and flagged questions
 
-**Status:** Proposed — enters round-9 review with the 2A packet
+**Status:** Accepted — merged at `fbd1d7f` (merge commit
+`fbd1d7f588b7a9c9a74b2e7f501fd4d3768cdacc`, parents `4e4bbca` + `5a365c9`;
+reviewed in round 9, dispositions in ADR-0013; owner sign-off recorded by
+the merge commit per the gate)
 **Date:** 2026-08-18
 **Scope:** slice 2A (`slice/2-auth-onboarding`, migrations
 `20260818120001`–`20260818120007`), implementing TSD §5.5–§5.11 as bound by

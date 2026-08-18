@@ -265,3 +265,32 @@ coverage AUT-01): the throttle and "wasn't me" RPCs are not publicly
 usable until 2B lands the app boundary that routes every
 password-verification path through them — PIN-01 keeps `hc` off the API
 surface meanwhile, and GoTrue's own rate limits stay on as the backstop.
+
+---
+
+## Merge record (2026-08-18) — PR #5 merged on dispositions
+
+- **Owner sign-off (merge session):** ADR-0013 dispositions (a)–(e)
+  ratified; process path chosen: **merge on dispositions** per the 1C
+  round-7 precedent (blocking findings fixed + ADR + owner sign-off; the
+  reviewer-confirmation alternative was offered and declined — round 10
+  re-sees the slice with 2B).
+- **PR #5** `slice/2-auth-onboarding` → `main`, head `5a365c9`:
+  pull_request run **32113365609** — SUCCESS (public API; DO-NOT-MERGE
+  banner removed only after the green run). Push run at the same head:
+  **32112135037**, SUCCESS.
+- **Merge commit:** **`fbd1d7f`**
+  (`fbd1d7f588b7a9c9a74b2e7f501fd4d3768cdacc`), parents `4e4bbca` +
+  `5a365c9` — red→green history preserved; **merge commit, never squash**
+  (ADR-0006). Merged tree verified hash-identical to `5a365c9`'s
+  (`9fc8974`).
+- **CI on main at the merge commit:** push run **32114061495** — SUCCESS;
+  the upgrade leg self-skipped ("HEAD is the base — no increment to
+  rehearse"), expected on main pushes.
+- **Local re-verification on merged main (this session):** clean-leg
+  reset **46 exact** · pgTAP **1134/1134 across 43 files** · concurrency
+  **55/55 across 32 cases** (teed) · `db:verify` clean under
+  `--fail-on warning`.
+- This record lands as a docs-only commit on `fbd1d7f`; the SQL tree is
+  unchanged by it. Its own push run is confirmable via the public API
+  (recorded vault-side, the round-7/8 regress-termination pattern).
