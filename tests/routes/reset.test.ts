@@ -84,7 +84,10 @@ describe('A3 · POST /reset/confirm/submit — records reset_completed as the us
     const res = await POST(post('/reset/confirm/submit', { password: 'new-password-1' }));
     expect(updateUser).toHaveBeenCalledWith({ password: 'new-password-1' });
     expect(throttleMock.recordSuccess).toHaveBeenCalledTimes(1);
-    const [kind, claims] = throttleMock.recordSuccess.mock.calls[0];
+    const [kind, claims] = throttleMock.recordSuccess.mock.calls[0] as unknown as [
+      string,
+      { sub?: string },
+    ];
     expect(kind).toBe('reset_completed');
     expect(claims.sub).toBe('66666666-6666-4666-8666-666666666666');
     expect(res.status).toBe(303);

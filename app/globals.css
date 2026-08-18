@@ -1,17 +1,45 @@
+/* ==========================================================================
+   Design tokens — design_spec.md §2 (color) and §3 (type), carried exactly.
+   Scope note (slice-2-plan §2B): tokens land only as far as the auth and
+   onboarding screens need; the full §8 system is slice 3. CSS custom
+   properties, no Tailwind.
+   ========================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Foundation (§2) */
+  --sand: #ede6d8;
+  --cream: #fbf8f1;
+  --card: #fdfbf6;
+  --white: #ffffff;
+  --line: #e7dfd0;
+  --line-strong: #e1d8c7;
+  --wash: #f0e8d9;
+  --scroll-thumb: #d8cdb9;
+
+  /* Ink (§2) */
+  --ink: #24211b;
+  --ink-2: #4a463d;
+  --muted: #857e70;
+  --faint: #9a9382;
+  --label: #b0a891;
+
+  /* Signal (§2) — one meaning each, never decorative */
+  --green: #2f5b4e;
+  --terracotta: #c1613c;
+  --amber: #b98a2e;
+  --sage: #6e8f73;
+  --plum: #7a6e9b;
+
+  /* Positive tinted panel (§2) */
+  --panel-positive-bg: #f6fbf7;
+  --panel-positive-border: #d6e7da;
+  --panel-positive-body: #33463f;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-html {
-  height: 100%;
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
 
 html,
@@ -21,29 +49,271 @@ body {
 }
 
 body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+  background: var(--sand);
+  color: var(--ink);
+  font-family: var(--font-sans), 'Hanken Grotesk', system-ui, sans-serif;
+  font-size: 13.5px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+p {
+  text-wrap: pretty;
 }
 
 a {
-  color: inherit;
-  text-decoration: none;
+  color: var(--green);
+}
+a:hover {
+  color: var(--terracotta);
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+h1,
+h2 {
+  font-family: var(--font-serif), 'Newsreader', Georgia, serif;
+  font-weight: 500;
+  line-height: 1.1;
+}
+h1 {
+  font-size: 34px;
+}
+h2 {
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+/* Inputs (§5) — white fill, 9–10px radius; the 2px green focus ring the
+   spec requires the build to add (§8). */
+input[type='text'],
+input[type='email'],
+input[type='password'],
+select,
+textarea {
+  width: 100%;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 13px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+}
+input::placeholder {
+  color: var(--faint);
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+
+/* Buttons (§5) */
+.button-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--green);
+  color: var(--white);
+  border: none;
+  border-radius: 9px;
+  padding: 11px 18px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 44px;
+}
+.button-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--wash);
+  color: var(--ink-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  padding: 6px 13px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.button-quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--white);
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  padding: 9px 14px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* --------------------------------------------------------------------------
+   (auth) and onboarding shells — the slice-2 surface.
+   -------------------------------------------------------------------------- */
+
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 20px;
+}
+
+.auth-wordmark {
+  font-family: var(--font-serif), 'Newsreader', Georgia, serif;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 0.2px;
+  color: var(--green);
+  margin-bottom: 28px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 28px;
+}
+.auth-card h1 {
+  font-size: 26px;
+  margin-bottom: 12px;
+}
+.auth-card p {
+  color: var(--ink-2);
+  margin-bottom: 12px;
+}
+
+.field {
+  display: block;
+  margin-bottom: 14px;
+}
+.field-label {
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--ink-2);
+  margin-bottom: 5px;
+}
+.field-help {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.auth-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 14px;
+}
+
+/* State strip — a quiet card-level notice, never alarm (§4.1.7). One
+   accent per card (§2 rules). */
+.notice {
+  border: 1px solid var(--line-strong);
+  background: var(--wash);
+  border-radius: 10px;
+  padding: 10px 13px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  margin-bottom: 14px;
+}
+.notice-positive {
+  border-color: var(--panel-positive-border);
+  background: var(--panel-positive-bg);
+  color: var(--panel-positive-body);
+}
+
+/* Onboarding (§4.1.3) */
+.step-indicator {
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.85px;
+  text-transform: uppercase;
+  color: var(--label);
+  margin-bottom: 10px;
+}
+
+.setup-card {
+  width: 100%;
+  max-width: 560px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 28px;
+}
+.setup-card h1 {
+  font-size: 28px;
+  margin-bottom: 10px;
+}
+.setup-card p {
+  color: var(--ink-2);
+  margin-bottom: 12px;
+}
+
+.choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0;
+}
+.choice-list label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 13px;
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.subject-block {
+  border-top: 1px solid var(--wash);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+
+.mono-address {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 6px 10px;
+  display: inline-block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

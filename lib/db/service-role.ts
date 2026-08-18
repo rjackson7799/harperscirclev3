@@ -1,4 +1,5 @@
 import 'server-only';
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * asServiceRole() — production credential of last resort (TSD §1.2, §1.3).
@@ -21,4 +22,25 @@ import 'server-only';
  */
 export function asServiceRole(): never {
   throw new Error('asServiceRole(): not implemented until the artifact route lands (TSD §1.3)');
+}
+
+/**
+ * asGoTrueAdmin() — the GoTrue ADMIN surface only (2B, ADR-0013 F3 and
+ * TSD §5.8's sessions row). Same credential, deliberately narrower shape:
+ * the returned client is used exclusively for auth-admin operations
+ * (password rotation for the forced reset; admin user updates), never for
+ * PostgREST reads — data reads on this key would defeat §1.2 exactly the
+ * way asServiceRole()'s containment note describes. Consumed only through
+ * lib/auth/gotrue-admin.ts (the second entry on the ESLint allowlist).
+ */
+export function asGoTrueAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error('asGoTrueAdmin(): NEXT_PUBLIC_SUPABASE_URL and the service key must be set');
+  }
+  const client = createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  return client.auth.admin;
 }

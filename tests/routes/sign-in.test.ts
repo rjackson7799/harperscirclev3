@@ -126,7 +126,10 @@ describe('A3 · success: identity-bound recording, then the redirect', () => {
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain('/setup');
     expect(throttleMock.recordSuccess).toHaveBeenCalledTimes(1);
-    const [kind, claims] = throttleMock.recordSuccess.mock.calls[0];
+    const [kind, claims] = throttleMock.recordSuccess.mock.calls[0] as unknown as [
+      string,
+      { sub?: string },
+    ];
     expect(kind).toBe('success');
     expect(claims.sub).toBe('11111111-1111-4111-8111-111111111111');
   });

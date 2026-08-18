@@ -34,14 +34,15 @@ import { Pool, type PoolClient, type QueryResult } from 'pg';
 export type RequestRole = 'anon' | 'authenticated';
 
 /** Verified JWT payload — always the OUTPUT of signature verification,
- *  never request-supplied JSON. */
+ *  never request-supplied JSON. Passed whole into request.jwt.claims so
+ *  hc functions read exactly what PostgREST would have set (amr, aal and
+ *  the rest ride along untyped). */
 export type RequestClaims = {
   sub?: string;
   role?: string;
   email?: string;
   session_id?: string;
   aal?: string;
-  amr?: { method: string; timestamp: number }[];
   [claim: string]: unknown;
 };
 
