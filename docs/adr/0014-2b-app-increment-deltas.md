@@ -1,7 +1,12 @@
 # ADR-0014 — 2B app increment: design deltas, boundary mechanisms, and the queued DDL findings
 
-**Status:** Proposed (build session, 2026-08-18) — for the round-10 review
-and owner sign-off at the 2B gate
+**Status:** Accepted at the round-10 gate, as amended (2026-08-18) —
+owner rulings recorded in **ADR-0015** (round-10 dispositions: D1/D2/D4
+ratified; D2 additionally carries the finding-4 threat model in
+`docs/ops/runtime-db-credentials.md`; D3's two deviations accepted with
+the fuller finding-5 framing; the D6 relationship narrowing amended to
+carry-then-queue; the worker's invoker is now checked in). Merge
+sign-off remains the owner's, in the merge session (ADR-0006)
 **Deciders:** build (owner ratifies at the gate, per ADR-0006)
 **Context:** Slice 2B (app, A1–A9) built on `slice/2b-app-onboarding`
 against 2A's shipped 46 migrations under the ZERO-migration constraint —
@@ -122,8 +127,11 @@ itself is unchanged (still the artifact-route stub).
   surfaces' honest floors: real RLS reads + the design-spec empty
   sentence.
 - **Step 1's relationship answer has no schema slot** (no column exists;
-  none may be added). Asked as specified, held, not persisted — queued
-  below.
+  none may be added). *Amended at round 10 (ADR-0015 F1):* asked as
+  specified and now genuinely HELD — step 1 forwards it with the slice
+  and step 2 carries it to the moment the circle is created — but not
+  persisted; the durable column is queued below and lands as one line in
+  step 2 when it exists.
 - **Subject timezone** is not a PRD §4.1.3 question; it is filled from
   the browser (`Intl`) with an ET fallback — a slice-4 enrichment
   candidate (zip→tz) noted, not built.
@@ -151,9 +159,13 @@ bound and so needs the owner first (slice-2-plan Status):
 
 - 46 migrations, unchanged; db:verify clean; both DB suites untouched
   and green.
-- The app test surface: 119 vitest assertions across 18 files (CI step
-  added), plus the 11-step Playwright walkthrough (§11.4 item 3) green
-  locally — deliberately not a CI gate in 2B.
+- The app test surface at the round-10 dispositions head: **149 vitest
+  assertions across 21 files** (CI step added; the draft's "119" predated
+  the `9899fe0` forward fix — 121 — and the round-10 red→green added 28
+  more across 3 new files: worker, maintenance-postconditions,
+  vercel-cron pin), plus the 11-step Playwright walkthrough (§11.4
+  item 3) green locally under the `docs/ops/e2e-local-gate.md` protocol —
+  deliberately not a CI gate in 2B (ratified, Q13/ADR-0015 F11).
 - Coverage gains the 2B rows (docs/coverage.md §2B); RLS-10 stays
   pending (no artifact route).
 - Round 10 re-sees: ADR-0013's dispositions and both carried contracts,

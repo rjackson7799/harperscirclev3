@@ -27,15 +27,25 @@ GoTrue's confirm-email toggle is binary and neither pole is §4.1.2:
   set at creation, which would satisfy AC-AUTH-4's gate for accounts whose
   mailbox we never proved. That guts G4.
 
-The build therefore keeps `enable_confirmations = false` (sign-in never
-blocks) **and never uses public signUp**: the create-account boundary
-creates users through the **admin API with `email_confirm: false`**, so
-accounts start genuinely unverified. `auth.users.email_confirmed_at` is set
-only by a real confirmation-link click, and the postgres-owned 2A mirror
-(M3/M5) carries that truth to `accounts.email_verified_at`, which
-`hc.create_invite` (AC-AUTH-4) and forwarding activation (AC-AUTH-3,
-slice 4) read live. Verification mail is requested through GoTrue's resend
-path; observed local behaviour is recorded in the A3 route tests.
+The settled model (ADR-0014 D3, probed live — the admin-API alternative
+was abandoned when probing showed admin-created unconfirmed users can
+NEVER password-sign-in on this GoTrue): keep
+`enable_confirmations = false` and create accounts through **public
+signUp** — the one unverified-capable session mint — then the boundary
+IMMEDIATELY un-confirms `auth.users.email_confirmed_at` (correcting
+autoconfirm's stamp in the one place 2A put verification truth), runs the
+accounts bootstrap after the un-confirm so the insert mirror reads NULL,
+and requests the verification mail through GoTrue's resend. The founder
+keeps a 30-day session on the signup device; `email_confirmed_at` is
+thereafter set only by a real confirmation-link click, and the
+postgres-owned 2A mirror (M3/M5) carries that truth to
+`accounts.email_verified_at`, which `hc.create_invite` (AC-AUTH-4) and
+forwarding activation (AC-AUTH-3, slice 4) read live.
+
+The six GoTrue facts this model rests on are pinned by the executable
+probe **`scripts/probe-gotrue.mjs`** (run against the live stack; 6/6 at
+the 2B gate). **Re-run the probe on any GoTrue/Supabase upgrade** — a
+FAIL re-opens ADR-0014 D3.
 
 ## Explicitly not configured, deliberately
 

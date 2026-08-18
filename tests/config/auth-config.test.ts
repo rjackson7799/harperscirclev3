@@ -17,11 +17,14 @@ import path from 'node:path';
 // §4.1.2): GoTrue's confirm-email toggle is binary — enabled blocks sign-in
 // until the link is clicked (hard-for-use, violating "setup is never blocked
 // on checking mail"), disabled implicitly confirms at signup (faking
-// email_confirmed_at and gutting AC-AUTH-4/G4). The app therefore creates
-// users through the admin API with email_confirm: false, so accounts start
-// genuinely unverified while sign-in stays open; the postgres-owned mirror
-// (2A M3/M5) keeps reading the real email_confirmed_at. That app half is
-// tested with the create-account route.
+// email_confirmed_at and gutting AC-AUTH-4/G4). The settled model (ADR-0014
+// D3; admin-created unconfirmed users can never password-sign-in, so the
+// admin-API alternative was abandoned): PUBLIC signUp mints the one
+// unverified-capable session, the boundary immediately un-confirms
+// auth.users so accounts start genuinely unverified while the founder keeps
+// the signup session; the postgres-owned mirror (2A M3/M5) keeps reading
+// the real email_confirmed_at. That app half is tested with the
+// create-account route; the probed facts are scripts/probe-gotrue.mjs.
 // ============================================================================
 
 type TomlTable = Record<string, unknown>;
@@ -79,7 +82,7 @@ describe('A1 · supabase/config.toml pins §5.5 exactly', () => {
     expect(section('auth', 'email').otp_expiry).toBe(1800);
   });
 
-  it('email verification is real, not autoconfirmed-hard: enable_confirmations=false with the admin-created-unverified app half (§4.1.2)', () => {
+  it('email verification is real, not autoconfirmed-hard: enable_confirmations=false with the signUp-then-unconfirm app half (§4.1.2)', () => {
     expect(section('auth', 'email').enable_confirmations).toBe(false);
     expect(section('auth', 'email').enable_signup).toBe(true);
   });
