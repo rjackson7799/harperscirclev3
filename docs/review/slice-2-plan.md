@@ -1,19 +1,26 @@
 # Slice 2 — Auth + onboarding: the slice plan
 
-**Status:** 2A BUILT + ROUND-9 FORWARD-FIXED — both owner rulings landed
-2026-08-17 before migration 1: (1) forwarding-address local part =
-`<firstname>.<token>` (ADR-0011); (2) increment split = **2A (DB, M1–M8)
-→ round-9 review → merge; then 2B (app, A1–A9) → round-10 review** — the
-1A–1D cadence. 2A landed as migrations `20260818120001`–`120007` (M1–M7
-as mapped), pgTAP 035–041, concurrency cases 26–29, coverage rows
-flipped, deltas in ADR-0012; round-9 packet at `265952d`. Round 9
-returned **three blockers** (`round-9-findings.md`) — dispositioned in
-**ADR-0013** and forward-fixed in **M8** (`20260818120008`, the reserve;
-the ≤ 8 bound met exactly): red `1bebc9c` → green `c995a99` — suite
-1134/1134 across 43 files · concurrency 55/55 across 32 cases ·
-clean-leg reset 46 exact · db:verify clean.
-⏸ Next: owner sign-off on ADR-0013, then the merge commit — each in its
-own session, per the gate.
+**Status:** 2A MERGED · 2B IN PROGRESS. 2A merged to main via PR #5,
+merge commit `fbd1d7f` (parents `4e4bbca` + `5a365c9`; merged tree
+verified identical to `5a365c9`'s), docs follow-up `6f57d89`; CI green
+on main at both (runs 32114061495, 32114796686). ADR-0011/0012/0013 all
+Accepted-merged. 46 migrations · pgTAP 1134/1134 across 43 files ·
+concurrency 55/55 across 32 cases · db:verify clean. **The migration
+reserve is SPENT (8 of ≤ 8):** 2B expects ZERO migrations; any DDL
+finding forces an owner-approved bound amendment BEFORE writing it, and
+shipped migrations are never edited.
+2B (app, A1–A9) is building on `slice/2b-app-onboarding`, branched from
+main @ `6f57d89` in the 1A–1D pattern. Carried 2B contracts (ADR-0013):
+the F1 password-path boundary (sign-in, step-up re-auth and recovery are
+the ONLY password paths; every one consults `hc.auth_throttle` and
+records outcomes — failure pre-auth, success identity-bound) and the
+wasnt-me worker (POST performs the GoTrue admin kill right after
+`execute_wasnt_me` commits, completion via `hc.complete_security_action`;
+`hc.pending_security_actions` is the retry sweep, hc_pipeline-only).
+Round 10 at the 2B gate re-sees the round-9 dispositions, the two argued
+declines, and both contracts.
+⏸ Then: round-10 packet → third-party review → dispositions ADR → owner
+sign-off → merge — each in its own fresh session, per the gate.
 
 **Authority:** TSD §11.1 row 2 → §5.5–§5.12, §1.2/§1.3/§1.7 → PRD
 §4.0–§4.1, §4.6.3, §7.8 → design_spec (auth screens only) → binding
