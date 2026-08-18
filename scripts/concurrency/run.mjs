@@ -74,15 +74,33 @@
 //   Case 27 2A: an invite REVOCATION committing while accept_invite waits
 //           defeats it — the §5.10 conditional UPDATE re-reads under the
 //           lock and updates zero rows (RLS-09's racing half).
-//   Case 28 2A §5.6: two sessions hammering one identifier concurrently —
-//           no attempt is lost, the wait stays boxed at 900 s, and a
-//           success clears it (AC-AUTH-12 under contention).
+//   Case 28 2A §5.6 (as amended by round 9): two anon sessions hammering
+//           one identifier concurrently — no attempt is lost, the wait
+//           stays boxed at 900 s, and the account's OWN authenticated
+//           success (hc.record_auth_success — identity-bound, round-9
+//           finding 1) clears it for the other session immediately
+//           (AC-AUTH-12 under contention).
 //   Case 29 2A §5.7: two sessions racing ONE step-up token through a
 //           grant raise — serialized on the circle lock, exactly one
 //           PERFORMS the raise and consumes the token; the second is
 //           ABSORBED by the same-level no-op (changed:false, no token
 //           demanded — nothing rises), one grant_changed lands, the
 //           token is consumed exactly once.
+//   Case 30 Round-9 finding 2 (R-rule): a freeze committing while
+//           accept_sender waits on the per-circle lock DEFEATS the
+//           acceptance (freeze_active) — no sender row, no log entry,
+//           the held arrival untouched, nothing re-queued.
+//   Case 31 Round-9 finding 2's class, the M4/M7 writers: (a) a target-
+//           member removal committing while a token-carrying set_grant
+//           raise waits DEFEATS it — no grant reappears for the removed
+//           member and the step-up token stays unconsumed; (b) the
+//           ACTOR's own coordinator removal committing while their
+//           remove_member call waits defeats it — authorization re-reads
+//           under the lock (§4.6.3 immediate).
+//   Case 32 Round-9 finding 3: two sessions racing ONE "this wasn't me"
+//           token — exactly one consumes it, and exactly ONE durable
+//           security action is enqueued for the event (UNIQUE(event_id)
+//           + the conditional UPDATE, under contention).
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -1563,37 +1581,50 @@ async function case27(admin) {
 async function case28(admin) {
   const s1 = await connect();
   const s2 = await connect();
-  const ident = `race-${randomUUID().slice(0, 8)}@fixture.local`;
+  // The identifier is a REAL account's email: the AC-AUTH-12 exit is the
+  // holder's own authenticated success (round-9 finding 1 — anon can no
+  // longer assert one for anybody).
+  const holder = await mkInvitee(admin, 'c28');
   try {
     await asAnon(s1);
     await asAnon(s2);
 
-    // 10 failures from each session, interleaved concurrently.
+    // 10 failures from each session, interleaved concurrently. Errors are
+    // collected, not thrown, so a red run reports a signature, not an abort.
     const burst = (s) => Array.from({ length: 10 }, () =>
-      s.query(`select hc.record_auth_attempt($1, 'failure')`, [ident]));
-    await withTimeout(Promise.all([...burst(s1), ...burst(s2)]), 'case28 bursts');
+      s.query(`select hc.record_auth_failure($1)`, [holder.email]).catch(e => e));
+    const rs = await withTimeout(Promise.all([...burst(s1), ...burst(s2)]), 'case28 bursts');
+    const errs = rs.filter(r => r instanceof Error);
 
-    const t1 = await s1.query(`select hc.auth_throttle($1) as t`, [ident]);
+    const t1 = await s1.query(`select hc.auth_throttle($1) as t`, [holder.email]);
     const t = t1.rows[0].t;
     const rows = await admin.query(
       `select count(*)::int as n from public.auth_attempts
-       where attempt_key = hc.contact_key($1) and outcome = 'failure'`, [ident]);
+       where attempt_key = hc.contact_key($1) and outcome = 'failure'`, [holder.email]);
     check('case28: twenty interleaved failures all land (no lost attempts) and the wait stays boxed at 900 s',
-      rows.rows[0].n === 20 && t.failures === 20 && t.wait_seconds <= 900 && t.wait_seconds > 0,
-      `rows=${rows.rows[0].n} failures=${t.failures} wait=${t.wait_seconds}`);
+      errs.length === 0 && rows.rows[0].n === 20 && t.failures === 20
+        && t.wait_seconds <= 900 && t.wait_seconds > 0,
+      `errs=${errs.length ? errs[0].message : 0} rows=${rows.rows[0].n} failures=${t.failures} wait=${t.wait_seconds}`);
 
-    // The AC-AUTH-12 exit under contention: one success clears, and the
-    // other session sees it cleared on its NEXT statement.
-    await s1.query(`select hc.record_auth_attempt($1, 'success')`, [ident]);
-    const t2 = await s2.query(`select hc.auth_throttle($1) as t`, [ident]);
-    check('case28: a success from one session clears the state for the other immediately',
-      t2.rows[0].t.failures === 0 && t2.rows[0].t.wait_seconds === 0,
-      `after=${JSON.stringify(t2.rows[0].t)}`);
+    // The AC-AUTH-12 exit under contention: the HOLDER's session records
+    // its success (identity-bound — no identifier parameter exists), and
+    // the anon session sees it cleared on its NEXT statement.
+    await s1.query(`reset role`);
+    await asUserWithEmail(s1, holder.id, holder.email);
+    const suc = await s1.query(`select hc.record_auth_success('success') as r`)
+      .then(r => r.rows[0].r).catch(e => e);
+    const t2 = await s2.query(`select hc.auth_throttle($1) as t`, [holder.email]);
+    check(`case28: the holder's own authenticated success clears the state for the other session immediately`,
+      suc && suc.cleared === true
+        && t2.rows[0].t.failures === 0 && t2.rows[0].t.wait_seconds === 0,
+      `success=${suc instanceof Error ? suc.message : JSON.stringify(suc)} after=${JSON.stringify(t2.rows[0].t)}`);
   } finally {
     await s1.end();
     await s2.end();
     await admin.query(
-      `delete from public.auth_attempts where attempt_key = hc.contact_key($1)`, [ident]);
+      `delete from public.auth_attempts where attempt_key = hc.contact_key($1)`, [holder.email]);
+    await admin.query(`delete from public.accounts where id = $1`, [holder.id]).catch(() => {});
+    await admin.query(`delete from auth.users where id = $1`, [holder.id]).catch(() => {});
   }
 }
 
@@ -1649,6 +1680,221 @@ async function case29(admin) {
   }
 }
 
+// --- case 30: a freeze racing an in-flight sender acceptance (round-9 F2) ------
+
+async function case30(admin) {
+  const fx = await mkCircle(admin, 'c30');
+  const s1 = await connect();
+  const s2 = await connect();
+  const stranger = `stranger-${randomUUID().slice(0, 8)}@elsewhere.test`;
+  const arrival = randomUUID();
+  try {
+    // A held arrival from the stranger, so the acceptance would release.
+    await admin.query(`set session_replication_role = replica`);
+    await admin.query(
+      `insert into public.arrivals (id, circle_id, subject_id, channel, state, sender_address)
+       values ($1, $2, $3, 'email', 'held_unknown_sender', $4)`,
+      [arrival, fx.c, fx.s, stranger]);
+    await admin.query(`set session_replication_role = default`);
+
+    // S1 holds the per-circle lock in an open transaction.
+    await withClaims(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.reclassify_taint('document', $1)`, [fx.doc]);
+
+    // S2's acceptance blocks…
+    await asUser(s2, fx.u1);
+    const p2 = s2.query(`select hc.accept_sender($1, $2, null)`, [fx.c, stranger])
+      .then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.accept_sender%', 'accept_sender backend');
+    await waitForLockWait(admin, pid2, 's2 acceptance blocked');
+    check('case30: the sender acceptance blocks behind the open transaction', true, '');
+
+    // …a freeze commits mid-wait…
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fx.c]);
+
+    // …and the acceptance must SEE it: R-rule, lock before predicates.
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case30 acceptance after freeze');
+    const st = await admin.query(
+      `select (select count(*)::int from public.known_senders where circle_id = $1) as senders,
+              (select count(*)::int from public.access_log
+               where circle_id = $1 and event_type = 'sender_accepted')             as logs,
+              (select state::text from public.arrivals where id = $2)               as state,
+              (select count(*)::int from public.pipeline_outbox where circle_id = $1) as outbox`,
+      [fx.c, arrival]);
+    const r = st.rows[0];
+    check('case30: a freeze committed while the acceptance waited DEFEATS it (freeze_active; no sender row, no log entry, arrival untouched, nothing queued)',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'freeze_active'
+        && r.senders === 0 && r.logs === 0 && r.state === 'held_unknown_sender' && r.outbox === 0,
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'} senders=${r.senders} logs=${r.logs} state=${r.state} outbox=${r.outbox}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await admin.query(`delete from public.known_senders where circle_id = $1`, [fx.c]).catch(() => {});
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 31: the M4/M7 writers re-authorize under the lock (round-9 F2) -------
+
+async function case31(admin) {
+  const fx = await mkCircle(admin, 'c31');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // (a) a raise with a VALID step-up token racing the TARGET's removal.
+    await admin.query(
+      `update public.access_grants set level = 'summary'
+       where member_id = $1 and domain = 'health'`, [fx.m2]);
+    const token = await mintStepUp(admin, fx.u1, 'raise_grant', `${fx.m2}:${fx.s}:health`);
+
+    await withClaims(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.reclassify_taint('document', $1)`, [fx.doc]);
+
+    await asUser(s2, fx.u1);
+    const pa = s2.query(
+      `select hc.set_grant($1, $2, 'health', 'view', $3)`, [fx.m2, fx.s, token])
+      .then(() => null).catch(e => e);
+    const pidA = await findActivePid(admin, 'select hc.set_grant%', 'set_grant backend');
+    await waitForLockWait(admin, pidA, 's2 raise blocked');
+
+    // The target's removal commits mid-wait (its committed effect, as
+    // remove_member leaves it: membership closed, grants gone).
+    await admin.query(`set session_replication_role = replica`);
+    await admin.query(
+      `update public.circle_members set removed_at = now(), removed_by = $1
+       where id = $2`, [fx.u1, fx.m2]);
+    await admin.query(`delete from public.access_grants where member_id = $1`, [fx.m2]);
+    await admin.query(`set session_replication_role = default`);
+
+    await s1.query('commit');
+    const ea = await withTimeout(pa, 'case31a raise after target removal');
+    const stA = await admin.query(
+      `select (select count(*)::int from public.access_grants where member_id = $1) as grants,
+              (select (consumed_at is null) from public.step_up_tokens
+               where token_hash = extensions.digest($2, 'sha256'))                  as unconsumed`,
+      [fx.m2, token]);
+    const ra = stA.rows[0];
+    check('case31a: a target removal committed while a token-carrying raise waited DEFEATS it — no grant reappears for the removed member, the token stays unconsumed',
+      ea !== null && ea.code === 'P0001' && ea.message === 'grant_refused'
+        && ra.grants === 0 && ra.unconsumed === true,
+      `err=${ea ? ea.code + ':' + ea.message : 'none'} grants=${ra.grants} unconsumed=${ra.unconsumed}`);
+
+    // (b) remove_member racing the ACTOR's own coordinator removal.
+    // A second coordinator (u3/m3) and a removable member (u4/m4).
+    const u3 = randomUUID(), u4 = randomUUID();
+    await admin.query(`set session_replication_role = replica`);
+    await admin.query(
+      `insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
+         email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+       values ('00000000-0000-0000-0000-000000000000', $1::uuid, 'authenticated', 'authenticated',
+               $2, 'x', now(), now(), now(), '{}', '{}'),
+              ('00000000-0000-0000-0000-000000000000', $3::uuid, 'authenticated', 'authenticated',
+               $4, 'x', now(), now(), now(), '{}', '{}')`,
+      [u3, `${u3}@fixture.local`, u4, `${u4}@fixture.local`]);
+    await admin.query(
+      `insert into public.accounts (id, kind, display_name)
+       values ($1, 'member', 'Omar'), ($2, 'member', 'Lena')`, [u3, u4]);
+    const m3 = (await admin.query(
+      `insert into public.circle_members (circle_id, account_id, tier, display_name_at_join)
+       values ($1, $2, 'coordinator', 'Omar') returning id`, [fx.c, u3])).rows[0].id;
+    const m4 = (await admin.query(
+      `insert into public.circle_members (circle_id, account_id, tier, display_name_at_join)
+       values ($1, $2, 'family', 'Lena') returning id`, [fx.c, u4])).rows[0].id;
+    await admin.query(`set session_replication_role = default`);
+
+    // Hold the per-circle lock directly this round (the first transaction
+    // already exercised the real-writer hold; what is under test is the
+    // CONTENDER's re-read).
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+
+    // u3 (a live coordinator) starts removing m4…
+    await asUser(s2, u3);
+    const pb = s2.query(`select hc.remove_member($1)`, [m4])
+      .then(() => null).catch(e => e);
+    const pidB = await findActivePid(admin, 'select hc.remove_member%', 'remove_member backend');
+    await waitForLockWait(admin, pidB, 's2 removal blocked');
+
+    // …and u3's OWN coordinatorship is removed mid-wait.
+    await admin.query(`set session_replication_role = replica`);
+    await admin.query(
+      `update public.circle_members set removed_at = now(), removed_by = $1
+       where id = $2`, [fx.u1, m3]);
+    await admin.query(`set session_replication_role = default`);
+
+    await s1.query('commit');
+    const eb = await withTimeout(pb, 'case31b removal after actor removal');
+    const stB = await admin.query(
+      `select (select (removed_at is null) from public.circle_members where id = $1) as live`, [m4]);
+    check('case31b: the actor\'s own removal committed while their remove_member waited DEFEATS it — authorization re-reads under the lock (§4.6.3 immediate)',
+      eb !== null && eb.code === 'P0001' && eb.message === 'remove_refused'
+        && stB.rows[0].live === true,
+      `err=${eb ? eb.code + ':' + eb.message : 'none'} target_live=${stB.rows[0].live}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 32: two sessions racing ONE "this wasn't me" token (round-9 F3) ------
+
+async function case32(admin) {
+  const holder = await mkInvitee(admin, 'c32');
+  const s1 = await connect();
+  const s2 = await connect();
+  const token = randomBytes(32).toString('hex');
+  let eventId = null;
+  try {
+    eventId = (await admin.query(
+      `insert into public.security_events (account_id, kind, token_hash, token_expires_at)
+       values ($1, 'suspicious_signin', extensions.digest($2, 'sha256'),
+               now() + interval '15 minutes')
+       returning id`, [holder.id, token])).rows[0].id;
+
+    // S1 consumes in an open transaction (row lock held)…
+    await asAnon(s1);
+    await s1.query('begin');
+    const r1 = await s1.query(`select hc.execute_wasnt_me($1) as r`, [token])
+      .then(r => r.rows[0].r).catch(e => e);
+
+    // …S2 races the same token and blocks on the row…
+    await asAnon(s2);
+    const p2 = s2.query(`select hc.execute_wasnt_me($1)`, [token])
+      .then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.execute_wasnt_me%', 'wasnt_me backend');
+    await waitForLockWait(admin, pid2, 's2 consumption blocked on the row');
+
+    // …the winner commits; the loser's conditional UPDATE finds zero rows.
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case32 loser after winner commit');
+
+    const acts = await admin.query(
+      `select count(*)::int as n from public.security_actions
+       where event_id = $1 and account_id = $2
+         and action = 'global_signout_force_reset' and completed_at is null`,
+      [eventId, holder.id]).catch(e => e);
+    check('case32: exactly one session consumes the token; the loser refuses in one shape; exactly ONE durable kill action is enqueued for the event',
+      !(r1 instanceof Error) && r1.account_id === holder.id
+        && e2 !== null && e2.code === 'P0001' && e2.message === 'wasnt_me_refused'
+        && !(acts instanceof Error) && acts.rows[0].n === 1,
+      `winner=${r1 instanceof Error ? r1.message : JSON.stringify(r1)} loser=${e2 ? e2.code + ':' + e2.message : 'none'} actions=${acts instanceof Error ? acts.message : acts.rows[0].n}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await admin.query(`delete from public.security_actions where event_id = $1`, [eventId]).catch(() => {});
+    await admin.query(`delete from public.security_events where id = $1`, [eventId]).catch(() => {});
+    await admin.query(`delete from public.accounts where id = $1`, [holder.id]).catch(() => {});
+    await admin.query(`delete from auth.users where id = $1`, [holder.id]).catch(() => {});
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -1683,6 +1929,9 @@ try {
   await case27(admin);
   await case28(admin);
   await case29(admin);
+  await case30(admin);
+  await case31(admin);
+  await case32(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;

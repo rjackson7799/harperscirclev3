@@ -1,20 +1,29 @@
 -- ============================================================================
--- 2A · M1 — auth_attempts + progressive per-account throttling (TSD §5.6,
--- PRD §4.1.1/§4.1.7; AC-AUTH-12 as a test).
+-- 2A · M1+M8 — auth_attempts + progressive per-account throttling (TSD §5.6,
+-- PRD §4.1.1/§4.1.7; AC-AUTH-12 as a test; round-9 finding 1, ADR-0013).
 --
--- The contract these tests pin:
+-- The contract these tests pin (as amended by round 9):
 --   · public.auth_attempts — existence-blind attempt ledger keyed on
 --     hc.contact_key(identifier); NO FK to accounts, by design (§5.5 never
 --     enumerate). Zero request-path privileges; hc_internal writes it
---     through the two definers below.
+--     through the definers below.
 --   · hc.auth_throttle(text) → jsonb {failures, wait_seconds} — advisory,
 --     never raises, EXECUTE to anon AND authenticated (sign-in runs as
 --     anon; §5.7 step-up re-auth runs as authenticated and must be
 --     throttled by the same counters or step-up becomes an unthrottled
 --     password oracle).
---   · hc.record_auth_attempt(text, text) → jsonb {failures} — outcomes
---     'failure' | 'success' | 'reset_completed'; anything else is ONE
---     refusal shape (auth_attempt_refused, DEF-10 posture).
+--   · hc.record_auth_failure(text) → jsonb {failures} — the ONLY outcome a
+--     request role may assert. A fabricated failure grants an attacker
+--     nothing a real failed attempt would not (and AC-AUTH-12 boxes both);
+--     success-class events are a different authority entirely.
+--   · hc.record_auth_success(text) → jsonb {cleared} — round-9 finding 1:
+--     success-class outcomes ('success' | 'reset_completed') are BOUND TO
+--     THE CALLER'S PROVEN IDENTITY. No parameter names an account; the
+--     cleared key derives from hc.uid() → accounts.email, so the only
+--     throttle state a session can clear is the one its own successful
+--     authentication already refutes. EXECUTE to authenticated ONLY —
+--     anon can assert nothing. hc.record_auth_attempt(text, text), which
+--     let any caller assert 'success' for any identifier, is GONE.
 --   · The schedule (pinned here, recorded in the migration header):
 --     failures counted in the TRAILING 15 MINUTES, and only those after
 --     the most recent success/reset_completed; required wait from the
@@ -32,7 +41,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(33);
+select plan(39);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (house pattern, self-contained per file)
@@ -63,16 +72,47 @@ begin
   return v;
 end $$;
 
--- Run record_auth_attempt as anon n times for one key, in a DO block
--- (mutations in DO blocks; probes come separately).
-create function pg_temp.record_n(p_ident text, p_outcome text, p_n int)
+-- Run as an authenticated session carrying sub + email claims (the success
+-- recorder binds on the session identity, exactly as GoTrue signs it).
+create function pg_temp.call_as(p_user uuid, p_email text, p_sql text) returns text
+language plpgsql as $$
+declare v text; m text;
+begin
+  perform set_config('request.jwt.claims', jsonb_build_object(
+    'sub', p_user, 'role', 'authenticated', 'email', p_email)::text, true);
+  execute 'set local role authenticated';
+  begin
+    execute p_sql into v;
+  exception when others then
+    get stacked diagnostics m := message_text;
+    v := 'ERROR:' || sqlstate || ':' || m;
+  end;
+  execute 'reset role';
+  perform set_config('request.jwt.claims', '', true);
+  return v;
+end $$;
+
+-- Record n failures as anon for one key, in a DO block (mutations in DO
+-- blocks; probes come separately).
+create function pg_temp.fail_n(p_ident text, p_n int)
 returns void language plpgsql as $$
 begin
   execute 'set local role anon';
   for i in 1..p_n loop
-    perform hc.record_auth_attempt(p_ident, p_outcome);
+    perform hc.record_auth_failure(p_ident);
   end loop;
   execute 'reset role';
+end $$;
+
+-- An account whose auth.users email is mirrored onto accounts.email; the
+-- slot stashes the email for later probes.
+create function pg_temp.mk_account(p_slot text) returns void
+language plpgsql as $$
+declare u uuid := pg_temp.mk_user(gen_random_uuid());
+begin
+  insert into public.accounts (id, kind, display_name) values (u, 'member', 'Holder');
+  perform set_config('t.' || p_slot, u::text, true);
+  perform set_config('t.' || p_slot || '_email', u || '@fixture.local', true);
 end $$;
 
 -- ----------------------------------------------------------------------------
@@ -93,26 +133,34 @@ select is(pg_temp.errcode_as('authenticated',
   '42501', 'authenticated cannot write auth_attempts directly — the definers are the only path');
 
 -- ----------------------------------------------------------------------------
--- 5–8 · Function surface: signatures, owner, EXECUTE set (catalog-based).
+-- 5–10 · Function surface: the round-9 boundary. The outcome-parameter form
+-- is GONE; failure recording stays a request-role surface; success recording
+-- is authenticated-only and takes no identifier.
 -- ----------------------------------------------------------------------------
 select has_function('hc', 'auth_throttle', array['text'],
   'hc.auth_throttle(text) exists');
-select has_function('hc', 'record_auth_attempt', array['text', 'text'],
-  'hc.record_auth_attempt(text, text) exists');
+select hasnt_function('hc', 'record_auth_attempt', array['text', 'text'],
+  'hc.record_auth_attempt(text, text) is GONE — no caller-supplied outcomes (round-9 finding 1)');
+select has_function('hc', 'record_auth_failure', array['text'],
+  'hc.record_auth_failure(text) exists');
+select has_function('hc', 'record_auth_success', array['text'],
+  'hc.record_auth_success(text) exists — kind only, never an identifier');
 
 select is(
   (select array_agg(r order by r) from unnest(array['anon', 'authenticated']) r
-   where has_function_privilege(r, 'hc.auth_throttle(text)', 'execute')),
+   where has_function_privilege(r, 'hc.auth_throttle(text)', 'execute')
+     and has_function_privilege(r, 'hc.record_auth_failure(text)', 'execute')),
   array['anon', 'authenticated'],
-  'auth_throttle: EXECUTE to anon and authenticated (sign-in AND step-up re-auth paths)');
+  'auth_throttle + record_auth_failure: EXECUTE to anon and authenticated (sign-in AND step-up re-auth paths)');
 select is(
-  (select bool_or(has_function_privilege(r, 'hc.record_auth_attempt(text, text)', 'execute'))
-   from unnest(array['hc_admin', 'hc_pipeline']) r),
-  false,
-  'record_auth_attempt: no EXECUTE for hc_admin or hc_pipeline');
+  (select array_agg(r order by r)
+   from unnest(array['anon', 'authenticated', 'hc_admin', 'hc_pipeline']) r
+   where has_function_privilege(r, 'hc.record_auth_success(text)', 'execute')),
+  array['authenticated'],
+  'record_auth_success: authenticated ONLY — anon asserts nothing success-class, ever');
 
 -- ----------------------------------------------------------------------------
--- 9–10 · Empty history: advisory zero, never an error, callable as anon.
+-- 11–12 · Empty history: advisory zero, never an error, callable as anon.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.errcode_as('anon',
   $$ select hc.auth_throttle('nobody-yet@example.org') $$),
@@ -125,35 +173,35 @@ select is(hc.auth_throttle('nobody-yet@example.org'),
 reset role;
 
 -- ----------------------------------------------------------------------------
--- 11–16 · The progressive schedule, from live recording (one transaction ⇒
+-- 13–18 · The progressive schedule, from live recording (one transaction ⇒
 -- now() is fixed ⇒ the wait probe returns the FULL delay, deterministically).
 -- ----------------------------------------------------------------------------
-select pg_temp.record_n('sched@example.org', 'failure', 4);
+select pg_temp.fail_n('sched@example.org', 4);
 set local role anon;
 select is(hc.auth_throttle('sched@example.org'),
   jsonb_build_object('failures', 4, 'wait_seconds', 0),
   'failures 1–4: no delay — a mistyped password is not an incident');
 reset role;
 
-select pg_temp.record_n('sched@example.org', 'failure', 1);
+select pg_temp.fail_n('sched@example.org', 1);
 set local role anon;
 select is((hc.auth_throttle('sched@example.org')->>'wait_seconds')::int, 30,
   'failure 5: 30 s');
 reset role;
 
-select pg_temp.record_n('sched@example.org', 'failure', 3);
+select pg_temp.fail_n('sched@example.org', 3);
 set local role anon;
 select is((hc.auth_throttle('sched@example.org')->>'wait_seconds')::int, 120,
   'failure 8: 120 s');
 reset role;
 
-select pg_temp.record_n('sched@example.org', 'failure', 2);
+select pg_temp.fail_n('sched@example.org', 2);
 set local role anon;
 select is((hc.auth_throttle('sched@example.org')->>'wait_seconds')::int, 900,
   'failure 10: 900 s — the 15-minute box');
 reset role;
 
-select pg_temp.record_n('sched@example.org', 'failure', 30);
+select pg_temp.fail_n('sched@example.org', 30);
 set local role anon;
 select is((hc.auth_throttle('sched@example.org')->>'wait_seconds')::int, 900,
   'failure 40: STILL 900 s — the cap never escalates past 15 minutes (AC-AUTH-12)');
@@ -162,7 +210,7 @@ select is((hc.auth_throttle('sched@example.org')->>'failures')::int, 40,
 reset role;
 
 -- ----------------------------------------------------------------------------
--- 17–19 · The wait decays from the LATEST failure; the window is trailing.
+-- 19–21 · The wait decays from the LATEST failure; the window is trailing.
 -- Backdated fixtures written directly as postgres (superuser, test-only).
 -- ----------------------------------------------------------------------------
 do $$
@@ -192,62 +240,83 @@ select is(hc.auth_throttle('never@example.org'),
 reset role;
 
 -- ----------------------------------------------------------------------------
--- 20–23 · Success-class events clear the counter (the AC-AUTH-12 exit).
+-- 22–27 · Success-class events clear the counter (the AC-AUTH-12 exit) —
+-- through the REAL identity-bound path, and ONLY for the session's own key.
 -- ----------------------------------------------------------------------------
-select pg_temp.record_n('cleared@example.org', 'failure', 6);
-select pg_temp.record_n('cleared@example.org', 'success', 1);
+select pg_temp.mk_account('holder');
+select pg_temp.fail_n(current_setting('t.holder_email'), 6);
+select is(pg_temp.call_as(current_setting('t.holder')::uuid,
+  current_setting('t.holder_email'),
+  $$ select (hc.record_auth_success('success')) ->> 'cleared' $$),
+  'true',
+  'a session that authenticated AS the account clears it — the only mint is the password itself');
 set local role anon;
-select is(hc.auth_throttle('cleared@example.org'),
+select is(hc.auth_throttle(current_setting('t.holder_email')),
   jsonb_build_object('failures', 0, 'wait_seconds', 0),
-  'a success clears the failure state — only the password holder can mint one');
+  'the success cleared the failure state');
 reset role;
 
-select pg_temp.record_n('cleared@example.org', 'failure', 5);
+select pg_temp.fail_n(current_setting('t.holder_email'), 5);
 set local role anon;
-select is((hc.auth_throttle('cleared@example.org')->>'wait_seconds')::int, 30,
+select is((hc.auth_throttle(current_setting('t.holder_email'))->>'wait_seconds')::int, 30,
   'failures after a success count fresh from zero');
 reset role;
 
-select pg_temp.record_n('reset@example.org', 'failure', 12);
-select pg_temp.record_n('reset@example.org', 'reset_completed', 1);
-set local role anon;
-select is(hc.auth_throttle('reset@example.org'),
-  jsonb_build_object('failures', 0, 'wait_seconds', 0),
+select pg_temp.mk_account('resetter');
+select pg_temp.fail_n(current_setting('t.resetter_email'), 12);
+select is(pg_temp.call_as(current_setting('t.resetter')::uuid,
+  current_setting('t.resetter_email'),
+  $$ select (hc.record_auth_success('reset_completed')) ->> 'cleared' $$),
+  'true',
   'a completed email reset clears the state — the §5.6 recovery path, never blocked, always an exit');
+set local role anon;
+select is(hc.auth_throttle(current_setting('t.resetter_email')),
+  jsonb_build_object('failures', 0, 'wait_seconds', 0),
+  'the reset_completed event cleared the state');
 reset role;
 
+-- The round-9 crux: another authenticated session CANNOT clear a foreign
+-- key — there is no parameter to aim, so its success lands on its own key.
+select pg_temp.mk_account('victim');
+select pg_temp.mk_account('attacker');
+select pg_temp.fail_n(current_setting('t.victim_email'), 6);
+do $$
+begin
+  perform pg_temp.call_as(current_setting('t.attacker')::uuid,
+    current_setting('t.attacker_email'),
+    $$ select hc.record_auth_success('success')::text $$);
+end $$;
+set local role anon;
+select is((hc.auth_throttle(current_setting('t.victim_email'))->>'failures')::int, 6,
+  'round-9 finding 1: a stranger''s authenticated success clears NOTHING for the victim — identity-bound, no identifier parameter');
+reset role;
+
+-- ----------------------------------------------------------------------------
+-- 28–29 · The failure recorder returns the running count; existence-blind.
+-- ----------------------------------------------------------------------------
 do $$
 declare v jsonb;
 begin
   execute 'set local role anon';
-  v := hc.record_auth_attempt('counted@example.org', 'failure');
+  v := hc.record_auth_failure('counted@example.org');
   execute 'reset role';
   perform set_config('t.counted', v->>'failures', true);
 end $$;
 select is(current_setting('t.counted')::int, 1,
-  'record_auth_attempt returns the running failure count for the caller''s threshold logic');
+  'record_auth_failure returns the running failure count for the caller''s threshold logic');
 
--- ----------------------------------------------------------------------------
--- 24–26 · Existence-blind and canonical: the answer never depends on whether
--- an account exists, and spelling variants share one budget (hc.contact_key).
--- ----------------------------------------------------------------------------
-do $$
-declare u uuid := pg_temp.mk_user(gen_random_uuid());
-begin
-  insert into public.accounts (id, kind, display_name) values (u, 'member', 'Real');
-  perform set_config('t.real_email', u || '@fixture.local', true);
-end $$;
-
-select pg_temp.record_n(current_setting('t.real_email'), 'failure', 5);
-select pg_temp.record_n('ghost-no-account@example.org', 'failure', 5);
+select pg_temp.fail_n('ghost-no-account@example.org', 5);
 set local role anon;
-select is(hc.auth_throttle(current_setting('t.real_email')),
+select is(hc.auth_throttle(current_setting('t.holder_email')),
           hc.auth_throttle('ghost-no-account@example.org'),
   'identical histories → byte-identical answers, account or no account (§5.5 never enumerate)');
 reset role;
 
-select pg_temp.record_n('Case@Example.org', 'failure', 3);
-select pg_temp.record_n('  case@example.org  ', 'failure', 2);
+-- ----------------------------------------------------------------------------
+-- 30–31 · Canonical keys: spelling variants share one budget (hc.contact_key).
+-- ----------------------------------------------------------------------------
+select pg_temp.fail_n('Case@Example.org', 3);
+select pg_temp.fail_n('  case@example.org  ', 2);
 set local role anon;
 select is((hc.auth_throttle('CASE@EXAMPLE.ORG')->>'failures')::int, 5,
   'case and whitespace variants share ONE budget (hc.contact_key, the FRZ-07 precedent)');
@@ -259,22 +328,31 @@ select is(
   1, 'the stored key is canonical — no per-spelling rows');
 
 -- ----------------------------------------------------------------------------
--- 27–29 · Refusals: ONE shape, and nothing written by a refused call.
+-- 32–34 · Refusals: ONE shape, and nothing written by a refused call.
 -- ----------------------------------------------------------------------------
+select is(pg_temp.call_as(current_setting('t.holder')::uuid,
+  current_setting('t.holder_email'),
+  $$ select hc.record_auth_success('lockout')::text $$),
+  'ERROR:P0001:auth_attempt_refused',
+  'unknown success kind: one refusal shape (there is no lockout outcome, by design)');
 select throws_ok(
-  $$ select hc.record_auth_attempt('x@example.org', 'lockout') $$,
-  'P0001', 'auth_attempt_refused',
-  'unknown outcome: one refusal shape (there is no lockout outcome, by design)');
-select throws_ok(
-  $$ select hc.record_auth_attempt('   ', 'failure') $$,
+  $$ select hc.record_auth_failure('   ') $$,
   'P0001', 'auth_attempt_refused',
   'blank identifier refused — no anonymous global bucket exists');
+select is(pg_temp.errcode_as('authenticated',
+  $$ select hc.record_auth_success('success') $$),
+  'P0001',
+  'an authenticated session with no identity claims clears nothing — one refusal shape');
+
+-- ----------------------------------------------------------------------------
+-- 35 · The ledger never holds an unknown outcome.
+-- ----------------------------------------------------------------------------
 select is((select count(*)::int from public.auth_attempts
            where outcome not in ('failure', 'success', 'reset_completed')), 0,
   'no refused outcome ever reached the table');
 
 -- ----------------------------------------------------------------------------
--- 30–31 · AC-AUTH-12 as a property: an adversarial 200-attempt history spread
+-- 36–37 · AC-AUTH-12 as a property: an adversarial 200-attempt history spread
 -- over 30 minutes can never push the wait past 900 s; once the latest failure
 -- is older than 15 minutes the wait is exactly 0. No third-party sequence
 -- reaches a state the holder cannot leave within the hour.
@@ -305,7 +383,7 @@ select is((hc.auth_throttle('adversary@example.org')->>'wait_seconds')::int, 0,
 reset role;
 
 -- ----------------------------------------------------------------------------
--- 32–33 · Hygiene: both definers owned by hc_internal with a pinned
+-- 38–39 · Hygiene: all three definers owned by hc_internal with a pinned
 -- search_path, and same-key rows older than 24 h are pruned on write.
 -- ----------------------------------------------------------------------------
 select is(
@@ -313,18 +391,18 @@ select is(
    join pg_namespace n on n.oid = p.pronamespace
    join pg_roles r on r.oid = p.proowner
    where n.nspname = 'hc'
-     and p.proname in ('auth_throttle', 'record_auth_attempt')
+     and p.proname in ('auth_throttle', 'record_auth_failure', 'record_auth_success')
      and r.rolname = 'hc_internal'
      and p.prosecdef
      and exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%')),
-  2, 'both functions: hc_internal-owned SECURITY DEFINER with search_path pinned');
+  3, 'all three functions: hc_internal-owned SECURITY DEFINER with search_path pinned');
 
 do $$
 begin
   insert into public.auth_attempts (attempt_key, outcome, attempted_at)
   values (hc.contact_key('stale@example.org'), 'failure', now() - interval '25 hours');
 end $$;
-select pg_temp.record_n('stale@example.org', 'failure', 1);
+select pg_temp.fail_n('stale@example.org', 1);
 select is(
   (select count(*)::int from public.auth_attempts
    where attempt_key = hc.contact_key('stale@example.org')

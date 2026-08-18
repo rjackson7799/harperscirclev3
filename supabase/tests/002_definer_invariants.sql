@@ -53,6 +53,7 @@ select is((
     'cancel_arrival(p_arrival uuid)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
     'claim_stage(p_arrival uuid, p_stage text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
+    'complete_security_action(p_action_id uuid)',
     'consume_step_up(p_token text, p_operation text, p_target_ref text, p_account uuid)',
     'contact_key(p text)',
     'create_arrival(p_circle_id uuid, p_subject_id uuid, p_channel text, p_parent_arrival_id uuid, p_sender_address text, p_sender_display_name text, p_message_id text, p_auth_result text, p_auth_detail jsonb, p_mime_declared text, p_byte_size bigint, p_page_count integer, p_ingest_idempotency_key text)',
@@ -82,11 +83,13 @@ select is((
     'outbox_ack(p_outbox_ids uuid[])',
     'outbox_drain(p_limit integer)',
     'own_domain(p_type hc.object_type, p_category hc.doc_category, p_kind hc.timeline_kind, p_declared hc.domain)',
+    'pending_security_actions()',
     'pipeline_worker_states()',
     'presence(p_subject uuid)',
     'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
-    'record_auth_attempt(p_identifier text, p_outcome text)',
+    'record_auth_failure(p_identifier text)',
+    'record_auth_success(p_kind text)',
     'record_tombstone(p_circle_id uuid, p_object_type text, p_object_id uuid, p_storage_keys text[], p_scope text, p_requested_by uuid, p_reason text)',
     'remove_member(p_member_id uuid, p_keep_share_ids uuid[])',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
@@ -125,20 +128,20 @@ select is((
   array['accept_invite','accept_sender','adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
         'assert_manual_flag','auth_throttle','cancel_arrival','claim_stage',
-        'consume_step_up','create_arrival',
+        'complete_security_action','consume_step_up','create_arrival',
         'create_circle','create_invite','create_manual_proposal',
         'ctx','ctx_for','execute_wasnt_me','expire_held_mail',
         'finalize_extraction','finalize_interpretation',
         'grant_vectors','link_provenance','log_chain_heads','log_denied',
         'mint_step_up','note_suspicious_attempts',
-        'outbox_ack','outbox_drain','presence',
-        'propagate_taint_growth','reclassify_taint','record_auth_attempt',
-        'record_tombstone','remove_member',
+        'outbox_ack','outbox_drain','pending_security_actions','presence',
+        'propagate_taint_growth','reclassify_taint','record_auth_failure',
+        'record_auth_success','record_tombstone','remove_member',
         'request_freeze','revise_object','revoke_invite','revoke_sender',
         'run_taint_sweep',
         'sender_recognised','set_grant','share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the forty-six boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the forty-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -204,12 +207,16 @@ with actual as (
   union all select 'all_domains', 'authenticated'
   union all select 'ladder', 'authenticated'
   union all select 'visible_at', 'authenticated'
-  -- 2A M1: the sign-in throttle (§5.6) — the first anon-callable surface;
-  -- authenticated additionally throttles §5.7 step-up re-auth attempts
+  -- 2A M1 as amended by M8 (round-9 finding 1): the sign-in throttle (§5.6)
+  -- — the first anon-callable surface; authenticated additionally throttles
+  -- §5.7 step-up re-auth attempts. Failure is the only request-role-
+  -- assertable outcome; success-class recording is identity-bound and
+  -- authenticated-only.
   union all select 'auth_throttle', 'anon'
   union all select 'auth_throttle', 'authenticated'
-  union all select 'record_auth_attempt', 'anon'
-  union all select 'record_auth_attempt', 'authenticated'
+  union all select 'record_auth_failure', 'anon'
+  union all select 'record_auth_failure', 'authenticated'
+  union all select 'record_auth_success', 'authenticated'
   -- 2A M2: minting a step-up token is a member act on a fresh session;
   -- consume_step_up is deliberately absent — definer bodies only
   union all select 'mint_step_up', 'authenticated'
@@ -234,6 +241,10 @@ with actual as (
   union all select 'accept_sender', 'authenticated'
   union all select 'revoke_sender', 'authenticated'
   union all select 'expire_held_mail', 'hc_pipeline'
+  -- 2A M8 (round-9 finding 3): the owed-kill queue's worker surface —
+  -- drain posture, hc_pipeline only
+  union all select 'pending_security_actions', 'hc_pipeline'
+  union all select 'complete_security_action', 'hc_pipeline'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -287,6 +298,11 @@ insert into snapshot_expected values
   ('hc_internal',   'security_events', 'SELECT'),
   ('hc_internal',   'security_events', 'INSERT'),
   ('hc_internal',   'security_events', 'UPDATE'),
+  -- 2A M8 (round-9 finding 3): the owed-kill queue — enqueued by
+  -- execute_wasnt_me, drained through the two hc_pipeline definers
+  ('hc_internal',   'security_actions', 'SELECT'),
+  ('hc_internal',   'security_actions', 'INSERT'),
+  ('hc_internal',   'security_actions', 'UPDATE'),
   ('hc_internal',   'step_up_tokens',  'SELECT'),
   ('hc_internal',   'step_up_tokens',  'INSERT'),
   ('hc_internal',   'step_up_tokens',  'UPDATE'),

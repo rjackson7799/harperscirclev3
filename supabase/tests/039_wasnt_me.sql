@@ -32,13 +32,17 @@
 --     (GET renders, POST executes — app layer). Single-use via the
 --     atomic conditional UPDATE; expired/replayed/garbage: ONE
 --     non-enumerating shape (wasnt_me_refused). Returns the account id
---     so the app layer kills every session and forces the reset.
+--     so the app layer kills every session and forces the reset — and
+--     (round-9 finding 3, ADR-0013) enqueues the owed kill as a durable
+--     public.security_actions row IN THE SAME transaction, so a consumed
+--     token with the promise unperformed is unrepresentable. The queue's
+--     own contract is 042's.
 -- ============================================================================
 begin;
 
 create extension if not exists pgtap;
 
-select plan(21);
+select plan(23);
 
 -- ----------------------------------------------------------------------------
 -- Helpers
@@ -90,7 +94,7 @@ language plpgsql as $$
 begin
   execute 'set local role anon';
   for i in 1..p_n loop
-    perform hc.record_auth_attempt(p_ident, 'failure');
+    perform hc.record_auth_failure(p_ident);
   end loop;
   execute 'reset role';
 end $$;
@@ -195,7 +199,8 @@ select is((select count(*)::int from public.security_events), 1,
   'but mints NOTHING while an unconsumed, unexpired token exists — the mailbox is not floodable from the sign-in form');
 
 -- ----------------------------------------------------------------------------
--- 16–19 · execute_wasnt_me: single-use destruction on explicit POST
+-- 16–21 · execute_wasnt_me: single-use destruction on explicit POST, and the
+-- round-9 atomicity: consumed ⇒ the owed kill is durably enqueued
 -- ----------------------------------------------------------------------------
 do $$
 begin
@@ -211,10 +216,21 @@ select is(pg_temp.as_anon(format(
 select is((select (e.token_consumed_at is not null) from public.security_events e),
   true, 'consumption is recorded on the event');
 
+select is((
+  select count(*)::int from public.security_actions a
+  join public.security_events e on e.id = a.event_id
+  where a.account_id = current_setting('t.u1')::uuid
+    and a.action = 'global_signout_force_reset'
+    and a.completed_at is null),
+  1, 'round-9 finding 3: the SAME transaction enqueued the owed global sign-out — token consumed ⇒ kill owed, structurally');
+
 select is(pg_temp.as_anon(format(
   $$ select hc.execute_wasnt_me(%L)::text $$, current_setting('t.token'))),
   'ERROR:P0001:wasnt_me_refused',
   'single-use: the same token again is dead');
+
+select is((select count(*)::int from public.security_actions), 1,
+  'the refused replay enqueued nothing');
 
 select is(pg_temp.as_anon(
   $$ select hc.execute_wasnt_me(encode(extensions.gen_random_bytes(32), 'hex'))::text $$),
@@ -222,7 +238,7 @@ select is(pg_temp.as_anon(
   'a token that was never minted refuses in the SAME shape — non-enumerating (§5.11)');
 
 -- ----------------------------------------------------------------------------
--- 20–21 · Expiry, and a second notice after consumption
+-- 22–23 · Expiry, and a second notice after consumption
 -- ----------------------------------------------------------------------------
 select pg_temp.fail_n('holder@fixture.local', 6);
 select is(pg_temp.as_anon(
