@@ -37,6 +37,8 @@ select is((
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc'),
   array[
+    'accept_invite(p_token text)',
+    'accept_sender(p_circle_id uuid, p_address text, p_domain text)',
     'access_log_immutable()',
     'adjudicate_freeze(p_freeze_id uuid, p_outcome text, p_adjudicated_by text, p_outcome_note text, p_subject_id uuid, p_narrowing_rationale text, p_contact_attempted_at timestamp with time zone, p_objected_to_member_id uuid)',
     'advance_arrival(p_arrival uuid, p_from hc.arrival_state, p_to hc.arrival_state, p_lease uuid, p_reason text)',
@@ -46,18 +48,24 @@ select is((
     'arrival_auth_detail(p_arrival uuid)',
     'assert_claimed()',
     'assert_manual_flag()',
+    'auth_throttle(p_identifier text)',
     'build_dsc()',
     'cancel_arrival(p_arrival uuid)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
     'claim_stage(p_arrival uuid, p_stage text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
+    'complete_security_action(p_action_id uuid)',
+    'consume_step_up(p_token text, p_operation text, p_target_ref text, p_account uuid)',
     'contact_key(p text)',
     'create_arrival(p_circle_id uuid, p_subject_id uuid, p_channel text, p_parent_arrival_id uuid, p_sender_address text, p_sender_display_name text, p_message_id text, p_auth_result text, p_auth_detail jsonb, p_mime_declared text, p_byte_size bigint, p_page_count integer, p_ingest_idempotency_key text)',
     'create_circle(p_name text, p_subjects jsonb, p_opening_context text[])',
+    'create_invite(p_circle_id uuid, p_invited_email text, p_tier hc.tier, p_subject_ids uuid[], p_note text)',
     'create_manual_proposal(p_circle_id uuid, p_subject_id uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'ctx()',
     'ctx_for(p_account uuid)',
     'dom(p jsonb)',
     'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
+    'execute_wasnt_me(p_token text)',
+    'expire_held_mail()',
     'finalize_extraction(p_arrival uuid, p_lease uuid, p_facts jsonb, p_proposals jsonb)',
     'finalize_interpretation(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
     'grant_vectors(p_account uuid)',
@@ -70,26 +78,36 @@ select is((
     'log_denied(p_circle_id uuid, p_domain hc.domain, p_subject_id uuid)',
     'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
     'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
+    'mint_step_up(p_operation text, p_target_ref text)',
+    'note_suspicious_attempts(p_identifier text)',
     'outbox_ack(p_outbox_ids uuid[])',
     'outbox_drain(p_limit integer)',
     'own_domain(p_type hc.object_type, p_category hc.doc_category, p_kind hc.timeline_kind, p_declared hc.domain)',
+    'pending_security_actions()',
     'pipeline_worker_states()',
     'presence(p_subject uuid)',
     'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
+    'record_auth_failure(p_identifier text)',
+    'record_auth_success(p_kind text)',
     'record_tombstone(p_circle_id uuid, p_object_type text, p_object_id uuid, p_storage_keys text[], p_scope text, p_requested_by uuid, p_reason text)',
+    'remove_member(p_member_id uuid, p_keep_share_ids uuid[])',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
     'resolve_object(p_type hc.object_type, p_id uuid)',
     'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
+    'revoke_invite(p_invite_id uuid)',
+    'revoke_sender(p_sender_id uuid)',
     'run_taint_sweep()',
     'sender_recognised(p_arrival uuid)',
-    'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid)',
+    'set_grant(p_member_id uuid, p_subject_id uuid, p_domain hc.domain, p_level hc.access_level, p_step_up_token text)',
+    'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid, p_step_up_token text)',
     'sweep_provenance()',
     'sweeper_pass()',
     'sync_search_content()',
     'taint_union(a hc.domain[], b hc.domain[])',
     'taint_union_2(a hc.domain[], b hc.domain[])',
     'taint_union_agg(hc.domain[])',
+    'tier_defaults(p_tier hc.tier)',
     'tombstone_guard()',
     'tsv_documents()',
     'tsv_tasks()',
@@ -107,18 +125,23 @@ select is((
   select array_agg(p.proname order by p.proname)
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
-  array['adjudicate_freeze','advance_arrival','approve_proposal',
+  array['accept_invite','accept_sender','adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
-        'assert_manual_flag','cancel_arrival','claim_stage','create_arrival',
-        'create_circle','create_manual_proposal',
-        'ctx','ctx_for','finalize_extraction','finalize_interpretation',
+        'assert_manual_flag','auth_throttle','cancel_arrival','claim_stage',
+        'complete_security_action','consume_step_up','create_arrival',
+        'create_circle','create_invite','create_manual_proposal',
+        'ctx','ctx_for','execute_wasnt_me','expire_held_mail',
+        'finalize_extraction','finalize_interpretation',
         'grant_vectors','link_provenance','log_chain_heads','log_denied',
-        'outbox_ack','outbox_drain','presence',
-        'propagate_taint_growth','reclassify_taint','record_tombstone',
-        'request_freeze','revise_object','run_taint_sweep',
-        'sender_recognised','share_object','sweep_provenance',
+        'mint_step_up','note_suspicious_attempts',
+        'outbox_ack','outbox_drain','pending_security_actions','presence',
+        'propagate_taint_growth','reclassify_taint','record_auth_failure',
+        'record_auth_success','record_tombstone','remove_member',
+        'request_freeze','revise_object','revoke_invite','revoke_sender',
+        'run_taint_sweep',
+        'sender_recognised','set_grant','share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the thirty-two boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the forty-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -184,6 +207,44 @@ with actual as (
   union all select 'all_domains', 'authenticated'
   union all select 'ladder', 'authenticated'
   union all select 'visible_at', 'authenticated'
+  -- 2A M1 as amended by M8 (round-9 finding 1): the sign-in throttle (§5.6)
+  -- — the first anon-callable surface; authenticated additionally throttles
+  -- §5.7 step-up re-auth attempts. Failure is the only request-role-
+  -- assertable outcome; success-class recording is identity-bound and
+  -- authenticated-only.
+  union all select 'auth_throttle', 'anon'
+  union all select 'auth_throttle', 'authenticated'
+  union all select 'record_auth_failure', 'anon'
+  union all select 'record_auth_failure', 'authenticated'
+  union all select 'record_auth_success', 'authenticated'
+  -- 2A M2: minting a step-up token is a member act on a fresh session;
+  -- consume_step_up is deliberately absent — definer bodies only
+  union all select 'mint_step_up', 'authenticated'
+  -- 2A M3: the invites lifecycle — member acts; tier_defaults readable so
+  -- AC-AUTH-8's app snapshot can run as the app runs
+  union all select 'create_invite', 'authenticated'
+  union all select 'revoke_invite', 'authenticated'
+  union all select 'accept_invite', 'authenticated'
+  union all select 'tier_defaults', 'authenticated'
+  -- 2A M4: the grant and revocation writers — coordinator acts, authorized
+  -- in-function
+  union all select 'set_grant', 'authenticated'
+  union all select 'remove_member', 'authenticated'
+  -- 2A M5: the notice path (sign-in runs as anon) and the kill-switch
+  -- POST (the clicker may hold no session at all)
+  union all select 'note_suspicious_attempts', 'anon'
+  union all select 'note_suspicious_attempts', 'authenticated'
+  union all select 'execute_wasnt_me', 'anon'
+  union all select 'execute_wasnt_me', 'authenticated'
+  -- 2A M6: the sender surfaces (member acts); expiry runs as the
+  -- scheduler identity (OPS-01 pattern)
+  union all select 'accept_sender', 'authenticated'
+  union all select 'revoke_sender', 'authenticated'
+  union all select 'expire_held_mail', 'hc_pipeline'
+  -- 2A M8 (round-9 finding 3): the owed-kill queue's worker surface —
+  -- drain posture, hc_pipeline only
+  union all select 'pending_security_actions', 'hc_pipeline'
+  union all select 'complete_security_action', 'hc_pipeline'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -227,6 +288,30 @@ insert into snapshot_expected values
   ('authenticated', 'circle_members',  'SELECT'),
   ('authenticated', 'access_grants',   'SELECT'),
   ('hc_internal',   'accounts',        'SELECT'),
+  ('hc_internal',   'auth_attempts',   'SELECT'),
+  ('hc_internal',   'auth_attempts',   'INSERT'),
+  ('hc_internal',   'auth_attempts',   'DELETE'),
+  ('hc_internal',   'known_senders',   'INSERT'),
+  ('hc_internal',   'known_senders',   'UPDATE'),
+  ('hc_internal',   'outbound_mail',   'SELECT'),
+  ('hc_internal',   'outbound_mail',   'INSERT'),
+  ('hc_internal',   'security_events', 'SELECT'),
+  ('hc_internal',   'security_events', 'INSERT'),
+  ('hc_internal',   'security_events', 'UPDATE'),
+  -- 2A M8 (round-9 finding 3): the owed-kill queue — enqueued by
+  -- execute_wasnt_me, drained through the two hc_pipeline definers
+  ('hc_internal',   'security_actions', 'SELECT'),
+  ('hc_internal',   'security_actions', 'INSERT'),
+  ('hc_internal',   'security_actions', 'UPDATE'),
+  ('hc_internal',   'step_up_tokens',  'SELECT'),
+  ('hc_internal',   'step_up_tokens',  'INSERT'),
+  ('hc_internal',   'step_up_tokens',  'UPDATE'),
+  ('hc_internal',   'access_grants',   'UPDATE'),
+  ('hc_internal',   'access_grants',   'DELETE'),
+  ('hc_internal',   'invites',         'SELECT'),
+  ('hc_internal',   'invites',         'INSERT'),
+  ('hc_internal',   'invites',         'UPDATE'),
+  ('hc_internal',   'circle_members',  'UPDATE'),
   ('hc_internal',   'circles',         'SELECT'),
   ('hc_internal',   'circles',         'INSERT'),
   ('hc_internal',   'subjects',        'SELECT'),
@@ -368,6 +453,7 @@ select is((
   join pg_class c on c.oid = p.polrelid
   where 'hc_internal'::regrole::oid = any (p.polroles)),
   array['access_grants_internal','access_grants_internal_create',
+        'access_grants_internal_revoke','access_grants_internal_set',
         'access_log_internal','access_log_internal_append',
         'access_log_internal_collapse',
         'accounts_internal',
@@ -375,7 +461,10 @@ select is((
         'approval_attempts_internal_write',
         'arrival_events_internal','arrival_events_internal_append',
         'arrivals_internal','arrivals_internal_advance','arrivals_internal_intake',
+        'auth_attempts_internal','auth_attempts_internal_append',
+        'auth_attempts_internal_prune',
         'circle_members_internal','circle_members_internal_create',
+        'circle_members_internal_reactivate',
         'circles_internal','circles_internal_create',
         'documents_internal','documents_internal_revise',
         'documents_internal_write',
@@ -384,9 +473,12 @@ select is((
         'extractions_internal','extractions_internal_write',
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
-        'known_senders_internal',
+        'invites_internal','invites_internal_decide','invites_internal_issue',
+        'known_senders_internal','known_senders_internal_accept',
+        'known_senders_internal_revoke',
         'object_shares_internal','object_shares_internal_create',
         'object_shares_internal_revoke',
+        'outbound_mail_internal','outbound_mail_internal_enqueue',
         'pipeline_leases_internal','pipeline_leases_internal_claim',
         'pipeline_leases_internal_close',
         'pipeline_outbox_internal','pipeline_outbox_internal_drain',
@@ -398,12 +490,18 @@ select is((
         'provenance_edges_internal','provenance_edges_internal_link',
         'provenance_edges_internal_unlink',
         'record_revisions_internal','record_revisions_internal_append',
+        'security_actions_internal','security_actions_internal_complete',
+        'security_actions_internal_enqueue',
+        'security_events_internal','security_events_internal_consume',
+        'security_events_internal_note',
+        'step_up_tokens_internal','step_up_tokens_internal_consume',
+        'step_up_tokens_internal_mint',
         'subjects_internal','subjects_internal_create',
         'tasks_internal','tasks_internal_revise','tasks_internal_write',
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated sixty-seven');
+  'the hc_internal policy list is exactly the enumerated eighty-nine');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:

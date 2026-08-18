@@ -273,11 +273,27 @@ select is(pg_temp.scalar(format(
 -- ----------------------------------------------------------------------------
 -- 13 · R1 sequential binding for the share path: a freeze committed
 -- before the call refuses share_object on its next authorization
--- evaluation (014 pins revise; RLS-08 pins reads).
+-- evaluation (014 pins revise; RLS-08 pins reads). 2A M2: the call
+-- presents a VALID step-up token, so the refusal is the freeze's.
 -- ----------------------------------------------------------------------------
+do $$
+declare v text;
+begin
+  perform set_config('request.jwt.claims', jsonb_build_object(
+    'sub', current_setting('t.u1')::uuid, 'role', 'authenticated',
+    'aal', 'aal1',
+    'amr', jsonb_build_array(jsonb_build_object('method', 'password',
+      'timestamp', extract(epoch from now())::bigint)))::text, true);
+  execute 'set local role authenticated';
+  v := hc.mint_step_up('share_object',
+                       'document:' || current_setting('t.doc_f')) ->> 'token';
+  execute 'reset role';
+  perform set_config('t.tok_frz', v, true);
+end $$;
 select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
-  $$ select hc.share_object('document', %L, %L)::text $$,
-  current_setting('t.doc_f'), current_setting('t.mf'))), 'ERROR:P0001:share_refused',
+  $$ select hc.share_object('document', %L, %L, %L)::text $$,
+  current_setting('t.doc_f'), current_setting('t.mf'),
+  current_setting('t.tok_frz'))), 'ERROR:P0001:share_refused',
   'a committed freeze refuses sharing at the next authorization evaluation');
 
 select * from finish();

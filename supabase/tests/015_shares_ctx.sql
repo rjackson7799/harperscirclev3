@@ -65,6 +65,24 @@ begin
   return p_id;
 end $$;
 
+-- 2A M2: sharing requires §5.7 step-up. Mint on a freshly re-authenticated
+-- session, bound to 'share_object' + 'type:id'. A REFUSED share rolls its
+-- consumption back (the call_as exception block), so refusal cases prove
+-- the predicate under test, not a missing token.
+create function pg_temp.mint_share(p_user uuid, p_target text) returns text
+language plpgsql as $$
+declare v text;
+begin
+  perform set_config('request.jwt.claims', jsonb_build_object(
+    'sub', p_user, 'role', 'authenticated', 'aal', 'aal1',
+    'amr', jsonb_build_array(jsonb_build_object('method', 'password',
+      'timestamp', extract(epoch from now())::bigint)))::text, true);
+  execute 'set local role authenticated';
+  v := hc.mint_step_up('share_object', p_target) ->> 'token';
+  execute 'reset role';
+  return v;
+end $$;
+
 do $$
 declare
   u1 uuid := pg_temp.mk_user(gen_random_uuid());   -- manage×5, granter
@@ -132,19 +150,21 @@ begin
   perform set_config('t.td', td::text, true);
 end $$;
 
--- 1–2 · Shape.
-select ok(to_regprocedure('hc.share_object(hc.object_type, uuid, uuid)') is not null,
-  'hc.share_object(type, id, member) exists');
+-- 1–2 · Shape (4-arg since 2A M2 — §5.7 requires step-up before sharing).
+select ok(to_regprocedure('hc.share_object(hc.object_type, uuid, uuid, text)') is not null,
+  'hc.share_object(type, id, member, step_up_token) exists');
 select ok(coalesce(
   has_function_privilege('authenticated',
-    to_regprocedure('hc.share_object(hc.object_type, uuid, uuid)'), 'execute'),
+    to_regprocedure('hc.share_object(hc.object_type, uuid, uuid, text)'), 'execute'),
   false),
   'EXECUTE granted to authenticated — sharing is a member act');
 
 -- 3–5 · The share, and the row it writes.
 select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
-  $$ select (hc.share_object('document', %L, %L)) ->> 'object_id' $$,
-  current_setting('t.doc1'), current_setting('t.m2'))),
+  $$ select (hc.share_object('document', %L, %L, %L)) ->> 'object_id' $$,
+  current_setting('t.doc1'), current_setting('t.m2'),
+  pg_temp.mint_share(current_setting('t.u1')::uuid,
+                     'document:' || current_setting('t.doc1')))),
   current_setting('t.doc1'),
   'a manage-holding granter shares one named object with one named person');
 
@@ -185,20 +205,31 @@ select is(pg_temp.call_as(current_setting('t.u2')::uuid, format(
   current_setting('t.td'))), '0',
   'the task derived from the shared document is NOT reachable — no propagation code exists (AC-PERM-10)');
 
--- 10–13 · Validation refusals, one shape.
+-- 10–13 · Validation refusals, one shape — each presented a VALID token,
+-- so the refusal is the predicate's, never the token's.
+select set_config('t.ghost', gen_random_uuid()::text, true);
 select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
-  $$ select hc.share_object('document', %L, %L)::text $$,
-  gen_random_uuid(), current_setting('t.m2'))), 'ERROR:P0001:share_refused',
+  $$ select hc.share_object('document', %L, %L, %L)::text $$,
+  current_setting('t.ghost'), current_setting('t.m2'),
+  pg_temp.mint_share(current_setting('t.u1')::uuid,
+                     'document:' || current_setting('t.ghost')))),
+  'ERROR:P0001:share_refused',
   'a nonexistent object refuses');
 
 select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
-  $$ select hc.share_object('document', %L, %L)::text $$,
-  current_setting('t.doc1'), current_setting('t.m4'))), 'ERROR:P0001:share_refused',
+  $$ select hc.share_object('document', %L, %L, %L)::text $$,
+  current_setting('t.doc1'), current_setting('t.m4'),
+  pg_temp.mint_share(current_setting('t.u1')::uuid,
+                     'document:' || current_setting('t.doc1')))),
+  'ERROR:P0001:share_refused',
   'a grantee from another circle refuses — circle agreement is validated, not assumed');
 
 select is(pg_temp.call_as(current_setting('t.u2')::uuid, format(
-  $$ select hc.share_object('task', %L, %L)::text $$,
-  current_setting('t.td'), current_setting('t.m3'))), 'ERROR:P0001:share_refused',
+  $$ select hc.share_object('task', %L, %L, %L)::text $$,
+  current_setting('t.td'), current_setting('t.m3'),
+  pg_temp.mint_share(current_setting('t.u2')::uuid,
+                     'task:' || current_setting('t.td')))),
+  'ERROR:P0001:share_refused',
   'a granter who cannot currently see the object at manage cannot share it');
 
 select is(pg_temp.errcode_as('postgres', format(
