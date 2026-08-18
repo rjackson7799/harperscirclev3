@@ -1,7 +1,12 @@
 # ADR-0015 — Third-party review round 10: slice 2 whole at the 2B gate, findings, dispositions
 
-**Status:** Accepted — eight owner rulings recorded in the dispositions
-session (2026-08-18); merge sign-off remains its own session (ADR-0006)
+**Status:** Accepted — merged at `2dc8ee8` (merge commit
+`2dc8ee875b8c292e8289bd6d8737a0639006f702`, parents `6f57d89` +
+`e21a67f`; owner sign-off recorded 2026-08-18 in the dispositions
+session — the dispositions and rulings R1–R8 ratified and the merge
+authorized in-session, the 2A/ADR-0013 sign-off-with-merge pattern;
+merged tree verified identical to `e21a67f`'s; PR #6 merged; CI green
+on main at the merge commit, run 32182443779)
 **Deciders:** owner (sole merge authority)
 **Date:** 2026-08-18
 **Packet reviewed:** `docs/review/round-10-findings.md` — the adversarial

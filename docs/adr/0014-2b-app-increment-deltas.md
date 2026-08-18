@@ -5,8 +5,9 @@ owner rulings recorded in **ADR-0015** (round-10 dispositions: D1/D2/D4
 ratified; D2 additionally carries the finding-4 threat model in
 `docs/ops/runtime-db-credentials.md`; D3's two deviations accepted with
 the fuller finding-5 framing; the D6 relationship narrowing amended to
-carry-then-queue; the worker's invoker is now checked in). Merge
-sign-off remains the owner's, in the merge session (ADR-0006)
+carry-then-queue; the worker's invoker is now checked in). **Merged** to main at `2dc8ee8`
+(PR #6; owner sign-off with the ADR-0015 ratification; CI green on main,
+run 32182443779)
 **Deciders:** build (owner ratifies at the gate, per ADR-0006)
 **Context:** Slice 2B (app, A1–A9) built on `slice/2b-app-onboarding`
 against 2A's shipped 46 migrations under the ZERO-migration constraint —

@@ -1,7 +1,18 @@
 # Slice 2 — Auth + onboarding: the slice plan
 
-**Status:** 2A MERGED · 2B BUILT · **ROUND-10 DISPOSITIONS APPLIED —
-AWAITING OWNER SIGN-OFF → MERGE.** The round-10 review returned 15
+**Status:** **SLICE 2 COMPLETE — MERGED.** 2B merged to main via PR #6,
+merge commit **`2dc8ee8`** (parents `6f57d89` + `e21a67f`; merged tree
+verified identical to the branch head's; **CI green on main at the merge
+commit: run 32182443779**). Owner sign-off recorded in the dispositions
+session (ADR-0015 ratified — dispositions + rulings R1–R8; the merge
+authorized in-session, the 2A pattern). **Standing obligation:** the
+batched bound amendment (ADR-0015 R8 — sign-out event type + definer,
+four maintenance-definer conversions, step-1 relationship column,
+lower-privilege runtime role, worker claim/lease) is a **HARD entry
+criterion of the next slice that opens the DB**; APP-09b stays pending
+until it lands. Deploy checklist: `docs/ops/security-actions-worker.md`.
+
+*(Dispositions record, kept:)* The round-10 review returned 15
 findings (`docs/review/round-10-findings.md`, verbatim at `5faccc4`);
 all accepted in whole or part, eight owner rulings recorded, applied
 red→green with ZERO DDL: **ADR-0015** (dispositions) + the packet
