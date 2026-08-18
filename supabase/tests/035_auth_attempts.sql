@@ -280,12 +280,12 @@ reset role;
 select pg_temp.mk_account('victim');
 select pg_temp.mk_account('attacker');
 select pg_temp.fail_n(current_setting('t.victim_email'), 6);
-do $$
+do $wrap$
 begin
   perform pg_temp.call_as(current_setting('t.attacker')::uuid,
     current_setting('t.attacker_email'),
     $$ select hc.record_auth_success('success')::text $$);
-end $$;
+end $wrap$;
 set local role anon;
 select is((hc.auth_throttle(current_setting('t.victim_email'))->>'failures')::int, 6,
   'round-9 finding 1: a stranger''s authenticated success clears NOTHING for the victim — identity-bound, no identifier parameter');

@@ -490,6 +490,8 @@ select is((
         'provenance_edges_internal','provenance_edges_internal_link',
         'provenance_edges_internal_unlink',
         'record_revisions_internal','record_revisions_internal_append',
+        'security_actions_internal','security_actions_internal_complete',
+        'security_actions_internal_enqueue',
         'security_events_internal','security_events_internal_consume',
         'security_events_internal_note',
         'step_up_tokens_internal','step_up_tokens_internal_consume',
@@ -499,7 +501,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated eighty-six');
+  'the hc_internal policy list is exactly the enumerated eighty-nine');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
