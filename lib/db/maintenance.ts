@@ -86,6 +86,62 @@ export async function updateOpeningContext(
   );
 }
 
+export type InviteDescription = {
+  state: 'pending' | 'used' | 'revoked' | 'expired';
+  invite_id: string;
+  circle_id: string;
+  circle_name: string;
+  inviter_name: string;
+  invited_email: string;
+  tier: 'family' | 'care_circle';
+  subject_names: string[];
+};
+
+/**
+ * The accept screen's pre-auth window (PRD §4.1.4 item 2: the screen
+ * shows which circle, who invited them, which subjects and the ceiling
+ * BEFORE asking for anything — necessarily before any session exists).
+ * The DB deliberately gives invites zero request-path reads and 2A
+ * shipped no describe definer, so this read rides the maintenance
+ * boundary, keyed STRICTLY on the sha256 of the 32-byte token — the
+ * capability the mail recipient already holds, disclosing only what
+ * their invite email already said. Unknown token ⇒ null, one shape.
+ */
+export async function describeInviteByToken(token: string): Promise<InviteDescription | null> {
+  if (!/^[0-9a-f]{64}$/.test(token)) return null;
+  const r = await db().query(
+    `select i.id, i.circle_id, i.invited_email::text as invited_email, i.tier::text as tier,
+            i.expires_at, i.accepted_at, i.revoked_at,
+            c.name as circle_name, a.display_name as inviter_name,
+            coalesce((select array_agg(s.first_name order by s.first_name)
+                        from public.subjects s where s.id = any(i.subject_ids)), '{}') as subject_names
+       from public.invites i
+       join public.circles c on c.id = i.circle_id
+       join public.accounts a on a.id = i.invited_by
+      where i.token_hash = extensions.digest($1, 'sha256')`,
+    [token],
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  const state = row.accepted_at
+    ? 'used'
+    : row.revoked_at
+      ? 'revoked'
+      : new Date(row.expires_at).getTime() <= Date.now()
+        ? 'expired'
+        : 'pending';
+  return {
+    state,
+    invite_id: row.id,
+    circle_id: row.circle_id,
+    circle_name: row.circle_name,
+    inviter_name: row.inviter_name,
+    invited_email: row.invited_email,
+    tier: row.tier,
+    subject_names: row.subject_names,
+  };
+}
+
 /**
  * The signup un-confirm (PRD §4.1.2; docs/ops/auth-config-parity.md).
  *

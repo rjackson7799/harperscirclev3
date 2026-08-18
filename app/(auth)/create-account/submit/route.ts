@@ -1,5 +1,6 @@
 import { asUser } from '@/lib/db/user';
 import { bootstrapAccount, unconfirmEmail } from '@/lib/hc/accounts';
+import { describeInvite } from '@/lib/hc/invites';
 import { safeNext } from '@/lib/auth/redirect';
 import { formFields, redirect303 } from '@/lib/auth/http';
 
@@ -23,15 +24,29 @@ import { formFields, redirect303 } from '@/lib/auth/http';
 export async function POST(req: Request): Promise<Response> {
   const fields = await formFields(req);
   const name = (fields.name ?? '').trim();
-  const email = (fields.email ?? '').trim();
+  let email = (fields.email ?? '').trim();
   const password = fields.password ?? '';
-  const next = safeNext(fields.next, '/setup');
-  const nextParam = next === '/setup' ? '' : `&next=${encodeURIComponent(next)}`;
+  let next = safeNext(fields.next, '/setup');
 
-  if (!name) return redirect303(req, `/create-account?e=name${nextParam}`);
-  if (!email.includes('@')) return redirect303(req, `/create-account?e=email${nextParam}`);
+  // The invitee variant (PRD §4.1.4): the address is the TOKEN's, derived
+  // server-side — a submitted email field is ignored, so the pre-filled,
+  // not-editable address is enforcement, not decoration.
+  const inviteToken = fields.invite ?? '';
+  if (inviteToken) {
+    const invite = await describeInvite(inviteToken);
+    if (!invite || invite.state !== 'pending') {
+      return redirect303(req, `/accept/${encodeURIComponent(inviteToken)}`);
+    }
+    email = invite.invited_email;
+    next = `/accept/${inviteToken}`;
+  }
+  const nextParam = next === '/setup' ? '' : `&next=${encodeURIComponent(next)}`;
+  const retryParams = `${nextParam}${inviteToken ? `&invite=${encodeURIComponent(inviteToken)}` : ''}`;
+
+  if (!name) return redirect303(req, `/create-account?e=name${retryParams}`);
+  if (!email.includes('@')) return redirect303(req, `/create-account?e=email${retryParams}`);
   if (password.length < 10) {
-    return redirect303(req, `/create-account?e=password-length${nextParam}`);
+    return redirect303(req, `/create-account?e=password-length${retryParams}`);
   }
 
   const supabase = await asUser();

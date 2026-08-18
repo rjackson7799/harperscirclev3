@@ -28,6 +28,7 @@ vi.mock('@/lib/db/user', () => ({
 const cookieGet = vi.fn();
 vi.mock('next/headers', () => ({
   cookies: async () => ({ get: cookieGet, getAll: () => [], set: () => {} }),
+  headers: async () => new Headers({ host: '127.0.0.1:3000' }),
 }));
 
 const CIRCLE = 'c-1';

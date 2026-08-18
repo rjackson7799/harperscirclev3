@@ -1,8 +1,15 @@
+import { describeInvite } from '@/lib/hc/invites';
+
 /**
  * Create account (PRD §4.1.3 row 1): name, email, password — and the
  * value proposition and privacy statement ON this screen, not in a
  * footer. Password guidance is plain language (§4.1.7): ten characters,
- * checked against known breached lists, no composition demands.
+ * checked against known breached lists, no composition rules.
+ *
+ * The invitee variant (§4.1.4): with ?invite=<token>, the invited
+ * address is displayed fixed — three typed fields become two — and the
+ * submit derives the address from the token server-side, so the fixed
+ * display is enforcement, not decoration.
  */
 export default async function CreateAccountPage({
   searchParams,
@@ -12,6 +19,9 @@ export default async function CreateAccountPage({
   const params = await searchParams;
   const e = typeof params.e === 'string' ? params.e : '';
   const next = typeof params.next === 'string' ? params.next : '';
+  const inviteToken = typeof params.invite === 'string' ? params.invite : '';
+  const invite = inviteToken ? await describeInvite(inviteToken) : null;
+  const invitedEmail = invite?.state === 'pending' ? invite.invited_email : '';
 
   return (
     <main className="auth-card">
@@ -33,14 +43,25 @@ export default async function CreateAccountPage({
 
       <form method="post" action="/create-account/submit">
         {next && <input type="hidden" name="next" value={next} />}
+        {invitedEmail && <input type="hidden" name="invite" value={inviteToken} />}
         <label className="field">
           <span className="field-label">Your name</span>
           <input type="text" name="name" autoComplete="name" required />
         </label>
-        <label className="field">
-          <span className="field-label">Email</span>
-          <input type="email" name="email" autoComplete="email" required />
-        </label>
+        {invitedEmail ? (
+          <div className="field">
+            <span className="field-label">Email</span>
+            <span className="mono-address">{invitedEmail}</span>
+            <span className="field-help">
+              The invite is bound to this address, so it can&apos;t be changed here.
+            </span>
+          </div>
+        ) : (
+          <label className="field">
+            <span className="field-label">Email</span>
+            <input type="email" name="email" autoComplete="email" required />
+          </label>
+        )}
         <label className="field">
           <span className="field-label">Password</span>
           <input type="password" name="password" autoComplete="new-password" required minLength={10} />

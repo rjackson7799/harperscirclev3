@@ -38,8 +38,8 @@ beforeAll(async () => {
     await raw.query(
       `insert into auth.users (id, email, instance_id, aud, role, email_confirmed_at)
        values ($1, $2, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-               case when $2 = $3 then now() end)`,
-      [id, email, FOUNDER_EMAIL],
+               case when $3::boolean then now() end)`,
+      [id, email, id === FOUNDER],
     );
     await raw.query(`insert into public.accounts (id, kind, display_name) values ($1, 'member', $2)`, [
       id,

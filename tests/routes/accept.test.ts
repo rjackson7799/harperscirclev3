@@ -60,7 +60,7 @@ beforeEach(() => {
 describe('A5 · the ceiling comes before anything is asked', () => {
   it('circle, inviter, subjects and the module ceiling render ABOVE any form or link-button', async () => {
     const html = await renderAccept();
-    expect(html).toContain("Nell's circle");
+    expect(html).toContain('Nell&#x27;s circle');
     expect(html).toContain('Sarah Chen');
     expect(html).toContain('Nell');
     const ceiling = ceilingCopy('family', { person: 'you', subjectNames: ['Nell'] });
