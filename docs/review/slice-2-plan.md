@@ -11,11 +11,13 @@ finding forces an owner-approved bound amendment BEFORE writing it, and
 shipped migrations are never edited.
 **2B (app, A1–A9) is BUILT** on `slice/2b-app-onboarding` (branched from
 main @ `6f57d89`, the 1A–1D pattern), with ZERO migrations as required.
-Evidence at the branch head: app tests **119/119 across 18 vitest
-files** (new CI step; config §5.5 pins · import fences · factory +
-request-role-channel contracts live · AC-AUTH-8 snapshot vs
-`hc.tier_defaults()` · route byte-identity · founder/invitee door
-contracts) · the **§11.4-3 Playwright walkthrough 11/11** (local gate by
+Evidence at the branch head `9899fe0` (CI run **32166530483** green;
+the head adds the commit-review forward fix — the recovery redirect
+comes from configuration, never the request): app tests **121/121
+across 18 vitest files** (new CI step; config §5.5 pins · import
+fences · factory + request-role-channel contracts live · AC-AUTH-8
+snapshot vs `hc.tier_defaults()` · route byte-identity incl. the
+reset-poisoning refusal · founder/invitee door contracts) · the **§11.4-3 Playwright walkthrough 11/11** (local gate by
 design — ADR-0014; incl. AC-PERM-3 from a live second context and
 AC-AUTH-10 from a second browser) · DB legs untouched and re-proven at
 the head: clean-leg reset **46 exact** · pgTAP **1134/1134 across 43
