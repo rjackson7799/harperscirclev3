@@ -243,8 +243,11 @@ select is((
   where n.nspname = 'public' and not t.tgisinternal
     and c.relname in ('documents','tasks','timeline_events','profile_facts',
                       'episodes','proposals','document_search_content')
-), array['documents:hc_claim_documents',
+), array['document_search_content:hc_build_dsc',
+         'documents:hc_claim_documents',
          'documents:hc_guard_documents',
+         'documents:hc_sync_search_documents',
+         'documents:hc_tsv_documents',
          'episodes:hc_claim_episodes',
          'episodes:hc_guard_episodes',
          'profile_facts:hc_claim_profile_facts',
@@ -253,9 +256,11 @@ select is((
          'proposals:hc_manual_flag_proposals',
          'tasks:hc_claim_tasks',
          'tasks:hc_guard_tasks',
+         'tasks:hc_tsv_tasks',
          'timeline_events:hc_claim_timeline_events',
-         'timeline_events:hc_guard_timeline_events'],
-  'trigger inventory: one guard per guarded table + one claim trigger per record table + the 1C manual-flag agreement trigger (MNL-01); dsc carries none');
+         'timeline_events:hc_guard_timeline_events',
+         'timeline_events:hc_tsv_timeline_events'],
+  'trigger inventory: one guard per guarded table + one claim trigger per record table + the 1C manual-flag agreement trigger (MNL-01) + the 1D search builders and the documents→dsc sync (§2.11); dsc carries exactly its builder');
 
 select * from finish();
 rollback;

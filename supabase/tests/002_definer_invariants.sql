@@ -46,6 +46,7 @@ select is((
     'arrival_auth_detail(p_arrival uuid)',
     'assert_claimed()',
     'assert_manual_flag()',
+    'build_dsc()',
     'cancel_arrival(p_arrival uuid)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
     'claim_stage(p_arrival uuid, p_stage text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
@@ -61,9 +62,12 @@ select is((
     'finalize_interpretation(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
     'grant_vectors(p_account uuid)',
     'guard_row()',
+    'head_signature_immutable()',
     'ladder(p_s jsonb, p_taint hc.domain[])',
     'link_provenance(p_child_type hc.object_type, p_child_id uuid, p_parent_type hc.object_type, p_parent_id uuid)',
     'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text, p_corrects_id uuid)',
+    'log_chain_heads()',
+    'log_denied(p_circle_id uuid, p_domain hc.domain, p_subject_id uuid)',
     'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
     'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
     'outbox_ack(p_outbox_ids uuid[])',
@@ -73,16 +77,23 @@ select is((
     'presence(p_subject uuid)',
     'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
+    'record_tombstone(p_circle_id uuid, p_object_type text, p_object_id uuid, p_storage_keys text[], p_scope text, p_requested_by uuid, p_reason text)',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
     'resolve_object(p_type hc.object_type, p_id uuid)',
     'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
+    'run_taint_sweep()',
     'sender_recognised(p_arrival uuid)',
     'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid)',
     'sweep_provenance()',
     'sweeper_pass()',
+    'sync_search_content()',
     'taint_union(a hc.domain[], b hc.domain[])',
     'taint_union_2(a hc.domain[], b hc.domain[])',
     'taint_union_agg(hc.domain[])',
+    'tombstone_guard()',
+    'tsv_documents()',
+    'tsv_tasks()',
+    'tsv_timeline_events()',
     'uid()',
     'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)',
     'write_extractions(p_arrival uuid, p_lease uuid, p_facts jsonb)',
@@ -101,11 +112,13 @@ select is((
         'assert_manual_flag','cancel_arrival','claim_stage','create_arrival',
         'create_circle','create_manual_proposal',
         'ctx','ctx_for','finalize_extraction','finalize_interpretation',
-        'grant_vectors','link_provenance','outbox_ack','outbox_drain','presence',
-        'propagate_taint_growth','reclassify_taint','request_freeze',
-        'revise_object','sender_recognised','share_object','sweep_provenance',
+        'grant_vectors','link_provenance','log_chain_heads','log_denied',
+        'outbox_ack','outbox_drain','presence',
+        'propagate_taint_growth','reclassify_taint','record_tombstone',
+        'request_freeze','revise_object','run_taint_sweep',
+        'sender_recognised','share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the twenty-eight boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the thirty-two boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -160,6 +173,12 @@ with actual as (
   union all select 'cancel_arrival', 'authenticated'
   union all select 'create_manual_proposal', 'authenticated'
   union all select 'arrival_auth_detail', 'authenticated'
+  -- 1D M3: the denial writer — actor forced to hc.uid(), membership-gated
+  union all select 'log_denied', 'authenticated'
+  -- 1D M5: the re-categorisation surface (TNT-08 — visible_at authorizes
+  -- inside) and the OPS-01 scheduler identity
+  union all select 'reclassify_taint', 'authenticated'
+  union all select 'run_taint_sweep', 'hc_pipeline'
   -- the pure visibility functions: policies evaluate these as the caller
   union all select 'dom', 'authenticated'
   union all select 'all_domains', 'authenticated'
@@ -223,6 +242,10 @@ insert into snapshot_expected values
   ('hc_internal',   'freeze_claims',   'INSERT'),
   ('hc_internal',   'access_log',      'SELECT'),
   ('hc_internal',   'access_log',      'INSERT'),
+  -- 1D M3: the family read (policy-filtered); hc_internal's collapse
+  -- UPDATE is COLUMN-scoped (attacl, not relacl) so it is deliberately
+  -- absent here — the strict trigger carve-out is asserted in 030.
+  ('authenticated', 'access_log',      'SELECT'),
   ('hc_internal',   'log_event_types', 'SELECT'),
   -- 1B M1 (ADR-0005 D1): exactly what hc.approve_proposal() needs; arrivals
   -- deliberately absent — no role of ours reads or writes it until 1C.
@@ -294,6 +317,17 @@ insert into snapshot_expected values
   ('hc_internal',   'stage_budgets',   'SELECT'),
   -- 1C M9 (round-7 B1): the transition graph as data — read by the CAS only
   ('hc_internal',   'arrival_transitions', 'SELECT'),
+  -- 1D M5 (OPS-01): recorded sweep runs, written by hc.run_taint_sweep
+  ('hc_internal',   'sweep_runs',      'SELECT'),
+  ('hc_internal',   'sweep_runs',      'INSERT'),
+  ('hc_internal',   'sweep_runs',      'UPDATE'),
+  -- 1D M1: the search writer allowlist finalized (REC-05 → DSC-01) —
+  -- hc_internal read/insert/update on dsc, DELETE for nobody (the
+  -- document cascade is the only remover). 1D M2: the view-level read.
+  ('hc_internal',   'document_search_content', 'SELECT'),
+  ('hc_internal',   'document_search_content', 'INSERT'),
+  ('hc_internal',   'document_search_content', 'UPDATE'),
+  ('authenticated', 'document_search_content', 'SELECT'),
   -- 1C M7 (ING-02/03): table-level read grants; arrivals is COLUMN-granted
   -- (auth_detail and current_lease_id excluded), which lives in
   -- pg_attribute.attacl and is asserted in 025 — deliberately absent here.
@@ -335,6 +369,7 @@ select is((
   where 'hc_internal'::regrole::oid = any (p.polroles)),
   array['access_grants_internal','access_grants_internal_create',
         'access_log_internal','access_log_internal_append',
+        'access_log_internal_collapse',
         'accounts_internal',
         'approval_attempts_internal','approval_attempts_internal_update',
         'approval_attempts_internal_write',
@@ -344,6 +379,7 @@ select is((
         'circles_internal','circles_internal_create',
         'documents_internal','documents_internal_revise',
         'documents_internal_write',
+        'dsc_internal','dsc_internal_update','dsc_internal_write',
         'episodes_internal','episodes_internal_revise','episodes_internal_write',
         'extractions_internal','extractions_internal_write',
         'freeze_claims_internal','freeze_claims_internal_write',
@@ -365,8 +401,9 @@ select is((
         'subjects_internal','subjects_internal_create',
         'tasks_internal','tasks_internal_revise','tasks_internal_write',
         'timeline_events_internal','timeline_events_internal_revise',
-        'timeline_events_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated sixty-one');
+        'timeline_events_internal_write',
+        'tombstones_internal','tombstones_internal_write']::name[],
+  'the hc_internal policy list is exactly the enumerated sixty-seven');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
@@ -384,11 +421,15 @@ select is((
   where g.table_schema = 'public'
     and g.table_name in ('documents', 'document_search_content')
     and g.grantee in ('anon', 'authenticated', 'hc_pipeline', 'hc_admin', 'hc_internal')),
-  array['authenticated:documents:SELECT',
+  array['authenticated:document_search_content:SELECT',
+        'hc_internal:document_search_content:INSERT',
+        'hc_internal:document_search_content:SELECT',
+        'hc_internal:document_search_content:UPDATE',
+        'authenticated:documents:SELECT',
         'hc_internal:documents:INSERT',
         'hc_internal:documents:SELECT',
         'hc_internal:documents:UPDATE'],
-  'writer allowlist: documents = authenticated read + hc_internal read/insert/update; dsc = NOTHING for any of our five roles');
+  'writer allowlist FINALIZED (1D): documents = authenticated read + hc_internal read/insert/update; dsc adds the M2 view-level read — writes stay hc_internal alone, DELETE for nobody');
 
 select is((
   select coalesce(array_agg(c.relname || ':' || t.tgname order by c.relname, t.tgname),
@@ -398,8 +439,10 @@ select is((
   join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'public' and not t.tgisinternal
     and c.relname in ('documents', 'document_search_content')),
-  array['documents:hc_claim_documents', 'documents:hc_guard_documents'],
-  'writer allowlist: documents carries exactly the claim + guard triggers; dsc carries none');
+  array['document_search_content:hc_build_dsc',
+        'documents:hc_claim_documents', 'documents:hc_guard_documents',
+        'documents:hc_sync_search_documents', 'documents:hc_tsv_documents'],
+  'writer allowlist: documents carries claim + guard + the 1D tsv builder and dsc sync; dsc carries exactly its builder (§7.1 one place)');
 
 -- ----------------------------------------------------------------------------
 -- Round-5 ruling R1: hc.uid() accepted permanently CONDITIONAL on this
