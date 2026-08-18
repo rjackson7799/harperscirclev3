@@ -1,9 +1,15 @@
 # Slice 2 — Auth + onboarding: the slice plan
 
-**Status:** ACTIVE — both owner rulings landed 2026-08-17 before
+**Status:** 2A BUILT — both owner rulings landed 2026-08-17 before
 migration 1: (1) forwarding-address local part = `<firstname>.<token>`
 (ADR-0011); (2) increment split = **2A (DB, M1–M7) → round-9 review →
 merge; then 2B (app, A1–A9) → round-10 review** — the 1A–1D cadence.
+2A landed as migrations `20260818120001`–`120007` (M1–M7 as mapped; M8
+stays the review reserve), pgTAP files 035–041 (+169 asserts),
+concurrency cases 26–29 (+6 asserts, 50/50), coverage rows flipped
+(RLS-09 · SND-02 · FRZ-16a · AUT/STP/IVT/GRT/WMN/NTC · APR-06 amended ·
+FRZ-16b split pending), design deltas + round-9 questions in ADR-0012.
+⏸ Next: round-9 packet, then STOP at the gate.
 
 **Authority:** TSD §11.1 row 2 → §5.5–§5.12, §1.2/§1.3/§1.7 → PRD
 §4.0–§4.1, §4.6.3, §7.8 → design_spec (auth screens only) → binding
