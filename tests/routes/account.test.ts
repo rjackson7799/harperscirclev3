@@ -21,6 +21,12 @@ vi.mock('@/lib/hc/throttle', () => throttleMock);
 const stepUp = { mintStepUp: vi.fn() };
 vi.mock('@/lib/hc/step-up', () => stepUp);
 
+const members = {
+  removeMember: vi.fn(),
+  revokeSessionsForAccount: vi.fn(async () => {}),
+};
+vi.mock('@/lib/hc/members', () => members);
+
 const signOut = vi.fn(async () => ({ error: null }));
 const signInWithPassword = vi.fn();
 const getClaims = vi.fn();
@@ -168,12 +174,6 @@ describe('A8 · step-up re-auth — the third F1 password path', () => {
 });
 
 describe('A8 · remove-member wiring (AC-PERM-3, §5.8 sessions row)', () => {
-  const members = {
-    removeMember: vi.fn(),
-    revokeSessionsForAccount: vi.fn(async () => {}),
-  };
-  vi.mock('@/lib/hc/members', () => members);
-
   it('removal returns the account and the route revokes its sessions immediately', async () => {
     members.removeMember.mockResolvedValue({ account_id: 'gone-1' });
     const { POST } = await import('@/app/(app)/[circle]/members/[member]/remove/route');
