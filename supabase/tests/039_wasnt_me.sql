@@ -234,11 +234,13 @@ begin
   update public.security_events
      set token_expires_at = now() - interval '1 second'
    where token_consumed_at is null;
+  -- extracted as postgres: anon cannot (and must not) read the queue
+  perform set_config('t.token2',
+    (select m.payload ->> 'token' from public.outbound_mail m
+     order by m.created_at desc limit 1), true);
 end $$;
-select is(pg_temp.as_anon(
-  $$ select hc.execute_wasnt_me((select m.payload ->> 'token'
-                                 from public.outbound_mail m
-                                 order by m.created_at desc limit 1))::text $$),
+select is(pg_temp.as_anon(format(
+  $$ select hc.execute_wasnt_me(%L)::text $$, current_setting('t.token2'))),
   'ERROR:P0001:wasnt_me_refused',
   'an expired token is dead — 15 minutes is the whole life');
 

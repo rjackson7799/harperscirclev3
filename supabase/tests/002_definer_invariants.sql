@@ -62,6 +62,7 @@ select is((
     'ctx_for(p_account uuid)',
     'dom(p jsonb)',
     'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
+    'execute_wasnt_me(p_token text)',
     'finalize_extraction(p_arrival uuid, p_lease uuid, p_facts jsonb, p_proposals jsonb)',
     'finalize_interpretation(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
     'grant_vectors(p_account uuid)',
@@ -75,6 +76,7 @@ select is((
     'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
     'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
     'mint_step_up(p_operation text, p_target_ref text)',
+    'note_suspicious_attempts(p_identifier text)',
     'outbox_ack(p_outbox_ids uuid[])',
     'outbox_drain(p_limit integer)',
     'own_domain(p_type hc.object_type, p_category hc.doc_category, p_kind hc.timeline_kind, p_declared hc.domain)',
@@ -122,15 +124,17 @@ select is((
         'assert_manual_flag','auth_throttle','cancel_arrival','claim_stage',
         'consume_step_up','create_arrival',
         'create_circle','create_invite','create_manual_proposal',
-        'ctx','ctx_for','finalize_extraction','finalize_interpretation',
+        'ctx','ctx_for','execute_wasnt_me',
+        'finalize_extraction','finalize_interpretation',
         'grant_vectors','link_provenance','log_chain_heads','log_denied',
-        'mint_step_up','outbox_ack','outbox_drain','presence',
+        'mint_step_up','note_suspicious_attempts',
+        'outbox_ack','outbox_drain','presence',
         'propagate_taint_growth','reclassify_taint','record_auth_attempt',
         'record_tombstone','remove_member',
         'request_freeze','revise_object','revoke_invite','run_taint_sweep',
         'sender_recognised','set_grant','share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the forty-one boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the forty-three boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -215,6 +219,12 @@ with actual as (
   -- in-function
   union all select 'set_grant', 'authenticated'
   union all select 'remove_member', 'authenticated'
+  -- 2A M5: the notice path (sign-in runs as anon) and the kill-switch
+  -- POST (the clicker may hold no session at all)
+  union all select 'note_suspicious_attempts', 'anon'
+  union all select 'note_suspicious_attempts', 'authenticated'
+  union all select 'execute_wasnt_me', 'anon'
+  union all select 'execute_wasnt_me', 'authenticated'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -261,6 +271,11 @@ insert into snapshot_expected values
   ('hc_internal',   'auth_attempts',   'SELECT'),
   ('hc_internal',   'auth_attempts',   'INSERT'),
   ('hc_internal',   'auth_attempts',   'DELETE'),
+  ('hc_internal',   'outbound_mail',   'SELECT'),
+  ('hc_internal',   'outbound_mail',   'INSERT'),
+  ('hc_internal',   'security_events', 'SELECT'),
+  ('hc_internal',   'security_events', 'INSERT'),
+  ('hc_internal',   'security_events', 'UPDATE'),
   ('hc_internal',   'step_up_tokens',  'SELECT'),
   ('hc_internal',   'step_up_tokens',  'INSERT'),
   ('hc_internal',   'step_up_tokens',  'UPDATE'),
@@ -435,6 +450,7 @@ select is((
         'known_senders_internal',
         'object_shares_internal','object_shares_internal_create',
         'object_shares_internal_revoke',
+        'outbound_mail_internal','outbound_mail_internal_enqueue',
         'pipeline_leases_internal','pipeline_leases_internal_claim',
         'pipeline_leases_internal_close',
         'pipeline_outbox_internal','pipeline_outbox_internal_drain',
@@ -446,6 +462,8 @@ select is((
         'provenance_edges_internal','provenance_edges_internal_link',
         'provenance_edges_internal_unlink',
         'record_revisions_internal','record_revisions_internal_append',
+        'security_events_internal','security_events_internal_consume',
+        'security_events_internal_note',
         'step_up_tokens_internal','step_up_tokens_internal_consume',
         'step_up_tokens_internal_mint',
         'subjects_internal','subjects_internal_create',
@@ -453,7 +471,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated seventy-nine');
+  'the hc_internal policy list is exactly the enumerated eighty-four');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
