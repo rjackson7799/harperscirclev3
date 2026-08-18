@@ -44,6 +44,9 @@ const accounts = {
 };
 vi.mock('@/lib/hc/accounts', () => accounts);
 
+const invites = { describeInvite: vi.fn() };
+vi.mock('@/lib/hc/invites', () => invites);
+
 async function snapshot(res: Response) {
   const headers = [...res.headers.entries()]
     .filter(([k]) => k !== 'date' && k !== 'set-cookie')
@@ -118,6 +121,40 @@ describe('A3 · created vs already-exists: one visible response', () => {
     const unconfirmOrder = accounts.unconfirmEmail.mock.invocationCallOrder[0];
     const bootstrapOrder = accounts.bootstrapAccount.mock.invocationCallOrder[0];
     expect(unconfirmOrder).toBeLessThan(bootstrapOrder);
+  });
+
+  it('invite variant: the address comes from the TOKEN server-side; a submitted email is ignored (§4.1.4)', async () => {
+    invites.describeInvite.mockResolvedValue({
+      state: 'pending',
+      invited_email: 'dan@example.com',
+    });
+    signUp.mockResolvedValueOnce({
+      data: { user: FRESH_USER, session: { access_token: 'a.b.c', refresh_token: 'r' } },
+      error: null,
+    });
+    const token = 'b'.repeat(64);
+    const res = await POST(
+      post({
+        name: 'Dan',
+        email: 'attacker-chosen@evil.example',
+        password: 'long-enough-pw',
+        invite: token,
+      }),
+    );
+    expect(signUp).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'dan@example.com' }),
+    );
+    expect(res.headers.get('location')).toContain(`/accept/${token}`);
+  });
+
+  it('invite variant: a dead token creates nothing and lands on the accept screen', async () => {
+    invites.describeInvite.mockResolvedValue({ state: 'expired', invited_email: 'x@y.z' });
+    const token = 'c'.repeat(64);
+    const res = await POST(
+      post({ name: 'Dan', email: 'ignored@x.y', password: 'long-enough-pw', invite: token }),
+    );
+    expect(signUp).not.toHaveBeenCalled();
+    expect(res.headers.get('location')).toContain(`/accept/${token}`);
   });
 
   it('exists: nothing is written', async () => {
