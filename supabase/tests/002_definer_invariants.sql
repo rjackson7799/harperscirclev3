@@ -38,6 +38,7 @@ select is((
   where n.nspname = 'hc'),
   array[
     'accept_invite(p_token text)',
+    'accept_sender(p_circle_id uuid, p_address text, p_domain text)',
     'access_log_immutable()',
     'adjudicate_freeze(p_freeze_id uuid, p_outcome text, p_adjudicated_by text, p_outcome_note text, p_subject_id uuid, p_narrowing_rationale text, p_contact_attempted_at timestamp with time zone, p_objected_to_member_id uuid)',
     'advance_arrival(p_arrival uuid, p_from hc.arrival_state, p_to hc.arrival_state, p_lease uuid, p_reason text)',
@@ -63,6 +64,7 @@ select is((
     'dom(p jsonb)',
     'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'execute_wasnt_me(p_token text)',
+    'expire_held_mail()',
     'finalize_extraction(p_arrival uuid, p_lease uuid, p_facts jsonb, p_proposals jsonb)',
     'finalize_interpretation(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
     'grant_vectors(p_account uuid)',
@@ -91,6 +93,7 @@ select is((
     'resolve_object(p_type hc.object_type, p_id uuid)',
     'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
     'revoke_invite(p_invite_id uuid)',
+    'revoke_sender(p_sender_id uuid)',
     'run_taint_sweep()',
     'sender_recognised(p_arrival uuid)',
     'set_grant(p_member_id uuid, p_subject_id uuid, p_domain hc.domain, p_level hc.access_level, p_step_up_token text)',
@@ -119,22 +122,23 @@ select is((
   select array_agg(p.proname order by p.proname)
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
-  array['accept_invite','adjudicate_freeze','advance_arrival','approve_proposal',
+  array['accept_invite','accept_sender','adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
         'assert_manual_flag','auth_throttle','cancel_arrival','claim_stage',
         'consume_step_up','create_arrival',
         'create_circle','create_invite','create_manual_proposal',
-        'ctx','ctx_for','execute_wasnt_me',
+        'ctx','ctx_for','execute_wasnt_me','expire_held_mail',
         'finalize_extraction','finalize_interpretation',
         'grant_vectors','link_provenance','log_chain_heads','log_denied',
         'mint_step_up','note_suspicious_attempts',
         'outbox_ack','outbox_drain','presence',
         'propagate_taint_growth','reclassify_taint','record_auth_attempt',
         'record_tombstone','remove_member',
-        'request_freeze','revise_object','revoke_invite','run_taint_sweep',
+        'request_freeze','revise_object','revoke_invite','revoke_sender',
+        'run_taint_sweep',
         'sender_recognised','set_grant','share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the forty-three boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the forty-six boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -225,6 +229,11 @@ with actual as (
   union all select 'note_suspicious_attempts', 'authenticated'
   union all select 'execute_wasnt_me', 'anon'
   union all select 'execute_wasnt_me', 'authenticated'
+  -- 2A M6: the sender surfaces (member acts); expiry runs as the
+  -- scheduler identity (OPS-01 pattern)
+  union all select 'accept_sender', 'authenticated'
+  union all select 'revoke_sender', 'authenticated'
+  union all select 'expire_held_mail', 'hc_pipeline'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -271,6 +280,8 @@ insert into snapshot_expected values
   ('hc_internal',   'auth_attempts',   'SELECT'),
   ('hc_internal',   'auth_attempts',   'INSERT'),
   ('hc_internal',   'auth_attempts',   'DELETE'),
+  ('hc_internal',   'known_senders',   'INSERT'),
+  ('hc_internal',   'known_senders',   'UPDATE'),
   ('hc_internal',   'outbound_mail',   'SELECT'),
   ('hc_internal',   'outbound_mail',   'INSERT'),
   ('hc_internal',   'security_events', 'SELECT'),
@@ -447,7 +458,8 @@ select is((
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
         'invites_internal','invites_internal_decide','invites_internal_issue',
-        'known_senders_internal',
+        'known_senders_internal','known_senders_internal_accept',
+        'known_senders_internal_revoke',
         'object_shares_internal','object_shares_internal_create',
         'object_shares_internal_revoke',
         'outbound_mail_internal','outbound_mail_internal_enqueue',
@@ -471,7 +483,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated eighty-four');
+  'the hc_internal policy list is exactly the enumerated eighty-six');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:

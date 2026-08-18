@@ -220,6 +220,7 @@ select is(pg_temp.scalar($$
   || 'extract:extracting>extracted,extract:extracting>needs_password,'
   || 'extract:extracting>unsupported_type,'
   || 'gate:scanned>extracting,gate:scanned>held_unknown_sender,'
+  || 'gate:held_unknown_sender>extracting,'   -- 2A M6: the SND-02 release edge
   || 'interpret:interpreting>proposals_ready,'
   || 'scan:stored>quarantined,scan:stored>scan_unavailable,'
   || 'scan:stored>scan_inconclusive,scan:stored>scanned,'

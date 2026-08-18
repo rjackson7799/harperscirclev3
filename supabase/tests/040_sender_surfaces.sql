@@ -259,11 +259,21 @@ select is(pg_temp.scalar(format(
 -- ----------------------------------------------------------------------------
 -- 17–19 · Revocation: immediate, logged, live-only
 -- ----------------------------------------------------------------------------
+do $$
+begin
+  perform set_config('t.ks_addr',
+    (select ks.id::text from public.known_senders ks
+     where ks.circle_id = current_setting('t.c1')::uuid
+       and lower(ks.address::text) = 'bob@clinic.example'
+       and ks.revoked_at is null), true);
+  perform set_config('t.ks_dom',
+    (select ks.id::text from public.known_senders ks
+     where ks.circle_id = current_setting('t.c1')::uuid
+       and lower(ks.domain::text) = 'clinic.example'), true);
+end $$;
 select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
-  $$ select (hc.revoke_sender((select ks.id from public.known_senders ks
-              where ks.circle_id = %L and ks.address = 'bob@clinic.example'
-                and ks.revoked_at is null))) ->> 'revoked' $$,
-  current_setting('t.c1'))), 'true',
+  $$ select (hc.revoke_sender(%L)) ->> 'revoked' $$,
+  current_setting('t.ks_addr'))), 'true',
   'a coordinator revokes an accepted sender');
 
 select is(pg_temp.scalar(format(
@@ -273,9 +283,7 @@ select is(pg_temp.scalar(format(
   'two acceptances and one revocation are access-log events');
 
 select is(pg_temp.call_as(current_setting('t.u3')::uuid, format(
-  $$ select hc.revoke_sender((select ks.id from public.known_senders ks
-              where ks.circle_id = %L and ks.domain = 'clinic.example'))::text $$,
-  current_setting('t.c1'))),
+  $$ select hc.revoke_sender(%L)::text $$, current_setting('t.ks_dom'))),
   'ERROR:P0001:sender_refused',
   'a family member cannot revoke — and an already-revoked row refuses in the same shape');
 
