@@ -15,9 +15,21 @@ export async function POST(req: Request): Promise<Response> {
   if (!email) return redirect303(req, '/reset?e=missing');
 
   const supabase = await asUser();
-  const origin = new URL(req.url).origin;
+  // The recovery link's destination comes from CONFIGURATION, never the
+  // request — a forged Host must not steer where the emailed token lands
+  // (reset poisoning). Local dev falls back to its own loopback origin;
+  // anywhere else without config, redirectTo is omitted and GoTrue's
+  // site_url allowlist is the destination — a neutered link, never a
+  // poisoned one.
+  const requestOrigin = new URL(req.url).origin;
+  const origin =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    (/^https?:\/\/(localhost|127\.)/.test(requestOrigin) ? requestOrigin : undefined);
   await supabase.auth
-    .resetPasswordForEmail(email, { redirectTo: `${origin}/confirm?flow=recovery` })
+    .resetPasswordForEmail(
+      email,
+      origin ? { redirectTo: `${origin}/confirm?flow=recovery` } : undefined,
+    )
     .catch(() => {});
 
   return redirect303(req, '/reset?sent=1');

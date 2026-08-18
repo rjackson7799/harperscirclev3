@@ -49,6 +49,34 @@ describe('A3 · POST /reset/submit — byte-identical, never throttle-gated', ()
     ({ POST } = await import('@/app/(auth)/reset/submit/route'));
   });
 
+  it('the recovery redirect comes from configuration, never the request (reset-poisoning refusal)', async () => {
+    process.env.NEXT_PUBLIC_SITE_URL = 'https://app.harperscircle.example';
+    try {
+      resetPasswordForEmail.mockResolvedValueOnce({ data: {}, error: null });
+      await POST(post('/reset/submit', { email: 'real@x.y' }));
+      expect(resetPasswordForEmail).toHaveBeenCalledWith('real@x.y', {
+        redirectTo: 'https://app.harperscircle.example/confirm?flow=recovery',
+      });
+    } finally {
+      delete process.env.NEXT_PUBLIC_SITE_URL;
+    }
+  });
+
+  it('without configuration, a non-local request origin is NOT trusted into the mail link', async () => {
+    resetPasswordForEmail.mockResolvedValueOnce({ data: {}, error: null });
+    const req = new Request('https://attacker-forged.example/reset/submit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ email: 'real@x.y' }).toString(),
+    });
+    await POST(req);
+    const [, options] = resetPasswordForEmail.mock.calls[0] as unknown as [
+      string,
+      { redirectTo?: string } | undefined,
+    ];
+    expect(options?.redirectTo ?? '').not.toContain('attacker-forged.example');
+  });
+
   it('account and ghost answer with identical bytes', async () => {
     resetPasswordForEmail.mockResolvedValueOnce({ data: {}, error: null });
     const holder = await snapshot(await POST(post('/reset/submit', { email: 'real@x.y' })));
