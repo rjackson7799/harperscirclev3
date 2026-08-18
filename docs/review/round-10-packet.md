@@ -541,3 +541,62 @@ artifacts). Prior head `2e4248b`: run **32165794287**, success.
   `9899fe0` — success, application tests included. A "Start local
   Postgres" `toomanyrequests` failure on any run is the recorded ECR
   Public anonymous pull quota — re-run material, never a repo defect.
+
+---
+
+## ADDENDUM (2026-08-18) — round-10 findings received: recommendation superseded
+
+The third-party round-10 review returned **15 findings** — 4 blocking
+(the step-1 "held" overstatement; A7 scope-incompleteness; the un-invoked
+worker; the runtime maintenance credential), 5 high (the create-account
+deviation framing and partial-commit problem; silent zero-row writes;
+non-atomic revocation; worker backlog semantics) and 6 evidence-quality
+(test taxonomy; the informal E2E gate; evidence-head binding; count
+drift; the un-checked-in GoTrue probes; the worker key contract) —
+`docs/review/round-10-findings.md`, verbatim. **This packet's acceptance
+recommendation is superseded: every finding is accepted in whole or in
+part, eight owner rulings are recorded, and the fixes are applied — zero
+DDL, the spent ≤ 8 reserve holds.**
+
+Dispositions: **ADR-0015** (all 15 + the two drift candidates; the owner
+amended A7's 2B scope, ruled the relationship answer carried-now/
+persisted-at-the-batch, accepted the runtime credential under a recorded
+threat model, and ordered the worker's invoker checked in). Applied the
+ADR-0006 way on this branch:
+
+| Commit | What |
+|---|---|
+| `5faccc4` | findings verbatim (docs-only) |
+| `07c26b8` | **RED** — 19 failing tests + 1 failing suite across 5 files, signatures in the message |
+| `197d3e9` | **GREEN** — findings 1/3/6/7/8/9/15 closed app/config-side: the step-1 hold, the checked-in Vercel cron + CRON_SECRET path, create-account compensation, row-count postconditions with step-3 refusal, one-transaction revocation, the bounded/ordered/observable sweep, timing-safe secrets |
+| `f93e451` | the executable GoTrue probe (finding 14) — first live run 6/6 |
+| `15e5aaf` | lint cleanup (test-mock typing) |
+| `4874d4b` | docs-drift disposition (finding 13 + both candidates) — **the evidence head** |
+| *(docs)* | ADR-0015 + the three ops contracts (worker, runtime credentials, E2E gate protocol) + coverage/plan amendments + this addendum — `docs/` only |
+
+**Evidence at `4874d4b`:** app tests **149/149 across 21 files** ·
+walkthrough **11/11** (re-run at this head, `e2e-local-gate.md`
+protocol) · probe **6/6** · reset **46 exact** · pgTAP **1134/1134** ·
+concurrency **55/55** (teed) · `db:verify` clean · lint/typecheck/build
+clean.
+
+**Mechanical evidence binding (finding 12), the standing rule:** the
+evidence head's per-directory tree hashes are recorded here; a reviewer
+verifies the final head with `git rev-parse <head>:<dir>` — equal hashes
+transfer evidence mechanically, an unequal hash demands a re-run at the
+new head. At `4874d4b`:
+
+```
+app      9f051b5aa3980c7e5bc0ab89e3cc02e7dda274fa
+lib      8120d2d279d547a983bd7c805c9642d4f7013356
+tests    4cc1c9f5ba61e9ec2d66135baf5b5752f6c8e937
+supabase 53a8517490f7f5348bca5ab9c1f42c9163b2919d   (byte-for-byte the merged 2A tree, all session)
+e2e      ae2d6a1939dc6014c1d6b25c2d10c7f57a37361d
+scripts  b16b9ea51645e7ec2928643fa80b43ae55db6226
+```
+
+Every commit after `4874d4b` touches `docs/` only. The final-head
+push-event CI run is confirmed via the public API in the dispositions
+session and recorded vault-side — the round-7/8 regress-termination
+pattern. The DO-NOT-MERGE banner stays on PR #6: owner sign-off → merge
+is its own fresh session.

@@ -1,6 +1,24 @@
 # Slice 2 — Auth + onboarding: the slice plan
 
-**Status:** 2A MERGED · 2B BUILT — **AT THE ROUND-10 GATE**. 2A merged to main via PR #5,
+**Status:** 2A MERGED · 2B BUILT · **ROUND-10 DISPOSITIONS APPLIED —
+AWAITING OWNER SIGN-OFF → MERGE.** The round-10 review returned 15
+findings (`docs/review/round-10-findings.md`, verbatim at `5faccc4`);
+all accepted in whole or part, eight owner rulings recorded, applied
+red→green with ZERO DDL: **ADR-0015** (dispositions) + the packet
+ADDENDUM. Owner scope amendment (R1): **A7's 2B scope excludes the
+access-log entry** — it heads the MANDATORY batched bound amendment at
+the next DB-opening slice (with the four maintenance-definer
+conversions, the step-1 relationship column, the lower-privilege runtime
+role and the worker claim/lease — ADR-0015 R8). Evidence at the
+dispositions head `4874d4b`: app tests **149/149 across 21 files** ·
+walkthrough **11/11** (protocol: `docs/ops/e2e-local-gate.md`) · GoTrue
+probe **6/6** (`scripts/probe-gotrue.mjs`) · reset **46 exact** · pgTAP
+**1134/1134** · concurrency **55/55** (teed) · db:verify clean ·
+lint/typecheck/build clean; commits after `4874d4b` are docs-only
+(per-directory tree binding in the packet addendum). ⏸ Next: owner
+sign-off → merge commit (never squash), its own fresh session.
+
+*(Pre-dispositions record, kept:)* 2A merged to main via PR #5,
 merge commit `fbd1d7f` (parents `4e4bbca` + `5a365c9`; merged tree
 verified identical to `5a365c9`'s), docs follow-up `6f57d89`; CI green
 on main at both (runs 32114061495, 32114796686). ADR-0011/0012/0013 all
@@ -148,7 +166,7 @@ Tailwind); the §8 system is slice 3.
 | A4 | Founder door | Four steps + completion screen (`Step N of 4` on exactly those four — AC-AUTH-2); step 2 writes through `hc.create_circle`; abandonment/resume to the furthest step (AC-AUTH-9); completion copy carries the forwarding address per the owner ruling (inactive + resend state when unverified). | §4.1.3 |
 | A5 | Invitee door | Accept screen (circle, inviter, subjects, plain-language ceiling BEFORE asking anything); create-account variant with the invited address pre-filled and not editable; **AC-AUTH-11: signed in as a different identity ⇒ forced re-auth as the invited address**; landing rules (family → Timeline, care circle → their tasks). | §4.1.4–§4.1.5 |
 | A6 | lib/permissions/tiers.ts | THE one module rendering ceiling copy AND default grants; snapshot test asserts both screens render from it AND that its grant table matches `hc.tier_defaults()` (AC-AUTH-8 — copy and grants cannot drift). | §5.10 |
-| A7 | Account | Global sign-out (`scope:'global'` + access_log entry — AC-AUTH-10) · verify-email state + resend. (Export/deletion surfaces are later slices per coverage DEL-01/G5.) | §4.1.6 (narrowed by kickoff) |
+| A7 | Account | Global sign-out (`scope:'global'` — AC-AUTH-10 sign-out half) · verify-email state + resend. **Owner-amended at round 10 (ADR-0015 R1): the access_log entry is OUT of 2B's scope** — structurally unwritable without DDL; mandatory batch item at the next DB-opening slice (APP-09b pending). (Export/deletion surfaces are later slices per coverage DEL-01/G5.) | §4.1.6 (narrowed by kickoff; amended ADR-0015) |
 | A8 | Session revocation wiring | `remove_member` path calls the Supabase admin session revocation (the §5.8 sessions row); AC-PERM-3 verified from a second browser context in the E2E. | §5.8 |
 | A9 | E2E skeleton | §11.4 item 3: founder path with two subjects (divergent situations/zips), custodianship log entry, invite at summary-only, completion screen naming only Phase-1 surfaces; then the invitee path to real content in two taps. | §11.4-3, AC-AUTH-1/9 |
 
