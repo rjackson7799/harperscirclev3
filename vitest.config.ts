@@ -19,6 +19,9 @@ export default defineConfig({
     environment: 'node',
     // One worker: DB-backed tests share the local stack's state.
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    maxWorkers: 1,
+    // First-call costs are real here (ESLint config load, stack round
+    // trips); a hang still fails loudly at 30 s.
+    testTimeout: 30_000,
   },
 });
