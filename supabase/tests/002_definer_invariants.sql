@@ -51,6 +51,7 @@ select is((
     'cancel_arrival(p_arrival uuid)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
     'claim_stage(p_arrival uuid, p_stage text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
+    'consume_step_up(p_token text, p_operation text, p_target_ref text, p_account uuid)',
     'contact_key(p text)',
     'create_arrival(p_circle_id uuid, p_subject_id uuid, p_channel text, p_parent_arrival_id uuid, p_sender_address text, p_sender_display_name text, p_message_id text, p_auth_result text, p_auth_detail jsonb, p_mime_declared text, p_byte_size bigint, p_page_count integer, p_ingest_idempotency_key text)',
     'create_circle(p_name text, p_subjects jsonb, p_opening_context text[])',
@@ -71,6 +72,7 @@ select is((
     'log_denied(p_circle_id uuid, p_domain hc.domain, p_subject_id uuid)',
     'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
     'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
+    'mint_step_up(p_operation text, p_target_ref text)',
     'outbox_ack(p_outbox_ids uuid[])',
     'outbox_drain(p_limit integer)',
     'own_domain(p_type hc.object_type, p_category hc.doc_category, p_kind hc.timeline_kind, p_declared hc.domain)',
@@ -85,7 +87,7 @@ select is((
     'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
     'run_taint_sweep()',
     'sender_recognised(p_arrival uuid)',
-    'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid)',
+    'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid, p_step_up_token text)',
     'sweep_provenance()',
     'sweeper_pass()',
     'sync_search_content()',
@@ -111,17 +113,18 @@ select is((
   where n.nspname = 'hc' and p.prosecdef),
   array['adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
-        'assert_manual_flag','auth_throttle','cancel_arrival','claim_stage','create_arrival',
+        'assert_manual_flag','auth_throttle','cancel_arrival','claim_stage',
+        'consume_step_up','create_arrival',
         'create_circle','create_manual_proposal',
         'ctx','ctx_for','finalize_extraction','finalize_interpretation',
         'grant_vectors','link_provenance','log_chain_heads','log_denied',
-        'outbox_ack','outbox_drain','presence',
+        'mint_step_up','outbox_ack','outbox_drain','presence',
         'propagate_taint_growth','reclassify_taint','record_auth_attempt',
         'record_tombstone',
         'request_freeze','revise_object','run_taint_sweep',
         'sender_recognised','share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the thirty-four boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the thirty-six boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -193,6 +196,9 @@ with actual as (
   union all select 'auth_throttle', 'authenticated'
   union all select 'record_auth_attempt', 'anon'
   union all select 'record_auth_attempt', 'authenticated'
+  -- 2A M2: minting a step-up token is a member act on a fresh session;
+  -- consume_step_up is deliberately absent — definer bodies only
+  union all select 'mint_step_up', 'authenticated'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -239,6 +245,9 @@ insert into snapshot_expected values
   ('hc_internal',   'auth_attempts',   'SELECT'),
   ('hc_internal',   'auth_attempts',   'INSERT'),
   ('hc_internal',   'auth_attempts',   'DELETE'),
+  ('hc_internal',   'step_up_tokens',  'SELECT'),
+  ('hc_internal',   'step_up_tokens',  'INSERT'),
+  ('hc_internal',   'step_up_tokens',  'UPDATE'),
   ('hc_internal',   'circles',         'SELECT'),
   ('hc_internal',   'circles',         'INSERT'),
   ('hc_internal',   'subjects',        'SELECT'),
@@ -412,12 +421,14 @@ select is((
         'provenance_edges_internal','provenance_edges_internal_link',
         'provenance_edges_internal_unlink',
         'record_revisions_internal','record_revisions_internal_append',
+        'step_up_tokens_internal','step_up_tokens_internal_consume',
+        'step_up_tokens_internal_mint',
         'subjects_internal','subjects_internal_create',
         'tasks_internal','tasks_internal_revise','tasks_internal_write',
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated seventy');
+  'the hc_internal policy list is exactly the enumerated seventy-three');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
