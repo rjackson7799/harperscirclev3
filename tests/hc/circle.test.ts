@@ -31,14 +31,18 @@ beforeAll(async () => {
     FOUNDER,
   ]);
   return async () => {
-    // FK-ordered cleanup, the concurrency-runner way.
+    // Cleanup the concurrency-runner way: session_replication_role=replica
+    // for teardown ONLY — the access_log immutability trigger is
+    // unconditional by design (INV-09), so test fixtures are removed with
+    // triggers off, in FK order.
     if (circleId) {
+      await raw.query(`set session_replication_role = replica`);
       await raw.query('delete from public.access_grants where circle_id = $1', [circleId]);
-      await raw.query('update public.circle_members set custodian_member_id = null where circle_id = $1', [circleId]);
+      await raw.query('delete from public.access_log where circle_id = $1', [circleId]);
       await raw.query('delete from public.circle_members where circle_id = $1', [circleId]);
       await raw.query('delete from public.subjects where circle_id = $1', [circleId]);
-      await raw.query('delete from public.access_log where circle_id = $1', [circleId]);
       await raw.query('delete from public.circles where id = $1', [circleId]);
+      await raw.query(`set session_replication_role = default`);
     }
     await raw.query('delete from public.accounts where id = $1', [FOUNDER]);
     await raw.query('delete from auth.users where id = $1', [FOUNDER]);

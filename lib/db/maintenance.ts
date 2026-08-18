@@ -54,6 +54,39 @@ export async function insertAccountRow(userId: string, displayName: string): Pro
 }
 
 /**
+ * The declared slice (PRD §4.1.3 step 1, §4.1.6). accounts.slice exists
+ * for exactly this write (§2.3) and no request-path UPDATE on accounts
+ * exists; 2A's precedent is the same free-text column the schema
+ * annotates "declared slice". Scoped to the single account id.
+ */
+export async function setAccountSlice(accountId: string, slice: string): Promise<void> {
+  await db().query(
+    'update public.accounts set slice = $2 where id = $1 and deleted_at is null',
+    [accountId, slice],
+  );
+}
+
+/**
+ * The opening context (PRD §4.1.3 step 3). circles.opening_context exists
+ * for this multi-select ("step 3 multi-select" in the 1A DDL) but
+ * hc.create_circle — step 2's writer — is its only request-path writer,
+ * and step 3 happens after step 2 by construction. The guard is in the
+ * statement: only the founder's own circle, only while still in setup.
+ */
+export async function updateOpeningContext(
+  accountId: string,
+  circleId: string,
+  context: string[],
+): Promise<void> {
+  await db().query(
+    `update public.circles
+        set opening_context = $3
+      where id = $2 and created_by = $1 and state = 'setup'`,
+    [accountId, circleId, context],
+  );
+}
+
+/**
  * The signup un-confirm (PRD §4.1.2; docs/ops/auth-config-parity.md).
  *
  * The probed GoTrue gates the password grant on email confirmation
