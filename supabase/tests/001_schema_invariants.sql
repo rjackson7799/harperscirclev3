@@ -64,8 +64,8 @@ select ok(not has_schema_privilege('hc_admin', 'hc', 'usage'),
   'hc_admin holds no USAGE on hc (§3.9)');
 select ok(has_schema_privilege('hc_pipeline', 'hc', 'usage'),
   'hc_pipeline holds USAGE on hc since 1C M2 — EXECUTE stays per-function (§3.10)');
-select ok(not has_schema_privilege('anon', 'hc', 'usage'),
-  'anon holds no USAGE on hc');
+select ok(has_schema_privilege('anon', 'hc', 'usage'),
+  'anon holds USAGE on hc since 2A M1 — sign-in throttle is the first anon-callable surface; EXECUTE stays per-function');
 
 -- ----------------------------------------------------------------------------
 -- M2: enumerated types (TSD §2.2). enum_has_labels is ORDER-SENSITIVE, which

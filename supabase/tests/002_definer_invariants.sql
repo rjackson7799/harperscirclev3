@@ -46,6 +46,7 @@ select is((
     'arrival_auth_detail(p_arrival uuid)',
     'assert_claimed()',
     'assert_manual_flag()',
+    'auth_throttle(p_identifier text)',
     'build_dsc()',
     'cancel_arrival(p_arrival uuid)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
@@ -77,6 +78,7 @@ select is((
     'presence(p_subject uuid)',
     'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
+    'record_auth_attempt(p_identifier text, p_outcome text)',
     'record_tombstone(p_circle_id uuid, p_object_type text, p_object_id uuid, p_storage_keys text[], p_scope text, p_requested_by uuid, p_reason text)',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
     'resolve_object(p_type hc.object_type, p_id uuid)',
@@ -109,16 +111,17 @@ select is((
   where n.nspname = 'hc' and p.prosecdef),
   array['adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
-        'assert_manual_flag','cancel_arrival','claim_stage','create_arrival',
+        'assert_manual_flag','auth_throttle','cancel_arrival','claim_stage','create_arrival',
         'create_circle','create_manual_proposal',
         'ctx','ctx_for','finalize_extraction','finalize_interpretation',
         'grant_vectors','link_provenance','log_chain_heads','log_denied',
         'outbox_ack','outbox_drain','presence',
-        'propagate_taint_growth','reclassify_taint','record_tombstone',
+        'propagate_taint_growth','reclassify_taint','record_auth_attempt',
+        'record_tombstone',
         'request_freeze','revise_object','run_taint_sweep',
         'sender_recognised','share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the thirty-two boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the thirty-four boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -184,6 +187,12 @@ with actual as (
   union all select 'all_domains', 'authenticated'
   union all select 'ladder', 'authenticated'
   union all select 'visible_at', 'authenticated'
+  -- 2A M1: the sign-in throttle (§5.6) — the first anon-callable surface;
+  -- authenticated additionally throttles §5.7 step-up re-auth attempts
+  union all select 'auth_throttle', 'anon'
+  union all select 'auth_throttle', 'authenticated'
+  union all select 'record_auth_attempt', 'anon'
+  union all select 'record_auth_attempt', 'authenticated'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -227,6 +236,9 @@ insert into snapshot_expected values
   ('authenticated', 'circle_members',  'SELECT'),
   ('authenticated', 'access_grants',   'SELECT'),
   ('hc_internal',   'accounts',        'SELECT'),
+  ('hc_internal',   'auth_attempts',   'SELECT'),
+  ('hc_internal',   'auth_attempts',   'INSERT'),
+  ('hc_internal',   'auth_attempts',   'DELETE'),
   ('hc_internal',   'circles',         'SELECT'),
   ('hc_internal',   'circles',         'INSERT'),
   ('hc_internal',   'subjects',        'SELECT'),
@@ -375,6 +387,8 @@ select is((
         'approval_attempts_internal_write',
         'arrival_events_internal','arrival_events_internal_append',
         'arrivals_internal','arrivals_internal_advance','arrivals_internal_intake',
+        'auth_attempts_internal','auth_attempts_internal_append',
+        'auth_attempts_internal_prune',
         'circle_members_internal','circle_members_internal_create',
         'circles_internal','circles_internal_create',
         'documents_internal','documents_internal_revise',
@@ -403,7 +417,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated sixty-seven');
+  'the hc_internal policy list is exactly the enumerated seventy');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
