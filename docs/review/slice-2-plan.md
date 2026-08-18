@@ -1,6 +1,6 @@
 # Slice 2 — Auth + onboarding: the slice plan
 
-**Status:** 2A MERGED · 2B IN PROGRESS. 2A merged to main via PR #5,
+**Status:** 2A MERGED · 2B BUILT — **AT THE ROUND-10 GATE**. 2A merged to main via PR #5,
 merge commit `fbd1d7f` (parents `4e4bbca` + `5a365c9`; merged tree
 verified identical to `5a365c9`'s), docs follow-up `6f57d89`; CI green
 on main at both (runs 32114061495, 32114796686). ADR-0011/0012/0013 all
@@ -32,8 +32,12 @@ spent reserve held): **ADR-0014**; coverage rows APP-01..10 + E2E-01
 (APP-09b pending on the owner's bound amendment; RLS-10 stays pending).
 Round 10 at the 2B gate re-sees the round-9 dispositions, the two argued
 declines, both contracts, and ADR-0014 whole.
-⏸ Next: the round-10 packet → third-party review → dispositions ADR →
-owner sign-off → merge — each in its own fresh session, per the gate.
+The round-10 packet is written: `docs/review/round-10-packet.md`
+(round-8 shape; the whole slice at the 2B gate — dispositions re-seen,
+the two argued declines, both wired contracts, ADR-0014 whole, the
+queued bound-amendment questions, two docs-drift finding candidates).
+⏸ Next: third-party review → dispositions ADR → owner sign-off →
+merge — each in its own fresh session, per the gate.
 
 **Authority:** TSD §11.1 row 2 → §5.5–§5.12, §1.2/§1.3/§1.7 → PRD
 §4.0–§4.1, §4.6.3, §7.8 → design_spec (auth screens only) → binding
