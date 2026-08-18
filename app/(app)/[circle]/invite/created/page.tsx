@@ -37,10 +37,14 @@ export default async function InviteCreatedPage({
     );
   }
 
-  const requestHeaders = await headers();
-  const host = requestHeaders.get('host') ?? '';
-  const protocol = host && !/^(localhost|127\.)/.test(host) ? 'https' : 'http';
-  const acceptPath = host ? `${protocol}://${host}/accept/${token}` : `/accept/${token}`;
+  // Origin comes from configuration, never from the request: a Host
+  // header is caller-supplied, and this URL carries the invite token.
+  // The host fallback exists for local dev only.
+  const configured = process.env.NEXT_PUBLIC_SITE_URL;
+  const host = (await headers()).get('host') ?? '';
+  const localHost = /^(localhost|127\.)/.test(host) ? `http://${host}` : '';
+  const origin = configured ?? localHost;
+  const acceptPath = origin ? `${origin}/accept/${token}` : `/accept/${token}`;
 
   return (
     <div className="auth-shell">
