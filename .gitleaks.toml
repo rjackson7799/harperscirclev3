@@ -1,0 +1,13 @@
+# Extends gitleaks' default rules. The ONLY allowance: the Supabase CLI's
+# public demo JWTs — the anon/service tokens every local `supabase start`
+# ships identically, signed with the published demo secret. They are
+# configuration constants, not credentials; production keys never share
+# their "supabase-demo" issuer.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Supabase CLI local demo JWTs (public constants, iss=supabase-demo)"
+regexes = [
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZS1kZW1v[A-Za-z0-9_\-]*\.[A-Za-z0-9_\-]+''',
+]

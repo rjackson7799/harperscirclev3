@@ -57,6 +57,16 @@ jobs:
       - name: Schema lint (db:verify, warnings fail)
         run: npm run db:verify
 
+      # 2B: the app test surface — config pins (§5.5), the import fences,
+      # lib/db factory + request-role channel contracts (live against the
+      # started database), the AC-AUTH-8 snapshot vs hc.tier_defaults(),
+      # route byte-identity/non-enumeration and the founder/invitee door
+      # contracts. The Playwright walkthrough (§11.4-3) is deliberately
+      # NOT a CI gate in 2B — it needs the full auth stack and browsers —
+      # and is run at build verification and the round-10 gate (ADR-0014).
+      - name: Application tests (vitest)
+        run: npm run test:app
+
       # Round-6 M2: the documented upgrade rehearsal as a repeatable merge
       # gate, not a one-time local check. Reset to the merge-base's
       # migration set, verify the exact applied list, apply ONLY this
