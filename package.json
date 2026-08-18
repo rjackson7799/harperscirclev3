@@ -17,7 +17,8 @@
     "test:db": "supabase test db",
     "test:concurrency": "node scripts/concurrency/run.mjs",
     "db:verify": "supabase db lint --fail-on warning",
-    "test:app": "vitest run"
+    "test:app": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.4",

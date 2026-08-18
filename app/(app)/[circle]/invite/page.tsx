@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
 import { INVITABLE_TIERS, TIERS } from '@/lib/permissions/tiers';
 import { TierCeiling } from '@/lib/permissions/tier-ceiling';
+import { liveSessionClaims } from '@/lib/auth/session';
 
 /**
  * The invite screen (PRD §4.1.5). The inviter chooses the address, the
@@ -23,8 +24,8 @@ export default async function InvitePage({
   const query = await searchParams;
 
   const supabase = await asUser();
-  const { data } = await supabase.auth.getClaims();
-  if (!data?.claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/invite`)}`);
+  const claims = await liveSessionClaims(supabase);
+  if (!claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/invite`)}`);
 
   const { data: subjects } = await supabase
     .from('subjects')

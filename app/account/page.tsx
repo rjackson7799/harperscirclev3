@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
+import { liveSessionClaims } from '@/lib/auth/session';
 
 /**
  * Account (PRD §4.1.6, narrowed by the kickoff): the verify-email state
@@ -15,8 +16,8 @@ export default async function AccountPage({
 }) {
   const params = await searchParams;
   const supabase = await asUser();
-  const { data } = await supabase.auth.getClaims();
-  const sub = data?.claims?.sub;
+  const claims = await liveSessionClaims(supabase);
+  const sub = claims?.sub;
   if (!sub) redirect('/sign-in?next=%2Faccount');
 
   const { data: account } = await supabase

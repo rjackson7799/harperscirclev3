@@ -5,11 +5,14 @@
  * building them in ONE place keeps an accidental header from becoming an
  * oracle.
  */
-export function redirect303(req: Request, path: string): Response {
+export function redirect303(_req: Request, path: string): Response {
+  // Relative Location on purpose: the server never asserts its own
+  // origin (dev binds localhost while the browser may sit on 127.0.0.1,
+  // and an absolute Location would hop origins and orphan the cookies).
   return new Response(null, {
     status: 303,
     headers: {
-      location: new URL(path, req.url).toString(),
+      location: path,
       'cache-control': 'no-store',
     },
   });

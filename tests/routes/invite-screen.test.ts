@@ -20,9 +20,10 @@ const invites = {
 vi.mock('@/lib/hc/invites', () => invites);
 
 const getClaims = vi.fn();
+const getUser = vi.fn(async () => ({ data: { user: { id: 'u-1' } }, error: null }));
 const from = vi.fn();
 vi.mock('@/lib/db/user', () => ({
-  asUser: async () => ({ auth: { getClaims }, from }),
+  asUser: async () => ({ auth: { getClaims, getUser }, from }),
 }));
 
 const cookieGet = vi.fn();

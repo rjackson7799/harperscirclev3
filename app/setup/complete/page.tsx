@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
 import { completionPromises, custodianshipLine } from '@/lib/setup/completion-copy';
 import { CopyButton } from './copy-button';
+import { liveSessionClaims } from '@/lib/auth/session';
 
 const FORWARDING_DOMAIN = 'harperscircle.app';
 
@@ -24,8 +25,7 @@ export default async function CompletePage({
   const circleId = typeof params.circle === 'string' ? params.circle : '';
 
   const supabase = await asUser();
-  const { data } = await supabase.auth.getClaims();
-  const claims = data?.claims;
+  const claims = await liveSessionClaims(supabase);
   if (!claims?.sub) redirect('/sign-in?next=%2Fsetup');
   if (!circleId) redirect('/setup');
 

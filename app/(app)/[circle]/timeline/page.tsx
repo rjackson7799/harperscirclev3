@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
+import { liveSessionClaims } from '@/lib/auth/session';
 
 /**
  * The family landing (PRD §4.1.4 rule 4: with no Weekly Brief, family
@@ -15,8 +16,8 @@ export default async function TimelinePage({
 }) {
   const { circle } = await params;
   const supabase = await asUser();
-  const { data: auth } = await supabase.auth.getClaims();
-  if (!auth?.claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/timeline`)}`);
+  const claims = await liveSessionClaims(supabase);
+  if (!claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/timeline`)}`);
 
   const { data: events } = await supabase
     .from('timeline_events')

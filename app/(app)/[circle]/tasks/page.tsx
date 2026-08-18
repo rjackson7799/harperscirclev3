@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
+import { liveSessionClaims } from '@/lib/auth/session';
 
 /**
  * The care-circle landing (PRD §4.1.4 rule 4: care circle lands on their
@@ -14,8 +15,8 @@ export default async function TasksPage({
 }) {
   const { circle } = await params;
   const supabase = await asUser();
-  const { data: auth } = await supabase.auth.getClaims();
-  if (!auth?.claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/tasks`)}`);
+  const claims = await liveSessionClaims(supabase);
+  if (!claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/tasks`)}`);
 
   const { data: tasks } = await supabase
     .from('tasks')

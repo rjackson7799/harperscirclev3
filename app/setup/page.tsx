@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
 import { resumeStep } from '@/lib/setup/steps';
+import { liveSessionClaims } from '@/lib/auth/session';
 
 /**
  * The resume router (AC-AUTH-9): return sends the person to the furthest
@@ -11,8 +12,8 @@ import { resumeStep } from '@/lib/setup/steps';
  */
 export default async function SetupRouter() {
   const supabase = await asUser();
-  const { data } = await supabase.auth.getClaims();
-  const sub = data?.claims?.sub;
+  const claims = await liveSessionClaims(supabase);
+  const sub = claims?.sub;
   if (!sub) redirect('/sign-in?next=%2Fsetup');
 
   const { data: circles } = await supabase
