@@ -255,8 +255,10 @@ ADR-0006 way on this branch:
 Evidence at the new SQL/test head **`c995a99`** (docs-only commits
 follow): clean-leg reset 46 exact · pgTAP **1134/1134 across 43 files** ·
 concurrency **55/55 across 32 cases** · `db:verify` clean under
-`--fail-on warning`. CI at the pushed head: recorded below when the
-push-event run completes.
+`--fail-on warning`. **CI green at the pushed head: push-event run
+32111791626 @ `fdd5214` — SUCCESS (public API, verified in-session;
+upgrade rehearsal included).** The run-id-record commit that follows is
+docs-only and the regress terminates here, per the round-7/8 precedent.
 
 Deployability caveat, as the review directed (recorded in ADR-0013 and
 coverage AUT-01): the throttle and "wasn't me" RPCs are not publicly
