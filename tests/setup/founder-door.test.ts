@@ -18,7 +18,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 const circle = {
   createCircleFromSetup: vi.fn(async () => ({ circle_id: 'c-1' })),
   setDeclaredSlice: vi.fn(async () => {}),
-  setOpeningContext: vi.fn(async () => {}),
+  setOpeningContext: vi.fn(async (): Promise<boolean> => true),
 };
 vi.mock('@/lib/hc/circle', () => circle);
 
@@ -152,6 +152,7 @@ describe('A4 · step 2 writes through hc.create_circle (and nothing before it wr
   });
 
   it('step 3 submit writes the opening context to the circle', async () => {
+    circle.setOpeningContext.mockResolvedValueOnce(true);
     const { POST } = await import('@/app/setup/step/3/submit/route');
     const res = await POST(
       post('/setup/step/3/submit', {
@@ -164,6 +165,63 @@ describe('A4 · step 2 writes through hc.create_circle (and nothing before it wr
       'paperwork-piling-up',
     ]);
     expect(res.headers.get('location')).toContain('/setup/step/4');
+  });
+
+  it('step 3: a stale or foreign circle id refuses — never a silent advance to step 4 (round-10 finding 7)', async () => {
+    circle.setOpeningContext.mockResolvedValueOnce(false);
+    const { POST } = await import('@/app/setup/step/3/submit/route');
+    const res = await POST(
+      post('/setup/step/3/submit', {
+        circle_id: 'c-forged',
+        context: ['paperwork-piling-up'],
+      }),
+    );
+    expect(res.headers.get('location') ?? '').not.toContain('/setup/step/4');
+    expect(res.headers.get('location')).toContain('e=');
+  });
+
+  it('step 3: a missing circle id refuses the same way — zero-row and no-target are one shape', async () => {
+    const { POST } = await import('@/app/setup/step/3/submit/route');
+    const res = await POST(
+      post('/setup/step/3/submit', { context: ['paperwork-piling-up'] }),
+    );
+    expect(circle.setOpeningContext).not.toHaveBeenCalled();
+    expect(res.headers.get('location') ?? '').not.toContain('/setup/step/4');
+  });
+});
+
+describe('A4 · step 1 HOLDS both answers to step 2 (PRD §4.1.3 "held until step 2 creates the circle"; round-10 finding 1)', () => {
+  it('the step-1 submit forwards relationship AND slice as query state', async () => {
+    const { POST } = await import('@/app/setup/step/1/submit/route');
+    const res = await POST(
+      post('/setup/step/1/submit', { relationship: 'daughter', slice: 'money-paperwork' }),
+    );
+    const location = res.headers.get('location') ?? '';
+    expect(location).toContain('/setup/step/2');
+    expect(location).toContain('slice=money-paperwork');
+    expect(location).toContain('relationship=daughter');
+  });
+
+  it('an invented relationship value is dropped, not forwarded', async () => {
+    const { POST } = await import('@/app/setup/step/1/submit/route');
+    const res = await POST(
+      post('/setup/step/1/submit', { relationship: 'supreme-leader', slice: 'everything' }),
+    );
+    const location = res.headers.get('location') ?? '';
+    expect(location).toContain('slice=everything');
+    expect(location).not.toContain('relationship=');
+  });
+
+  it('step 2 carries the held relationship into its form, so it is present when the circle is created', async () => {
+    const { default: Page } = await import('@/app/setup/step/2/page');
+    const html = renderToStaticMarkup(
+      await Page({
+        searchParams: Promise.resolve({ slice: 'money-paperwork', relationship: 'daughter' }),
+      }),
+    );
+    expect(html).toMatch(
+      /name="relationship"[^>]*value="daughter"|value="daughter"[^>]*name="relationship"/,
+    );
   });
 });
 

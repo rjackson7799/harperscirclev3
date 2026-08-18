@@ -41,6 +41,7 @@ vi.mock('@/lib/db/user', () => ({
 const accounts = {
   bootstrapAccount: vi.fn(async () => {}),
   unconfirmEmail: vi.fn(async () => {}),
+  abortAccountCreation: vi.fn(async () => {}),
 };
 vi.mock('@/lib/hc/accounts', () => accounts);
 
@@ -165,5 +166,59 @@ describe('A3 · created vs already-exists: one visible response', () => {
     await POST(post({ name: 'Sarah', email: 'taken@x.y', password: 'long-enough-pw' }));
     expect(accounts.unconfirmEmail).not.toHaveBeenCalled();
     expect(accounts.bootstrapAccount).not.toHaveBeenCalled();
+  });
+});
+
+describe('A3 · partial-commit compensation (round-10 finding 6)', () => {
+  const FRESH_USER = { id: '33333333-3333-4333-8333-333333333333' };
+  const FRESH_SIGNUP = {
+    data: { user: FRESH_USER, session: { access_token: 'a.b.c', refresh_token: 'r' } },
+    error: null,
+  };
+
+  it('an un-confirm failure aborts the half-made account and answers a retry shape', async () => {
+    signUp.mockResolvedValueOnce(FRESH_SIGNUP);
+    accounts.unconfirmEmail.mockRejectedValueOnce(new Error('db down'));
+    const res = await POST(post({ name: 'Sarah', email: 'fresh@x.y', password: 'long-enough-pw' }));
+    // The compensating delete unwinds signUp: no falsely-confirmed user survives.
+    expect(accounts.abortAccountCreation).toHaveBeenCalledWith(FRESH_USER.id);
+    expect(accounts.bootstrapAccount).not.toHaveBeenCalled();
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toContain('e=retry');
+  });
+
+  it('a bootstrap failure likewise aborts — no live session without its account row', async () => {
+    signUp.mockResolvedValueOnce(FRESH_SIGNUP);
+    accounts.bootstrapAccount.mockRejectedValueOnce(new Error('accounts insert failed'));
+    const res = await POST(post({ name: 'Sarah', email: 'fresh@x.y', password: 'long-enough-pw' }));
+    expect(accounts.abortAccountCreation).toHaveBeenCalledWith(FRESH_USER.id);
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toContain('e=retry');
+  });
+
+  it('when the abort itself also fails, the route fails LOUDLY — the residual state is operational, never silent', async () => {
+    signUp.mockResolvedValueOnce(FRESH_SIGNUP);
+    accounts.unconfirmEmail.mockRejectedValueOnce(new Error('db down'));
+    accounts.abortAccountCreation.mockRejectedValueOnce(new Error('gotrue down too'));
+    await expect(
+      POST(post({ name: 'Sarah', email: 'fresh@x.y', password: 'long-enough-pw' })),
+    ).rejects.toThrow();
+  });
+
+  it('a resend refusal is surfaced to the server log — never to the response shape', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      signUp.mockResolvedValueOnce(FRESH_SIGNUP);
+      resend.mockResolvedValueOnce({ data: null, error: { message: 'rate limited' } });
+      const res = await POST(
+        post({ name: 'Sarah', email: 'fresh@x.y', password: 'long-enough-pw' }),
+      );
+      expect(spy).toHaveBeenCalled();
+      expect(res.status).toBe(303);
+      expect(res.headers.get('location')).toContain('/setup');
+      expect(res.headers.get('location')).not.toContain('e=');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
