@@ -16,18 +16,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 //     "no longer valid" — nothing about accounts.
 // ============================================================================
 
+// killAllSessionsAndForceReset lives with the security-action wrappers:
+// it needs the maintenance boundary (DB session revocation — the probed
+// local GoTrue exposes no per-user admin logout endpoint) plus the
+// service-fenced password rotation, and lib/hc is the one place the
+// fences let both meet.
 const security = {
   executeWasntMe: vi.fn(),
   completeSecurityAction: vi.fn(async () => {}),
+  killAllSessionsAndForceReset: vi.fn(async () => {}),
+  pendingSecurityActions: vi.fn(async () => []),
 };
 vi.mock('@/lib/hc/security-actions', () => security);
-
-const admin = { killAllSessionsAndForceReset: vi.fn(async () => {}) };
-vi.mock('@/lib/auth/gotrue-admin', () => ({
-  killAllSessionsAndForceReset: admin.killAllSessionsAndForceReset,
-  createUnverifiedUser: vi.fn(),
-  sendVerificationEmail: vi.fn(),
-}));
+const admin = { killAllSessionsAndForceReset: security.killAllSessionsAndForceReset };
 
 function post(body: Record<string, string>): Request {
   return new Request('http://local.test/wasnt-me/submit', {

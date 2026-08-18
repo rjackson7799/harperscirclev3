@@ -2,39 +2,51 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ============================================================================
 // A3 · POST /create-account/submit — non-enumeration byte-identity
-// (TSD §5.5 "Never enumerate accounts"; PRD §4.1.7).
+// (TSD §5.5 "Never enumerate accounts"; PRD §4.1.2, §4.1.7).
 //
-// The design (recorded in docs/ops/auth-config-parity.md): users are
-// created through the admin API with email_confirm:false so verification
-// stays real while sign-in stays open. The route's response NEVER mints a
-// session and NEVER branches visibly on prior existence — both outcomes
-// answer with the same redirect to sign-in, where the ordinary sign-in
-// POST (already byte-uniform) completes the flow. The distinction §5.5
-// wants delivered by email rides GoTrue's mails, not this response.
+// The settled verification model (probed against the live GoTrue and
+// recorded in docs/ops/auth-config-parity.md): this GoTrue gates the
+// password grant on email confirmation UNCONDITIONALLY, so the only way
+// an unverified founder can hold a session — "setup is never blocked on
+// checking mail" — is the signup-minted one. Therefore:
+//
+//   fresh    → public signUp (autoconfirm mints the session) → the
+//              boundary IMMEDIATELY un-confirms auth.users (autoconfirm's
+//              lie corrected where 2A's mirror reads truth — AC-AUTH-4
+//              stays real) → accounts bootstrap (AFTER the un-confirm, so
+//              the insert mirror reads NULL) → verification mail.
+//   existing → GoTrue answers user_already_exists; nothing is written.
+//
+// Both branches answer the SAME status + Location + body. The one channel
+// that necessarily differs is Set-Cookie (the fresh branch carries its
+// session; GoTrue's confirmation-gate binary forces the choice between
+// this and blocking setup on mail) — recorded as the §5.5 deviation in
+// the parity doc and the build ADR, re-seen at round 10.
 //
 // Contract:
 //   1. Validation (name present, password ≥ 10, plain language) happens
-//      BEFORE any admin call, so a validation answer is existence-free
-//      by construction.
-//   2. created vs already-exists → byte-identical responses; the
-//      verification-mail request is issued in BOTH branches so even the
-//      outbound call pattern does not branch.
-//   3. The accounts row is bootstrapped ONLY for a genuinely new user,
-//      with the display name the person typed.
+//      BEFORE any GoTrue call.
+//   2. fresh vs exists → identical status/Location/body; the
+//      verification-mail request is issued in BOTH branches.
+//   3. Writes only on fresh — un-confirm strictly BEFORE the accounts
+//      bootstrap (the mirror-order invariant), then the mail.
 // ============================================================================
 
-const admin = {
-  createUnverifiedUser: vi.fn(),
-  sendVerificationEmail: vi.fn(async () => {}),
-};
-vi.mock('@/lib/auth/gotrue-admin', () => admin);
+const signUp = vi.fn();
+const resend = vi.fn(async () => ({ data: {}, error: null }));
+vi.mock('@/lib/db/user', () => ({
+  asUser: async () => ({ auth: { signUp, resend } }),
+}));
 
-const accounts = { bootstrapAccount: vi.fn(async () => {}) };
+const accounts = {
+  bootstrapAccount: vi.fn(async () => {}),
+  unconfirmEmail: vi.fn(async () => {}),
+};
 vi.mock('@/lib/hc/accounts', () => accounts);
 
 async function snapshot(res: Response) {
   const headers = [...res.headers.entries()]
-    .filter(([k]) => k !== 'date')
+    .filter(([k]) => k !== 'date' && k !== 'set-cookie')
     .sort(([a], [b]) => a.localeCompare(b));
   return { status: res.status, headers, body: await res.text() };
 }
@@ -54,62 +66,67 @@ beforeEach(async () => {
   ({ POST } = await import('@/app/(auth)/create-account/submit/route'));
 });
 
-describe('A3 · validation precedes any admin call', () => {
+describe('A3 · validation precedes any GoTrue call', () => {
   it('a 9-char password answers in plain language and never reaches GoTrue', async () => {
     const res = await POST(post({ name: 'Sarah', email: 'a@b.c', password: 'short-pw9' }));
-    expect(admin.createUnverifiedUser).not.toHaveBeenCalled();
+    expect(signUp).not.toHaveBeenCalled();
     expect(res.status).toBe(303);
-    const location = res.headers.get('location')!;
-    expect(location).toContain('e=password-length');
+    expect(res.headers.get('location')).toContain('e=password-length');
   });
 
   it('a missing name answers the same way', async () => {
     const res = await POST(post({ name: '', email: 'a@b.c', password: 'long-enough-pw' }));
-    expect(admin.createUnverifiedUser).not.toHaveBeenCalled();
+    expect(signUp).not.toHaveBeenCalled();
     expect(res.status).toBe(303);
   });
 });
 
-describe('A3 · created vs already-exists: one response', () => {
-  it('byte-identical redirects, verification mail requested in both branches', async () => {
-    admin.createUnverifiedUser.mockResolvedValueOnce({
-      created: true,
-      userId: '22222222-2222-4222-8222-222222222222',
+describe('A3 · created vs already-exists: one visible response', () => {
+  const FRESH_USER = { id: '22222222-2222-4222-8222-222222222222' };
+
+  it('identical status/Location/body; verification mail requested in both branches', async () => {
+    signUp.mockResolvedValueOnce({
+      data: { user: FRESH_USER, session: { access_token: 'a.b.c', refresh_token: 'r' } },
+      error: null,
     });
     const fresh = await snapshot(
       await POST(post({ name: 'Sarah', email: 'fresh@x.y', password: 'long-enough-pw' })),
     );
 
-    admin.createUnverifiedUser.mockResolvedValueOnce({ created: false });
+    signUp.mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: { message: 'User already registered', status: 422, code: 'user_already_exists' },
+    });
     const exists = await snapshot(
       await POST(post({ name: 'Sarah', email: 'taken@x.y', password: 'long-enough-pw' })),
     );
 
     expect(fresh).toEqual(exists);
-    expect(admin.sendVerificationEmail).toHaveBeenCalledTimes(2);
     expect(fresh.status).toBe(303);
+    expect(resend).toHaveBeenCalledTimes(2);
   });
 
-  it('the accounts row is bootstrapped only for the genuinely new user, with the typed name', async () => {
-    admin.createUnverifiedUser.mockResolvedValueOnce({
-      created: true,
-      userId: '22222222-2222-4222-8222-222222222222',
+  it('fresh: un-confirm strictly before the accounts bootstrap, with the typed name', async () => {
+    signUp.mockResolvedValueOnce({
+      data: { user: FRESH_USER, session: { access_token: 'a.b.c', refresh_token: 'r' } },
+      error: null,
     });
     await POST(post({ name: 'Sarah Chen', email: 'fresh@x.y', password: 'long-enough-pw' }));
-    expect(accounts.bootstrapAccount).toHaveBeenCalledWith(
-      '22222222-2222-4222-8222-222222222222',
-      'Sarah Chen',
-    );
 
-    accounts.bootstrapAccount.mockClear();
-    admin.createUnverifiedUser.mockResolvedValueOnce({ created: false });
-    await POST(post({ name: 'Sarah Chen', email: 'taken@x.y', password: 'long-enough-pw' }));
-    expect(accounts.bootstrapAccount).not.toHaveBeenCalled();
+    expect(accounts.unconfirmEmail).toHaveBeenCalledWith(FRESH_USER.id);
+    expect(accounts.bootstrapAccount).toHaveBeenCalledWith(FRESH_USER.id, 'Sarah Chen');
+    const unconfirmOrder = accounts.unconfirmEmail.mock.invocationCallOrder[0];
+    const bootstrapOrder = accounts.bootstrapAccount.mock.invocationCallOrder[0];
+    expect(unconfirmOrder).toBeLessThan(bootstrapOrder);
   });
 
-  it('no session is minted by this route: no Set-Cookie either branch', async () => {
-    admin.createUnverifiedUser.mockResolvedValueOnce({ created: true, userId: '3' });
-    const res = await POST(post({ name: 'S', email: 'f@x.y', password: 'long-enough-pw' }));
-    expect(res.headers.get('set-cookie')).toBeNull();
+  it('exists: nothing is written', async () => {
+    signUp.mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: { message: 'User already registered', status: 422, code: 'user_already_exists' },
+    });
+    await POST(post({ name: 'Sarah', email: 'taken@x.y', password: 'long-enough-pw' }));
+    expect(accounts.unconfirmEmail).not.toHaveBeenCalled();
+    expect(accounts.bootstrapAccount).not.toHaveBeenCalled();
   });
 });
