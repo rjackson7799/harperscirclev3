@@ -67,6 +67,22 @@
 //   Case 25 1D TNT-08: a grant revocation committing while the reclassify
 //           waits defeats it — ctx evaluates under the lock (RAC-02's
 //           shape, on the 1D writer).
+//   Case 26 2A R-rule: a freeze committing while accept_invite waits on
+//           the per-circle lock DEFEATS the acceptance (freeze_active) —
+//           no membership, no grants, the invite still pending (FRZ-16's
+//           racing half).
+//   Case 27 2A: an invite REVOCATION committing while accept_invite waits
+//           defeats it — the §5.10 conditional UPDATE re-reads under the
+//           lock and updates zero rows (RLS-09's racing half).
+//   Case 28 2A §5.6: two sessions hammering one identifier concurrently —
+//           no attempt is lost, the wait stays boxed at 900 s, and a
+//           success clears it (AC-AUTH-12 under contention).
+//   Case 29 2A §5.7: two sessions racing ONE step-up token through a
+//           grant raise — serialized on the circle lock, exactly one
+//           PERFORMS the raise and consumes the token; the second is
+//           ABSORBED by the same-level no-op (changed:false, no token
+//           demanded — nothing rises), one grant_changed lands, the
+//           token is consumed exactly once.
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -78,7 +94,7 @@
 // ============================================================================
 
 import pg from 'pg';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 
 const DB_URL = process.env.DATABASE_URL
   ?? 'postgresql://postgres:postgres@127.0.0.1:54342/postgres';
@@ -210,6 +226,7 @@ async function cleanupCircle(admin, c) {
     `delete from public.documents where circle_id = $1`,
     `delete from public.proposals where circle_id = $1`,
     `delete from public.arrivals where circle_id = $1`,
+    `delete from public.invites where circle_id = $1`,
     `delete from public.freeze_claims where circle_id = $1`,
     `delete from public.freezes where circle_id = $1`,
     `delete from public.access_grants where circle_id = $1`,
@@ -1388,6 +1405,250 @@ async function case25(admin) {
   }
 }
 
+// --- 2A helpers ----------------------------------------------------------------
+
+// The accept path binds on the JWT email claim; GoTrue signs both.
+async function asUserWithEmail(client, userId, email) {
+  await client.query(`select set_config('request.jwt.claims', $1, false)`,
+    [JSON.stringify({ sub: userId, role: 'authenticated', email })]);
+  await client.query(`set role authenticated`);
+}
+
+async function asAnon(client) {
+  await client.query(`set role anon`);
+}
+
+// Mint a step-up token on a freshly re-authenticated session (§5.7).
+async function mintStepUp(admin, userId, operation, target) {
+  await admin.query(`select set_config('request.jwt.claims', $1, false)`,
+    [JSON.stringify({
+      sub: userId, role: 'authenticated', aal: 'aal1',
+      amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }],
+    })]);
+  await admin.query(`set role authenticated`);
+  const r = await admin.query(
+    `select (hc.mint_step_up($1, $2)) ->> 'token' as t`, [operation, target]);
+  await admin.query(`reset role`);
+  await admin.query(`select set_config('request.jwt.claims', '', false)`);
+  return r.rows[0].t;
+}
+
+// Seed a pending invite directly (issuance is M3's; these cases race the
+// ACCEPTANCE). Returns the plaintext token.
+async function seedInvite(admin, fx, email) {
+  const token = randomBytes(32).toString('hex');
+  await admin.query(`set session_replication_role = replica`);
+  await admin.query(
+    `insert into public.invites (circle_id, token_hash, invited_email, tier,
+       subject_ids, invited_by, expires_at)
+     values ($1, extensions.digest($2, 'sha256'), $3, 'family',
+             array[$4]::uuid[], $5, now() + interval '7 days')`,
+    [fx.c, token, email, fx.s, fx.u1]);
+  await admin.query(`set session_replication_role = default`);
+  return token;
+}
+
+async function mkInvitee(admin, tag) {
+  const id = randomUUID();
+  const email = `invitee-${tag}-${id.slice(0, 8)}@fixture.local`;
+  await admin.query(`set session_replication_role = replica`);
+  await admin.query(
+    `insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
+       email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+     values ('00000000-0000-0000-0000-000000000000', $1::uuid, 'authenticated',
+             'authenticated', $2, 'x', now(), now(), now(), '{}', '{}')`, [id, email]);
+  await admin.query(`set session_replication_role = default`);
+  // triggers ON for the accounts insert: the M3/M5 mirror fills email columns
+  await admin.query(
+    `insert into public.accounts (id, kind, display_name) values ($1, 'member', 'June')`,
+    [id]);
+  return { id, email };
+}
+
+// --- case 26: a freeze racing an in-flight invite acceptance (FRZ-16) ----------
+
+async function case26(admin) {
+  const fx = await mkCircle(admin, 'c26');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const inv = await mkInvitee(admin, 'c26');
+    const token = await seedInvite(admin, fx, inv.email);
+
+    // S1 holds the per-circle lock in an open transaction.
+    await withClaims(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.reclassify_taint('document', $1)`, [fx.doc]);
+
+    // S2's acceptance blocks on the lock…
+    await asUserWithEmail(s2, inv.id, inv.email);
+    const p2 = s2.query(`select hc.accept_invite($1)`, [token])
+      .then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.accept_invite%', 'accept backend');
+    await waitForLockWait(admin, pid2, 's2 acceptance on the circle lock');
+    check('case26: the acceptance blocks on the per-circle lock', true, '');
+
+    // …a freeze commits mid-wait…
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fx.c]);
+
+    // …and the acceptance must SEE it when the lock releases.
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case26 acceptance after freeze');
+    const st = await admin.query(
+      `select (select count(*)::int from public.circle_members
+               where circle_id = $1 and account_id = $2)      as members,
+              (select count(*)::int from public.access_grants g
+               join public.circle_members m on m.id = g.member_id
+               where m.circle_id = $1 and m.account_id = $2)  as grants,
+              (select count(*)::int from public.invites
+               where circle_id = $1 and accepted_at is not null) as accepted`,
+      [fx.c, inv.id]);
+    const r = st.rows[0];
+    check('case26: a freeze committed while the acceptance waited DEFEATS it (freeze_active; no membership, no grants, invite still pending)',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'freeze_active'
+        && r.members === 0 && r.grants === 0 && r.accepted === 0,
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'} members=${r.members} grants=${r.grants} accepted=${r.accepted}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 27: an invite revocation racing an in-flight acceptance --------------
+
+async function case27(admin) {
+  const fx = await mkCircle(admin, 'c27');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const inv = await mkInvitee(admin, 'c27');
+    const token = await seedInvite(admin, fx, inv.email);
+
+    await withClaims(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.reclassify_taint('document', $1)`, [fx.doc]);
+
+    await asUserWithEmail(s2, inv.id, inv.email);
+    const p2 = s2.query(`select hc.accept_invite($1)`, [token])
+      .then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.accept_invite%', 'accept backend');
+    await waitForLockWait(admin, pid2, 's2 acceptance on the circle lock');
+
+    // the coordinator revokes while the acceptance waits
+    await admin.query(
+      `update public.invites set revoked_at = now()
+       where circle_id = $1 and revoked_at is null and accepted_at is null`, [fx.c]);
+
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case27 acceptance after revocation');
+    const st = await admin.query(
+      `select (select count(*)::int from public.circle_members
+               where circle_id = $1 and account_id = $2) as members`, [fx.c, inv.id]);
+    check('case27: a revocation committed while the acceptance waited DEFEATS it — the §5.10 conditional UPDATE re-reads under the lock, zero rows, nothing created',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'invite_refused'
+        && st.rows[0].members === 0,
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'} members=${st.rows[0].members}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 28: the throttle under two-session contention (AC-AUTH-12) -----------
+
+async function case28(admin) {
+  const s1 = await connect();
+  const s2 = await connect();
+  const ident = `race-${randomUUID().slice(0, 8)}@fixture.local`;
+  try {
+    await asAnon(s1);
+    await asAnon(s2);
+
+    // 10 failures from each session, interleaved concurrently.
+    const burst = (s) => Array.from({ length: 10 }, () =>
+      s.query(`select hc.record_auth_attempt($1, 'failure')`, [ident]));
+    await withTimeout(Promise.all([...burst(s1), ...burst(s2)]), 'case28 bursts');
+
+    const t1 = await s1.query(`select hc.auth_throttle($1) as t`, [ident]);
+    const t = t1.rows[0].t;
+    const rows = await admin.query(
+      `select count(*)::int as n from public.auth_attempts
+       where attempt_key = hc.contact_key($1) and outcome = 'failure'`, [ident]);
+    check('case28: twenty interleaved failures all land (no lost attempts) and the wait stays boxed at 900 s',
+      rows.rows[0].n === 20 && t.failures === 20 && t.wait_seconds <= 900 && t.wait_seconds > 0,
+      `rows=${rows.rows[0].n} failures=${t.failures} wait=${t.wait_seconds}`);
+
+    // The AC-AUTH-12 exit under contention: one success clears, and the
+    // other session sees it cleared on its NEXT statement.
+    await s1.query(`select hc.record_auth_attempt($1, 'success')`, [ident]);
+    const t2 = await s2.query(`select hc.auth_throttle($1) as t`, [ident]);
+    check('case28: a success from one session clears the state for the other immediately',
+      t2.rows[0].t.failures === 0 && t2.rows[0].t.wait_seconds === 0,
+      `after=${JSON.stringify(t2.rows[0].t)}`);
+  } finally {
+    await s1.end();
+    await s2.end();
+    await admin.query(
+      `delete from public.auth_attempts where attempt_key = hc.contact_key($1)`, [ident]);
+  }
+}
+
+// --- case 29: two sessions racing ONE step-up token through a raise ------------
+
+async function case29(admin) {
+  const fx = await mkCircle(admin, 'c29');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // m2's health starts BELOW the target so the call is a genuine raise.
+    await admin.query(
+      `update public.access_grants set level = 'summary'
+       where member_id = $1 and domain = 'health'`, [fx.m2]);
+
+    const target = `${fx.m2}:${fx.s}:health`;
+    const token = await mintStepUp(admin, fx.u1, 'raise_grant', target);
+
+    await asUser(s1, fx.u1);
+    await asUser(s2, fx.u1);
+    // The racers serialize on the circle lock. One PERFORMS the raise and
+    // consumes the token; the other re-reads view=view and is ABSORBED by
+    // the same-level no-op (changed:false, no token demanded — nothing
+    // rises). The properties that matter: the token is consumed exactly
+    // once, one grant_changed lands, and the level lands once.
+    const raise = (s) => s.query(
+      `select hc.set_grant($1, $2, 'health', 'view', $3) as r`, [fx.m2, fx.s, token])
+      .then(res => res.rows[0].r).catch(e => e);
+    const [r1, r2] = await withTimeout(Promise.all([raise(s1), raise(s2)]), 'case29 raises');
+
+    const outcomes = [r1, r2].map(r => (r && r.changed !== undefined) ? r.changed : `ERR:${r?.code}`);
+    const performed = outcomes.filter(o => o === true).length;
+    const absorbed  = outcomes.filter(o => o === false).length;
+    const level = await admin.query(
+      `select level::text as l from public.access_grants
+       where member_id = $1 and domain = 'health'`, [fx.m2]);
+    const consumed = await admin.query(
+      `select (consumed_at is not null) as c from public.step_up_tokens
+       where token_hash = extensions.digest($1, 'sha256')`, [token]);
+    const logs = await admin.query(
+      `select count(*)::int as n from public.access_log
+       where circle_id = $1 and event_type = 'grant_changed'
+         and domain = 'health' and level_after = 'view'`, [fx.c]);
+    check('case29: ONE racer performs the raise and consumes the token; the other is absorbed as a no-op; one grant_changed, the level lands once',
+      performed === 1 && absorbed === 1 && level.rows[0].l === 'view'
+        && consumed.rows[0].c === true && logs.rows[0].n === 1,
+      `outcomes=${JSON.stringify(outcomes)} level=${level.rows[0].l} consumed=${consumed.rows[0].c} logs=${logs.rows[0].n}`);
+  } finally {
+    await s1.end();
+    await s2.end();
+    await admin.query(`reset role`).catch(() => {});
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -1418,6 +1679,10 @@ try {
   await case23(admin);
   await case24(admin);
   await case25(admin);
+  await case26(admin);
+  await case27(admin);
+  await case28(admin);
+  await case29(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;
