@@ -35,7 +35,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(36);
+select plan(37);
 
 -- ----------------------------------------------------------------------------
 -- Helpers
@@ -338,8 +338,8 @@ select is(pg_temp.scalar(format(
      join public.circle_members m on m.id = g.member_id
      where m.circle_id = %L and m.account_id = %L $$,
   current_setting('t.c1'), current_setting('t.v1'))),
-  '{health:summary,memories:summary,schedule:summary,documents:log}',
-  'the family defaults, EXACTLY §7.4: health/schedule/memories summary, documents log — and NO finances row (hidden is absence)');
+  '{memories:summary,health:summary,schedule:summary,documents:log}',
+  'the family defaults, EXACTLY §7.4 (enum order): health/schedule/memories summary, documents log — and NO finances row (hidden is absence)');
 
 select is(pg_temp.scalar(format(
   $$ select (i.accepted_at is not null and i.accepted_by = %L)::text
@@ -390,8 +390,8 @@ select is(pg_temp.scalar(format(
 select is(
   (select array_agg(t.domain::text || ':' || t.level::text order by t.domain)
    from hc.tier_defaults('family') t),
-  array['documents:log', 'health:summary', 'memories:summary', 'schedule:summary'],
-  'hc.tier_defaults(family) IS the §7.4 row — the ONE source AC-AUTH-8''s app module snapshots against');
+  array['memories:summary', 'health:summary', 'schedule:summary', 'documents:log'],
+  'hc.tier_defaults(family) IS the §7.4 row (enum order) — the ONE source AC-AUTH-8''s app module snapshots against');
 
 -- ----------------------------------------------------------------------------
 -- 30–33 · Expiry, revocation, live-member and reactivation edges
@@ -401,7 +401,11 @@ select pg_temp.invite_as(current_setting('t.u1')::uuid, 'sarah@fixture.local',
   array[current_setting('t.s1')::uuid], 'tok_exp');
 do $$
 begin
-  update public.invites set expires_at = now() - interval '1 second'
+  -- keep the invites_check (expires_at > created_at) satisfied while
+  -- pushing the whole life into the past
+  update public.invites
+     set created_at = now() - interval '8 days',
+         expires_at = now() - interval '1 day'
    where id = current_setting('t.tok_exp_id')::uuid;
 end $$;
 select is(pg_temp.call_as(current_setting('t.v2')::uuid, 'expired@fixture.local', format(

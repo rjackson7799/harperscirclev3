@@ -37,6 +37,7 @@ select is((
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc'),
   array[
+    'accept_invite(p_token text)',
     'access_log_immutable()',
     'adjudicate_freeze(p_freeze_id uuid, p_outcome text, p_adjudicated_by text, p_outcome_note text, p_subject_id uuid, p_narrowing_rationale text, p_contact_attempted_at timestamp with time zone, p_objected_to_member_id uuid)',
     'advance_arrival(p_arrival uuid, p_from hc.arrival_state, p_to hc.arrival_state, p_lease uuid, p_reason text)',
@@ -55,6 +56,7 @@ select is((
     'contact_key(p text)',
     'create_arrival(p_circle_id uuid, p_subject_id uuid, p_channel text, p_parent_arrival_id uuid, p_sender_address text, p_sender_display_name text, p_message_id text, p_auth_result text, p_auth_detail jsonb, p_mime_declared text, p_byte_size bigint, p_page_count integer, p_ingest_idempotency_key text)',
     'create_circle(p_name text, p_subjects jsonb, p_opening_context text[])',
+    'create_invite(p_circle_id uuid, p_invited_email text, p_tier hc.tier, p_subject_ids uuid[], p_note text)',
     'create_manual_proposal(p_circle_id uuid, p_subject_id uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'ctx()',
     'ctx_for(p_account uuid)',
@@ -85,6 +87,7 @@ select is((
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
     'resolve_object(p_type hc.object_type, p_id uuid)',
     'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
+    'revoke_invite(p_invite_id uuid)',
     'run_taint_sweep()',
     'sender_recognised(p_arrival uuid)',
     'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid, p_step_up_token text)',
@@ -94,6 +97,7 @@ select is((
     'taint_union(a hc.domain[], b hc.domain[])',
     'taint_union_2(a hc.domain[], b hc.domain[])',
     'taint_union_agg(hc.domain[])',
+    'tier_defaults(p_tier hc.tier)',
     'tombstone_guard()',
     'tsv_documents()',
     'tsv_tasks()',
@@ -111,20 +115,20 @@ select is((
   select array_agg(p.proname order by p.proname)
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
-  array['adjudicate_freeze','advance_arrival','approve_proposal',
+  array['accept_invite','adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
         'assert_manual_flag','auth_throttle','cancel_arrival','claim_stage',
         'consume_step_up','create_arrival',
-        'create_circle','create_manual_proposal',
+        'create_circle','create_invite','create_manual_proposal',
         'ctx','ctx_for','finalize_extraction','finalize_interpretation',
         'grant_vectors','link_provenance','log_chain_heads','log_denied',
         'mint_step_up','outbox_ack','outbox_drain','presence',
         'propagate_taint_growth','reclassify_taint','record_auth_attempt',
         'record_tombstone',
-        'request_freeze','revise_object','run_taint_sweep',
+        'request_freeze','revise_object','revoke_invite','run_taint_sweep',
         'sender_recognised','share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the thirty-six boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the thirty-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -199,6 +203,12 @@ with actual as (
   -- 2A M2: minting a step-up token is a member act on a fresh session;
   -- consume_step_up is deliberately absent — definer bodies only
   union all select 'mint_step_up', 'authenticated'
+  -- 2A M3: the invites lifecycle — member acts; tier_defaults readable so
+  -- AC-AUTH-8's app snapshot can run as the app runs
+  union all select 'create_invite', 'authenticated'
+  union all select 'revoke_invite', 'authenticated'
+  union all select 'accept_invite', 'authenticated'
+  union all select 'tier_defaults', 'authenticated'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -248,6 +258,10 @@ insert into snapshot_expected values
   ('hc_internal',   'step_up_tokens',  'SELECT'),
   ('hc_internal',   'step_up_tokens',  'INSERT'),
   ('hc_internal',   'step_up_tokens',  'UPDATE'),
+  ('hc_internal',   'invites',         'SELECT'),
+  ('hc_internal',   'invites',         'INSERT'),
+  ('hc_internal',   'invites',         'UPDATE'),
+  ('hc_internal',   'circle_members',  'UPDATE'),
   ('hc_internal',   'circles',         'SELECT'),
   ('hc_internal',   'circles',         'INSERT'),
   ('hc_internal',   'subjects',        'SELECT'),
@@ -399,6 +413,7 @@ select is((
         'auth_attempts_internal','auth_attempts_internal_append',
         'auth_attempts_internal_prune',
         'circle_members_internal','circle_members_internal_create',
+        'circle_members_internal_reactivate',
         'circles_internal','circles_internal_create',
         'documents_internal','documents_internal_revise',
         'documents_internal_write',
@@ -407,6 +422,7 @@ select is((
         'extractions_internal','extractions_internal_write',
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
+        'invites_internal','invites_internal_decide','invites_internal_issue',
         'known_senders_internal',
         'object_shares_internal','object_shares_internal_create',
         'object_shares_internal_revoke',
@@ -428,7 +444,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated seventy-three');
+  'the hc_internal policy list is exactly the enumerated seventy-seven');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
