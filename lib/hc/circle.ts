@@ -38,18 +38,25 @@ export async function createCircleFromSetup(
 }
 
 /** PRD §4.1.3 step 1 / §4.1.6 "declare your slice" — accounts.slice has
- *  no request-path UPDATE; the guard is the id equality itself. */
+ *  no request-path UPDATE; the guard is the id equality itself. Zero rows
+ *  is an invariant violation (the caller IS the account, fresh from
+ *  create_circle), so it refuses loudly (round-10 finding 7). */
 export async function setDeclaredSlice(accountId: string, slice: string): Promise<void> {
-  await setAccountSlice(accountId, slice);
+  const rows = await setAccountSlice(accountId, slice);
+  if (rows !== 1) {
+    throw new Error(`setDeclaredSlice: slice write hit ${rows} rows for the calling account`);
+  }
 }
 
 /** PRD §4.1.3 step 3 — writable only by the founder of a circle still in
- *  setup (the guard lives in the statement, so a forged circle id writes
- *  zero rows). */
+ *  setup. The statement guard makes a forged, stale or foreign circle id
+ *  write zero rows; that outcome is RETURNED, not swallowed, so the route
+ *  refuses the advance (round-10 finding 7). */
 export async function setOpeningContext(
   accountId: string,
   circleId: string,
   context: string[],
-): Promise<void> {
-  await updateOpeningContext(accountId, circleId, context);
+): Promise<boolean> {
+  const rows = await updateOpeningContext(accountId, circleId, context);
+  return rows === 1;
 }

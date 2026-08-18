@@ -21,8 +21,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const security = {
   executeWasntMe: vi.fn(),
-  completeSecurityAction: vi.fn(async () => {}),
-  killAllSessionsAndForceReset: vi.fn(async () => {}),
+  completeSecurityAction: vi.fn(async (_actionId: string) => undefined),
+  killAllSessionsAndForceReset: vi.fn(async (_accountId: string) => undefined),
   pendingSecurityActions: vi.fn(async (): Promise<unknown[]> => []),
 };
 vi.mock('@/lib/hc/security-actions', () => security);

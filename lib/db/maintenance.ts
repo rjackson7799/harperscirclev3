@@ -57,13 +57,16 @@ export async function insertAccountRow(userId: string, displayName: string): Pro
  * The declared slice (PRD §4.1.3 step 1, §4.1.6). accounts.slice exists
  * for exactly this write (§2.3) and no request-path UPDATE on accounts
  * exists; 2A's precedent is the same free-text column the schema
- * annotates "declared slice". Scoped to the single account id.
+ * annotates "declared slice". Scoped to the single account id. Reports
+ * the affected-row count (round-10 finding 7): a ghost or deleted target
+ * must be distinguishable from persistence — the wrapper enforces it.
  */
-export async function setAccountSlice(accountId: string, slice: string): Promise<void> {
-  await db().query(
+export async function setAccountSlice(accountId: string, slice: string): Promise<number> {
+  const r = await db().query(
     'update public.accounts set slice = $2 where id = $1 and deleted_at is null',
     [accountId, slice],
   );
+  return r.rowCount ?? 0;
 }
 
 /**
@@ -77,13 +80,14 @@ export async function updateOpeningContext(
   accountId: string,
   circleId: string,
   context: string[],
-): Promise<void> {
-  await db().query(
+): Promise<number> {
+  const r = await db().query(
     `update public.circles
         set opening_context = $3
       where id = $2 and created_by = $1 and state = 'setup'`,
     [accountId, circleId, context],
   );
+  return r.rowCount ?? 0;
 }
 
 export type InviteDescription = {
@@ -155,8 +159,11 @@ export async function describeInviteByToken(token: string): Promise<InviteDescri
  * click. Runs before the accounts bootstrap so the insert mirror reads
  * the corrected value.
  */
-export async function unconfirmEmail(userId: string): Promise<void> {
-  await db().query('update auth.users set email_confirmed_at = null where id = $1', [userId]);
+export async function unconfirmEmail(userId: string): Promise<number> {
+  const r = await db().query('update auth.users set email_confirmed_at = null where id = $1', [
+    userId,
+  ]);
+  return r.rowCount ?? 0;
 }
 
 /**
@@ -166,10 +173,29 @@ export async function unconfirmEmail(userId: string): Promise<void> {
  * the auth.sessions rows and revokes refresh tokens — the same rows
  * GoTrue's own logout destroys (RLS closure on any still-live JWT is
  * separately proven: concurrency case 4).
+ *
+ * ONE transaction (round-10 finding 8): both halves commit together or
+ * not at all — a failure between them can no longer strand a partial
+ * kill. Tokens are revoked BEFORE the session delete because the pinned
+ * GoTrue's refresh_tokens.session_id FK is ON DELETE CASCADE — the
+ * UPDATE covers any token not bound to a session, the DELETE cascades
+ * the rest, and the ordering keeps both statements meaningful. Live
+ * proof that a revoked/cascaded token cannot mint a session:
+ * scripts/probe-gotrue.mjs, fact 5.
  */
 export async function revokeAuthSessions(userId: string): Promise<void> {
-  await db().query('delete from auth.sessions where user_id = $1', [userId]);
-  await db().query('update auth.refresh_tokens set revoked = true where user_id = $1::text', [
-    userId,
-  ]);
+  const client = await db().connect();
+  try {
+    await client.query('begin');
+    await client.query('update auth.refresh_tokens set revoked = true where user_id = $1::text', [
+      userId,
+    ]);
+    await client.query('delete from auth.sessions where user_id = $1', [userId]);
+    await client.query('commit');
+  } catch (err) {
+    await client.query('rollback').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }

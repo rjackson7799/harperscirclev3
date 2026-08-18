@@ -19,6 +19,11 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:3000',
     // The walkthrough exercises no-JS-hostile flows too; keep JS on (the
     // product's default) — progressive-enhancement claims are unit-level.
+    // Round-10 finding 11: every gate run leaves inspectable artifacts —
+    // trace + screenshot retained on failure; a RECORDED gate run uses
+    // `--trace on` per docs/ops/e2e-local-gate.md and retains the report.
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
   webServer: {
     command: 'npm run dev',

@@ -43,6 +43,7 @@ export default async function Step2({
 }) {
   const params = await searchParams;
   const slice = typeof params.slice === 'string' ? params.slice : '';
+  const relationship = typeof params.relationship === 'string' ? params.relationship : '';
   const e = typeof params.e === 'string' ? params.e : '';
 
   return (
@@ -59,6 +60,9 @@ export default async function Step2({
 
       <form method="post" action="/setup/step/2/submit">
         <input type="hidden" name="slice" value={slice} />
+        {/* Held until this submit creates the circle (PRD §4.1.3); its
+            durable slot is the ADR-0015 queued column. */}
+        <input type="hidden" name="relationship" value={relationship} />
         <input type="hidden" name="timezone" id="hc-tz" defaultValue="America/New_York" />
         <script
           dangerouslySetInnerHTML={{

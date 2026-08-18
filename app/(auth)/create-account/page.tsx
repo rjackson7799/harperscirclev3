@@ -40,6 +40,12 @@ export default async function CreateAccountPage({
       )}
       {e === 'name' && <p className="notice">Tell us your name — it&apos;s how the family sees you.</p>}
       {e === 'email' && <p className="notice">That email address doesn&apos;t look complete.</p>}
+      {e === 'retry' && (
+        <p className="notice">
+          Something went wrong on our side and nothing was saved. Please try again — the same
+          details are fine.
+        </p>
+      )}
 
       <form method="post" action="/create-account/submit">
         {next && <input type="hidden" name="next" value={next} />}

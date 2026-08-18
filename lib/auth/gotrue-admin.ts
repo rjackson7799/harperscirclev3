@@ -22,3 +22,15 @@ export async function rotatePasswordToRandom(userId: string): Promise<void> {
   });
   if (error) throw error;
 }
+
+/**
+ * The create-account compensation's admin half (round-10 finding 6):
+ * deletes a JUST-CREATED user so a failed signup flow unwinds to nothing.
+ * Deleting the user destroys its sessions with it — the half-minted
+ * session cannot outlive the abort. Only lib/hc/accounts calls this, and
+ * only with the id the same request's signUp returned.
+ */
+export async function deleteAuthUser(userId: string): Promise<void> {
+  const { error } = await asGoTrueAdmin().deleteUser(userId);
+  if (error) throw error;
+}

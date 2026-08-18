@@ -1,5 +1,5 @@
 import { asUser } from '@/lib/db/user';
-import { bootstrapAccount, unconfirmEmail } from '@/lib/hc/accounts';
+import { abortAccountCreation, bootstrapAccount, unconfirmEmail } from '@/lib/hc/accounts';
 import { describeInvite } from '@/lib/hc/invites';
 import { safeNext } from '@/lib/auth/redirect';
 import { formFields, redirect303 } from '@/lib/auth/http';
@@ -57,13 +57,31 @@ export async function POST(req: Request): Promise<Response> {
   });
 
   if (!error && data?.user?.id) {
-    await unconfirmEmail(data.user.id);
-    await bootstrapAccount(data.user.id, name);
+    // The fresh branch crosses two systems; a failure after signUp must
+    // not strand a partial state (round-10 finding 6). Compensation: the
+    // just-created user is deleted — sessions die with it — so a repeat
+    // submission starts clean. If even the abort fails, the route fails
+    // LOUDLY; the residual states are enumerated in ADR-0015.
+    try {
+      await unconfirmEmail(data.user.id);
+      await bootstrapAccount(data.user.id, name);
+    } catch (cause) {
+      console.error('create-account: flow failed after signUp; aborting the half-made account', cause);
+      await abortAccountCreation(data.user.id);
+      return redirect303(req, `/create-account?e=retry${retryParams}`);
+    }
   }
   // Both branches: for a fresh (now-unconfirmed) account this sends the
-  // confirmation link; for an existing confirmed one GoTrue refuses and
-  // the refusal is swallowed — the call pattern must not branch.
-  await supabase.auth.resend({ type: 'signup', email }).catch(() => {});
+  // confirmation link; for an existing confirmed one GoTrue refuses —
+  // the call pattern must not branch and the RESPONSE never reflects the
+  // outcome, but a refusal is surfaced to the server log, not swallowed
+  // (round-10 finding 6).
+  const resent = await supabase.auth
+    .resend({ type: 'signup', email })
+    .catch((err: unknown) => ({ error: err }));
+  if (resent?.error) {
+    console.error('create-account: verification resend failed', resent.error);
+  }
 
   return redirect303(req, next);
 }

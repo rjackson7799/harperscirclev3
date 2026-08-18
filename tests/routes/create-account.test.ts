@@ -33,7 +33,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // ============================================================================
 
 const signUp = vi.fn();
-const resend = vi.fn(async () => ({ data: {}, error: null }));
+const resend = vi.fn(
+  async (): Promise<{ data: unknown; error: unknown }> => ({ data: {}, error: null }),
+);
 vi.mock('@/lib/db/user', () => ({
   asUser: async () => ({ auth: { signUp, resend } }),
 }));
