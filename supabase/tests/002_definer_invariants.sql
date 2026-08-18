@@ -84,12 +84,14 @@ select is((
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
     'record_auth_attempt(p_identifier text, p_outcome text)',
     'record_tombstone(p_circle_id uuid, p_object_type text, p_object_id uuid, p_storage_keys text[], p_scope text, p_requested_by uuid, p_reason text)',
+    'remove_member(p_member_id uuid, p_keep_share_ids uuid[])',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
     'resolve_object(p_type hc.object_type, p_id uuid)',
     'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
     'revoke_invite(p_invite_id uuid)',
     'run_taint_sweep()',
     'sender_recognised(p_arrival uuid)',
+    'set_grant(p_member_id uuid, p_subject_id uuid, p_domain hc.domain, p_level hc.access_level, p_step_up_token text)',
     'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid, p_step_up_token text)',
     'sweep_provenance()',
     'sweeper_pass()',
@@ -124,11 +126,11 @@ select is((
         'grant_vectors','link_provenance','log_chain_heads','log_denied',
         'mint_step_up','outbox_ack','outbox_drain','presence',
         'propagate_taint_growth','reclassify_taint','record_auth_attempt',
-        'record_tombstone',
+        'record_tombstone','remove_member',
         'request_freeze','revise_object','revoke_invite','run_taint_sweep',
-        'sender_recognised','share_object','sweep_provenance',
+        'sender_recognised','set_grant','share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the thirty-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the forty-one boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -209,6 +211,10 @@ with actual as (
   union all select 'revoke_invite', 'authenticated'
   union all select 'accept_invite', 'authenticated'
   union all select 'tier_defaults', 'authenticated'
+  -- 2A M4: the grant and revocation writers — coordinator acts, authorized
+  -- in-function
+  union all select 'set_grant', 'authenticated'
+  union all select 'remove_member', 'authenticated'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -258,6 +264,8 @@ insert into snapshot_expected values
   ('hc_internal',   'step_up_tokens',  'SELECT'),
   ('hc_internal',   'step_up_tokens',  'INSERT'),
   ('hc_internal',   'step_up_tokens',  'UPDATE'),
+  ('hc_internal',   'access_grants',   'UPDATE'),
+  ('hc_internal',   'access_grants',   'DELETE'),
   ('hc_internal',   'invites',         'SELECT'),
   ('hc_internal',   'invites',         'INSERT'),
   ('hc_internal',   'invites',         'UPDATE'),
@@ -403,6 +411,7 @@ select is((
   join pg_class c on c.oid = p.polrelid
   where 'hc_internal'::regrole::oid = any (p.polroles)),
   array['access_grants_internal','access_grants_internal_create',
+        'access_grants_internal_revoke','access_grants_internal_set',
         'access_log_internal','access_log_internal_append',
         'access_log_internal_collapse',
         'accounts_internal',
@@ -444,7 +453,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated seventy-seven');
+  'the hc_internal policy list is exactly the enumerated seventy-nine');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:

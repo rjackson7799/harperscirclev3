@@ -34,7 +34,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(33);
+select plan(34);
 
 -- ----------------------------------------------------------------------------
 -- Helpers
