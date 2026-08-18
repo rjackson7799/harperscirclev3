@@ -1,6 +1,9 @@
 # ADR-0010 — Third-party review round 8: the built 1D surfaces, findings, dispositions
 
-**Status:** Proposed (accepted on merge of `slice/1d-derived-surfaces`)
+**Status:** Accepted — merged at `54a1dc9` (merge commit
+`54a1dc9926f27f703464ba7b4a9ed54699d9799d`, parents `4c51bb2` + `0e497eb`;
+owner sign-off recorded by the merge commit per the gate; merged tree
+verified identical to `0e497eb`'s; CI green on main, run 32094791299)
 **Deciders:** owner (sole merge authority, per ADR-0006)
 **Date:** 2026-08-17
 **Packet reviewed:** `docs/review/round-8-findings.md` — the adversarial
