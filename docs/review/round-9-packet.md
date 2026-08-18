@@ -227,3 +227,39 @@ several domains.*
   `toomanyrequests` failure is the recorded ECR Public anonymous pull
   quota — re-run material, never a repo defect. This record lands as a
   docs-only commit on `6cc0dc7`; the SQL tree is unchanged by it.
+
+---
+
+## ADDENDUM (2026-08-17) — round-9 findings received: recommendation superseded
+
+The third-party round-9 review returned **three blocking findings**
+(`docs/review/round-9-findings.md`, verbatim): F1 critical — request roles
+could assert success-class throttle outcomes for any identifier; F2 high —
+`accept_sender` evaluated predicates and wrote before the R-rule lock
+(and the same class was then found in `set_grant`/`remove_member` by this
+session's audit); F3 high — "this wasn't me" consumption was not atomic
+with its security effect. **This packet's acceptance recommendation is
+superseded: the verdict is forward-fix, and the fixes are applied.**
+
+Dispositions: **ADR-0013** (all three accepted; F1 via identity-bound
+success recording; F2 extended to the writer class; F3 as the reviewer
+proposed; two argued declines recorded for round 10). Applied the
+ADR-0006 way on this branch:
+
+| Commit | What |
+|---|---|
+| `e371326` | findings verbatim (docs-only) |
+| `1bebc9c` | RED — 042 new (22), 035 rewritten (39), 039 +2, 002 re-pins, cases 28 (rewritten) / 30 / 31 / 32; every failure signature in the message, including the live breaches (`senders=1 logs=1` past a freeze; a removed member re-granted, token consumed) |
+| `c995a99` | GREEN — migration `20260818120008_round9_fixes.sql` (**M8, the reserve — the ≤ 8 bound is now met exactly**) |
+
+Evidence at the new SQL/test head **`c995a99`** (docs-only commits
+follow): clean-leg reset 46 exact · pgTAP **1134/1134 across 43 files** ·
+concurrency **55/55 across 32 cases** · `db:verify` clean under
+`--fail-on warning`. CI at the pushed head: recorded below when the
+push-event run completes.
+
+Deployability caveat, as the review directed (recorded in ADR-0013 and
+coverage AUT-01): the throttle and "wasn't me" RPCs are not publicly
+usable until 2B lands the app boundary that routes every
+password-verification path through them — PIN-01 keeps `hc` off the API
+surface meanwhile, and GoTrue's own rate limits stay on as the backstop.
