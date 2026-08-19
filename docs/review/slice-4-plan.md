@@ -1,11 +1,15 @@
 # Slice 4 — Ingestion: the slice plan
 
-**Status:** **PLANNED — ⏸ at the plan gate, owner rulings on Q1–Q7
-before any build.** Written 2026-08-18 in the planning session; main
-confirmed at `2fc6e9b` (clean, in sync with origin) with CI green at
-both the slice-3 merge commit `91f90cc` (run 62, 32224259849) and the
-docs follow-up `2fc6e9b` (run 63, 32224544413) — the public API,
-checked first per the kickoff.
+**Status:** **PLANNED — RULED. Q1–Q7 SETTLED 2026-08-18 at the plan
+gate** (rulings recorded verbatim below; every recommendation
+accepted). The 4A build (M1 the R8 batch FIRST) runs in its own fresh
+session on `slice/4-ingestion`. Written 2026-08-18 in the planning
+session; main confirmed at `2fc6e9b` (clean, in sync with origin) with
+CI green at both the slice-3 merge commit `91f90cc` (run 62,
+32224259849) and the docs follow-up `2fc6e9b` (run 63, 32224544413) —
+the public API, checked first per the kickoff. The plan itself landed
+docs-only at `18520e0`, **CI green on main — run 64, 32226627138,
+SUCCESS** (public API, confirmed in-session).
 
 **Authority:** TSD §11.1 row 4 ("Upload + forwarding address, the state
 machine, scan, quotas, sender auth — arrivals exist and are visible
@@ -300,6 +304,42 @@ ADM-01 (their slices) · G12-01 (gate).
 | APP-09b | *(flip)* AC-AUTH-10's access-log half — both halves referenced | app | green |
 
 ---
+
+## Owner decisions — SETTLED 2026-08-18 (the plan-gate rulings)
+
+The owner ruled on the seven batched questions at the plan gate,
+2026-08-18, in the planning session. Recorded verbatim; the build
+executes on these:
+
+- **Q1 — SETTLED:** **4A/4B split** — 4A (M1–M8 DB, incl. the R8
+  batch) → round-12 review → merge; then 4B (app B1–B9) → round-13.
+  The 2A/2B cadence.
+- **Q2 — SETTLED:** The R2 table is **`circle_members`** —
+  `circle_members.relationship` on the founder's membership row,
+  written inside `hc.create_circle`'s transaction.
+- **Q3 — SETTLED:** Migration bound **≤ 8** (M1 the batch + M2–M7
+  planned + M8 reserved for round-12 dispositions).
+- **Q4 — SETTLED:** **`tus-js-client` approved** — the one argued
+  runtime dependency; everything else zero-dep; the dev-dep reserve
+  slot unchanged.
+- **Q5 — SETTLED:** **ARC validation deferred to a pre-activation G7
+  hardening item.** Interim: provider-verdict-first +
+  authserv-id-anchored parsing; alignment-broken mail lands
+  `held_unknown_sender` — fail-closed to a human; G7 re-examines
+  before any real forwarding address activates.
+- **Q6 — SETTLED:** **The UXA-01 disposition ratified as presented**
+  (the four M4 conditions answered: manage-×5 inbox audience ·
+  no below-cliff processing affordance, the pinned cliff is the
+  recorded fail-closed choice · the coordinator-diagnosis guarantee as
+  a requirement on any future coordinator-minting path ·
+  `hc.share_object` on the arrival as the named disclosure channel).
+  UXA-01 flips to review-green with this disposition; B6 builds to it.
+- **Q7 — SETTLED:** **The inter-slice seam accepted as stated** —
+  gated arrivals rest at `extracting` with an honest label until
+  slice 5's workers; production activation stays G4/G7-gated.
+
+The questions as put to the owner (with the recommendations that were
+accepted) are preserved below for the record.
 
 ## Owner decisions needed — the batched questions (the round-10 pattern)
 
