@@ -1,6 +1,11 @@
 # Slice 3 — Design system: the slice plan
 
-**Status:** **SIGNED OFF — merge authorized, 2026-08-18.** Round-11
+**Status:** **COMPLETE — MERGED 2026-08-18 at `91f90cc`** (merge
+commit, parents `fe2aed6` + `eff55d1`; merged tree verified identical
+to the branch head's; PR #7; CI green on main at the merge commit, run
+32224259849; the token-pin + contrast-math harness promoted to
+HonuVault `patterns/` as `#portable` per the plan's slice-completion
+item). Round-11
 verdict: **approve with findings, none blocking**
 (`docs/review/round-11-findings.md`, verbatim at `a44ba23`);
 dispositions in ADR-0016's round-11 addendum (High-1/High-2/EQ-3/EQ-4

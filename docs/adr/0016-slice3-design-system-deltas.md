@@ -1,13 +1,17 @@
 # ADR-0016 — Slice 3 design system: the Q1–Q7 rulings applied, and the build-found dispositions
 
-**Status:** **Accepted with owner sign-off (2026-08-18)** — the
-round-11 dispositions and the Q11-1–7 answers ratified and O1 ruled
-**(b)** in the sign-off session (rulings S1–S3, recorded verbatim in
-the sign-off addendum below); merge to main authorized in-session
-(ADR-0006, merge commit never squash). The plan-gate rulings Q1–Q7 are
-recorded verbatim in `docs/review/slice-3-plan.md` (SETTLED
-2026-08-18); this ADR records how they landed and every disposition
-the build and the round-11 review surfaced.
+**Status:** **Accepted — merged at `91f90cc`** (merge commit
+`91f90cc62667dc21181ae86bb089fe183460f0e6`, parents `fe2aed6` +
+`eff55d1`; owner sign-off recorded 2026-08-18 in the sign-off session —
+rulings S1–S3 verbatim in the sign-off addendum below: O1 ruled **(b)**,
+the round-11 dispositions and the Q11-1–7 answers ratified, merge
+authorized in-session, the ADR-0013/0015 sign-off-with-merge pattern
+(ADR-0006); merged tree verified identical to `eff55d1`'s; PR #7
+merged, MERGE COMMIT never squash; CI green on main at the merge
+commit, run 32224259849). The plan-gate rulings Q1–Q7 are recorded
+verbatim in `docs/review/slice-3-plan.md` (SETTLED 2026-08-18); this
+ADR records how they landed and every disposition the build and the
+round-11 review surfaced.
 **Deciders:** build (owner ratifies at the gate)
 **Context:** TSD §11.1 row 3 — the design system lands before the
 surfaces. ZERO DDL (the ADR-0015 R8 batch carries forward untouched);
