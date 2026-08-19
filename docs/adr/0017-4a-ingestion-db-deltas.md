@@ -1,7 +1,9 @@
 # ADR-0017 — Slice 4A: the ingestion DB increment, design decisions and deltas as built
 
-**Status:** Proposed (built and green on `slice/4-ingestion`; awaiting
-third-party review round 12 and owner sign-off)
+**Status:** Ratified as amended at round 12 (2026-08-19 — findings
+none blocking, `docs/review/round-12-findings.md`; dispositions
+**ADR-0018**: the D4/D5 markers below, D10 extended, TSD annex A9);
+awaiting owner sign-off on `slice/4-ingestion` (ADR-0006)
 **Date:** 2026-08-18
 **Scope:** Decisions made while building 4A (seven migrations,
 `20260818200001`–`20260818200007`; M8 stays reserved for round-12
@@ -99,6 +101,13 @@ case 34). Decisions inside the shape:
   block over the installed overloads). The control plane
   (create/drop/purge) is deliberately not granted — pinned 044:45.
 
+*(Round 12, ADR-0018 F1: case 34 races the finalizers through the
+REACHABLE mid-wait defeat — a freeze committing mid-wait — because
+member cancellation is unrepresentable at store/scan by construction
+(`hc.cancel_arrival` refuses outside extracting/extracted/interpreting);
+the plan's named finalize-vs-cancellation race is thereby substituted,
+with the cancelled-state defeat pinned sequentially at 044:24–25.)*
+
 ## D5 — Quotas as data + arithmetic (M3); the honest quota-race contract
 
 `hc.quota_limits` follows the `stage_budgets` pattern. The PRD-stated
@@ -129,6 +138,12 @@ points revised by migration, never silently. Decisions:
   (provisional threshold, same BGT-01 label) against LIVE known
   senders — domain rows AND the domains of address rows; exact match is
   recognition; `lower(text)` throughout (the SND-01 citext trap).
+
+*(Round 12, ADR-0018 F3: the monthly notify signal shares the rates
+query's email-parents-only denominator — uploads and attachment
+children are not counted; the seeded "arrivals/month" description
+reads accordingly until the first BGT-01 revision migration re-labels
+or re-scopes it.)*
 
 ## D6 — product_state (M4): rank order, the cancelled-child rule, 'received' = Checking
 
@@ -222,6 +237,10 @@ those units need no DDL.
 RLY-01 (relay + schedulers), UXA-01's surface (built to the ratified Q6
 disposition), RLS-10 (the artifact route), APP-09b's app half, INB-01,
 UPL-01, SAU-01's chain, B8's credential flip — all 4B (B1–B9). The
+§11.5 quarantine BYTE purge (bytes auto-purged at 7 days; hash+verdict
+retained by `scan_results`) is likewise 4B's, NAMED at round 12
+(ADR-0018 F2): it rides B5's scheduler family plus the ingestion
+deploy checklist. The
 inter-slice seam stands as ruled (Q7): gated arrivals will rest at
 `extracting` until slice 5's workers; production activation stays
 G4/G7-gated. Extraction/interpretation and stage-2 duplicates are
