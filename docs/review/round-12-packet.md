@@ -153,9 +153,10 @@ complete per-test signature list rather than a first-crash abort.
   included in scope).
 - **check-service-role-containment / check-exposed-schemas:** both
   exit 0.
-- **Upgrade leg:** CI's standing job (base reset exact 46 →
-  `migration up` → exact 53 → both suites) runs on push; its run id
-  joins the PR thread. The local equivalent was exercised piecemeal:
+- **Upgrade leg:** **CI run 66 (32239829217), SUCCESS at `137c2fc`**
+  (the docs head — public API, anonymous) — the standing job's base
+  reset exact 46 → `migration up` → exact 53 → both suites, green on
+  the pushed branch. The local equivalent was exercised piecemeal:
   every migration here was applied to a live 46-state database via
   `supabase migration up` in build order before its green commit.
 - **Zero new dependencies** (package.json untouched; Q4's
