@@ -94,6 +94,7 @@ select is((
     'pending_security_actions()',
     'pipeline_worker_states()',
     'presence(p_subject uuid)',
+    'product_state(p_arrival uuid)',
     'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
     'record_auth_failure(p_identifier text)',
@@ -113,6 +114,8 @@ select is((
     'set_opening_context(p_circle uuid, p_context text[])',
     'set_slice(p_slice text)',
     'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid, p_step_up_token text)',
+    'state_label(p hc.arrival_state)',
+    'state_rank(p hc.arrival_state)',
     'sweep_provenance()',
     'sweeper_pass()',
     'sync_search_content()',
@@ -152,6 +155,7 @@ select is((
         'log_sign_out',
         'mint_step_up','note_suspicious_attempts',
         'outbox_ack','outbox_drain','pending_security_actions','presence',
+        'product_state',
         'propagate_taint_growth','reclassify_taint','record_auth_failure',
         'record_auth_success','record_tombstone','remove_member',
         'request_freeze','revise_object','revoke_invite','revoke_sender',
@@ -159,7 +163,7 @@ select is((
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the sixty-one boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the sixty-two boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -283,6 +287,12 @@ with actual as (
   -- webhook's questions, hc_pipeline only
   union all select 'check_quota', 'hc_pipeline'
   union all select 'sender_lookalike', 'hc_pipeline'
+  -- 4A M4 (PST-01): the family-facing vocabulary — product_state
+  -- authorizes in-function (DEF-10); rank/label are pure (the
+  -- dom/all_domains precedent)
+  union all select 'product_state', 'authenticated'
+  union all select 'state_label', 'authenticated'
+  union all select 'state_rank', 'authenticated'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
