@@ -517,6 +517,48 @@ a:focus-visible {
 }
 
 /* --------------------------------------------------------------------------
+   Data display (§8.6) — pinned by tests/design/data-display.test.tsx.
+   Counts stay plain prose; no chart, progress or percentage class may
+   ever appear here (AC-PPL-6, scanned).
+   -------------------------------------------------------------------------- */
+
+.calendar-numeral {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 38px;
+  flex-shrink: 0;
+}
+.calendar-numeral-month {
+  /* §8.6 says 9.5px; the §8.2 floor resolves it to 10px (as with the
+     category badge). */
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--muted-text);
+}
+.calendar-numeral-day {
+  font-family: var(--font-serif), 'Newsreader', Georgia, serif;
+  font-weight: 500;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.empty-state {
+  /* One sentence, nothing else. muted-text, not faint: the recorded
+     ADR-0016 deviation — the sentence is the only content, so the §8.7
+     redundancy exemption cannot cover it. */
+  font-size: 12.5px;
+  color: var(--muted-text);
+}
+
+.provenance {
+  font-size: 11.5px; /* of the 11–12 range */
+  color: var(--muted-text);
+}
+
+/* --------------------------------------------------------------------------
    (auth) and onboarding shells — the slice-2 surface.
    -------------------------------------------------------------------------- */
 

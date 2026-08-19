@@ -11,6 +11,9 @@ import { Input } from '@/components/ui/Input';
 import { Avatar, AvatarStack } from '@/components/ui/Avatar';
 import { Legend } from '@/components/ui/Legend';
 import { Icon } from '@/components/icons/Icon';
+import { CalendarNumeral } from '@/components/ui/CalendarNumeral';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ProvenanceLine } from '@/components/ui/ProvenanceLine';
 
 /**
  * The styleguide fixtures (Q4): every component in composition. Three
@@ -110,6 +113,20 @@ export const STYLEGUIDE_FIXTURES: Array<{
           { accent: 'sage', label: 'Handled' },
         ]}
       />
+    ),
+  },
+  {
+    name: 'Calendar numeral',
+    render: () => <CalendarNumeral date="2026-07-12" />,
+  },
+  {
+    name: 'Empty state',
+    render: () => <EmptyState>Nothing on the books for this month.</EmptyState>,
+  },
+  {
+    name: 'Provenance line',
+    render: () => (
+      <ProvenanceLine>From the discharge summary · page 2</ProvenanceLine>
     ),
   },
   {

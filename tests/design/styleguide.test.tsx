@@ -51,6 +51,10 @@ describe('Q4 · the styleguide surface', () => {
       'Avatars',
       'Legend',
       'Icon conventions',
+      'Calendar numeral',
+      'Empty state',
+      'Provenance line',
+      'Motion',
     ]) {
       expect(names).toContain(required);
     }
