@@ -19,9 +19,12 @@ STATE — settled, do not redo or re-verify:
   and Q-F conditions EXECUTED (TSD annex A9; the §11.5 byte-purge owner
   named at 4B B5 + deploy checklist). ADR-0017 ratified as amended.
   **M8 UNSPENT** — 4A stands at 7 of the owner-ruled ≤ 8.
-  CI: runs 65 (`main` base) / 66 / 67 all SUCCESS (public API,
-  anonymous); the run at the dispositions/kickoff head is the one this
-  session confirms FIRST.
+  CI: runs 65 (`main` base) / 66 / 67 SUCCESS, and **run 68
+  (32276689979) SUCCESS at the kickoff head `b5e7348`** — public API,
+  anonymous, confirmed in the review session after the push. This
+  recording commit is itself docs-only (the run-66 precedent at
+  `bc3f93c`); the sign-off session still confirms the run at the FINAL
+  head first, per task 1.
 
 THE TASK — the sign-off leg (ADR-0006: the owner is sole merge
 authority; an unanswered item defaults to NOT MERGED):
