@@ -244,6 +244,21 @@ Modified: `app/globals.css` · the 16 D8 screens · `eslint.config.mjs` ·
 `package.json`/lock · `docs/{TSD.md,coverage.md,ops/e2e-local-gate.md,
 review/slice-3-plan.md}`.
 
+## Addendum — the owner eyeball pass (post-packet, pre-review)
+
+The owner reviewed the rendered system by hand (2026-08-18: /sign-in
+and /styleguide against the four §8.1 rules — the Q4 surface doing its
+job): **approved, one visual finding** — the composed-control fixture
+nested its label inside the shared shell. Fixed at `0b371e1`
+(fixture-only; label outside, aria-labelledby association; no screen
+uses the composed control yet). Per the F12 binding rule the gate
+re-ran at that head:
+**`0b371e1` · 2026-08-18 · local (hermetic reset first) · 16/16 in
+3.6m** — walkthrough 11/11 unchanged, a11y leg 5/5; traces retained.
+A `.env.local` (git-ignored, local demo defaults from .env.example) now
+exists for hand-browsing — the recorded gate still injects its own env
+and needs none.
+
 ## Addendum — auditability block (head ledger from the start)
 
 `fe2aed6` (main, the accepted plan) → `74a7039` rulings SETTLED →
