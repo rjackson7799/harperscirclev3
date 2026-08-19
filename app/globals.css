@@ -647,7 +647,9 @@ a:focus-visible {
   font-size: 10.5px;
   letter-spacing: 0.85px;
   text-transform: uppercase;
-  color: var(--label);
+  /* O1 ruling (ADR-0016 sign-off): sole carrier of step position, so the
+     §8.7 redundancy exemption does not apply — text-role variant, ≥4.5:1 */
+  color: var(--muted-text);
   margin-bottom: 10px;
 }
 

@@ -21,7 +21,10 @@ const PHONE = { width: 390, height: 844 };
 // available elsewhere, so the label/faint ROLES are excluded from the
 // automated contrast scan. G12 re-audits each concrete use against the
 // redundancy claim — the exclusion list is deliberately short and named.
-const CONTRAST_EXEMPT = ['.step-indicator', '.section-label', '.micro-meta'];
+// .step-indicator left the list at the O1 sign-off ruling (ADR-0016): it
+// is the sole carrier of step position, so the exemption's redundancy
+// condition is not met — it now renders --muted-text and is scanned.
+const CONTRAST_EXEMPT = ['.section-label', '.micro-meta'];
 
 async function expectNoAxeViolations(page: Page) {
   let builder = new AxeBuilder({ page }).withTags([
