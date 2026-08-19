@@ -131,6 +131,8 @@ textarea {
   font: inherit;
   font-size: 13px;
   color: var(--ink);
+  /* §8.7's 44px touch floor (D7) — the spec's own claim, made true. */
+  min-height: 44px;
 }
 input::placeholder {
   color: var(--faint);
@@ -173,6 +175,7 @@ a:focus-visible {
   font-weight: 600;
   font-size: 11.5px;
   cursor: pointer;
+  min-height: 44px; /* §8.7 touch floor (D7) */
 }
 .button-quiet {
   display: inline-flex;
@@ -187,6 +190,7 @@ a:focus-visible {
   font-weight: 600;
   font-size: 12px;
   cursor: pointer;
+  min-height: 44px; /* §8.7 touch floor (D7) */
 }
 
 /* --------------------------------------------------------------------------
