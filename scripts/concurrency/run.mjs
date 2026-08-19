@@ -115,6 +115,13 @@
 //           (b) a freeze committing while finalize_scan waits DEFEATS it
 //           (frozen) — and writes NOTHING: no verdict, no scan_at, no
 //           cache row.
+//   Case 35 4A M3: quota-vs-intake, the honest contract — check-then-
+//           create is deliberately unserialized (intake takes no lock,
+//           ADR-0007 D2; acceptance is never lost to a rate question), so
+//           two messages racing at the boundary may BOTH land; the
+//           overshoot is bounded by the concurrency degree and the NEXT
+//           quota answer refuses. Backpressure sheds processing, never
+//           acceptance (§13.1).
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -2059,6 +2066,63 @@ async function case34(admin) {
   }
 }
 
+// --- case 35: quota check under concurrent intake (4A M3) ----------------------
+
+async function case35(admin) {
+  const fx = await mkCircle(admin, 'c35');
+  const s1 = await connect();
+  const s2 = await connect();
+  const sender = 'racing@example.org';
+  try {
+    // Nineteen of the twenty-per-hour budget already spent.
+    await admin.query(
+      `insert into public.arrivals
+         (circle_id, subject_id, channel, sender_address, byte_size, received_at)
+       select $1, $2, 'email', $3, 100, now() - (i * interval '1 minute')
+       from generate_series(1, 19) i`, [fx.c, fx.s, sender]);
+
+    // Two webhooks race the last slot: each checks, then creates, in its
+    // own transaction — deliberately unserialized (intake takes no lock).
+    await s1.query(`set role hc_pipeline`);
+    await s2.query(`set role hc_pipeline`);
+    await s1.query('begin');
+    const q1 = (await s1.query(
+      `select hc.check_quota($1, $2) ->> 'outcome' as o`, [fx.c, sender])).rows[0].o;
+    await s1.query(
+      `select hc.create_arrival($1, $2, 'email', p_sender_address => $3,
+                                p_ingest_idempotency_key => 'c35-a')`,
+      [fx.c, fx.s, sender]);
+
+    await s2.query('begin');
+    const q2 = (await s2.query(
+      `select hc.check_quota($1, $2) ->> 'outcome' as o`, [fx.c, sender])).rows[0].o;
+    await s2.query(
+      `select hc.create_arrival($1, $2, 'email', p_sender_address => $3,
+                                p_ingest_idempotency_key => 'c35-b')`,
+      [fx.c, fx.s, sender]);
+
+    await s1.query('commit');
+    await s2.query('commit');
+
+    const n = (await admin.query(
+      `select count(*)::int as n from public.arrivals
+       where circle_id = $1 and parent_arrival_id is null
+         and lower(sender_address::text) = $2`, [fx.c, sender])).rows[0].n;
+    const qAfter = (await admin.query(
+      `select hc.check_quota($1, $2) ->> 'outcome' as o`, [fx.c, sender])).rows[0].o;
+
+    check('case35: quota-vs-intake — both racing messages at the boundary pass their check and BOTH land (acceptance is never lost); the overshoot is bounded and the NEXT answer refuses',
+      q1 === 'ok' && q2 === 'ok' && n === 21 && qAfter === 'over_sender',
+      `q1=${q1} q2=${q2} landed=${n} after=${qAfter}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -2098,6 +2162,7 @@ try {
   await case32(admin);
   await case33(admin);
   await case34(admin);
+  await case35(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;

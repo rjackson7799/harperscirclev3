@@ -51,6 +51,7 @@ select is((
     'auth_throttle(p_identifier text)',
     'build_dsc()',
     'cancel_arrival(p_arrival uuid)',
+    'check_quota(p_circle uuid, p_sender text)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
     'claim_security_actions(p_limit integer)',
     'claim_stage(p_arrival uuid, p_stage text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
@@ -106,6 +107,7 @@ select is((
     'revoke_sender(p_sender_id uuid)',
     'run_taint_sweep()',
     'scan_cache_lookup(p_sha256 bytea)',
+    'sender_lookalike(p_circle uuid, p_domain text)',
     'sender_recognised(p_arrival uuid)',
     'set_grant(p_member_id uuid, p_subject_id uuid, p_domain hc.domain, p_level hc.access_level, p_step_up_token text)',
     'set_opening_context(p_circle uuid, p_context text[])',
@@ -137,7 +139,7 @@ select is((
   where n.nspname = 'hc' and p.prosecdef),
   array['accept_invite','accept_sender','adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
-        'assert_manual_flag','auth_throttle','cancel_arrival',
+        'assert_manual_flag','auth_throttle','cancel_arrival','check_quota',
         'claim_security_actions','claim_stage',
         'complete_security_action','consume_step_up','create_account',
         'create_arrival',
@@ -153,11 +155,11 @@ select is((
         'propagate_taint_growth','reclassify_taint','record_auth_failure',
         'record_auth_success','record_tombstone','remove_member',
         'request_freeze','revise_object','revoke_invite','revoke_sender',
-        'run_taint_sweep','scan_cache_lookup',
+        'run_taint_sweep','scan_cache_lookup','sender_lookalike',
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the fifty-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the sixty-one boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -277,6 +279,10 @@ with actual as (
   union all select 'finalize_scan', 'hc_pipeline'
   union all select 'scan_cache_lookup', 'hc_pipeline'
   union all select 'expire_scan_results', 'hc_pipeline'
+  -- 4A M3: the §5.4 quota answer and the §5.3 lookalike check — the
+  -- webhook's questions, hc_pipeline only
+  union all select 'check_quota', 'hc_pipeline'
+  union all select 'sender_lookalike', 'hc_pipeline'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -436,6 +442,8 @@ insert into snapshot_expected values
   ('hc_internal',   'pipeline_outbox', 'UPDATE'),
   ('hc_internal',   'reason_codes',    'SELECT'),
   ('hc_internal',   'stage_budgets',   'SELECT'),
+  -- 4A M3: §5.4 as data, the stage_budgets pattern
+  ('hc_internal',   'quota_limits',    'SELECT'),
   -- 1C M9 (round-7 B1): the transition graph as data — read by the CAS only
   ('hc_internal',   'arrival_transitions', 'SELECT'),
   -- 1D M5 (OPS-01): recorded sweep runs, written by hc.run_taint_sweep
