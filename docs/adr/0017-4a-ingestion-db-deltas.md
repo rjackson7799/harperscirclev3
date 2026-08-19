@@ -1,9 +1,12 @@
 # ADR-0017 — Slice 4A: the ingestion DB increment, design decisions and deltas as built
 
-**Status:** Ratified as amended at round 12 (2026-08-19 — findings
-none blocking, `docs/review/round-12-findings.md`; dispositions
-**ADR-0018**: the D4/D5 markers below, D10 extended, TSD annex A9);
-awaiting owner sign-off on `slice/4-ingestion` (ADR-0006)
+**Status:** Ratified as amended at round 12 (2026-08-19 — the
+commissioned review's findings none blocking; the owner-commissioned
+EXTERNAL pass then surfaced two real blockers, both fixed red→green in
+**M8** `20260818200008_round12_fixes` — the reserve SPENT, 8 of ≤ 8.
+Dispositions **ADR-0018** + its addendum: the D4/D5/D8 markers below,
+D10 extended, TSD annex A9); awaiting owner sign-off on
+`slice/4-ingestion` (ADR-0006)
 **Date:** 2026-08-18
 **Scope:** Decisions made while building 4A (seven migrations,
 `20260818200001`–`20260818200007`; M8 stays reserved for round-12
@@ -108,6 +111,14 @@ member cancellation is unrepresentable at store/scan by construction
 the plan's named finalize-vs-cancellation race is thereby substituted,
 with the cancelled-state defeat pinned sequentially at 044:24–25.)*
 
+*(Round 12, ADR-0018 addendum X1 — a BLOCKER fixed in M8: the
+`scan_results` conflict arm as first shipped was unconditional, so a
+later clean verdict could downgrade a retained infected row and hand it
+the sweepable 7-day expiry. As of M8 the row is IMMUTABLE malware
+evidence when infected and a refreshable cache when clean — the
+downgrade arm is refused; upgrades and refreshes stay open. Pinned
+050:1–8, concurrency case 38.)*
+
 ## D5 — Quotas as data + arithmetic (M3); the honest quota-race contract
 
 `hc.quota_limits` follows the `stage_budgets` pattern. The PRD-stated
@@ -210,6 +221,14 @@ re-pinned same commit (the 2A M6 pattern). Decisions:
   match — "you already have this one" is true and a person resolves
   it). The matched arrival is re-derived at render from the sha
   (deterministic); no column stores it.
+  *(Round 12, ADR-0018 addendum X2 — a BLOCKER fixed in M8: as first
+  shipped the match accepted ANY other live copy, so identical copies
+  both stored before either scanned ALL landed suspected — no original
+  retained. As of M8 the match is strictly-earlier live copies in
+  (received_at, id) row order: exactly one canonical original per sha,
+  scan-order-independent, ties (same-transaction creations) breaking
+  deterministically on id. Pinned 050:9–13, concurrency case 37; the
+  048 fixtures re-pinned same commit.)*
 - **Resolution:** manage-gated like cancel; freeze-first named (Q5);
   the honest `resolve_invalid_state` diagnosis reserved for authorized
   callers (Q3). 'different' resumes to the gate through a real gate
@@ -251,7 +270,11 @@ ADM-01, G12-01 stay with their slices/gates.
 
 - **53 migrations total; 4A added exactly the planned 7** (M8 reserve
   intact — the one in-slice fix rode M6's file before its commit, per
-  D3, and consumed nothing).
+  D3, and consumed nothing). *(Superseded at round 12, ADR-0018
+  addendum: M8 was spent on the external-pass blockers X1/X2 —
+  **54 migrations total, 8 of the owner-ruled ≤ 8, the reserve gone**;
+  the pgTAP suite is 51 files / 1363, the two-session layer 63
+  assertions across 38 cases.)*
 - The definer inventory grows 49 → 65 (+16: the batch's six, the two
   finalizers, the cache pair, the quota pair, product_state, the
   activation pair, resolve_duplicate); `state_rank`/`state_label`/

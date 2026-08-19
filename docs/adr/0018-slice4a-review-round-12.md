@@ -138,3 +138,122 @@ kickoff once the run completes — pending never counts as green.
   (F2, rides B5) · the first quota revision fixes the monthly
   label/denominator (F3) · 049 pre-discharges nothing of RLS-10 — B7
   proves the route's discipline at HTTP depth (Q-G's note).
+
+---
+
+# Addendum — the external-pass dispositions (2026-08-19, same session)
+
+After the dispositions above landed (`0b5b792`), the owner commissioned
+a second, external pass. It returned **two blockers** plus a pushback on
+F2's premise and a changed Q-F answer — landed verbatim FIRST as the
+findings-file addendum (`f5189b4`), then verified against the tree, then
+dispositioned here. Both blockers were REAL. **M8 — the reserved
+dispositions slot — is spent on them**, red→green: red `dc1e0ba` (pgTAP
+050, 8/13 failing, signatures in the message) → green `08ff72e`
+(`20260818200008_round12_fixes`). The migration bound stands at
+**8 of the owner-ruled ≤ 8; the reserve is gone** — any further 4A DDL
+is an owner bound-amendment before a line is written.
+
+## X1 — accepted, BLOCKER: the malware evidence could be downgraded
+
+Verified exactly as claimed: `finalize_scan`'s `scan_results` upsert was
+unconditional (`M6:122–124`), so a later clean verdict for a sha
+replaced a RETAINED infected row and handed it a 7-day expiry — after
+which `hc.expire_scan_results` would have deleted the §11.5 evidence
+entirely, and the 4B cache-hit path could have treated known-infected
+bytes as clean. The reviewer's framing is adopted wholesale: the row is
+**immutable malware evidence when infected, a refreshable cache when
+clean**. M8's fix guards the conflict arm — an existing infected row is
+untouchable by clean (verdict, expiry, AND detail); clean → infected
+always lands; infected → infected refreshes the evidence; clean → clean
+refreshes freshness. Pinned: 050:1–8 (including the cache-lookup answer
+and the untouched detail) and concurrency case 38 (infected/clean racing
+one sha ends infected/expires-null in EITHER commit order).
+
+## X2 — accepted, BLOCKER: every copy could be the duplicate
+
+Verified exactly as claimed: `detect_duplicate` matched ANY other live
+same-sha copy (`M6:48–55`), so two identical copies both stored before
+either scanned each saw the other and BOTH landed
+`duplicate_suspected` — no original retained, circular matched-arrival
+derivations, sequential, no race required. M8 adopts the reviewer's
+canonicalization: the match is **strictly earlier live copies in
+(received_at, id) row order** — of N identical live copies exactly one
+(the earliest) is never a suspect, every suspect's match points at an
+earlier arrival, and the outcome is scan-order-independent. Pinned:
+050:9–13 (the pair, the triple scanned in reverse order, the
+detect-asymmetry probe, the deleted-copy guard) and concurrency case 37.
+
+**The tie semantics, recorded honestly.** `received_at` defaults to
+`now()`, which is fixed per transaction — one email's children (the
+same-transaction creations) tie and break on `id`: arbitrary but
+DETERMINISTIC, which is what canonicalization requires. One narrow edge
+rides that: an identical same-email pair can BOTH scan clean with no
+suspect raised when the id-earlier child is stored only after the
+id-later child already scanned (detection sees no strictly-earlier row
+either time). Stage-2's key-field match against filed documents
+(slice 5, §4.7 point 2) is the recorded catcher for that edge; stage 1's
+contract is the cross-arrival "same file forwarded twice", which the
+ordering serves exactly.
+
+**The 048 re-pin (same commit, the 2A M6 pattern):** five of 048's 24
+assertions (7, 9, 11, 13–14) assumed creation order = received order,
+which the fixture world's single transaction made a uuid coin-flip under
+the canonical rule — nondeterministic per run, unacceptable. 048's
+`mk_received` now staggers `received_at` strictly monotonically (a temp
+sequence), restoring every original assertion verbatim; 050 covers the
+tie world explicitly.
+
+## The F2-premise pushback — accepted
+
+The reviewer is right: this ADR's F2 disposition said the infected
+hash+verdict evidence was "landed and pinned" — at `0b5b792` that was
+FALSE as stated (the pins covered the insert shape, not the overwrite
+guard). The sentence is true only as of M8's monotonic conflict arm, and
+F2 should be read through this addendum: the DB half of §11.5 is landed,
+pinned (050:1–8, case 38), and now actually immutable. The byte-purge
+owner assignment (4B B5 + the deploy checklist) stands unchanged.
+
+## Q-F — re-answered as the external pass required
+
+The external reviewer's "do not confirm the DB reading yet" was correct
+at `0b5b792` and is accepted. With M8 landed, the condition is
+discharged: infected hash+verdict rows are retained AND unoverwritable,
+clean rows are a 7-day cache, the byte purge has its named owner.
+**Q-F now stands CONFIRMED at `08ff72e`**, on the evidence, not on the
+intention. Q-A–Q-E and Q-G stand as dispositioned above (the external
+pass concurred).
+
+## Verification at the fixed head `08ff72e` (the new evidence head)
+
+- Clean-leg reset: **exact 54 == files** (verify-migration-state); seed
+  provisioned `hc_runtime_login`; both buckets from cold; the piecemeal
+  upgrade leg exercised (53-state + `migration up` → 54 → 050 green).
+- pgTAP: **1363/1363 across 51 files** (was 1350/50; 050 adds 13).
+- Concurrency: **63/63 across 38 cases**, teed (cases 37–38 new).
+- db:verify: clean under `--fail-on warning`.
+- vitest: **279/279 across 35 files** — the first attempt hit a
+  forks-worker SPAWN failure on `axe.test.tsx` (the file never ran, no
+  assertion failed); classified infrastructure, cleared on the single
+  permitted re-run.
+- Local gate: **16/16 (5.9 m)** — walkthrough 11/11 + a11y 5/5, first
+  run, no re-runs; traces vault-side at
+  `projects/harpers-circle/04-evidence/gate-08ff72e-2026-08-19/`.
+- lint · typecheck · production build: clean.
+- gitleaks (the identical digest-pinned image CI runs): **218 commits
+  scanned, no leaks found**.
+- Both CI scanner scripts: exit 0.
+- CI at the pushed head: recorded in the sign-off kickoff once the run
+  completes — pending never counts as green.
+
+## Consequences of the addendum
+
+- **M8 is SPENT** (8 of ≤ 8): ADR-0017's "M8 reserve intact" Consequence
+  is superseded; 54 migrations total; the pgTAP suite is 51 files; the
+  two-session layer 63 assertions across 38 cases.
+- The external pass earned its keep: two real blockers survived a
+  verification-heavy first review — the commissioned review verified
+  what the packet CLAIMED; the external pass attacked what the code
+  COULD DO. Both layers stay in the cadence.
+- The gate is unchanged: owner sign-off and the merge (never squash)
+  are the owner's, ADR-0006.

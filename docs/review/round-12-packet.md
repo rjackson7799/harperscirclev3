@@ -224,3 +224,41 @@ provisioning + verification section) · `docs/coverage.md` (§4 opened;
 PST-01 flipped; APP-09b annotated).
 Untouched: `app/ lib/ tests/ e2e/ package.json vercel.json` — the tree
 hashes above are the proof.
+
+---
+
+## Round-12 addendum (2026-08-19) — the external pass supersedes parts of this packet
+
+The round-10 precedent applies: review findings warranted superseding
+this packet's own statements. The owner-commissioned EXTERNAL pass
+(findings-file addendum, landed verbatim at `f5189b4`) surfaced **two
+real blockers** the commissioned review had not: the `scan_results`
+conflict arm could downgrade retained infected evidence to a sweepable
+clean row (X1), and `detect_duplicate` could suspect every identical
+copy leaving no original (X2). Dispositions: the ADR-0018 addendum.
+Consequences for this packet, stated plainly:
+
+- **"M8 RESERVED" is superseded — M8 is SPENT** on the two fixes
+  (`20260818200008_round12_fixes`, red `dc1e0ba` → green `08ff72e`).
+  The bound stands at 8 of the owner-ruled ≤ 8; nothing remains.
+- **The one-SHA evidence block above is superseded.** The evidence head
+  is now **`08ff72e`** (supabase/, scripts/ and tests moved): clean-leg
+  reset **exact 54** (seed + both buckets from cold; the piecemeal
+  upgrade leg 53 → `migration up` → 54) · pgTAP **1363/1363 across 51
+  files** · concurrency **63/63 across 38 cases**, teed (37–38 new) ·
+  db:verify clean · vitest **279/279** (one classified worker-spawn
+  transient, single re-run) · local gate **16/16 (5.9 m)**, first run,
+  traces vault-side at `04-evidence/gate-08ff72e-2026-08-19/` ·
+  lint/typecheck/build clean · gitleaks **218 commits, no leaks** ·
+  both scanners exit 0.
+- **Q-B's "the reserve intact" argument and Q-F's recommended answer
+  read as amended**: Q-B's acceptance stands (the placement question was
+  about M1/M6, not the reserve's fate); Q-F is CONFIRMED only as of M8 —
+  at this packet's original head the confirmation would have been wrong,
+  exactly as the external reviewer said.
+- The head ledger gains the round-12 rows: findings `06b935f` ·
+  dispositions `0b5b792` · kickoff `b5e7348` · CI record `5a15ee0` ·
+  external findings `f5189b4` (docs) · **red `dc1e0ba` → green
+  `08ff72e`** (the M8 leg) · the docs commits after `08ff72e` carry the
+  addenda and re-referenced coverage; the F12 rule re-anchors at
+  `08ff72e`.
