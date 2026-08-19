@@ -6,6 +6,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 // D7's axe fixture, the human review surface for the four §8.1 colour
 // rules, and the reference future slices build against. notFound() in
 // production, pinned here.
+//
+// Test order is deliberate: the render tests run first so React's
+// jsx-dev-runtime is evaluated under vitest's own NODE_ENV; stubbing
+// 'production' before the first import would evaluate that runtime to an
+// empty module and poison the cache (a harness trap, not product
+// behavior). The production gate reads process.env at request time, so
+// the stub still exercises it on the cached module.
 // ============================================================================
 
 vi.mock('next/navigation', () => ({
@@ -18,15 +25,8 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe('Q4 · /styleguide is dev-only', () => {
-  it('production gets notFound()', async () => {
-    vi.stubEnv('NODE_ENV', 'production');
-    const { default: Page } = await import('@/app/styleguide/page');
-    expect(() => Page()).toThrowError('NEXT_NOT_FOUND');
-  });
-
-  it('development renders every fixture composition', async () => {
-    vi.stubEnv('NODE_ENV', 'development');
+describe('Q4 · the styleguide surface', () => {
+  it('outside production every fixture composition renders', async () => {
     const { default: Page } = await import('@/app/styleguide/page');
     const { STYLEGUIDE_FIXTURES } = await import('@/app/styleguide/fixtures');
     const html = renderToStaticMarkup(Page());
@@ -34,9 +34,7 @@ describe('Q4 · /styleguide is dev-only', () => {
       expect(html, `fixture "${fixture.name}" rendered`).toContain(fixture.name);
     }
   });
-});
 
-describe('Q4 · the fixtures cover the component inventory', () => {
   it('every D4 component composition is present', async () => {
     const { STYLEGUIDE_FIXTURES } = await import('@/app/styleguide/fixtures');
     const names = STYLEGUIDE_FIXTURES.map((f) => f.name);
@@ -64,5 +62,11 @@ describe('Q4 · the fixtures cover the component inventory', () => {
       const html = renderToStaticMarkup(fixture.render());
       expect(html.length, `fixture "${fixture.name}"`).toBeGreaterThan(0);
     }
+  });
+
+  it('production gets notFound()', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const { default: Page } = await import('@/app/styleguide/page');
+    expect(() => Page()).toThrowError('NEXT_NOT_FOUND');
   });
 });
