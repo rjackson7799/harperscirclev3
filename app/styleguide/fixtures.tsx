@@ -86,10 +86,21 @@ export const STYLEGUIDE_FIXTURES: Array<{
   {
     name: 'Composed control',
     render: () => (
-      <div className="composed-control">
-        <Field label="Zip code">
-          <Input name="demo_zip" inputMode="numeric" />
-        </Field>
+      // §8.4: the label sits OUTSIDE the shared shell; the input drops
+      // its own border and sits borderless INSIDE it (the zip-field
+      // pattern). Association rides aria-labelledby — the shell is a
+      // div, so nesting a label around it would be invalid markup.
+      <div className="field">
+        <span className="field-label" id="demo-zip-label">
+          Zip code
+        </span>
+        <div className="composed-control">
+          <Input
+            name="demo_zip"
+            inputMode="numeric"
+            aria-labelledby="demo-zip-label"
+          />
+        </div>
       </div>
     ),
   },
