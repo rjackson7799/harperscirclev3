@@ -85,10 +85,31 @@ async function auditRoute(page: Page, path: string) {
   await expectNoHorizontalScroll(page);
 }
 
+const MAILPIT = 'http://127.0.0.1:54344';
 const stamp = Date.now();
 const EMAIL = `a11y.e2e.${stamp}@example.com`;
 const PASSWORD = 'a quiet morning walk 7';
 let circleId = '';
+
+/** Click the confirmation link out of Mailpit (the walkthrough's
+ *  pattern): a fresh PASSWORD sign-in of an unverified account is
+ *  refused unconditionally (the probed GoTrue fact, ADR-0014 D3), so
+ *  the keyboard leg verifies the account first — the keyboard test is
+ *  about operability, not the verification state machine. */
+async function verifyByMail(page: Page) {
+  const search = await fetch(
+    `${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:${EMAIL}`)}`,
+  ).then((r) => r.json());
+  expect(search.messages.length).toBeGreaterThan(0);
+  const message = await fetch(
+    `${MAILPIT}/api/v1/message/${search.messages[0].ID}`,
+  ).then((r) => r.json());
+  const link = String(message.Text ?? message.HTML).match(
+    /https?:\/\/[^\s"'<>]+verify[^\s"'<>]*/,
+  )?.[0];
+  expect(link).toBeTruthy();
+  await page.goto(link!);
+}
 
 test.use({ viewport: PHONE }); // §8.8: phone is the primary review device
 
@@ -111,6 +132,7 @@ test.describe.serial('the D7 browser a11y leg', () => {
     await page.fill('input[name="password"]', PASSWORD);
     await page.click('button[type="submit"]');
     await page.waitForURL('**/setup/step/1');
+    await verifyByMail(page);
     await page.context().clearCookies();
 
     await page.goto('/sign-in');
