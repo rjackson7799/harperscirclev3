@@ -1,8 +1,12 @@
 # Slice 3 — Design system: the slice plan
 
-**Status:** **BUILD — plan gate exited 2026-08-18.** The owner ruled on
-Q1–Q7 (recorded verbatim below, per the gate cadence); the build session
-proceeds on those rulings. Written 2026-08-18 in its own fresh session.
+**Status:** **BUILT — ⏸ at the review gate (round 11), 2026-08-18.**
+D1–D9 landed red→green on `slice/3-design-system`; the increment-head
+re-proof is recorded in `docs/review/round-11-packet.md` (app 279/279 ·
+walkthrough 11/11 unchanged + the a11y leg · zero DDL hash-asserted).
+Next legs, each its own fresh session: third-party review (round 11) →
+dispositions ADR → owner sign-off → merge (never squash). The owner
+ruled Q1–Q7 at the plan gate (recorded verbatim below).
 
 **Authority:** TSD §11.1 row 3 ("Tokens, components, motion, the §8.7
 accessibility floor — before the surfaces, not after") → TSD §8 whole →
