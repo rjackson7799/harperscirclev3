@@ -1,12 +1,12 @@
 /* ==========================================================================
-   Design tokens — design_spec.md §2 (color) and §3 (type), carried exactly.
-   Scope note (slice-2-plan §2B): tokens land only as far as the auth and
-   onboarding screens need; the full §8 system is slice 3. CSS custom
-   properties, no Tailwind.
+   Design tokens — TSD §8.1, carried exactly (design_spec §2–§3 are the
+   source of the names, per its §9). The full set is pinned by
+   tests/design/tokens.test.ts; the text-carrying pairs are held >= 4.5:1
+   by tests/design/contrast.test.ts. CSS custom properties, no Tailwind.
    ========================================================================== */
 
 :root {
-  /* Foundation (§2) */
+  /* Foundation (§8.1) */
   --sand: #ede6d8;
   --cream: #fbf8f1;
   --card: #fdfbf6;
@@ -16,24 +16,44 @@
   --wash: #f0e8d9;
   --scroll-thumb: #d8cdb9;
 
-  /* Ink (§2) */
+  /* Ink (§8.1) */
   --ink: #24211b;
   --ink-2: #4a463d;
   --muted: #857e70;
   --faint: #9a9382;
   --label: #b0a891;
 
-  /* Signal (§2) — one meaning each, never decorative */
+  /* Signal (§8.1) — one meaning each, never decorative */
   --green: #2f5b4e;
   --terracotta: #c1613c;
   --amber: #b98a2e;
   --sage: #6e8f73;
   --plum: #7a6e9b;
+  --google-blue: #4285f4;
 
-  /* Positive tinted panel (§2) */
-  --panel-positive-bg: #f6fbf7;
-  --panel-positive-border: #d6e7da;
-  --panel-positive-body: #33463f;
+  /* Tinted panel — positive/saved (§8.1) */
+  --positive-bg: #f6fbf7;
+  --positive-border: #d6e7da;
+  --positive-label: #6e8f73;
+  --positive-body: #33463f;
+  --chip-sage-bg: #e4ede7;
+
+  /* Radii (§8.1) */
+  --r-card: 13px;
+  --r-row: 12px;
+  --r-control: 9px;
+  --r-pill: 20px;
+
+  /* Text-role variants (Q2 ruling, ADR-0016): wherever an accent or muted
+     ink carries WORDS at text size, these darkened variants hold WCAG AA
+     4.5:1 on every permitted surface. Strokes, small fills, dots and tints
+     keep the measured palette above. Exact values pinned by the D1 red
+     test; --faint/--label stay reserved for §8.7's redundancy rule. */
+  --muted-text: #6c665a;
+  --sage-text: #526f5c;
+  --amber-text: #8a671f;
+  --terracotta-text: #a04e2d;
+  --terracotta-badge: #ad5330;
 }
 
 * {
@@ -66,7 +86,9 @@ a {
   color: var(--green);
 }
 a:hover {
-  color: var(--terracotta);
+  /* Link-hover words on the sand plane use the Q2 text variant; the
+     measured --terracotta keeps its stroke/fill/badge duties. */
+  color: var(--terracotta-text);
 }
 
 ::-webkit-scrollbar {
@@ -130,7 +152,7 @@ a:focus-visible {
   background: var(--green);
   color: var(--white);
   border: none;
-  border-radius: 9px;
+  border-radius: var(--r-control);
   padding: 11px 18px;
   font: inherit;
   font-weight: 600;
@@ -145,7 +167,7 @@ a:focus-visible {
   background: var(--wash);
   color: var(--ink-2);
   border: 1px solid var(--line-strong);
-  border-radius: 20px;
+  border-radius: var(--r-pill);
   padding: 6px 13px;
   font: inherit;
   font-weight: 600;
@@ -157,9 +179,9 @@ a:focus-visible {
   align-items: center;
   gap: 7px;
   background: var(--white);
-  color: var(--muted);
+  color: var(--muted-text);
   border: 1px solid var(--line-strong);
-  border-radius: 9px;
+  border-radius: var(--r-control);
   padding: 9px 14px;
   font: inherit;
   font-weight: 600;
@@ -193,7 +215,7 @@ a:focus-visible {
   max-width: 460px;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: var(--r-card);
   padding: 28px;
 }
 .auth-card h1 {
@@ -219,13 +241,13 @@ a:focus-visible {
 .field-help {
   display: block;
   font-size: 11.5px;
-  color: var(--muted);
+  color: var(--muted-text);
   margin-top: 4px;
 }
 
 .auth-meta {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--muted-text);
   margin-top: 14px;
 }
 
@@ -241,9 +263,9 @@ a:focus-visible {
   margin-bottom: 14px;
 }
 .notice-positive {
-  border-color: var(--panel-positive-border);
-  background: var(--panel-positive-bg);
-  color: var(--panel-positive-body);
+  border-color: var(--positive-border);
+  background: var(--positive-bg);
+  color: var(--positive-body);
 }
 
 /* Onboarding (§4.1.3) */
@@ -261,7 +283,7 @@ a:focus-visible {
   max-width: 560px;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: var(--r-card);
   padding: 28px;
 }
 .setup-card h1 {
@@ -285,7 +307,7 @@ a:focus-visible {
   gap: 10px;
   background: var(--white);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-row);
   padding: 11px 13px;
   font-size: 13px;
   cursor: pointer;
@@ -304,7 +326,7 @@ a:focus-visible {
   color: var(--ink);
   background: var(--white);
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: var(--r-control);
   padding: 6px 10px;
   display: inline-block;
 }

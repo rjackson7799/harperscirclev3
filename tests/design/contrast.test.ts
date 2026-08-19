@@ -10,10 +10,14 @@ import { contrastRatio } from '@/lib/design/contrast';
 // from the live :root values, so a palette drift reds here with the measured
 // number in the failure.
 //
-// RED STATE (this commit): the permitted-pair table is §8.7 as written —
-// the base accents carrying their text roles. The measured palette fails
-// six of them (≈3.0–4.2:1); this is the conflict the §11.4-2 pre-pass
-// caught and Q2 rules on.
+// The permitted-pair table below is the Q2(a) ruling applied (ADR-0016):
+// text roles ride the darkened text/badge variants; the measured accents
+// keep strokes, small fills, dots and tints. The red run of this test
+// (commit fbb3093) measured the §8.7-as-written pairs at 3.0–4.2:1 —
+// the §11.4-2 finding Q2 ruled on. Two candidate hexes were darkened one
+// step by this test's own >= 4.5 pin: --muted-text (candidate #6F695C hit
+// 4.39:1 on --sand, the §8.3 context-line surface) and --sage-text
+// (candidate #5A7A62 hit 4.00:1 on --chip-sage-bg, the chip's own fill).
 //
 // Exemptions asserted nowhere, recorded here: `--faint`/`--label` are
 // reserved for text that repeats information available elsewhere (§8.7's
@@ -48,15 +52,19 @@ const PERMITTED_PAIRS: Array<[string, string, string]> = [
   ['--green', '--card', 'links inside cards (§8.8)'],
   ['--green', '--cream', 'wordmark, active nav (§8.3)'],
   ['--positive-body', '--positive-bg', 'positive panel body (§8.1)'],
-  // Text roles as §8.7 names them against the measured accents
-  ['--muted', '--card', 'meta 11.5–12px, secondary copy (§8.2)'],
-  ['--muted', '--sand', 'page-pattern context line (§8.3)'],
-  ['--muted', '--white', 'quiet button 12px (§8.4)'],
-  ['--white', '--terracotta', 'count badge 700 10.5px (§8.4)'],
-  ['--terracotta', '--sand', 'link hover (§8.8)'],
-  ['--sage', '--card', 'tag-chip text against a card (§8.4)'],
-  ['--sage', '--chip-sage-bg', 'tag chip on its own fill (§8.4)'],
-  ['--amber', '--card', 'due dates (§8.6)'],
+  // Text roles on the Q2 variants (ADR-0016)
+  ['--muted-text', '--card', 'meta 11.5–12px, secondary copy (§8.2)'],
+  ['--muted-text', '--sand', 'page-pattern context line (§8.3)'],
+  ['--muted-text', '--white', 'quiet button 12px (§8.4)'],
+  ['--muted-text', '--cream', 'meta in the chrome (§8.3)'],
+  ['--white', '--terracotta-badge', 'count badge 700 10.5px (§8.4)'],
+  ['--terracotta-text', '--sand', 'link hover (§8.8)'],
+  ['--terracotta-text', '--card', 'terracotta words inside cards (§8.1 r3)'],
+  ['--sage-text', '--card', 'tag-chip text against a card (§8.4)'],
+  ['--sage-text', '--chip-sage-bg', 'tag chip on its own fill (§8.4)'],
+  ['--sage-text', '--positive-bg', 'sage words in the positive panel (§8.1)'],
+  ['--amber-text', '--card', 'due dates (§8.6)'],
+  ['--amber-text', '--white', 'due dates in white rows (§8.6)'],
 ];
 
 describe('D1 · §8.7 contrast over the permitted token pairs (A11Y-04)', () => {
