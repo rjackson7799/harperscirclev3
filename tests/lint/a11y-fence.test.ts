@@ -77,6 +77,24 @@ describe('D2 · §8.7: an accessible label on every icon-only control', () => {
     expect(msgs.filter((m) => m.ruleId?.startsWith('jsx-a11y/'))).toEqual([]);
   });
 
+  it('the nested-label form-field pattern lints clean (the carve-out)', async () => {
+    // control-has-associated-label never walks up to a wrapping <label>, so
+    // form fields are carved out of it (label-has-associated-control owns
+    // them, at error). This fixture pins the carve-out: the accessible
+    // pattern every screen uses must not red.
+    const msgs = await messagesFor(
+      'app/setup/step/1/page.tsx',
+      `export const F = () => (
+  <label className="field">
+    <span className="field-label">First name</span>
+    <input type="text" name="subject_name" />
+  </label>
+);
+`,
+    );
+    expect(msgs.filter((m) => m.ruleId?.startsWith('jsx-a11y/'))).toEqual([]);
+  });
+
   it('the floor covers app/ screens, not only components/', async () => {
     const msgs = await messagesFor(
       'app/(app)/[circle]/anywhere/page.tsx',
