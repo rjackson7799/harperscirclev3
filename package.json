@@ -38,6 +38,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "eslint-plugin-jsx-a11y": "6.10.2",
+    "jsdom": "30.0.1",
     "smol-toml": "1.8.0",
     "supabase": "2.100.1",
     "typescript": "^5",
