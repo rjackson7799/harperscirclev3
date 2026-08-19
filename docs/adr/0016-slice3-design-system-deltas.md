@@ -102,9 +102,11 @@ clause stands as the surface grows.
 2. **EmptyState renders `--muted-text`, not §8.6's faint.** An
    empty-state sentence is the ONLY content on screen, so §8.7's
    redundancy exemption for `--faint` cannot cover it — and faint on
-   card measures ≈ 3.3:1, which the browser axe leg (contrast on) would
-   red on every empty route. The quiet register survives at 12.5px; the
-   deviation is pinned in `tests/design/data-display.test.tsx`.
+   card measures **2.96:1** (corrected from the recorded ≈ 3.3:1 by
+   round-11 EQ-3 — direction-safe: the true number is worse, so this
+   ruling is strengthened), which the browser axe leg (contrast on)
+   would red on every empty route. The quiet register survives at
+   12.5px; the deviation is pinned in `tests/design/data-display.test.tsx`.
 3. **The 44px touch floor made true.** design_spec §8 claims the
    prototype's buttons clear 44px; the seed's secondary/quiet pills and
    inputs measured ≈ 29–40px. `min-height: 44px` landed on
@@ -118,8 +120,12 @@ clause stands as the surface grows.
    redundant text). G12 re-audits each concrete use against the
    redundancy claim — the step indicator's is the softest and is
    flagged in design-conformance.
-5. **Avatar initials are a G12 watch item.** White initials on accent
-   fills measure ≈ 3.0–5.2:1. The full name is the avatar's accessible
+5. **Avatar initials are a G12 watch item.** White initials on the four
+   assignable fills measure **3.12 (amber) · 3.60 (sage) · 4.16
+   (terracotta) · 4.63 (plum)** — corrected from the recorded
+   ≈ 3.0–5.2:1 by round-11 EQ-3; the old 5.2 endpoint was white on
+   `--terracotta-badge` (5.18), a badge fill, not an avatar fill. Only
+   plum clears AA, barely. The full name is the avatar's accessible
    name and the initial is `aria-hidden` (axe therefore does not flag
    it); whether the visible initial needs more is G12's call. No avatar
    renders on a shipped route this slice.
@@ -158,3 +164,158 @@ typecheck · production build · the app suites with exact counts · the
 walkthrough 11/11 unchanged + the a11y leg under the local-gate
 protocol · DB legs riding CI with `supabase/` tree hash unchanged all
 slice.
+
+---
+
+## Addendum — round-11 dispositions (2026-08-18, the dispositions session)
+
+Round-11 verdict (`docs/review/round-11-findings.md`, committed
+verbatim at `a44ba23`): **approve with findings — none blocking**; two
+high findings (unsurfaced judgment calls, the packet's own standard),
+three evidence-quality. Every disposition below was re-verified against
+the tree in this session before answering — including re-deriving every
+disputed number with a session-local independent WCAG implementation —
+and the accepted fixes landed at **`ec808d7`** (`tests/` + `e2e/` only;
+the F12 accounting closes this addendum). The one question the build
+must not decide is batched for the owner at the end.
+
+### High-1 — the §8.5 loop-scope reading: ACCEPTED; ruled here, and the easing pin is now per-animation
+
+The reading, previously argued only in the motion test's comments, is
+hereby the ADR's: **§8.5's "nothing longer than 250ms except the
+deliberate infinite pulses" covers the six deliberate infinite loops** —
+the three pulses (`hp`/`hpo`/`hpg`, 2.2s ease-out, the spec verbatim)
+**plus the three ambient indicators** (`rdot` 1.2s · `eqp` 0.9s · `kb`
+18s) — because the spec's own inventory demands it: an indicator loops
+or it is not an indicator, and §8.5's own table calls `kb` "slow". The
+rule as written contradicts its own inventory; the loop-scope reading
+resolves the contradiction in the inventory's favour. Everything finite
+stays ≤ 250ms — DS-05's "finite ≤250ms" is this reading, now named
+review-facing. The secondary finding is fixed, not just conceded: the
+easing pin no longer admits ease-out/linear for ANY animation —
+`ec808d7` pins easing **per animation** (entrances/ambient `ease` ·
+pulses `ease-out` · `kb` `linear`), bite-verified by mutation (`bdrop`
+ease→ease-out, which the old pin admitted, reds with "bdrop easing is
+its own spec: expected 'ease-out' to be 'ease'").
+
+### High-2 — link-as-button: ACCEPTED; the call is ADR-named and the audit now measures it
+
+The judgment call, surfaced from its test comment
+(`tests/design/migration.test.tsx:15`) into the record: **action links
+styled as buttons stay `<a>`, deliberately — there is no LinkButton in
+the component set.** All five current sites navigate
+(`invite/created` → invite · `accept/[token]` → sign-in and
+create-account · setup step 4 → complete · complete → invite); an
+element that navigates is an anchor, and a wrapper component would
+spend a component for zero semantic gain. `<Button>` stays the single
+writer of button classes **on `<button>`** (D6.9's qualifier,
+unchanged). The audit gap is closed at `ec808d7`: the e2e touch audit
+now measures `a[class*="button-"]` (a button-styled standalone CTA
+never qualifies for WCAG 2.5.8's inline exception) and
+`label:has(input[type=radio|checkbox])` — the very target the radio
+carve-out defers to — with two in-spec positive controls pinning live
+subjects on audited routes (the choice labels at setup step 1; the
+anchor CTA on `/setup/complete`). Honest reach note: the audited route
+list touches two of the five anchors (setup step 4, complete);
+`invite/created` and `accept/[token]` are not audited routes this
+slice, so the sheet-level pin (`tests/design/touch-targets.test.ts` —
+`min-height: 44px` on the CLASS, element-agnostic) remains the floor's
+primary carrier everywhere; audit route-list growth rides R6's re-visit
+clause as the surface grows.
+
+### EQ-3 — the two recorded numbers: ACCEPTED; corrected in place from an independent recomputation
+
+Both of the reviewer's numbers reproduced exactly under this session's
+own WCAG implementation (not `lib/design/contrast.ts`): **faint on card
+2.96:1** (direction-safe — D6.2's ruling is strengthened) and **avatar
+initials 3.12 (amber) · 3.60 (sage) · 4.16 (terracotta) · 4.63
+(plum)**; the recorded 5.2 endpoint was white on `--terracotta-badge`
+(5.18) — a badge fill, not an avatar fill per `lib/design/accents.ts`.
+D6.2 and D6.5 above and `design-conformance.md` §2/§4 now carry the
+true values; G12 audits from them. Only plum clears AA, barely — the
+corrected range makes D6.5's watch item sharper than the packet
+implied, which is the point of correcting it.
+
+### EQ-4 — the conformance §3 ledger: ACCEPTED; the seven missing rows added
+
+The five same-class range picks (input radius 10 of 9–10 · input
+padding 9×13 of 8–9 × 12–13 · provenance 11.5 of 11–12 · card-divider
+9 of 6–12 · nav-link radius 9 of 9–10) and the two carried seed
+off-scale headline sizes (`.auth-card h1` 26 · `.setup-card h1` 28 —
+present at `fe2aed6`, matching no §8.2 role, rightly left alone by D8)
+are now `design-conformance.md` §3 rows. Docs-only.
+
+### EQ-5 — "zero consumers": REJECTED on the factual premise; the record improvement ACCEPTED
+
+The finding's ground does not hold. **`.step-indicator` renders today,
+on four live routes:** `lib/setup/steps.tsx:86` (`StepIndicator`) is
+imported by every `app/setup/step/{1,2,3,4}/page.tsx`, identically at
+`fe2aed6`, and the carried walkthrough ASSERTS its text on all four
+steps (`e2e/onboarding.spec.ts:57/69/98/108`, "Step N of 4" — 11/11 in
+every recorded gate run, including this session's). The reviewer's
+grep covered `app/` and `components/`; the renderer lives in `lib/`.
+The a11y leg itself audits those routes, so the exclusion guards live
+markup, not dead. The micro-meta half is CONFIRMED as found:
+`TopBar.tsx:34`'s role chip is the class's only markup writer and never
+renders — the layout passes `{ name }` only. The accepted improvement —
+say what the exemption excludes TODAY — is now conformance §4: the live
+footprint is `.step-indicator` on setup steps 1–4 (`--label` on
+`--card`, **2.29:1** at 10.5px uppercase), `.section-label` on the nav
+group labels and the dev-only styleguide headings, `.micro-meta`
+nothing yet.
+
+### Q11-3 as amended — answered on the corrected premise; the remedy is the owner's (O1)
+
+Both amended options dissolve with the premise: there is no dead class
+to delete (deleting it un-styles four live screens and breaks the
+walkthrough), and no "first consumer" to pre-rule — the consumer
+shipped with the seed. What survives, sharpened: **the step indicator
+is the SOLE carrier of step position** (the step headlines never
+restate "N of 4"), so §8.7's redundancy condition — the exemption's own
+ground — is **not met** by this use, and the live pair measures 2.29:1.
+It is exactly the softest entry, as every record already said; the
+remedy is a visual-register call on four screens the owner has
+eyeballed, so it is O1 below, not decided here.
+
+### For the record (the reviewer's Q11-1 note)
+
+The system's tightest text pair is **`--muted-text` on `--sand` at
+4.59:1** — 0.09 of headroom. Any warming of `--sand` reds D1's pin in
+CI; that is the mechanism working as designed, but nobody should be
+surprised when it does.
+
+### O1 — the batched owner question (sign-off session)
+
+**The step indicator's colour, given it renders live at 2.29:1 as the
+sole carrier of step position:**
+
+- **(a) Keep `--label` and the CONTRAST_EXEMPT entry; G12 re-audits
+  against the live setup screens.** Zero cost now; carries a redundancy
+  claim this addendum concedes is unmet into G12.
+- **(b) Rule now: `.step-indicator` adopts `--muted-text` (5.51:1 on
+  card) and the exclusion list shrinks to two.** One token flip in
+  `app/globals.css` + one selector removed in `e2e/a11y.spec.ts`; F12
+  cost: one full local-gate re-run (~4–5m, protocol known); visual
+  cost: the eyebrow darkens on four screens the owner has eyeballed.
+
+**Build-side recommendation: (b)** — the exemption's own condition is
+not met, and a G12 deferral would inherit a claim already conceded —
+but the register change is owner-visible, so it is not decided here.
+
+### F12 accounting and the run record
+
+`a44ba23` → `ec808d7` (this session's fix commit): `tests/` and `e2e/`
+moved; `app/`, `lib/`, `supabase/` (hash still `53a8517…`), and config
+untouched. Re-proof at `ec808d7`, per the binding rule:
+
+- `db:reset` **46 exact** · `verify-migration-state` clean
+- vitest **279/279 across 35 files** (live stack)
+- lint clean · typecheck clean
+- **local gate 16/16 in 4.5m** (`npx playwright test --trace on`,
+  Chromium, win32, hermetic reset first): walkthrough **11/11
+  unchanged** · a11y leg 5/5 with the widened audit and both positive
+  controls green; traces in `test-results/`, retained vault-side with
+  the run record.
+
+Every commit after `ec808d7` this session is `docs/` only and inherits
+this run.

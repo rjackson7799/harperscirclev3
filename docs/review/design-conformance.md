@@ -59,7 +59,9 @@ in §2 below — every one ruled (Q2/Q7) or named for the round-11 gate.
    — recorded inside TSD §8.3 itself; boundary 900px is §8.3's own.
 3. **EmptyState colour**: `--muted-text`, not §8.6's faint — ADR-0016
    D6.2 (the sentence is the only content; the redundancy exemption
-   cannot cover it; faint ≈ 3.3:1 reds the browser axe leg).
+   cannot cover it; faint on card measures **2.96:1** — corrected from
+   the recorded ≈ 3.3:1 by round-11 EQ-3, direction-safe — and reds the
+   browser axe leg).
 4. **10px floor resolutions**: category badge and calendar month land at
    10px, not §8's 9.5px — ADR-0016 D6.1.
 5. **44px made true**: secondary/quiet buttons and inputs gain
@@ -83,16 +85,37 @@ in §2 below — every one ruled (Q2/Q7) or named for the round-11 gate.
 | Avatar size (range 27–29) | 28px | `.avatar` |
 | Nav active-state fill | `--wash` + `--green` text | `.nav-link[aria-current]` |
 | Top-bar logo mark | wordmark only, mark pending its measured asset | `TopBar.tsx` |
+| Input border-radius (range 9–10) | 10px | the shared input rule |
+| Input padding (range 8–9 × 12–13) | 9px 13px | the shared input rule |
+| Provenance size (range 11–12) | 11.5px | `.provenance` |
+| Card-divider padding above (range 6–12) | 9px | `.card-divider` |
+| Nav-link radius (range 9–10) | `--r-control` (9px) | `.nav-link` |
+| **Carried seed, off-scale (re-measure):** `.auth-card h1` | 26px — matches no §8.2 role (page title 34, card headline 22); present at `fe2aed6`, rightly untouched by D8 | `.auth-card h1` |
+| **Carried seed, off-scale (re-measure):** `.setup-card h1` | 28px — same class of carry as above | `.setup-card h1` |
+
+(The five range picks and two carried off-scale headline rows were
+added by the round-11 EQ-4 disposition — same entry class as the rows
+above them, omitted by the original ledger.)
 
 ## 4 · G12 watch items (named, never silently green)
 
 - **1.4.11 input boundary** (`--line` on white ≈ 1.32:1 at rest) —
   Q2(c2) ruling; darker-border fallback preserved. ADR-0016 D1.
 - **The `CONTRAST_EXEMPT` list** (`.step-indicator`, `.section-label`,
-  `.micro-meta`) — each use re-audited against §8.7's redundancy rule;
-  the step indicator's claim is the softest.
-- **Avatar initials** (white on accent fills ≈ 3.0–5.2:1; aria-hidden
-  with the name as accessible name) — ADR-0016 D6.5.
+  `.micro-meta`) — each use re-audited against §8.7's redundancy rule.
+  The live footprint at this head (round-11 EQ-5 disposition):
+  `.step-indicator` renders on setup steps 1–4 via
+  `lib/setup/steps.tsx` (`--label` on `--card`, **2.29:1** at 10.5px
+  uppercase — and it is the SOLE carrier of step position, so the
+  redundancy claim is not met by this use; remedy is owner question O1,
+  ADR-0016 round-11 addendum); `.section-label` on the nav group labels
+  and the dev-only styleguide headings; `.micro-meta` has no live
+  render yet (TopBar's role chip is its only writer and the layout
+  passes `{ name }` only).
+- **Avatar initials** (white on the four assignable fills 3.12 amber ·
+  3.60 sage · 4.16 terracotta · 4.63 plum — corrected by round-11 EQ-3;
+  only plum clears AA, barely; aria-hidden with the name as accessible
+  name) — ADR-0016 D6.5.
 - **Nav tier-awareness** (Invite visible to non-coordinators until
   membership context reaches the layout) — ADR-0016 D6.6.
 - A11Y-07 (review-screen keyboard, slice 6) and A11Y-08 (OCR

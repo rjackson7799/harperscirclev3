@@ -259,6 +259,22 @@ A `.env.local` (git-ignored, local demo defaults from .env.example) now
 exists for hand-browsing — the recorded gate still injects its own env
 and needs none.
 
+## Addendum — round-11 dispositions (post-review)
+
+The round-11 findings (`docs/review/round-11-findings.md`, verbatim at
+`a44ba23`) are dispositioned in **ADR-0016's round-11 addendum**:
+High-1/High-2/EQ-3/EQ-4 **accepted** (fixes at `ec808d7` — `tests/` +
+`e2e/` only: per-animation easing pin; the touch audit measures
+button-styled anchors and deferred-to labels, with positive controls);
+EQ-5 **rejected on its factual premise** (`.step-indicator` renders on
+setup steps 1–4 via `lib/setup/steps.tsx` — the finding's grep missed
+`lib/`), its record improvement accepted; Q11-3's remedy batched as
+owner question O1. Per F12, gate re-run at `ec808d7`: **16/16 in 4.5m**
+(walkthrough 11/11 unchanged · a11y 5/5, widened audit), vitest
+**279/279**, lint/typecheck clean, `supabase/` hash unchanged. Every
+later commit this session is docs-only and inherits the run. ⏸ owner
+sign-off next (rules O1, ratifies).
+
 ## Addendum — auditability block (head ledger from the start)
 
 `fe2aed6` (main, the accepted plan) → `74a7039` rulings SETTLED →
