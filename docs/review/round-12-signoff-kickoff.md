@@ -39,6 +39,13 @@ STATE — settled, do not redo or re-verify:
   ADR-0017 ratified as amended (round-12 markers, the superseded
   Consequences); the packet carries its round-12 addendum superseding
   "M8 reserved" and the old evidence block.
+  CI: **run 70 (32291897199) SUCCESS at `be1328b`** (public API,
+  anonymous, confirmed in the review session after the push) — the
+  clean reset, both DB suites, db:verify, the upgrade leg
+  (46 → migration up → 54 → both suites), secret scanning and both
+  scanners, all green WITH M8 in the chain. This recording commit is
+  itself docs-only (the run-66/68 precedent); the sign-off session
+  still confirms the run at the FINAL head first, per task 1.
 
 THE TASK — the sign-off leg (ADR-0006: the owner is sole merge
 authority; an unanswered item defaults to NOT MERGED):
