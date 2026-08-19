@@ -77,3 +77,25 @@ TSD §1.6's scanner row says the adapter "returns `clean | infected | unavailabl
 ## Verdict
 
 Approve with findings — **none blocking**: one high (the case-34 substitution recorded only in a code comment), one medium (the unowned §11.5 byte purge), two low (the monthly-ceiling label, the §1.6 citation). The increment does what the packet says it does, the ledger and evidence chain reproduce end to end, the two in-slice defects are recorded with unusual honesty, and every recommended answer to Q-A–Q-G survives interrogation — two with conditions (Q-C's annex, Q-F's named owner) that belong in this round's dispositions ADR alongside findings 1–4. M8 remains available if the owner wants any disposition to take DDL form; nothing above requires it.
+
+---
+
+# Addendum — the external second-opinion pass (received 2026-08-19, verbatim)
+
+> Received from the owner-commissioned external reviewer AFTER the dispositions above landed (ADR-0018 at `0b5b792`); landed verbatim before argument, per the standing rule. Dispositions: the ADR-0018 addendum.
+
+I found two new merge blockers. I did not repeat the prior review’s independently verified checks.
+
+1. BLOCKER — the malware evidence/cache can downgrade infected to clean.
+   finalize_scan unconditionally overwrites an existing hash row on conflict. A later clean verdict for the same SHA replaces an earlier retained infected verdict and gives it a seven-day expiry ([migration M6 (line 118)](C:/Users/HCI/Desktop/Projects/HarpersCirclev3/supabase/migrations/20260818200006_duplicates_stage1.sql:118); the original implementation is identical in M2).
+   Since 4B explicitly intends cache hits to skip scanning, the same bytes could subsequently be treated as clean without reaching the scanner. This also means the claimed retained malware evidence is not actually retained.
+   I would require M8 to make the rule safety-monotonic—at minimum, an existing infected verdict must not be overwritten by clean. Add a regression covering infected → clean conflict and cache lookup.
+
+2. BLOCKER — duplicate detection can classify every copy as the duplicate, leaving no original.
+   detect_duplicate accepts any other live arrival with the same hash, irrespective of whether it is earlier or has cleared the duplicate decision ([migration M6 (line 43)](C:/Users/HCI/Desktop/Projects/HarpersCirclev3/supabase/migrations/20260818200006_duplicates_stage1.sql:43)). Detection happens before the caller’s transition ([same file (line 98)](C:/Users/HCI/Desktop/Projects/HarpersCirclev3/supabase/migrations/20260818200006_duplicates_stage1.sql:98)).
+   Consequently, two identical arrivals that both exist before scanning—such as identical attachments created together—will each see the other and both enter duplicate_suspected. Concurrency is not required. This defeats the “original retained” model and can produce circular “matched arrival” explanations.
+   I would require deterministic canonicalization, such as matching only a strictly earlier (received_at, id) arrival, plus sequential and concurrent tests proving exactly one original remains non-suspect.
+
+On dispositions, I would push back on F2’s premise, though not its assignment of the byte-purge owner. ADR-0018 says infected hash/verdict evidence is “landed and pinned” ([ADR-0018 (line 54)](C:/Users/HCI/Desktop/Projects/HarpersCirclev3/docs/adr/0018-slice4a-review-round-12.md:54)); the unconditional upsert above makes that false. The disposition should distinguish immutable malware evidence from a refreshable clean cache, or explicitly implement infected-wins semantics.
+
+For Q-A–Q-G, I would answer only Q-F differently: do not confirm the DB reading yet. The intended retention interpretation is reasonable and the byte-purge owner is now named, but the implementation does not guarantee retention of an infected verdict. I agree with the recorded answers to Q-A–Q-E and Q-G.
