@@ -122,6 +122,10 @@
 //           overshoot is bounded by the concurrency degree and the NEXT
 //           quota answer refuses. Backpressure sheds processing, never
 //           acceptance (§13.1).
+//   Case 36 4A M6 (R-rule): a freeze committing while resolve_duplicate
+//           waits on the per-circle lock DEFEATS it (freeze_active,
+//           named) — the suspect stays parked, no gate lease survives as
+//           current, no re-queue row lands.
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -2123,6 +2127,58 @@ async function case35(admin) {
   }
 }
 
+// --- case 36: freeze-mid-wait defeats resolve_duplicate (4A M6, R-rule) --------
+
+async function case36(admin) {
+  const fx = await mkCircle(admin, 'c36');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // A suspect, fixture-level (the detection path is 048's; this case
+    // races the RESOLUTION).
+    const a = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c36-a') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    await admin.query(
+      `update public.arrivals set state = 'duplicate_suspected',
+              scan_verdict = 'clean', scan_at = now()
+        where id = $1`, [a]);
+
+    // S1 holds the per-circle lock in an open transaction…
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+
+    // …the founder's resolution blocks on it…
+    await asUser(s2, fx.u1);
+    const p2 = s2.query(`select hc.resolve_duplicate($1, 'different')`, [a])
+      .then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.resolve_duplicate%', 'resolve backend');
+    await waitForLockWait(admin, pid2, 's2 resolution on the circle lock');
+
+    // …a freeze commits mid-wait…
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fx.c]);
+    await s1.query('commit');
+
+    const e2 = await withTimeout(p2, 'case36 resolution after freeze');
+    const st = (await admin.query(
+      `select a.state::text as s,
+              not exists (select 1 from public.pipeline_outbox o
+                          where o.arrival_id = a.id) as noqueue,
+              not exists (select 1 from public.pipeline_leases l
+                          where l.arrival_id = a.id and l.closed_at is null) as nolease
+       from public.arrivals a where a.id = $1`, [a])).rows[0];
+    check('case36 (R-rule): a freeze committing while resolve_duplicate waits DEFEATS it (freeze_active) — the suspect stays parked, no open lease, no re-queue row',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'freeze_active'
+        && st.s === 'duplicate_suspected' && st.noqueue === true && st.nolease === true,
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'} state=${st.s} noqueue=${st.noqueue} nolease=${st.nolease}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -2163,6 +2219,7 @@ try {
   await case33(admin);
   await case34(admin);
   await case35(admin);
+  await case36(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;

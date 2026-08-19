@@ -67,6 +67,7 @@ select is((
     'ctx()',
     'ctx_for(p_account uuid)',
     'describe_invite(p_token text)',
+    'detect_duplicate(p_arrival uuid, p_circle uuid, p_sha bytea)',
     'dom(p jsonb)',
     'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'execute_wasnt_me(p_token text)',
@@ -103,6 +104,7 @@ select is((
     'record_tombstone(p_circle_id uuid, p_object_type text, p_object_id uuid, p_storage_keys text[], p_scope text, p_requested_by uuid, p_reason text)',
     'remove_member(p_member_id uuid, p_keep_share_ids uuid[])',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
+    'resolve_duplicate(p_arrival uuid, p_resolution text)',
     'resolve_forwarding(p_local_part text)',
     'resolve_object(p_type hc.object_type, p_id uuid)',
     'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
@@ -161,13 +163,14 @@ select is((
         'product_state',
         'propagate_taint_growth','reclassify_taint','record_auth_failure',
         'record_auth_success','record_tombstone','remove_member',
-        'request_freeze','resolve_forwarding','revise_object','revoke_invite',
+        'request_freeze','resolve_duplicate','resolve_forwarding',
+        'revise_object','revoke_invite',
         'revoke_sender',
         'run_taint_sweep','scan_cache_lookup','sender_lookalike',
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the sixty-four boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the sixty-five boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -301,6 +304,9 @@ with actual as (
   -- webhook's (§5.2 step 2)
   union all select 'activate_forwarding', 'authenticated'
   union all select 'resolve_forwarding', 'hc_pipeline'
+  -- 4A M6: duplicate resolution is the member's act (manage-gated like
+  -- cancel); detect_duplicate is owner-only and appears in no grant row
+  union all select 'resolve_duplicate', 'authenticated'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
