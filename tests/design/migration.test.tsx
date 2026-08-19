@@ -52,7 +52,7 @@ describe('D8 · Button is the single writer of button classes in app/', () => {
   it('no raw <button className="button-…"> remains in any screen', () => {
     const offenders: string[] = [];
     for (const [file, source] of pageSources('app')) {
-      if (/<button[^>]*className="button-/s.test(source)) {
+      if (/<button[\s\S]{0,200}?className="button-/.test(source)) {
         offenders.push(file);
       }
     }

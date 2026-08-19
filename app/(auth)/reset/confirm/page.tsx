@@ -1,3 +1,7 @@
+import { Button } from '@/components/ui/Button';
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
+
 /**
  * Reset confirm — reached from the emailed link via /confirm, holding a
  * live recovery session. One field, the plain-language floor (§4.1.7).
@@ -23,14 +27,10 @@ export default async function ResetConfirmPage({
       {e === 'retry' && <p className="notice">That didn&apos;t save. Try once more.</p>}
 
       <form method="post" action="/reset/confirm/submit">
-        <label className="field">
-          <span className="field-label">New password</span>
-          <input type="password" name="password" autoComplete="new-password" required minLength={10} />
-          <span className="field-help">At least 10 characters.</span>
-        </label>
-        <button type="submit" className="button-primary">
-          Save the new password
-        </button>
+        <Field label="New password" help="At least 10 characters.">
+          <Input type="password" name="password" autoComplete="new-password" required minLength={10} />
+        </Field>
+        <Button type="submit">Save the new password</Button>
       </form>
     </main>
   );

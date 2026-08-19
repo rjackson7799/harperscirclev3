@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
 import { completionPromises, custodianshipLine } from '@/lib/setup/completion-copy';
 import { CopyButton } from './copy-button';
+import { Button } from '@/components/ui/Button';
 import { liveSessionClaims } from '@/lib/auth/session';
 
 const FORWARDING_DOMAIN = 'harperscircle.app';
@@ -71,9 +72,9 @@ export default async function CompletePage({
       {!verified && account?.email && (
         <form method="post" action="/verify-email/submit">
           <input type="hidden" name="email" value={account.email} />
-          <button type="submit" className="button-secondary">
+          <Button type="submit" variant="secondary">
             Resend the verification email
-          </button>
+          </Button>
         </form>
       )}
 

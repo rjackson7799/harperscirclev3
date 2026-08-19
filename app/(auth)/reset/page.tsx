@@ -1,3 +1,7 @@
+import { Button } from '@/components/ui/Button';
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
+
 /**
  * Reset request (TSD §5.5 row 3). The sent state is one sentence, the
  * same for everyone — whether the address has an account is delivered by
@@ -30,13 +34,10 @@ export default async function ResetPage({
       )}
 
       <form method="post" action="/reset/submit">
-        <label className="field">
-          <span className="field-label">Email</span>
-          <input type="email" name="email" autoComplete="email" required />
-        </label>
-        <button type="submit" className="button-primary">
-          Email me a reset link
-        </button>
+        <Field label="Email">
+          <Input type="email" name="email" autoComplete="email" required />
+        </Field>
+        <Button type="submit">Email me a reset link</Button>
       </form>
 
       <p className="auth-meta">

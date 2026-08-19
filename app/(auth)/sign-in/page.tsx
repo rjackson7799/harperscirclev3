@@ -1,3 +1,7 @@
+import { Button } from '@/components/ui/Button';
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
+
 /**
  * Sign in (TSD §5.5; PRD §4.1.7 states). Level copy for the throttle,
  * the wait, and the reset path — never alarm, never a permanent-sounding
@@ -43,13 +47,12 @@ export default async function SignInPage({
           The confirmation link is in your mail — click it, then sign in here.
           <form method="post" action="/verify-email/submit" style={{ marginTop: 8 }}>
             <input type="hidden" name="next" value={next} />
-            <label className="field">
-              <span className="field-label">Send the confirmation again</span>
-              <input type="email" name="email" required placeholder="you@example.com" />
-            </label>
-            <button type="submit" className="button-secondary">
+            <Field label="Send the confirmation again">
+              <Input type="email" name="email" required placeholder="you@example.com" />
+            </Field>
+            <Button type="submit" variant="secondary">
               Resend the confirmation link
-            </button>
+            </Button>
           </form>
         </div>
       )}
@@ -57,17 +60,13 @@ export default async function SignInPage({
 
       <form method="post" action="/sign-in/submit">
         {next && <input type="hidden" name="next" value={next} />}
-        <label className="field">
-          <span className="field-label">Email</span>
-          <input type="email" name="email" autoComplete="email" required />
-        </label>
-        <label className="field">
-          <span className="field-label">Password</span>
-          <input type="password" name="password" autoComplete="current-password" required />
-        </label>
-        <button type="submit" className="button-primary">
-          Sign in
-        </button>
+        <Field label="Email">
+          <Input type="email" name="email" autoComplete="email" required />
+        </Field>
+        <Field label="Password">
+          <Input type="password" name="password" autoComplete="current-password" required />
+        </Field>
+        <Button type="submit">Sign in</Button>
       </form>
 
       <p className="auth-meta">

@@ -1,6 +1,9 @@
 import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
 import { liveSessionClaims } from '@/lib/auth/session';
+import { PageHeader } from '@/components/shell/PageHeader';
+import { Card } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 /**
  * The family landing (PRD §4.1.4 rule 4: with no Weekly Brief, family
@@ -8,6 +11,8 @@ import { liveSessionClaims } from '@/lib/auth/session';
  * (TSD §11.1 row 7); this is its honest floor — a real RLS read of
  * timeline_events and the design-spec empty state, so an invitee lands
  * on real content the moment any exists, never on an empty dashboard.
+ * D8: re-homed under the D3 shell — the layout owns the chrome and the
+ * one main landmark; copy unchanged.
  */
 export default async function TimelinePage({
   params,
@@ -27,21 +32,20 @@ export default async function TimelinePage({
     .limit(50);
 
   return (
-    <div className="auth-shell">
-      <main className="setup-card">
-        <h1>Timeline</h1>
-        {events && events.length > 0 ? (
-          <div className="choice-list">
-            {events.map((event: { id: string; title: string; happened_on: string }) => (
-              <div key={event.id} className="notice">
-                {event.title} · {event.happened_on}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="auth-meta">Nothing on the timeline yet.</p>
-        )}
-      </main>
-    </div>
+    <>
+      <PageHeader title="Timeline" />
+      {events && events.length > 0 ? (
+        <div className="choice-list">
+          {events.map((event: { id: string; title: string; happened_on: string }) => (
+            <Card key={event.id}>
+              <span className="row-title">{event.title}</span>
+              <span className="meta"> · {event.happened_on}</span>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <EmptyState>Nothing on the timeline yet.</EmptyState>
+      )}
+    </>
   );
 }
