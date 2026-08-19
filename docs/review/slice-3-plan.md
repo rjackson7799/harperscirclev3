@@ -1,8 +1,8 @@
 # Slice 3 — Design system: the slice plan
 
-**Status:** **PLANNED — ⏸ at the plan gate.** Owner ruling on this plan
-(the seven batched questions below) before any build. Written 2026-08-18
-in its own fresh session, per the gate cadence.
+**Status:** **BUILD — plan gate exited 2026-08-18.** The owner ruled on
+Q1–Q7 (recorded verbatim below, per the gate cadence); the build session
+proceeds on those rulings. Written 2026-08-18 in its own fresh session.
 
 **Authority:** TSD §11.1 row 3 ("Tokens, components, motion, the §8.7
 accessibility floor — before the surfaces, not after") → TSD §8 whole →
@@ -237,6 +237,36 @@ early. G12 itself is a review gate at the first non-founder invitee.
 | G12-01 | G12 whole: WCAG 2.2 AA audit against the built surface, before the first non-founder invitee | review | **pending → gate** |
 
 ---
+
+## Owner decisions — SETTLED 2026-08-18 (the plan-gate rulings)
+
+The owner ruled on the seven batched questions below at the plan gate,
+2026-08-18. Recorded verbatim; the build executes on these:
+
+- **Q1 — SETTLED:** Single increment D1–D9, one PR, one review round
+  (round 11).
+- **Q2 — SETTLED:** Contrast: option **(a)** — minimal-delta text-role
+  variants (`--muted-text`, `--sage-text`, `--amber-text`,
+  `--terracotta-text`, `--terracotta-badge`; exact hexes pinned by D1's
+  red test at ≥ 4.5:1). Fills/dots/tints keep the measured §2 palette.
+  **(c2)** Input boundary: keep the at-rest aesthetic; record the 1.4.11
+  disposition in ADR-0016 as a named G12 audit item with the
+  darker-border fallback preserved.
+- **Q3 — SETTLED:** CI/local split as planned: lint + contrast math +
+  jsdom axe in CI; browser legs (route axe, touch targets, reduced
+  motion, keyboard) in the R6 local gate, protocol-documented.
+- **Q4 — SETTLED:** Dev-gated `/styleguide` route: yes (`notFound()` in
+  production, pinned by test).
+- **Q5 — SETTLED:** `components/{shell,ui,icons,motion}/` at root;
+  §1.7 one-line addition via ADR-0016.
+- **Q6 — SETTLED:** Rename `--panel-positive-*` → §8.1's `--positive-*`
+  in D1, usages same-commit.
+- **Q7 — SETTLED:** ADR-0016 docs bundle ratified: `next/font`
+  substitution · §8.3 annex line (top-bar order + nav grouping) ·
+  reduced-motion iteration-count erratum.
+
+The questions as put to the owner (with the recommendations that were
+accepted) are preserved below for the record.
 
 ## Owner decisions needed — the batched questions (round-10 pattern)
 
