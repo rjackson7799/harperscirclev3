@@ -5,10 +5,12 @@ import path from 'node:path';
 // ============================================================================
 // D5 · The §8.5 motion inventory (DS-05): the seven animations exactly —
 // mfade · tin · hp/hpo/hpg · rdot · eqp · bdrop · kb — nothing longer
-// than 250ms except the deliberate infinite loops, no easing more
-// dramatic than ease (ease-out is the pulses' own spec), and ONE
-// reduced-motion query that stills everything INCLUDING iteration count
-// (§8.7 — the seed's gap, A11Y-02).
+// than 250ms except the deliberate infinite loops (the ruled loop-scope
+// reading of §8.5's "infinite pulses"; ADR-0016 round-11 addendum,
+// High-1), easing pinned PER ANIMATION — entrances/ambient at ease, the
+// pulses' own ease-out, kb linear; nothing admits an easing it does not
+// use — and ONE reduced-motion query that stills everything INCLUDING
+// iteration count (§8.7 — the seed's gap, A11Y-02).
 // ============================================================================
 
 const repo = path.resolve(__dirname, '../..');
@@ -17,9 +19,23 @@ const sheet = readFileSync(path.join(repo, 'app/globals.css'), 'utf8');
 const INVENTORY = ['mfade', 'tin', 'hp', 'hpo', 'hpg', 'rdot', 'eqp', 'bdrop', 'kb'];
 // The deliberate infinite loops: the three pulses plus the ambient
 // indicators (thinking, audio, photographic drift) — everything else is
-// an entrance/transition and bounded at 250ms.
+// an entrance/transition and bounded at 250ms. The rule-scope reading
+// (loops, not only pulses) is ruled in ADR-0016's round-11 addendum.
 const INFINITE = new Set(['hp', 'hpo', 'hpg', 'rdot', 'eqp', 'kb']);
-const EASINGS = new Set(['ease', 'ease-out', 'linear']);
+// Per-animation easing, exact (round-11 High-1): the old set-based pin
+// admitted ease-out/linear for ANY animation; this one reds a future
+// entrance that borrows the pulses' ease-out or kb's linear.
+const EASING: Record<string, string> = {
+  mfade: 'ease',
+  tin: 'ease',
+  bdrop: 'ease',
+  rdot: 'ease',
+  eqp: 'ease',
+  hp: 'ease-out',
+  hpo: 'ease-out',
+  hpg: 'ease-out',
+  kb: 'linear',
+};
 
 describe('D5 · the §8.5 keyframe inventory, exactly', () => {
   it('declares exactly the seven §8.5 animations (nine keyframe names)', () => {
@@ -27,7 +43,7 @@ describe('D5 · the §8.5 keyframe inventory, exactly', () => {
     expect(names.sort()).toEqual([...INVENTORY].sort());
   });
 
-  it('every animation shorthand: known name, ≤250ms unless a deliberate infinite loop, easing never past ease', () => {
+  it('every animation shorthand: known name, ≤250ms unless a deliberate infinite loop, easing pinned per animation', () => {
     const seen: string[] = [];
     for (const m of sheet.matchAll(/animation:\s*([^;]+);/g)) {
       const value = m[1].trim();
@@ -45,9 +61,9 @@ describe('D5 · the §8.5 keyframe inventory, exactly', () => {
       if (!infinite) {
         expect(ms, `${name} duration ${duration}`).toBeLessThanOrEqual(250);
       }
-      const easing = parts.find((p) => EASINGS.has(p) || p.includes('cubic-bezier') || p.includes('steps'));
+      const easing = parts.find((p) => /^(ease|linear|cubic-bezier|steps)/.test(p));
       expect(easing, `easing in "${value}"`).toBeDefined();
-      expect(EASINGS.has(easing!), `easing ${easing} within the ease bound`).toBe(true);
+      expect(easing, `${name} easing is its own spec`).toBe(EASING[name]);
     }
     // every keyframe is actually wired to a class
     for (const name of INVENTORY) {

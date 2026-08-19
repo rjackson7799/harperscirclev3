@@ -46,8 +46,12 @@ async function expectNoAxeViolations(page: Page) {
 
 async function expectTouchTargets(page: Page) {
   const offenders = await page.evaluate(() => {
+    // Round-11 High-2: anchors styled as buttons are standalone CTAs
+    // (no WCAG 2.5.8 inline exception) and a label wrapping a radio/
+    // checkbox is the very target the carve-out below defers to — both
+    // are measured here, not merely floor-pinned in the sheet.
     const selectors =
-      'button, [role="button"], select, .nav-link, .chip-dismiss, input:not([type="hidden"])';
+      'button, [role="button"], select, a[class*="button-"], .nav-link, .chip-dismiss, label:has(input[type="radio"]), label:has(input[type="checkbox"]), input:not([type="hidden"])';
     const out: string[] = [];
     for (const el of Array.from(
       document.querySelectorAll<HTMLElement>(selectors),
@@ -182,6 +186,12 @@ test.describe.serial('the D7 browser a11y leg', () => {
     await expectTouchTargets(page);
     await expectNoHorizontalScroll(page);
 
+    // Positive control (round-11 High-2): the deferred-to choice labels
+    // exist here, so the widened audit measured real boxes above.
+    expect(
+      await page.locator('label:has(input[type="radio"])').count(),
+    ).toBeGreaterThan(0);
+
     // Keyboard: Tab reaches the first choice; the ring is visible on it.
     await page.keyboard.press('Tab');
     const onChoice = await page.evaluate(() => {
@@ -221,6 +231,12 @@ test.describe.serial('the D7 browser a11y leg', () => {
     await expectNoAxeViolations(page);
     await expectTouchTargets(page);
     await expectNoHorizontalScroll(page);
+
+    // Positive control (round-11 High-2): the standalone button-styled
+    // <a> CTA exists here, so the widened audit measured it above.
+    expect(await page.locator('a[class*="button-"]').count()).toBeGreaterThan(
+      0,
+    );
   });
 
   test('the (app) shell routes and account, audited at 390px', async ({
