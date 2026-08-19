@@ -658,11 +658,192 @@ a:focus-visible {
   display: inline-block;
 }
 
+/* --------------------------------------------------------------------------
+   Motion (§8.5) — the seven animations exactly, as the spec names them.
+   Motion is confirmation and invitation; it never entertains. Nothing
+   longer than 250ms except the deliberate infinite loops (the pulses and
+   the ambient indicators); no easing more dramatic than ease (ease-out is
+   the pulses' own spec). Durations the spec leaves unpinned (tin · rdot ·
+   eqp · bdrop · kb) are named in docs/review/design-conformance.md.
+   Pinned by tests/design/motion.test.ts.
+   -------------------------------------------------------------------------- */
+
+/* mfade — 8px rise + fade. Every screen change; the only page transition. */
+@keyframes mfade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.mfade {
+  animation: mfade 0.25s ease;
+}
+
+/* tin — 14px rise + fade. Items entering a list. */
+@keyframes tin {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.tin {
+  animation: tin 0.25s ease;
+}
+
+/* hp / hpo / hpg — the expanding ring pulses, 2.2s ease-out infinite,
+   amber / terracotta / green. AT MOST ONE pulsing element per screen —
+   enforced by <PulseProvider> (components/motion). The ring is a
+   pseudo-element border (no shadows in this system); three keyframes
+   because the spec names three, each carrying its accent. */
+@keyframes hp {
+  from {
+    border-color: var(--amber);
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  to {
+    border-color: var(--amber);
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+@keyframes hpo {
+  from {
+    border-color: var(--terracotta);
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  to {
+    border-color: var(--terracotta);
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+@keyframes hpg {
+  from {
+    border-color: var(--green);
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  to {
+    border-color: var(--green);
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+.pulse-amber,
+.pulse-terracotta,
+.pulse-green {
+  position: relative;
+}
+.pulse-amber::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 2px solid;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: hp 2.2s ease-out infinite;
+}
+.pulse-terracotta::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 2px solid;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: hpo 2.2s ease-out infinite;
+}
+.pulse-green::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 2px solid;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: hpg 2.2s ease-out infinite;
+}
+
+/* rdot — 3px bob. Thinking / reading indicator; stagger via delay. */
+@keyframes rdot {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+.rdot {
+  animation: rdot 1.2s ease infinite;
+}
+.rdot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.rdot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+/* eqp — scaleY bars. Audio playback only. */
+@keyframes eqp {
+  0%,
+  100% {
+    transform: scaleY(0.4);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.eqp {
+  animation: eqp 0.9s ease infinite;
+  transform-origin: bottom;
+}
+
+/* bdrop — opacity fade. Modal backdrops. */
+@keyframes bdrop {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.bdrop {
+  animation: bdrop 0.2s ease;
+}
+
+/* kb — slow scale + drift. Photographic backdrops only (placeholder in
+   Phase 1). */
+@keyframes kb {
+  from {
+    transform: scale(1) translate(0, 0);
+  }
+  to {
+    transform: scale(1.08) translate(-6px, -4px);
+  }
+}
+.kb {
+  animation: kb 18s linear infinite alternate;
+}
+
+/* The §8.7 reduced-motion query — written ONCE against the animation
+   system above, completing the seed's gap with iteration-count (an
+   infinite pulse must not spin hot at .01ms). Every pulse and entrance
+   drops to opacity-only stillness. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

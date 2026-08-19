@@ -113,6 +113,25 @@ export const STYLEGUIDE_FIXTURES: Array<{
     ),
   },
   {
+    name: 'Motion',
+    render: () => (
+      <p className="meta">
+        <span
+          className="pulse-amber"
+          style={{
+            display: 'inline-block',
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: 'var(--amber)',
+          }}
+        />{' '}
+        the one pulse per screen (hp · 2.2s ease-out) — register real pulses
+        through usePulse() under &lt;PulseProvider&gt;.
+      </p>
+    ),
+  },
+  {
     name: 'Icon conventions',
     render: () => (
       <p className="meta">
