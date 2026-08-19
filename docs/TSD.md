@@ -3092,3 +3092,27 @@ binds at the next evaluation. `hc.share_object()` is the recorded
 single-snapshot exception (share grants ≤ view and is inert under freezes via
 the A2 cap). Advisory order is acyclic: `freeze:` → `taint:` → `hc.log()`'s
 unprefixed key.
+
+### A8 — §1.7/§8.1/§8.3: the slice-3 design-system annex (ADR-0016; Q5/Q7 ratified at the plan gate)
+
+**§1.7 tree, one line added:** `components/{shell,ui,icons,motion}/` at
+the repo root — presentation components (the Next.js convention);
+`lib/` stays logic-only.
+
+**§8.1 token vocabulary, the Q2 text-role variants** (ADR-0016 D1 —
+text/badge duty only; the measured accents keep strokes, small fills,
+dots and tints): `--muted-text: #6C665A` · `--sage-text: #526F5C` ·
+`--amber-text: #8A671F` · `--terracotta-text: #A04E2D` ·
+`--terracotta-badge: #AD5330`. Exact values pinned by
+`tests/design/tokens.test.ts`; every permitted pair held ≥ 4.5:1 by
+`tests/design/contrast.test.ts`.
+
+**§8.3 annex** (carrying `design_spec.md` §4's previously untranscribed
+shell content into the TSD): the top bar's contents, in order — logo +
+wordmark · ask-the-record search field · (auto margin) · Feedback
+button · overlapping member avatars · current user with role beneath.
+The left nav is grouped: primary actions ungrouped → `THE RECORD` →
+`CONNECTION`, each labelled group opening with an ALL-CAPS section
+label; counts and review badges sit right-aligned inside the item; a
+utility button pins to the bottom via `margin-top: auto`. Groups appear
+as their first live route lands — the nav promises nothing unbuilt.
