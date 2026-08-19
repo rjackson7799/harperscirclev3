@@ -1,4 +1,5 @@
 import { OPENING_CONTEXT, StepIndicator } from '@/lib/setup/steps';
+import { Button } from '@/components/ui/Button';
 
 /**
  * Step 3 · What brought you here (PRD §4.1.3). Circle-level, about the
@@ -37,9 +38,7 @@ export default async function Step3({
             </label>
           ))}
         </div>
-        <button type="submit" className="button-primary">
-          Continue
-        </button>
+        <Button type="submit">Continue</Button>
       </form>
     </main>
   );

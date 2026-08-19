@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
 import { liveSessionClaims } from '@/lib/auth/session';
+import { Button } from '@/components/ui/Button';
 
 /**
  * Account (PRD §4.1.6, narrowed by the kickoff): the verify-email state
@@ -49,9 +50,9 @@ export default async function AccountPage({
             your mail.
             <form method="post" action="/verify-email/submit" style={{ marginTop: 8 }}>
               <input type="hidden" name="email" value={account?.email ?? ''} />
-              <button type="submit" className="button-secondary">
+              <Button type="submit" variant="secondary">
                 Resend the verification email
-              </button>
+              </Button>
             </form>
           </div>
         )}
@@ -63,9 +64,9 @@ export default async function AccountPage({
             in with your password.
           </p>
           <form method="post" action="/account/sign-out-everywhere">
-            <button type="submit" className="button-quiet">
+            <Button type="submit" variant="quiet">
               Sign out everywhere
-            </button>
+            </Button>
           </form>
         </div>
       </main>

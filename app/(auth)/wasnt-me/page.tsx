@@ -1,3 +1,5 @@
+import { Button } from '@/components/ui/Button';
+
 /**
  * The "this wasn't me" confirmation page (TSD §5.11; PRD §4.1.7).
  *
@@ -54,9 +56,7 @@ export default async function WasntMePage({
       </p>
       <form method="post" action="/wasnt-me/submit">
         <input type="hidden" name="token" value={token} />
-        <button type="submit" className="button-primary">
-          End every signed-in session
-        </button>
+        <Button type="submit">End every signed-in session</Button>
       </form>
       <p className="auth-meta">If this was you, you can close this page — nothing changes.</p>
     </main>

@@ -1,4 +1,7 @@
 import { describeInvite } from '@/lib/hc/invites';
+import { Button } from '@/components/ui/Button';
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
 
 /**
  * Create account (PRD §4.1.3 row 1): name, email, password — and the
@@ -50,10 +53,9 @@ export default async function CreateAccountPage({
       <form method="post" action="/create-account/submit">
         {next && <input type="hidden" name="next" value={next} />}
         {invitedEmail && <input type="hidden" name="invite" value={inviteToken} />}
-        <label className="field">
-          <span className="field-label">Your name</span>
-          <input type="text" name="name" autoComplete="name" required />
-        </label>
+        <Field label="Your name">
+          <Input name="name" autoComplete="name" required />
+        </Field>
         {invitedEmail ? (
           <div className="field">
             <span className="field-label">Email</span>
@@ -63,19 +65,14 @@ export default async function CreateAccountPage({
             </span>
           </div>
         ) : (
-          <label className="field">
-            <span className="field-label">Email</span>
-            <input type="email" name="email" autoComplete="email" required />
-          </label>
+          <Field label="Email">
+            <Input type="email" name="email" autoComplete="email" required />
+          </Field>
         )}
-        <label className="field">
-          <span className="field-label">Password</span>
-          <input type="password" name="password" autoComplete="new-password" required minLength={10} />
-          <span className="field-help">At least 10 characters. A short sentence works well.</span>
-        </label>
-        <button type="submit" className="button-primary">
-          Create account
-        </button>
+        <Field label="Password" help="At least 10 characters. A short sentence works well.">
+          <Input type="password" name="password" autoComplete="new-password" required minLength={10} />
+        </Field>
+        <Button type="submit">Create account</Button>
       </form>
 
       <p className="auth-meta">

@@ -1,4 +1,5 @@
 import { RELATIONSHIPS, SLICES, StepIndicator } from '@/lib/setup/steps';
+import { Button } from '@/components/ui/Button';
 
 /**
  * Step 1 · About you (PRD §4.1.3). Writes nothing — the answers ride to
@@ -36,9 +37,7 @@ export default async function Step1({
           ))}
         </div>
 
-        <button type="submit" className="button-primary">
-          Continue
-        </button>
+        <Button type="submit">Continue</Button>
       </form>
     </main>
   );

@@ -1,12 +1,12 @@
 /* ==========================================================================
-   Design tokens — design_spec.md §2 (color) and §3 (type), carried exactly.
-   Scope note (slice-2-plan §2B): tokens land only as far as the auth and
-   onboarding screens need; the full §8 system is slice 3. CSS custom
-   properties, no Tailwind.
+   Design tokens — TSD §8.1, carried exactly (design_spec §2–§3 are the
+   source of the names, per its §9). The full set is pinned by
+   tests/design/tokens.test.ts; the text-carrying pairs are held >= 4.5:1
+   by tests/design/contrast.test.ts. CSS custom properties, no Tailwind.
    ========================================================================== */
 
 :root {
-  /* Foundation (§2) */
+  /* Foundation (§8.1) */
   --sand: #ede6d8;
   --cream: #fbf8f1;
   --card: #fdfbf6;
@@ -16,24 +16,44 @@
   --wash: #f0e8d9;
   --scroll-thumb: #d8cdb9;
 
-  /* Ink (§2) */
+  /* Ink (§8.1) */
   --ink: #24211b;
   --ink-2: #4a463d;
   --muted: #857e70;
   --faint: #9a9382;
   --label: #b0a891;
 
-  /* Signal (§2) — one meaning each, never decorative */
+  /* Signal (§8.1) — one meaning each, never decorative */
   --green: #2f5b4e;
   --terracotta: #c1613c;
   --amber: #b98a2e;
   --sage: #6e8f73;
   --plum: #7a6e9b;
+  --google-blue: #4285f4;
 
-  /* Positive tinted panel (§2) */
-  --panel-positive-bg: #f6fbf7;
-  --panel-positive-border: #d6e7da;
-  --panel-positive-body: #33463f;
+  /* Tinted panel — positive/saved (§8.1) */
+  --positive-bg: #f6fbf7;
+  --positive-border: #d6e7da;
+  --positive-label: #6e8f73;
+  --positive-body: #33463f;
+  --chip-sage-bg: #e4ede7;
+
+  /* Radii (§8.1) */
+  --r-card: 13px;
+  --r-row: 12px;
+  --r-control: 9px;
+  --r-pill: 20px;
+
+  /* Text-role variants (Q2 ruling, ADR-0016): wherever an accent or muted
+     ink carries WORDS at text size, these darkened variants hold WCAG AA
+     4.5:1 on every permitted surface. Strokes, small fills, dots and tints
+     keep the measured palette above. Exact values pinned by the D1 red
+     test; --faint/--label stay reserved for §8.7's redundancy rule. */
+  --muted-text: #6c665a;
+  --sage-text: #526f5c;
+  --amber-text: #8a671f;
+  --terracotta-text: #a04e2d;
+  --terracotta-badge: #ad5330;
 }
 
 * {
@@ -66,7 +86,9 @@ a {
   color: var(--green);
 }
 a:hover {
-  color: var(--terracotta);
+  /* Link-hover words on the sand plane use the Q2 text variant; the
+     measured --terracotta keeps its stroke/fill/badge duties. */
+  color: var(--terracotta-text);
 }
 
 ::-webkit-scrollbar {
@@ -109,6 +131,8 @@ textarea {
   font: inherit;
   font-size: 13px;
   color: var(--ink);
+  /* §8.7's 44px touch floor (D7) — the spec's own claim, made true. */
+  min-height: 44px;
 }
 input::placeholder {
   color: var(--faint);
@@ -130,7 +154,7 @@ a:focus-visible {
   background: var(--green);
   color: var(--white);
   border: none;
-  border-radius: 9px;
+  border-radius: var(--r-control);
   padding: 11px 18px;
   font: inherit;
   font-weight: 600;
@@ -145,26 +169,397 @@ a:focus-visible {
   background: var(--wash);
   color: var(--ink-2);
   border: 1px solid var(--line-strong);
-  border-radius: 20px;
+  border-radius: var(--r-pill);
   padding: 6px 13px;
   font: inherit;
   font-weight: 600;
   font-size: 11.5px;
   cursor: pointer;
+  min-height: 44px; /* §8.7 touch floor (D7) */
 }
 .button-quiet {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   background: var(--white);
-  color: var(--muted);
+  color: var(--muted-text);
   border: 1px solid var(--line-strong);
-  border-radius: 9px;
+  border-radius: var(--r-control);
   padding: 9px 14px;
   font: inherit;
   font-weight: 600;
   font-size: 12px;
   cursor: pointer;
+  min-height: 44px; /* §8.7 touch floor (D7) */
+}
+
+/* --------------------------------------------------------------------------
+   Type roles (§8.2) — the role column as class names, pinned by
+   tests/design/type-scale.test.ts. Roles already carried by element
+   defaults (h1 34 · h2 22 · body 13.5 · buttons) are not duplicated.
+   Where the spec reproduces a range, the class pins one value inside it
+   (meta 12 of 11.5–12 · micro-meta 11 of 10.5–11). Never below 10px.
+   -------------------------------------------------------------------------- */
+
+.wordmark {
+  font-family: var(--font-serif), 'Newsreader', Georgia, serif;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 0.2px;
+  color: var(--green);
+}
+.section-headline {
+  font-family: var(--font-serif), 'Newsreader', Georgia, serif;
+  font-weight: 500;
+  font-size: 18px;
+  line-height: 1.1;
+}
+.nav-item {
+  font-weight: 500;
+  font-size: 13.5px;
+}
+.nav-item-serif {
+  font-family: var(--font-serif), 'Newsreader', Georgia, serif;
+  font-weight: 500;
+  font-size: 14.5px;
+}
+.row-title {
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.25;
+}
+.meta {
+  font-size: 12px;
+  color: var(--muted-text);
+}
+.micro-meta {
+  /* --faint is reserved for text that repeats information available
+     elsewhere (§8.7's redundancy rule) — never the only place a fact
+     appears. */
+  font-size: 11px;
+  color: var(--faint);
+}
+.section-label {
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.85px;
+  text-transform: uppercase;
+  color: var(--label);
+}
+.eyebrow {
+  /* Color is the card's one accent, set at the point of use. */
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+.badge {
+  font-weight: 700;
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Shell (§8.3; design_spec §4). Sticky cream top bar → left nav + main,
+   main capped at 1240px. Responsive via CONTAINER queries on the one
+   boundary §8.3 itself documents (900px) — no JS measurement, no viewport
+   breakpoints (the recorded §8.3 substitution). Values the spec leaves
+   unpinned (nav width 220 · top-bar item gap 14 · main padding 22 20) are
+   named in docs/review/design-conformance.md for prototype re-measure.
+   -------------------------------------------------------------------------- */
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 20px;
+  background: var(--cream);
+  border-bottom: 1px solid var(--line);
+}
+.topbar-spacer {
+  margin-left: auto;
+}
+.topbar-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.shell-body {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+}
+.left-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 220px;
+  flex-shrink: 0;
+  padding: 16px 12px;
+  background: var(--cream);
+  border-right: 1px solid var(--line);
+}
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: var(--r-control);
+  color: var(--ink-2);
+  text-decoration: none;
+}
+.nav-link[aria-current='page'] {
+  color: var(--green);
+  background: var(--wash);
+}
+.nav-count {
+  margin-left: auto;
+}
+.nav-group-label {
+  margin: 14px 10px 4px;
+}
+.nav-utility {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.shell-main {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  max-width: 1240px;
+  padding: 22px 20px;
+}
+
+/* Page pattern (§8.3): 34px serif title → one muted context line capped
+   ~620px → controls → content. Title-to-content 20–24px. */
+.page-header {
+  margin-bottom: 22px;
+}
+.page-context {
+  max-width: 620px;
+  font-size: 13.5px;
+  color: var(--muted-text);
+  margin-top: 8px;
+}
+
+/* Grids (§8.3) */
+.grid-browsing {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(324px, 1fr));
+  gap: 14px;
+}
+.grid-working {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 20px;
+}
+
+@container (min-width: 900px) {
+  .shell-body {
+    flex-direction: row;
+  }
+}
+@container (max-width: 899px) {
+  .shell-body {
+    flex-direction: column;
+  }
+  .left-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-group-label {
+    align-self: center;
+    margin: 0 6px;
+  }
+  .nav-utility {
+    flex-direction: row;
+    margin-top: 0;
+    margin-left: auto;
+    border-top: none;
+    padding-top: 0;
+  }
+  .grid-working {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Components (§8.4) — pinned by tests/design/components.test.tsx.
+   No shadows anywhere: borders do that work.
+   -------------------------------------------------------------------------- */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 17px; /* of the 16–18 range */
+}
+.card-clickable {
+  cursor: pointer;
+}
+.card-divider {
+  border-top: 1px solid var(--wash);
+  margin-top: 9px;
+  padding-top: 9px; /* interior dividers: 6–12px above */
+}
+
+.count-badge {
+  display: inline-block;
+  background: var(--terracotta-badge);
+  color: var(--white);
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+}
+.category-badge {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 10px; /* §8.2's 10px floor resolves the 9.5–10.5 range */
+  padding: 2px 8px;
+  border-radius: var(--r-control);
+}
+.tag-chip {
+  display: inline-block;
+  background: var(--chip-sage-bg);
+  color: var(--sage-text);
+  font-weight: 600;
+  font-size: 10.5px;
+  padding: 3px 9px;
+  border-radius: 11px;
+}
+.removable-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--white);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  padding: 6px 13px;
+  font-size: 12px;
+}
+.chip-dismiss {
+  /* §8.7: the × glyph stays 14px; the HIT AREA is >=44px, kept visually
+     compact by the negative margins. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -16px -18px -16px -6px;
+  background: none;
+  border: none;
+  color: var(--faint);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.composed-control {
+  display: flex;
+  align-items: center;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.composed-control input {
+  border: none;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px; /* of the 27–29 range */
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--cream);
+  color: var(--white);
+  font-weight: 600;
+  font-size: 11px;
+}
+.avatar-stack {
+  display: inline-flex;
+}
+.avatar-stack .avatar + .avatar {
+  margin-left: -8px;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--wash);
+  padding-top: 9px;
+  margin-top: 9px;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted-text);
+}
+.legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Data display (§8.6) — pinned by tests/design/data-display.test.tsx.
+   Counts stay plain prose; no chart, progress or percentage class may
+   ever appear here (AC-PPL-6, scanned).
+   -------------------------------------------------------------------------- */
+
+.calendar-numeral {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 38px;
+  flex-shrink: 0;
+}
+.calendar-numeral-month {
+  /* §8.6 says 9.5px; the §8.2 floor resolves it to 10px (as with the
+     category badge). */
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--muted-text);
+}
+.calendar-numeral-day {
+  font-family: var(--font-serif), 'Newsreader', Georgia, serif;
+  font-weight: 500;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.empty-state {
+  /* One sentence, nothing else. muted-text, not faint: the recorded
+     ADR-0016 deviation — the sentence is the only content, so the §8.7
+     redundancy exemption cannot cover it. */
+  font-size: 12.5px;
+  color: var(--muted-text);
+}
+
+.provenance {
+  font-size: 11.5px; /* of the 11–12 range */
+  color: var(--muted-text);
 }
 
 /* --------------------------------------------------------------------------
@@ -193,7 +588,7 @@ a:focus-visible {
   max-width: 460px;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: var(--r-card);
   padding: 28px;
 }
 .auth-card h1 {
@@ -219,13 +614,13 @@ a:focus-visible {
 .field-help {
   display: block;
   font-size: 11.5px;
-  color: var(--muted);
+  color: var(--muted-text);
   margin-top: 4px;
 }
 
 .auth-meta {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--muted-text);
   margin-top: 14px;
 }
 
@@ -241,9 +636,9 @@ a:focus-visible {
   margin-bottom: 14px;
 }
 .notice-positive {
-  border-color: var(--panel-positive-border);
-  background: var(--panel-positive-bg);
-  color: var(--panel-positive-body);
+  border-color: var(--positive-border);
+  background: var(--positive-bg);
+  color: var(--positive-body);
 }
 
 /* Onboarding (§4.1.3) */
@@ -252,7 +647,9 @@ a:focus-visible {
   font-size: 10.5px;
   letter-spacing: 0.85px;
   text-transform: uppercase;
-  color: var(--label);
+  /* O1 ruling (ADR-0016 sign-off): sole carrier of step position, so the
+     §8.7 redundancy exemption does not apply — text-role variant, ≥4.5:1 */
+  color: var(--muted-text);
   margin-bottom: 10px;
 }
 
@@ -261,7 +658,7 @@ a:focus-visible {
   max-width: 560px;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: var(--r-card);
   padding: 28px;
 }
 .setup-card h1 {
@@ -285,7 +682,7 @@ a:focus-visible {
   gap: 10px;
   background: var(--white);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-row);
   padding: 11px 13px;
   font-size: 13px;
   cursor: pointer;
@@ -304,16 +701,197 @@ a:focus-visible {
   color: var(--ink);
   background: var(--white);
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: var(--r-control);
   padding: 6px 10px;
   display: inline-block;
 }
 
+/* --------------------------------------------------------------------------
+   Motion (§8.5) — the seven animations exactly, as the spec names them.
+   Motion is confirmation and invitation; it never entertains. Nothing
+   longer than 250ms except the deliberate infinite loops (the pulses and
+   the ambient indicators); no easing more dramatic than ease (ease-out is
+   the pulses' own spec). Durations the spec leaves unpinned (tin · rdot ·
+   eqp · bdrop · kb) are named in docs/review/design-conformance.md.
+   Pinned by tests/design/motion.test.ts.
+   -------------------------------------------------------------------------- */
+
+/* mfade — 8px rise + fade. Every screen change; the only page transition. */
+@keyframes mfade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.mfade {
+  animation: mfade 0.25s ease;
+}
+
+/* tin — 14px rise + fade. Items entering a list. */
+@keyframes tin {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.tin {
+  animation: tin 0.25s ease;
+}
+
+/* hp / hpo / hpg — the expanding ring pulses, 2.2s ease-out infinite,
+   amber / terracotta / green. AT MOST ONE pulsing element per screen —
+   enforced by <PulseProvider> (components/motion). The ring is a
+   pseudo-element border (no shadows in this system); three keyframes
+   because the spec names three, each carrying its accent. */
+@keyframes hp {
+  from {
+    border-color: var(--amber);
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  to {
+    border-color: var(--amber);
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+@keyframes hpo {
+  from {
+    border-color: var(--terracotta);
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  to {
+    border-color: var(--terracotta);
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+@keyframes hpg {
+  from {
+    border-color: var(--green);
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  to {
+    border-color: var(--green);
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+.pulse-amber,
+.pulse-terracotta,
+.pulse-green {
+  position: relative;
+}
+.pulse-amber::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 2px solid;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: hp 2.2s ease-out infinite;
+}
+.pulse-terracotta::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 2px solid;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: hpo 2.2s ease-out infinite;
+}
+.pulse-green::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 2px solid;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: hpg 2.2s ease-out infinite;
+}
+
+/* rdot — 3px bob. Thinking / reading indicator; stagger via delay. */
+@keyframes rdot {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+.rdot {
+  animation: rdot 1.2s ease infinite;
+}
+.rdot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.rdot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+/* eqp — scaleY bars. Audio playback only. */
+@keyframes eqp {
+  0%,
+  100% {
+    transform: scaleY(0.4);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.eqp {
+  animation: eqp 0.9s ease infinite;
+  transform-origin: bottom;
+}
+
+/* bdrop — opacity fade. Modal backdrops. */
+@keyframes bdrop {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.bdrop {
+  animation: bdrop 0.2s ease;
+}
+
+/* kb — slow scale + drift. Photographic backdrops only (placeholder in
+   Phase 1). */
+@keyframes kb {
+  from {
+    transform: scale(1) translate(0, 0);
+  }
+  to {
+    transform: scale(1.08) translate(-6px, -4px);
+  }
+}
+.kb {
+  animation: kb 18s linear infinite alternate;
+}
+
+/* The §8.7 reduced-motion query — written ONCE against the animation
+   system above, completing the seed's gap with iteration-count (an
+   infinite pulse must not spin hot at .01ms). Every pulse and entrance
+   drops to opacity-only stillness. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

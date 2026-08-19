@@ -1,8 +1,20 @@
 # Slice 3 — Design system: the slice plan
 
-**Status:** **PLANNED — ⏸ at the plan gate.** Owner ruling on this plan
-(the seven batched questions below) before any build. Written 2026-08-18
-in its own fresh session, per the gate cadence.
+**Status:** **SIGNED OFF — merge authorized, 2026-08-18.** Round-11
+verdict: **approve with findings, none blocking**
+(`docs/review/round-11-findings.md`, verbatim at `a44ba23`);
+dispositions in ADR-0016's round-11 addendum (High-1/High-2/EQ-3/EQ-4
+accepted at `ec808d7`; EQ-5 rejected on its factual premise with the
+record improvement accepted). The owner ruled in the sign-off session
+(ADR-0016's sign-off addendum, S1–S3 verbatim): **O1 = (b)** —
+`.step-indicator` adopts `--muted-text`, CONTRAST_EXEMPT shrinks to
+two (fix `7670421`, `app/` + `e2e/` only; F12 re-proof at that head:
+gate **16/16 in 3.3m**, walkthrough 11/11 unchanged, a11y 5/5 with the
+step indicator scanned live, vitest 279/279, lint/typecheck clean,
+`db:reset` 46 exact, zero DDL still hash-asserted `53a8517…`); the
+five dispositions and the Q11-1–7 answers **ratified as presented**;
+**merge authorized** (ADR-0006, merge commit never squash). The owner
+ruled Q1–Q7 at the plan gate (recorded verbatim below).
 
 **Authority:** TSD §11.1 row 3 ("Tokens, components, motion, the §8.7
 accessibility floor — before the surfaces, not after") → TSD §8 whole →
@@ -237,6 +249,36 @@ early. G12 itself is a review gate at the first non-founder invitee.
 | G12-01 | G12 whole: WCAG 2.2 AA audit against the built surface, before the first non-founder invitee | review | **pending → gate** |
 
 ---
+
+## Owner decisions — SETTLED 2026-08-18 (the plan-gate rulings)
+
+The owner ruled on the seven batched questions below at the plan gate,
+2026-08-18. Recorded verbatim; the build executes on these:
+
+- **Q1 — SETTLED:** Single increment D1–D9, one PR, one review round
+  (round 11).
+- **Q2 — SETTLED:** Contrast: option **(a)** — minimal-delta text-role
+  variants (`--muted-text`, `--sage-text`, `--amber-text`,
+  `--terracotta-text`, `--terracotta-badge`; exact hexes pinned by D1's
+  red test at ≥ 4.5:1). Fills/dots/tints keep the measured §2 palette.
+  **(c2)** Input boundary: keep the at-rest aesthetic; record the 1.4.11
+  disposition in ADR-0016 as a named G12 audit item with the
+  darker-border fallback preserved.
+- **Q3 — SETTLED:** CI/local split as planned: lint + contrast math +
+  jsdom axe in CI; browser legs (route axe, touch targets, reduced
+  motion, keyboard) in the R6 local gate, protocol-documented.
+- **Q4 — SETTLED:** Dev-gated `/styleguide` route: yes (`notFound()` in
+  production, pinned by test).
+- **Q5 — SETTLED:** `components/{shell,ui,icons,motion}/` at root;
+  §1.7 one-line addition via ADR-0016.
+- **Q6 — SETTLED:** Rename `--panel-positive-*` → §8.1's `--positive-*`
+  in D1, usages same-commit.
+- **Q7 — SETTLED:** ADR-0016 docs bundle ratified: `next/font`
+  substitution · §8.3 annex line (top-bar order + nav grouping) ·
+  reduced-motion iteration-count erratum.
+
+The questions as put to the owner (with the recommendations that were
+accepted) are preserved below for the record.
 
 ## Owner decisions needed — the batched questions (round-10 pattern)
 

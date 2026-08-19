@@ -3,6 +3,10 @@ import { asUser } from '@/lib/db/user';
 import { INVITABLE_TIERS, TIERS } from '@/lib/permissions/tiers';
 import { TierCeiling } from '@/lib/permissions/tier-ceiling';
 import { liveSessionClaims } from '@/lib/auth/session';
+import { PageHeader } from '@/components/shell/PageHeader';
+import { Button } from '@/components/ui/Button';
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
 
 /**
  * The invite screen (PRD §4.1.5). The inviter chooses the address, the
@@ -37,14 +41,12 @@ export default async function InvitePage({
   const subjectNames = subjectRows.map((s: { first_name: string }) => s.first_name);
 
   return (
-    <div className="auth-shell">
-      <div className="auth-wordmark">Harper&apos;s Circle</div>
-      <main className="setup-card">
-        <h1>Invite someone</h1>
-        <p>
-          The invite arrives as a link you hand them yourself — copy it on the next screen. It
-          works once, for seven days, and only for the address you name here.
-        </p>
+    <>
+      <PageHeader
+        title="Invite someone"
+        context="The invite arrives as a link you hand them yourself — copy it on the next screen. It works once, for seven days, and only for the address you name here."
+      />
+      <div className="setup-card">
 
         {query.e === 'refused' && (
           <p className="notice">
@@ -55,10 +57,9 @@ export default async function InvitePage({
         )}
 
         <form method="post" action={`/${circle}/invite/submit`}>
-          <label className="field">
-            <span className="field-label">Their email</span>
-            <input type="email" name="invited_email" autoComplete="off" required />
-          </label>
+          <Field label="Their email">
+            <Input type="email" name="invited_email" autoComplete="off" required />
+          </Field>
 
           <span className="field-label">What they&apos;ll be able to see</span>
           <div className="choice-list">
@@ -87,11 +88,9 @@ export default async function InvitePage({
             <textarea name="note" rows={2} />
           </label>
 
-          <button type="submit" className="button-primary">
-            Create the invite link
-          </button>
+          <Button type="submit">Create the invite link</Button>
         </form>
-      </main>
-    </div>
+      </div>
+    </>
   );
 }

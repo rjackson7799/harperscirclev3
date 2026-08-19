@@ -1,6 +1,7 @@
 import { asUser } from '@/lib/db/user';
 import { describeInvite } from '@/lib/hc/invites';
 import { TierCeiling } from '@/lib/permissions/tier-ceiling';
+import { Button } from '@/components/ui/Button';
 
 /**
  * The accept screen (PRD §4.1.4–§4.1.5; TSD §5.10).
@@ -80,9 +81,7 @@ export default async function AcceptPage({
 
       {isInvitedIdentity ? (
         <form method="post" action={`/accept/${token}/submit`}>
-          <button type="submit" className="button-primary">
-            Accept and open the record
-          </button>
+          <Button type="submit">Accept and open the record</Button>
         </form>
       ) : sessionEmail ? (
         <div>

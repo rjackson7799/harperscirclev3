@@ -7,6 +7,20 @@ instead. Round-10 finding 11 ruled the gate stays local **but stops being
 informal** — this is the reproducible protocol, and every recorded gate
 run follows it.
 
+**Slice 3 (D7, Q3 ruling) adds the browser a11y leg** —
+`e2e/a11y.spec.ts` — to the same gate run: per existing route, axe at
+WCAG 2.2 AA with color-contrast ON (the jsdom CI leg runs contrast OFF;
+D1's arithmetic owns the token pairs), the 390px phone-primary pass with
+no horizontal scroll, the ≥44px touch-target audit including every ×
+glyph, reduced-motion emulation asserting no running infinite animation
+(with the positive control that the styleguide pulse runs WITHOUT the
+preference), and keyboard traversal of sign-in and setup step 1. The
+§8.7 `--faint`/`--label` redundancy exemption is a named exclusion list
+in the spec (`CONTRAST_EXEMPT`) — G12 re-audits each use. One
+`npx playwright test --trace on` runs both specs; the walkthrough's 11
+steps stay the regression instrument, the a11y leg is this slice's new
+surface.
+
 ## Prerequisites (hermetic startup)
 
 ```

@@ -1,13 +1,15 @@
 import { SITUATIONS, StepIndicator } from '@/lib/setup/steps';
+import { Button } from '@/components/ui/Button';
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
 
 function SubjectBlock({ index, optional }: { index: 1 | 2; optional: boolean }) {
   return (
     <div className="subject-block">
       <h2>{optional ? 'A second person (optional)' : 'Who we’re looking after'}</h2>
-      <label className="field">
-        <span className="field-label">First name</span>
-        <input type="text" name={`subject_name_${index}`} required={!optional} />
-      </label>
+      <Field label="First name">
+        <Input name={`subject_name_${index}`} required={!optional} />
+      </Field>
       <span className="field-label">Where they are right now</span>
       <div className="choice-list">
         {SITUATIONS.map((s) => (
@@ -16,16 +18,14 @@ function SubjectBlock({ index, optional }: { index: 1 | 2; optional: boolean }) 
           </label>
         ))}
       </div>
-      <label className="field">
-        <span className="field-label">Their zip code</span>
-        <input
-          type="text"
+      <Field label="Their zip code">
+        <Input
           name={`zip_${index}`}
           inputMode="numeric"
           required={!optional}
           placeholder={optional ? 'Leave empty to use the same zip' : ''}
         />
-      </label>
+      </Field>
     </div>
   );
 }
@@ -72,9 +72,7 @@ export default async function Step2({
         />
         <SubjectBlock index={1} optional={false} />
         <SubjectBlock index={2} optional={true} />
-        <button type="submit" className="button-primary">
-          Create the circle
-        </button>
+        <Button type="submit">Create the circle</Button>
       </form>
     </main>
   );
