@@ -40,6 +40,7 @@ select is((
     'accept_invite(p_token text)',
     'accept_sender(p_circle_id uuid, p_address text, p_domain text)',
     'access_log_immutable()',
+    'activate_forwarding(p_subject uuid)',
     'adjudicate_freeze(p_freeze_id uuid, p_outcome text, p_adjudicated_by text, p_outcome_note text, p_subject_id uuid, p_narrowing_rationale text, p_contact_attempted_at timestamp with time zone, p_objected_to_member_id uuid)',
     'advance_arrival(p_arrival uuid, p_from hc.arrival_state, p_to hc.arrival_state, p_lease uuid, p_reason text)',
     'all_domains()',
@@ -102,6 +103,7 @@ select is((
     'record_tombstone(p_circle_id uuid, p_object_type text, p_object_id uuid, p_storage_keys text[], p_scope text, p_requested_by uuid, p_reason text)',
     'remove_member(p_member_id uuid, p_keep_share_ids uuid[])',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
+    'resolve_forwarding(p_local_part text)',
     'resolve_object(p_type hc.object_type, p_id uuid)',
     'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
     'revoke_invite(p_invite_id uuid)',
@@ -140,7 +142,8 @@ select is((
   select array_agg(p.proname order by p.proname)
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'hc' and p.prosecdef),
-  array['accept_invite','accept_sender','adjudicate_freeze','advance_arrival','approve_proposal',
+  array['accept_invite','accept_sender','activate_forwarding',
+        'adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
         'assert_manual_flag','auth_throttle','cancel_arrival','check_quota',
         'claim_security_actions','claim_stage',
@@ -158,12 +161,13 @@ select is((
         'product_state',
         'propagate_taint_growth','reclassify_taint','record_auth_failure',
         'record_auth_success','record_tombstone','remove_member',
-        'request_freeze','revise_object','revoke_invite','revoke_sender',
+        'request_freeze','resolve_forwarding','revise_object','revoke_invite',
+        'revoke_sender',
         'run_taint_sweep','scan_cache_lookup','sender_lookalike',
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the sixty-two boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the sixty-four boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -293,6 +297,10 @@ with actual as (
   union all select 'product_state', 'authenticated'
   union all select 'state_label', 'authenticated'
   union all select 'state_rank', 'authenticated'
+  -- 4A M5: activation is the coordinator's act; resolution is the
+  -- webhook's (§5.2 step 2)
+  union all select 'activate_forwarding', 'authenticated'
+  union all select 'resolve_forwarding', 'hc_pipeline'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -368,6 +376,8 @@ insert into snapshot_expected values
   ('hc_internal',   'circles',         'INSERT'),
   ('hc_internal',   'subjects',        'SELECT'),
   ('hc_internal',   'subjects',        'INSERT'),
+  -- 4A M5: the one flip activate_forwarding performs
+  ('hc_internal',   'subjects',        'UPDATE'),
   ('hc_internal',   'circle_members',  'SELECT'),
   ('hc_internal',   'circle_members',  'INSERT'),
   ('hc_internal',   'access_grants',   'SELECT'),
@@ -560,12 +570,13 @@ select is((
         'security_events_internal_note',
         'step_up_tokens_internal','step_up_tokens_internal_consume',
         'step_up_tokens_internal_mint',
-        'subjects_internal','subjects_internal_create',
+        'subjects_internal','subjects_internal_activate_forwarding',
+        'subjects_internal_create',
         'tasks_internal','tasks_internal_revise','tasks_internal_write',
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated ninety-six');
+  'the hc_internal policy list is exactly the enumerated ninety-seven');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
