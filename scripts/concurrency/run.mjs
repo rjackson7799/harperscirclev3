@@ -126,6 +126,18 @@
 //           waits on the per-circle lock DEFEATS it (freeze_active,
 //           named) — the suspect stays parked, no gate lease survives as
 //           current, no re-queue row lands.
+//   Case 37 4A M8 (round-12 X2): two identical-sha copies scanned clean
+//           CONCURRENTLY — exactly ONE lands duplicate_suspected and it
+//           is the (received_at, id)-later copy; the canonical earliest
+//           stays scanned. Detection depends on row EXISTENCE (set at
+//           store), never on scan commit order, so the outcome is
+//           order-independent whichever way the circle lock serializes.
+//   Case 38 4A M8 (round-12 X1): an infected and a clean verdict racing
+//           the same sha's scan_results row — the end state is
+//           infected/expires-null in EITHER commit order (clean-first is
+//           overwritten by the infected upsert; infected-first refuses
+//           the clean downgrade arm). The §11.5 evidence is monotonic
+//           under the race, not just sequentially.
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -2179,6 +2191,123 @@ async function case36(admin) {
   }
 }
 
+// --- case 37: canonical-original duplicates under concurrent scans (4A M8) ----
+
+async function case37(admin) {
+  const fx = await mkCircle(admin, 'c37');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const sha = createHash('sha256').update('c37-same-bytes').digest('hex');
+    const a = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c37-a') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    const b = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c37-b') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    // Both copies STORED before either scans (the external pass's defect
+    // shape); received_at staggered explicitly so a is the canonical.
+    await admin.query(
+      `update public.arrivals
+          set state = 'stored', content_sha256 = decode($2, 'hex'),
+              storage_key = 'circle/' || circle_id || '/arrival/' || id || '/' || $2,
+              byte_size = 10,
+              received_at = case when id = $1 then now() - interval '1 minute'
+                                 else now() end
+        where id in ($1, $3)`, [a, sha, b]);
+    const la = (await admin.query(`select * from hc.claim_stage($1, 'scan')`, [a]))
+      .rows[0].lease_id;
+    const lb = (await admin.query(`select * from hc.claim_stage($1, 'scan')`, [b]))
+      .rows[0].lease_id;
+
+    await s1.query(`set role hc_pipeline`);
+    await s2.query(`set role hc_pipeline`);
+    // Fire both finalizers concurrently; the per-circle lock serializes
+    // them in whichever order it admits — the outcome must not depend on it.
+    const pa = s1.query(
+      `select hc.finalize_scan($1, $2, 'clean', '{}'::jsonb)::text as r`,
+      [a, la]).then(r => r.rows[0].r).catch(e => e);
+    const pb = s2.query(
+      `select hc.finalize_scan($1, $2, 'clean', '{}'::jsonb)::text as r`,
+      [b, lb]).then(r => r.rows[0].r).catch(e => e);
+    const ra = await withTimeout(pa, 'case37 finalize_scan A');
+    const rb = await withTimeout(pb, 'case37 finalize_scan B');
+
+    const st = (await admin.query(
+      `select
+         (select state::text from public.arrivals where id = $1) as sa,
+         (select state::text from public.arrivals where id = $2) as sb`,
+      [a, b])).rows[0];
+    check('case37 (round-12 X2): identical copies scanned clean concurrently — exactly ONE suspect, and it is the later copy; the canonical earliest stays scanned (order-independent by construction: detection reads row existence, not scan order)',
+      ra === 'advanced' && rb === 'advanced'
+        && st.sa === 'scanned' && st.sb === 'duplicate_suspected',
+      `rA=${ra instanceof Error ? ra.message : ra} rB=${rb instanceof Error ? rb.message : rb} canonical=${st.sa} later=${st.sb}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 38: infected-wins under a racing clean verdict (4A M8) --------------
+
+async function case38(admin) {
+  const fx = await mkCircle(admin, 'c38');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const sha = createHash('sha256').update('c38-same-bytes').digest('hex');
+    // d is the EARLIER copy (its clean scan raises no suspect and writes
+    // the cache); c is the later copy whose scanner says infected.
+    const d = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c38-d') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    const c = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c38-c') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    await admin.query(
+      `update public.arrivals
+          set state = 'stored', content_sha256 = decode($2, 'hex'),
+              storage_key = 'circle/' || circle_id || '/arrival/' || id || '/' || $2,
+              byte_size = 10,
+              received_at = case when id = $1 then now() - interval '1 minute'
+                                 else now() end
+        where id in ($1, $3)`, [d, sha, c]);
+    const ld = (await admin.query(`select * from hc.claim_stage($1, 'scan')`, [d]))
+      .rows[0].lease_id;
+    const lc = (await admin.query(`select * from hc.claim_stage($1, 'scan')`, [c]))
+      .rows[0].lease_id;
+
+    await s1.query(`set role hc_pipeline`);
+    await s2.query(`set role hc_pipeline`);
+    const pd = s1.query(
+      `select hc.finalize_scan($1, $2, 'clean', '{}'::jsonb)::text as r`,
+      [d, ld]).then(r => r.rows[0].r).catch(e => e);
+    const pc = s2.query(
+      `select hc.finalize_scan($1, $2, 'infected', '{"sig":"c38"}'::jsonb)::text as r`,
+      [c, lc]).then(r => r.rows[0].r).catch(e => e);
+    const rd = await withTimeout(pd, 'case38 finalize_scan clean');
+    const rc = await withTimeout(pc, 'case38 finalize_scan infected');
+
+    const row = (await admin.query(
+      `select r.verdict, r.expires_at is null as retained
+       from public.scan_results r where r.content_sha256 = decode($1, 'hex')`,
+      [sha])).rows[0];
+    check('case38 (round-12 X1): an infected and a clean verdict racing one sha — the row ends infected/expires-null in EITHER commit order (clean-first overwritten upward, infected-first immune to the downgrade arm): the §11.5 evidence is monotonic under the race',
+      rd === 'advanced' && rc === 'advanced'
+        && row && row.verdict === 'infected' && row.retained === true,
+      `rClean=${rd instanceof Error ? rd.message : rd} rInfected=${rc instanceof Error ? rc.message : rc} verdict=${row ? row.verdict : 'MISSING'} retained=${row ? row.retained : 'MISSING'}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -2220,6 +2349,8 @@ try {
   await case34(admin);
   await case35(admin);
   await case36(admin);
+  await case37(admin);
+  await case38(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;

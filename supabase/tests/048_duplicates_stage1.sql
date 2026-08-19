@@ -97,8 +97,18 @@ begin
     current_setting('t.c1')::uuid, current_setting('t.s1')::uuid, 'upload',
     p_ingest_idempotency_key => p_key);
   execute 'reset role';
+  -- M8 re-pin: received_at defaults to now(), which is FIXED inside this
+  -- test transaction — every fixture arrival would tie, and the canonical
+  -- (received_at, id) order would fall to random uuids. Stagger strictly
+  -- monotonically so creation order IS received order, as it is across
+  -- real transactions; 050 covers the tie world explicitly.
+  update public.arrivals
+     set received_at = now() + make_interval(secs => nextval('pg_temp.seq48') * 0.001)
+   where id = v;
   return v;
 end $$;
+
+create temp sequence seq48;
 
 create function pg_temp.claim(p_arr uuid, p_stage text) returns uuid
 language plpgsql as $$
