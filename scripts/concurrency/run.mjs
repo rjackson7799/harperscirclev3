@@ -106,6 +106,15 @@
 //           claiming transaction is still open — receive DISJOINT rows
 //           (FOR UPDATE SKIP LOCKED), together cover every pending row
 //           (no row starved), and the first claim is oldest-first.
+//   Case 34 4A M2 (the ING-08 orphan-row class extended to the new
+//           finalizers, raced through the reachable mid-wait defeats —
+//           member cancellation is unrepresentable at store/scan by
+//           construction, cancel_invalid_state): (a) a freeze committing
+//           while finalize_store waits does NOT defeat it — store is the
+//           §7.5 accept-and-store carve-out, and the artifact facts land;
+//           (b) a freeze committing while finalize_scan waits DEFEATS it
+//           (frozen) — and writes NOTHING: no verdict, no scan_at, no
+//           cache row.
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -117,7 +126,7 @@
 // ============================================================================
 
 import pg from 'pg';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
 
 const DB_URL = process.env.DATABASE_URL
   ?? 'postgresql://postgres:postgres@127.0.0.1:54342/postgres';
@@ -1966,6 +1975,90 @@ async function case33(admin) {
   }
 }
 
+// --- case 34: freeze-mid-wait against the M2 finalizers (4A) -------------------
+
+async function case34(admin) {
+  const fxa = await mkCircle(admin, 'c34a');
+  const fxb = await mkCircle(admin, 'c34b');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // (a) store is the accept-and-store carve-out: a freeze committing
+    // mid-wait must NOT defeat finalize_store.
+    const a1 = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c34-a') as id`,
+      [fxa.c, fxa.s])).rows[0].id;
+    const l1 = (await admin.query(`select * from hc.claim_stage($1, 'store')`, [a1]))
+      .rows[0].lease_id;
+    const shaA = createHash('sha256').update('c34-body-a').digest('hex');
+    const keyA = `circle/${fxa.c}/arrival/${a1}/${shaA}`;
+
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fxa.c]);
+
+    const pa = s2.query(
+      `select hc.finalize_store($1, $2, $3, decode($4, 'hex'), 'application/pdf', 2048)::text as r`,
+      [a1, l1, keyA, shaA]).then(r => r.rows[0].r).catch(e => e);
+    const pidA = await findActivePid(admin, 'select hc.finalize_store%', 'finalize_store backend');
+    await waitForLockWait(admin, pidA, 's2 finalize_store on the circle lock');
+
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fxa.c]);
+    await s1.query('commit');
+
+    const ra = await withTimeout(pa, 'case34a finalize_store after freeze');
+    const stA = (await admin.query(
+      `select a.state::text as s, a.storage_key is not null as kept
+       from public.arrivals a where a.id = $1`, [a1])).rows[0];
+    check('case34a: a freeze committing while finalize_store waits does NOT defeat it — §7.5 accept-and-store holds under the serialization point, facts landed',
+      ra === 'advanced' && stA.s === 'stored' && stA.kept === true,
+      `r=${ra instanceof Error ? ra.message : ra} state=${stA.s} kept=${stA.kept}`);
+
+    // (b) scan is NOT exempt: a freeze committing mid-wait parks it, and
+    // the lost transition writes nothing — no verdict, no cache row.
+    const a2 = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c34-b') as id`,
+      [fxb.c, fxb.s])).rows[0].id;
+    const shaB = createHash('sha256').update('c34-body-b').digest('hex');
+    await admin.query(
+      `update public.arrivals
+          set state = 'stored', content_sha256 = decode($2, 'hex'),
+              storage_key = $3, byte_size = 10
+        where id = $1`, [a2, shaB, `circle/${fxb.c}/arrival/${a2}/${shaB}`]);
+    const l2 = (await admin.query(`select * from hc.claim_stage($1, 'scan')`, [a2]))
+      .rows[0].lease_id;
+
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fxb.c]);
+
+    const pb = s2.query(
+      `select hc.finalize_scan($1, $2, 'clean', '{}'::jsonb)::text as r`,
+      [a2, l2]).then(r => r.rows[0].r).catch(e => e);
+    const pidB = await findActivePid(admin, 'select hc.finalize_scan%', 'finalize_scan backend');
+    await waitForLockWait(admin, pidB, 's2 finalize_scan on the circle lock');
+
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fxb.c]);
+    await s1.query('commit');
+
+    const rb = await withTimeout(pb, 'case34b finalize_scan after freeze');
+    const stB = (await admin.query(
+      `select a.state::text as s, a.scan_verdict is null as noverdict,
+              a.scan_at is null as nowhen,
+              not exists (select 1 from public.scan_results r
+                          where r.content_sha256 = decode($2, 'hex')) as nocache
+       from public.arrivals a where a.id = $1`, [a2, shaB])).rows[0];
+    check('case34b: a freeze committing while finalize_scan waits DEFEATS it (frozen) and writes NOTHING — no verdict, no scan_at, no cache row (ING-08\'s class)',
+      rb === 'frozen' && stB.s === 'stored' && stB.noverdict === true
+        && stB.nowhen === true && stB.nocache === true,
+      `r=${rb instanceof Error ? rb.message : rb} state=${stB.s} noverdict=${stB.noverdict} nocache=${stB.nocache}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fxa.c);
+    await cleanupCircle(admin, fxb.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -2004,6 +2097,7 @@ try {
   await case31(admin);
   await case32(admin);
   await case33(admin);
+  await case34(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;

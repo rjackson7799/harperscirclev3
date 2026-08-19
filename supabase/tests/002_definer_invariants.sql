@@ -69,8 +69,11 @@ select is((
     'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'execute_wasnt_me(p_token text)',
     'expire_held_mail()',
+    'expire_scan_results()',
     'finalize_extraction(p_arrival uuid, p_lease uuid, p_facts jsonb, p_proposals jsonb)',
     'finalize_interpretation(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
+    'finalize_scan(p_arrival uuid, p_lease uuid, p_verdict text, p_detail jsonb)',
+    'finalize_store(p_arrival uuid, p_lease uuid, p_storage_key text, p_sha256 bytea, p_mime_detected text, p_byte_size bigint)',
     'grant_vectors(p_account uuid)',
     'guard_row()',
     'head_signature_immutable()',
@@ -102,6 +105,7 @@ select is((
     'revoke_invite(p_invite_id uuid)',
     'revoke_sender(p_sender_id uuid)',
     'run_taint_sweep()',
+    'scan_cache_lookup(p_sha256 bytea)',
     'sender_recognised(p_arrival uuid)',
     'set_grant(p_member_id uuid, p_subject_id uuid, p_domain hc.domain, p_level hc.access_level, p_step_up_token text)',
     'set_opening_context(p_circle uuid, p_context text[])',
@@ -139,7 +143,9 @@ select is((
         'create_arrival',
         'create_circle','create_invite','create_manual_proposal',
         'ctx','ctx_for','describe_invite','execute_wasnt_me','expire_held_mail',
-        'finalize_extraction','finalize_interpretation',
+        'expire_scan_results',
+        'finalize_extraction','finalize_interpretation','finalize_scan',
+        'finalize_store',
         'grant_vectors','link_provenance','log_chain_heads','log_denied',
         'log_sign_out',
         'mint_step_up','note_suspicious_attempts',
@@ -147,11 +153,11 @@ select is((
         'propagate_taint_growth','reclassify_taint','record_auth_failure',
         'record_auth_success','record_tombstone','remove_member',
         'request_freeze','revise_object','revoke_invite','revoke_sender',
-        'run_taint_sweep',
+        'run_taint_sweep','scan_cache_lookup',
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the fifty-five boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the fifty-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -265,6 +271,12 @@ with actual as (
   union all select 'set_slice', 'authenticated'
   union all select 'set_opening_context', 'authenticated'
   union all select 'claim_security_actions', 'hc_pipeline'
+  -- 4A M2: the store/scan outcome writers, the cache read and the §11.5
+  -- retention sweep — the worker surface, hc_pipeline only
+  union all select 'finalize_store', 'hc_pipeline'
+  union all select 'finalize_scan', 'hc_pipeline'
+  union all select 'scan_cache_lookup', 'hc_pipeline'
+  union all select 'expire_scan_results', 'hc_pipeline'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -430,6 +442,12 @@ insert into snapshot_expected values
   ('hc_internal',   'sweep_runs',      'SELECT'),
   ('hc_internal',   'sweep_runs',      'INSERT'),
   ('hc_internal',   'sweep_runs',      'UPDATE'),
+  -- 4A M2: the scan verdict cache / §11.5 retention — DELETE is the
+  -- retention sweep's (the auth_attempts pruning precedent)
+  ('hc_internal',   'scan_results',    'SELECT'),
+  ('hc_internal',   'scan_results',    'INSERT'),
+  ('hc_internal',   'scan_results',    'UPDATE'),
+  ('hc_internal',   'scan_results',    'DELETE'),
   -- 1D M1: the search writer allowlist finalized (REC-05 → DSC-01) —
   -- hc_internal read/insert/update on dsc, DELETE for nobody (the
   -- document cascade is the only remover). 1D M2: the view-level read.
@@ -516,6 +534,8 @@ select is((
         'provenance_edges_internal','provenance_edges_internal_link',
         'provenance_edges_internal_unlink',
         'record_revisions_internal','record_revisions_internal_append',
+        'scan_results_internal','scan_results_internal_cache',
+        'scan_results_internal_expire','scan_results_internal_refresh',
         'security_actions_internal','security_actions_internal_complete',
         'security_actions_internal_enqueue',
         'security_events_internal','security_events_internal_consume',
@@ -527,7 +547,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated ninety-two');
+  'the hc_internal policy list is exactly the enumerated ninety-six');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
