@@ -1,20 +1,20 @@
 # Slice 3 — Design system: the slice plan
 
-**Status:** **REVIEWED (round 11) + DISPOSITIONS COMPLETE — ⏸ awaiting
-owner sign-off, 2026-08-18.** Round-11 verdict: **approve with
-findings, none blocking** (`docs/review/round-11-findings.md`, verbatim
-at `a44ba23`). Dispositions: **ADR-0016's round-11 addendum** —
-High-1/High-2/EQ-3/EQ-4 accepted and landed (`ec808d7`, `tests/` +
-`e2e/` only; F12 re-proof at that head: gate **16/16 in 4.5m**,
-walkthrough 11/11 unchanged, vitest 279/279, lint/typecheck clean,
-zero DDL still hash-asserted); EQ-5 rejected on its factual premise
-(`.step-indicator` renders live on setup steps 1–4 via
-`lib/setup/steps.tsx`) with its record improvement accepted; ONE
-batched owner question (O1 — the step indicator's colour, build-side
-recommends adopting `--muted-text`). Next legs, each its own fresh
-session: owner sign-off (rules O1, ratifies Q11-1–7 + the
-dispositions) → merge (never squash). The owner ruled Q1–Q7 at the
-plan gate (recorded verbatim below).
+**Status:** **SIGNED OFF — merge authorized, 2026-08-18.** Round-11
+verdict: **approve with findings, none blocking**
+(`docs/review/round-11-findings.md`, verbatim at `a44ba23`);
+dispositions in ADR-0016's round-11 addendum (High-1/High-2/EQ-3/EQ-4
+accepted at `ec808d7`; EQ-5 rejected on its factual premise with the
+record improvement accepted). The owner ruled in the sign-off session
+(ADR-0016's sign-off addendum, S1–S3 verbatim): **O1 = (b)** —
+`.step-indicator` adopts `--muted-text`, CONTRAST_EXEMPT shrinks to
+two (fix `7670421`, `app/` + `e2e/` only; F12 re-proof at that head:
+gate **16/16 in 3.3m**, walkthrough 11/11 unchanged, a11y 5/5 with the
+step indicator scanned live, vitest 279/279, lint/typecheck clean,
+`db:reset` 46 exact, zero DDL still hash-asserted `53a8517…`); the
+five dispositions and the Q11-1–7 answers **ratified as presented**;
+**merge authorized** (ADR-0006, merge commit never squash). The owner
+ruled Q1–Q7 at the plan gate (recorded verbatim below).
 
 **Authority:** TSD §11.1 row 3 ("Tokens, components, motion, the §8.7
 accessibility floor — before the surfaces, not after") → TSD §8 whole →

@@ -1,10 +1,13 @@
 # ADR-0016 — Slice 3 design system: the Q1–Q7 rulings applied, and the build-found dispositions
 
-**Status:** Built on `slice/3-design-system` (D1–D9, zero DDL) — ⏸ at
-the review gate awaiting round 11; owner ratifies at the gate
-(ADR-0006). The plan-gate rulings Q1–Q7 are recorded verbatim in
-`docs/review/slice-3-plan.md` (SETTLED 2026-08-18); this ADR records
-how they landed and every disposition the build itself surfaced.
+**Status:** **Accepted with owner sign-off (2026-08-18)** — the
+round-11 dispositions and the Q11-1–7 answers ratified and O1 ruled
+**(b)** in the sign-off session (rulings S1–S3, recorded verbatim in
+the sign-off addendum below); merge to main authorized in-session
+(ADR-0006, merge commit never squash). The plan-gate rulings Q1–Q7 are
+recorded verbatim in `docs/review/slice-3-plan.md` (SETTLED
+2026-08-18); this ADR records how they landed and every disposition
+the build and the round-11 review surfaced.
 **Deciders:** build (owner ratifies at the gate)
 **Context:** TSD §11.1 row 3 — the design system lands before the
 surfaces. ZERO DDL (the ADR-0015 R8 batch carries forward untouched);
@@ -318,4 +321,40 @@ untouched. Re-proof at `ec808d7`, per the binding rule:
   the run record.
 
 Every commit after `ec808d7` this session is `docs/` only and inherits
+this run.
+
+---
+
+## Addendum — owner sign-off (2026-08-18, the sign-off session)
+
+CI confirmed green at the presented head FIRST (run 59, `32220853460`,
+at `64cef28` — completed, success; public API, anonymous). The owner
+ruled in-session (ADR-0006, sole authority); recorded verbatim:
+
+| # | Question | Ruling |
+|---|---|---|
+| S1 | O1 — the step indicator's colour, given it renders live at 2.29:1 as the sole carrier of step position | **"(b) Adopt --muted-text now"** — `.step-indicator` adopts `--muted-text` (5.51:1 on card); CONTRAST_EXEMPT shrinks to `.section-label` + `.micro-meta` |
+| S2 | Ratify the round-11 record: the five dispositions (High-1/High-2/EQ-3/EQ-4 accepted, EQ-5 rejected on its factual premise with the record improvement accepted) and the Q11-1–7 answers as dispositioned (Q11-1/2/4/5/7 accept · Q11-6 confirm · Q11-3 as answered on the corrected premise) | **"Ratify all as presented"** |
+| S3 | Merge authorization — PR to main, MERGE COMMIT never squash (the PR #6 pattern), merged tree verified identical, CI green on main confirmed | **"Authorized — merge on green"** |
+
+S1 landed at **`7670421`** (`app/globals.css` + `e2e/a11y.spec.ts`
+only) and the full F12 re-proof ran at that head:
+
+- `db:reset` **46 exact** · `verify-migration-state` clean
+- vitest **279/279 across 35 files** (live stack)
+- lint clean · typecheck clean
+- **local gate 16/16 in 3.3m** (`npx playwright test --trace on`,
+  Chromium, win32, hermetic reset first): walkthrough **11/11
+  unchanged** · a11y leg 5/5 — the step indicator now contrast-scanned
+  LIVE on all four setup screens (no longer exempt); traces in
+  `test-results/`, retained vault-side
+  (`04-evidence/gate-7670421-2026-08-18/`).
+- `supabase/` tree hash still `53a8517…` at `7670421` — zero DDL all
+  slice; the R8 batch untouched.
+
+Consequences of S1: conformance §4's CONTRAST_EXEMPT watch item is
+re-scoped (the list is two; the step indicator is scanned, not
+exempt); D6.4's three-selector description and the round-11 addendum's
+2.29:1 footprint stand as the historical record this ruling supersedes.
+Every commit after `7670421` this session is `docs/` only and inherits
 this run.

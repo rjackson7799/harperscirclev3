@@ -101,17 +101,16 @@ above them, omitted by the original ledger.)
 
 - **1.4.11 input boundary** (`--line` on white ≈ 1.32:1 at rest) —
   Q2(c2) ruling; darker-border fallback preserved. ADR-0016 D1.
-- **The `CONTRAST_EXEMPT` list** (`.step-indicator`, `.section-label`,
-  `.micro-meta`) — each use re-audited against §8.7's redundancy rule.
-  The live footprint at this head (round-11 EQ-5 disposition):
-  `.step-indicator` renders on setup steps 1–4 via
-  `lib/setup/steps.tsx` (`--label` on `--card`, **2.29:1** at 10.5px
-  uppercase — and it is the SOLE carrier of step position, so the
-  redundancy claim is not met by this use; remedy is owner question O1,
-  ADR-0016 round-11 addendum); `.section-label` on the nav group labels
-  and the dev-only styleguide headings; `.micro-meta` has no live
-  render yet (TopBar's role chip is its only writer and the layout
-  passes `{ name }` only).
+- **The `CONTRAST_EXEMPT` list** (`.section-label`, `.micro-meta`) —
+  each use re-audited against §8.7's redundancy rule. `.step-indicator`
+  LEFT the list at the O1 sign-off ruling (ADR-0016 sign-off addendum,
+  S1): as the sole carrier of step position its redundancy claim was
+  not met, so it adopted `--muted-text` (**5.51:1** on card) and is now
+  contrast-scanned live on setup steps 1–4 — no longer a watch item.
+  The remaining live footprint: `.section-label` on the nav group
+  labels and the dev-only styleguide headings; `.micro-meta` has no
+  live render yet (TopBar's role chip is its only writer and the
+  layout passes `{ name }` only).
 - **Avatar initials** (white on the four assignable fills 3.12 amber ·
   3.60 sage · 4.16 terracotta · 4.63 plum — corrected by round-11 EQ-3;
   only plum clears AA, barely; aria-hidden with the name as accessible

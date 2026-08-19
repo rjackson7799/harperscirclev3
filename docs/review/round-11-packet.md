@@ -275,6 +275,20 @@ owner question O1. Per F12, gate re-run at `ec808d7`: **16/16 in 4.5m**
 later commit this session is docs-only and inherits the run. ⏸ owner
 sign-off next (rules O1, ratifies).
 
+## Addendum — owner sign-off (2026-08-18)
+
+O1 ruled **(b)** in the sign-off session (ADR-0016's sign-off addendum,
+rulings S1–S3 verbatim): `.step-indicator` adopts `--muted-text`
+(5.51:1 on card); CONTRAST_EXEMPT shrinks to `.section-label` +
+`.micro-meta`. The five dispositions and the Q11-1–7 answers ratified
+as presented; merge authorized in-session (ADR-0006, merge commit never
+squash). The S1 fix is `7670421` (`app/` + `e2e/` only); F12 re-proof
+at that head: **local gate 16/16 in 3.3m** (walkthrough 11/11 unchanged
+· a11y 5/5, the step indicator scanned live), vitest **279/279**,
+lint/typecheck clean, `db:reset` 46 exact, `supabase/` hash unchanged
+(`53a8517…`); traces retained vault-side
+(`04-evidence/gate-7670421-2026-08-18/`).
+
 ## Addendum — auditability block (head ledger from the start)
 
 `fe2aed6` (main, the accepted plan) → `74a7039` rulings SETTLED →
