@@ -101,6 +101,11 @@
 //           token — exactly one consumes it, and exactly ONE durable
 //           security action is enqueued for the event (UNIQUE(event_id)
 //           + the conditional UPDATE, under contention).
+//   Case 33 4A M1 item 5 (round-10 F9's DB half): two concurrent
+//           security-action sweeps — the second claims WHILE the first's
+//           claiming transaction is still open — receive DISJOINT rows
+//           (FOR UPDATE SKIP LOCKED), together cover every pending row
+//           (no row starved), and the first claim is oldest-first.
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -1895,6 +1900,72 @@ async function case32(admin) {
   }
 }
 
+// --- case 33: concurrent security-action sweeps claim disjoint rows (4A M1) ----
+
+async function case33(admin) {
+  const holder = await mkInvitee(admin, 'c33');
+  const s1 = await connect();
+  const s2 = await connect();
+  const eventIds = [];
+  const actionIds = [];
+  try {
+    // Six owed kills, minted oldest-first (staggered created_at).
+    for (let i = 0; i < 6; i += 1) {
+      const ev = (await admin.query(
+        `insert into public.security_events (account_id, kind, token_hash, token_expires_at)
+         values ($1, 'suspicious_signin', extensions.digest($2, 'sha256'),
+                 now() + interval '15 minutes')
+         returning id`, [holder.id, `c33-${i}-${randomUUID()}`])).rows[0].id;
+      eventIds.push(ev);
+      const act = (await admin.query(
+        `insert into public.security_actions (event_id, account_id, action, created_at)
+         values ($1, $2, 'global_signout_force_reset',
+                 now() - interval '10 minutes' + make_interval(secs => $3))
+         returning id`, [ev, holder.id, i])).rows[0].id;
+      actionIds.push(act);
+    }
+
+    // S1 claims three and HOLDS its transaction open (a sweep mid-flight)…
+    await s1.query(`set role hc_pipeline`);
+    await s1.query('begin');
+    const a = (await s1.query(
+      `select id from hc.claim_security_actions(3) order by created_at`))
+      .rows.map(r => r.id);
+
+    // …S2 sweeps concurrently: SKIP LOCKED must hand it the OTHER three,
+    // without blocking and without overlap.
+    await s2.query(`set role hc_pipeline`);
+    const b = (await withTimeout(
+      s2.query(`select id from hc.claim_security_actions(3) order by created_at`),
+      'case33 second sweep must not block on the first'))
+      .rows.map(r => r.id);
+
+    await s1.query('commit');
+
+    const overlap = a.filter(x => b.includes(x));
+    const union = new Set([...a, ...b]);
+    check('case33: two concurrent sweeps are DISJOINT by construction (SKIP LOCKED) and together cover every pending row — none starved',
+      a.length === 3 && b.length === 3 && overlap.length === 0
+        && actionIds.every(x => union.has(x)),
+      `a=${a.length} b=${b.length} overlap=${overlap.length} covered=${union.size}/6`);
+
+    const leases = await admin.query(
+      `select count(*)::int as n from public.security_actions
+       where id = any($1::uuid[]) and claimed_until > now()`, [actionIds]);
+    check('case33: the first claim took the three OLDEST (the longest-owed kills first); every claimed row carries a live lease',
+      a.join(',') === actionIds.slice(0, 3).join(',') && leases.rows[0].n === 6,
+      `first=${JSON.stringify(a)} expected=${JSON.stringify(actionIds.slice(0, 3))} leased=${leases.rows[0].n}/6`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await admin.query(`delete from public.security_actions where account_id = $1`, [holder.id]).catch(() => {});
+    await admin.query(`delete from public.security_events where account_id = $1`, [holder.id]).catch(() => {});
+    await admin.query(`delete from public.accounts where id = $1`, [holder.id]).catch(() => {});
+    await admin.query(`delete from auth.users where id = $1`, [holder.id]).catch(() => {});
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -1932,6 +2003,7 @@ try {
   await case30(admin);
   await case31(admin);
   await case32(admin);
+  await case33(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;

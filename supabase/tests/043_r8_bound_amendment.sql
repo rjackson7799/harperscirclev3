@@ -613,10 +613,15 @@ select is(pg_temp.probe_role('hc_pipeline',
   $$ select hc.claim_security_actions(101)::text limit 1 $$),
   'ERROR:P0001', 'a limit past the batch bound refuses loudly (the F9 backlog bound is 20/run)');
 
-select is(pg_temp.probe_role('authenticated',
-  $$ select count(*)::text from hc.claim_security_actions(1) $$),
-  'ERROR:42501',
-  'a request role cannot claim — the drain posture holds');
+-- CATALOG-BASED closure, deliberately: a live function-ACL denial
+-- segfaults this image's backend (the recorded 1A trap) — the privilege's
+-- ABSENCE is asserted from the catalog, never dialled.
+select ok(
+  not coalesce((select has_function_privilege('authenticated', p.oid, 'execute')
+                from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                where n.nspname = 'hc' and p.proname = 'claim_security_actions'),
+               true),
+  'a request role cannot claim — the drain posture holds (catalog-asserted)');
 
 select is((
   select count(*)::int from public.security_actions a

@@ -52,16 +52,19 @@ select is((
     'build_dsc()',
     'cancel_arrival(p_arrival uuid)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
+    'claim_security_actions(p_limit integer)',
     'claim_stage(p_arrival uuid, p_stage text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
     'complete_security_action(p_action_id uuid)',
     'consume_step_up(p_token text, p_operation text, p_target_ref text, p_account uuid)',
     'contact_key(p text)',
+    'create_account(p_display_name text)',
     'create_arrival(p_circle_id uuid, p_subject_id uuid, p_channel text, p_parent_arrival_id uuid, p_sender_address text, p_sender_display_name text, p_message_id text, p_auth_result text, p_auth_detail jsonb, p_mime_declared text, p_byte_size bigint, p_page_count integer, p_ingest_idempotency_key text)',
-    'create_circle(p_name text, p_subjects jsonb, p_opening_context text[])',
+    'create_circle(p_name text, p_subjects jsonb, p_opening_context text[], p_relationship text)',
     'create_invite(p_circle_id uuid, p_invited_email text, p_tier hc.tier, p_subject_ids uuid[], p_note text)',
     'create_manual_proposal(p_circle_id uuid, p_subject_id uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'ctx()',
     'ctx_for(p_account uuid)',
+    'describe_invite(p_token text)',
     'dom(p jsonb)',
     'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'execute_wasnt_me(p_token text)',
@@ -76,6 +79,7 @@ select is((
     'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text, p_corrects_id uuid)',
     'log_chain_heads()',
     'log_denied(p_circle_id uuid, p_domain hc.domain, p_subject_id uuid)',
+    'log_sign_out()',
     'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
     'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
     'mint_step_up(p_operation text, p_target_ref text)',
@@ -100,6 +104,8 @@ select is((
     'run_taint_sweep()',
     'sender_recognised(p_arrival uuid)',
     'set_grant(p_member_id uuid, p_subject_id uuid, p_domain hc.domain, p_level hc.access_level, p_step_up_token text)',
+    'set_opening_context(p_circle uuid, p_context text[])',
+    'set_slice(p_slice text)',
     'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid, p_step_up_token text)',
     'sweep_provenance()',
     'sweeper_pass()',
@@ -127,21 +133,25 @@ select is((
   where n.nspname = 'hc' and p.prosecdef),
   array['accept_invite','accept_sender','adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
-        'assert_manual_flag','auth_throttle','cancel_arrival','claim_stage',
-        'complete_security_action','consume_step_up','create_arrival',
+        'assert_manual_flag','auth_throttle','cancel_arrival',
+        'claim_security_actions','claim_stage',
+        'complete_security_action','consume_step_up','create_account',
+        'create_arrival',
         'create_circle','create_invite','create_manual_proposal',
-        'ctx','ctx_for','execute_wasnt_me','expire_held_mail',
+        'ctx','ctx_for','describe_invite','execute_wasnt_me','expire_held_mail',
         'finalize_extraction','finalize_interpretation',
         'grant_vectors','link_provenance','log_chain_heads','log_denied',
+        'log_sign_out',
         'mint_step_up','note_suspicious_attempts',
         'outbox_ack','outbox_drain','pending_security_actions','presence',
         'propagate_taint_growth','reclassify_taint','record_auth_failure',
         'record_auth_success','record_tombstone','remove_member',
         'request_freeze','revise_object','revoke_invite','revoke_sender',
         'run_taint_sweep',
-        'sender_recognised','set_grant','share_object','sweep_provenance',
+        'sender_recognised','set_grant','set_opening_context','set_slice',
+        'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the forty-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the fifty-five boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -245,6 +255,16 @@ with actual as (
   -- drain posture, hc_pipeline only
   union all select 'pending_security_actions', 'hc_pipeline'
   union all select 'complete_security_action', 'hc_pipeline'
+  -- 4A M1 (ADR-0015 R8): the batch — the sign-out log half, the four
+  -- maintenance-definer conversions (describe_invite additionally anon:
+  -- the accept screen precedes any session), the claim primitive
+  union all select 'log_sign_out', 'authenticated'
+  union all select 'create_account', 'authenticated'
+  union all select 'describe_invite', 'anon'
+  union all select 'describe_invite', 'authenticated'
+  union all select 'set_slice', 'authenticated'
+  union all select 'set_opening_context', 'authenticated'
+  union all select 'claim_security_actions', 'hc_pipeline'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -288,6 +308,10 @@ insert into snapshot_expected values
   ('authenticated', 'circle_members',  'SELECT'),
   ('authenticated', 'access_grants',   'SELECT'),
   ('hc_internal',   'accounts',        'SELECT'),
+  -- 4A M1 (ADR-0015 R8 items 2a/2c/2d): the converted maintenance writes
+  ('hc_internal',   'accounts',        'INSERT'),
+  ('hc_internal',   'accounts',        'UPDATE'),
+  ('hc_internal',   'circles',         'UPDATE'),
   ('hc_internal',   'auth_attempts',   'SELECT'),
   ('hc_internal',   'auth_attempts',   'INSERT'),
   ('hc_internal',   'auth_attempts',   'DELETE'),
@@ -456,7 +480,8 @@ select is((
         'access_grants_internal_revoke','access_grants_internal_set',
         'access_log_internal','access_log_internal_append',
         'access_log_internal_collapse',
-        'accounts_internal',
+        'accounts_internal','accounts_internal_bootstrap',
+        'accounts_internal_set_slice',
         'approval_attempts_internal','approval_attempts_internal_update',
         'approval_attempts_internal_write',
         'arrival_events_internal','arrival_events_internal_append',
@@ -466,6 +491,7 @@ select is((
         'circle_members_internal','circle_members_internal_create',
         'circle_members_internal_reactivate',
         'circles_internal','circles_internal_create',
+        'circles_internal_set_opening_context',
         'documents_internal','documents_internal_revise',
         'documents_internal_write',
         'dsc_internal','dsc_internal_update','dsc_internal_write',
@@ -501,7 +527,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated eighty-nine');
+  'the hc_internal policy list is exactly the enumerated ninety-two');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
