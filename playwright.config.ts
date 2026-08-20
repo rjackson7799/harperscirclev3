@@ -49,6 +49,10 @@ export default defineConfig({
       POSTMARK_INBOUND_SECRET: 'local-gate-inbound-secret-0123456789abcdef0123456789',
       HC_AUTHSERV_ID: 'inbound.harperscircle.app',
       HC_TRUSTED_HOP: 'inbound.harperscircle.app',
+      // B9: the canonical origin, config-first — the dev server's own
+      // origin is `localhost`, which GoTrue's 127.0.0.1 allow-list
+      // silently refuses (the recorded localhost/127.0.0.1 trap).
+      NEXT_PUBLIC_SITE_URL: 'http://127.0.0.1:3000',
     },
   },
 });
