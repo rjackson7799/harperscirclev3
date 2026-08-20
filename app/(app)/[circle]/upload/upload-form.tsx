@@ -37,11 +37,9 @@ const CHUNK_SIZE = 6 * 1024 * 1024; // the storage resumable contract
 export function UploadForm({
   circle,
   subjects,
-  anonKey,
 }: {
   circle: string;
   subjects: SubjectOption[];
-  anonKey: string;
 }) {
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '');
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
@@ -63,20 +61,21 @@ export function UploadForm({
         return;
       }
       const { upload } = (await minted.json()) as {
-        upload: { upload_id: string; key: string; token: string; endpoint: string };
+        upload: { upload_id: string; key: string; grant: string; endpoint: string };
       };
 
       await new Promise<void>((resolve, reject) => {
         const tusUpload = new Upload(file, {
+          // The SAME-ORIGIN proxy (B9): the expiring server-minted grant
+          // gates every hop; no storage URL or credential ever reaches
+          // this browser, and no cross-origin request exists to break.
           endpoint: upload.endpoint,
           chunkSize: CHUNK_SIZE,
           retryDelays: [0, 1000, 3000, 5000],
           removeFingerprintOnSuccess: true,
           headers: {
-            authorization: `Bearer ${anonKey}`,
-            apikey: anonKey,
-            'x-signature': upload.token,
-            'x-upsert': 'true',
+            'x-hc-grant': upload.grant,
+            'x-hc-key': upload.key,
           },
           metadata: {
             bucketName: 'artifacts',

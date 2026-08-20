@@ -112,7 +112,7 @@ describe('B3 · the mint route — subject-scoped, right-to-ingest checked FIRST
     const res = await tokenRoute.POST(post('/api/upload/token', { subject_id: SUBJECT }));
     expect(res.status).toBe(401);
     expect(upload.canIngestForSubject).not.toHaveBeenCalled();
-    expect(storage.createUploadToken).not.toHaveBeenCalled();
+    expect(storage.mintUploadGrant).not.toHaveBeenCalled();
   });
 
   it('nonexistent and unauthorized subjects answer ONE 404 shape (DEF-10), token never minted', async () => {
@@ -197,9 +197,9 @@ describe('B9 · the TUS proxy — the grant gates every hop; storage sees only t
     expect(key).toBe(`intake/upload/${CIRCLE}/${SUBJECT}/u-1`);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(String(url)).toContain('/storage/v1/upload/resumable');
-    const headers = init.headers as Record<string, string>;
-    expect(headers.authorization).toMatch(/^Bearer /);
-    expect(headers['x-hc-grant']).toBeUndefined(); // our grant never leaves
+    const headers = new Headers(init.headers);
+    expect(headers.get('authorization')).toMatch(/^Bearer /);
+    expect(headers.get('x-hc-grant')).toBeNull(); // our grant never leaves
     const loc = res.headers.get('location')!;
     expect(loc).toMatch(/^\/api\/upload\/tus\//);
     expect(loc).not.toContain('127.0.0.1:54341'); // no storage URL browser-side

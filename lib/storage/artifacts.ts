@@ -1,5 +1,6 @@
 import 'server-only';
-import { asStoragePlane } from '@/lib/db/service-role';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { asStoragePlane, serviceCredential } from '@/lib/db/service-role';
 
 /**
  * The storage-plane module (TSD §2.12, §3.11; ADR-0018 F2's A2-discipline
@@ -38,18 +39,45 @@ export function uploadStagingKey(circleId: string, subjectId: string, uploadId: 
 }
 
 /**
- * The server-minted, expiring upload authorization (§2.12; §3.11): a
- * signed upload token for exactly ONE staging key, honoured by the
- * storage resumable (TUS) endpoint via the x-signature header — which is
- * what lets a resumable upload proceed against buckets that deliberately
- * have ZERO storage policies (M7/049).
+ * The server-minted, subject-scoped, EXPIRING upload grant (§2.12;
+ * §3.11) — an HMAC over exactly ONE staging key plus its expiry,
+ * keyed by the service credential (no new secret exists). The
+ * same-origin TUS proxy (app/api/upload/tus) verifies it on every hop
+ * and forwards to storage with the service plane; the browser never
+ * holds a credential wider than this one key, storage keeps ZERO
+ * policies (M7/049), and no storage URL ever reaches the client — the
+ * §1.3 artifact route's proxy discipline, mirrored for writes. (The
+ * B3-era x-signature signed-upload token is retired: the pinned local
+ * storage build ignores it on the resumable endpoint — the B9 finding.)
  */
-export async function createUploadToken(key: string): Promise<{ token: string }> {
-  const { data, error } = await asStoragePlane().from(ARTIFACTS).createSignedUploadUrl(key);
-  if (error || !data) {
-    throw new Error(`createUploadToken: ${error?.message ?? 'no token returned'}`);
-  }
-  return { token: data.token };
+const GRANT_TTL_SECONDS = 2 * 60 * 60;
+
+function grantSecret(): string {
+  return serviceCredential();
+}
+
+export function mintUploadGrant(key: string, nowMs = Date.now()): string {
+  const exp = Math.floor(nowMs / 1000) + GRANT_TTL_SECONDS;
+  const sig = createHmac('sha256', grantSecret()).update(`${key}|${exp}`).digest('hex');
+  return `${exp}.${sig}`;
+}
+
+export function verifyUploadGrant(key: string, grant: string, nowMs = Date.now()): boolean {
+  const dot = grant.indexOf('.');
+  if (dot <= 0) return false;
+  const exp = Number(grant.slice(0, dot));
+  const sig = grant.slice(dot + 1);
+  if (!Number.isFinite(exp) || exp * 1000 < nowMs) return false;
+  const expected = createHmac('sha256', grantSecret()).update(`${key}|${exp}`).digest();
+  const supplied = Buffer.from(sig, 'hex');
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+}
+
+/** The proxy's upstream credentials — the service plane's headers, built
+ *  here so the credential name stays in its one module family. */
+export function storageAuthHeaders(): { authorization: string; apikey: string } {
+  const key = grantSecret();
+  return { authorization: `Bearer ${key}`, apikey: key };
 }
 
 /** Generic read of one artifacts-bucket object (completion's measure). */

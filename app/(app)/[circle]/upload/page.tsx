@@ -44,11 +44,7 @@ export default async function UploadPage({
       {eligible.length === 0 ? (
         <EmptyState>Uploading is not available for you here.</EmptyState>
       ) : (
-        <UploadForm
-          circle={circle}
-          subjects={eligible}
-          anonKey={process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''}
-        />
+        <UploadForm circle={circle} subjects={eligible} />
       )}
     </>
   );

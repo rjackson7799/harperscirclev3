@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { asUser } from '@/lib/db/user';
 import { liveSessionClaims } from '@/lib/auth/session';
 import { canIngestForSubject } from '@/lib/hc/upload';
-import { createUploadToken, uploadStagingKey } from '@/lib/storage/artifacts';
+import { mintUploadGrant, uploadStagingKey } from '@/lib/storage/artifacts';
 
 /**
  * POST /api/upload/token — the §2.12 mint (slice-4 plan B3; UPL-01):
@@ -39,16 +39,19 @@ export async function POST(req: Request): Promise<Response> {
 
   const uploadId = randomUUID();
   const key = uploadStagingKey(right.circle_id, subjectId, uploadId);
-  const { token } = await createUploadToken(key);
+  // The server-minted, subject-scoped, EXPIRING grant (§2.12): an HMAC
+  // over exactly this staging key. The same-origin TUS proxy verifies
+  // it on every hop (B9: the local storage build ignores x-signature
+  // on its resumable endpoint, so the proxy is the mechanism).
+  const grant = mintUploadGrant(key);
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
   return Response.json({
     upload: {
       upload_id: uploadId,
       bucket: 'artifacts',
       key,
-      token,
-      endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
+      grant,
+      endpoint: '/api/upload/tus',
     },
   });
 }

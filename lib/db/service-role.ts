@@ -49,6 +49,19 @@ export function asServiceRole() {
  * Consumed only through lib/storage/** (the ESLint fence's storage-module
  * block).
  */
+/**
+ * serviceCredential() — the raw credential VALUE for the two fenced
+ * consumers that must speak protocols supabase-js does not carry (the
+ * storage plane's TUS proxy forward + the upload-grant HMAC). The name
+ * stays in this one module (the containment grep's whole point); the
+ * value never appears in logs or responses.
+ */
+export function serviceCredential(): string {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) throw new Error('serviceCredential(): the service key must be set');
+  return key;
+}
+
 export function asStoragePlane() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
