@@ -56,6 +56,16 @@ docker run -d --name hc_clamd -p 3310:3310 clamav/clamav:stable
 - Known post-reset quirk: `supabase db reset` restarts containers and
   Kong can briefly 502 the auth upstream; if the first run fails on
   auth calls, `docker restart supabase_kong_<project>` and re-run.
+- Memory-bounded hosts (≤ 8 GB with Docker Desktop): start the stack
+  LEAN or the run degrades uniformly (~3×) and legs die by timeout at
+  whatever step is heaviest —
+  `supabase start -x "studio,meta,realtime,edge-runtime,functions,analytics,vector" --ignore-health-check`.
+  **In PowerShell the `-x` list MUST be quoted**: unquoted commas
+  split it into separate arguments and every exclusion silently
+  fails (the full stack starts and nothing warns). The degradation
+  signature is successful responses arriving after ~90 s with zero
+  DB lock involvement — classify against available RAM before
+  blaming a leg.
 
 ## The gate run
 

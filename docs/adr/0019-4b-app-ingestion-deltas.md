@@ -186,6 +186,14 @@ address IS the content, inactive addresses say why. The verdict line
 is display-only prose; the display name never joins it. Q6's four
 conditions bind as ratified; `hc.share_object` remains the named
 below-cliff disclosure channel (no new surface pretends otherwise).
+One bind sharpened by browser truth (the B9 gate's find at fa1ded2):
+the inbox lists PARENT arrivals, and a mailed duplicate is a CHILD —
+the rollup label said "Looks like a duplicate" while the §4.7
+resolutions rendered only off the parent row's state, so no mailed
+duplicate was ever resolvable. As built, the resolutions render for
+every `duplicate_suspected` CHILD under its parent's row, bound to the
+CHILD's arrival id; §4.7's letter (two human outcomes, never
+auto-discarded) requires the affordance wherever the state is.
 
 ## D13 — RLY-01 as-built: one relay route, one nightly route, the Q7 seam mechanics
 
@@ -215,6 +223,21 @@ reason to fail the verification. Live in the B9 leg: the address is
 inactive before the mail click, active with its §5.1 log entry after.
 Provider-side route creation stays the deploy checklist's.
 
+The B9 gate found the delivery chain dead in THREE independent layers,
+each red-pinned before its fix: (1) no `emailRedirectTo` ever rode the
+sign-up/resend calls — `emailLinkOrigin()` now supplies
+`NEXT_PUBLIC_SITE_URL` config-first (blank = unset) with a
+loopback-origin fallback, and every auth mail sender shares it; (2)
+GoTrue's redirect allow-list DROPS un-listed URLs SILENTLY — the local
+config carries the `/confirm*` rows and the deploy checklist gained the
+production row (an un-listed production URL would reproduce the defect
+with no error anywhere); (3) the default confirmation template links
+the implicit-flow `#fragment` shape, which a server route never sees —
+a custom template now sends `token_hash` (the documented server-side
+verification shape) and the confirm route verifies it. Each layer
+alone leaves activation silently dead; config pins hold all three
+(`tests/config/auth-config.test.ts`).
+
 ## D15 — Named gaps, recorded not dropped
 
 - **The revoke-sender SURFACE**: `known_senders` has no request-path
@@ -229,11 +252,37 @@ Provider-side route creation stays the deploy checklist's.
   but no measurement harness exists in 4B; the 60 s arrival→proposals
   budget is slice 5's to measure (extract/interpret are its workers).
 
+## D16 — The same-origin TUS proxy: UPL-01's transport as-built
+
+The plan's upload sketch assumed the storage signed-upload token
+(`x-signature`) authorizes the resumable protocol; the pinned local
+storage build IGNORES that header on `/upload/resumable` and evaluated
+the browser's TUS request as plain `authenticated` — which M7's
+zero-policy posture refused. Correctly: the refusal was the storage
+plane doing its job. As built, the resumable protocol rides OUR origin
+(the §1.3 proxy discipline, mirrored for writes):
+`app/api/upload/tus/[[...id]]` verifies a server-minted, expiring HMAC
+grant (over exactly one staging key + expiry, keyed by the service
+credential via `serviceCredential()` — the containment grep's
+single-module rule holds) on EVERY hop, forwards upstream on the
+service credential (which never leaves the server), pins the upstream
+to the storage resumable family, and rewrites `Location` so no storage
+URL reaches the browser. The whole CORS/dev-origin class is
+structurally gone — same-origin by construction. The gate also caught
+Next 16's cross-origin dev protection 403ing hydration chunks when the
+test browser used `127.0.0.1` against a `localhost` dev server:
+`allowedDevOrigins` is pinned (`tests/config/next-config.test.ts`),
+a dev-only concern by definition.
+
 ## Consequences
 
 - The pipeline runs `arrive → store → scan → gate` end-to-end under
   browser truth; gated arrivals REST at `extracting` with the honest
-  label (Q7). Nothing is production-activated.
+  label (Q7). Nothing is production-activated. Browser truth earned
+  its keep: the gate found four product defects no unit depth had
+  (the three-layer FWD-01 delivery chain, the dev-origin hydration
+  403, the x-signature/resumable incompatibility, the unresolvable
+  child duplicate) — each fixed red→green.
 - The A2 allowlist is: artifact route (full client) · gotrue-admin ·
   the storage plane module. The channel fences gained the evidentiary
   boundary. Every extension is pinned in

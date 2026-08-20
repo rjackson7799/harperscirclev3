@@ -9,18 +9,24 @@ is argued.
 
 STATE — settled, do not redo:
   The 4B build is COMPLETE on `slice/4b-app-ingestion` (base `main` @
-  `3195713`, CI run 77 green, confirmed pre-branch). B1–B9 landed
-  red→green, signatures in every red commit. 4B is APP-ONLY:
-  `supabase/` and `scripts/` are BYTE-IDENTICAL to main (the F12
-  hashes in the packet) — the migration bound stays spent at 8 of ≤ 8
-  with nothing added; the pgTAP suite is untouched at 51 files, the
-  concurrency suite untouched at 38 cases. Dependencies: exactly
-  `tus-js-client@4.3.1` (Q4-approved); the dev-dep reserve untouched.
+  `3195713`, CI run 77 green, confirmed pre-branch); evidence head
+  `d6a6a22`, the recorded gate run GREEN at that SHA (the packet's
+  evidence block). B1–B9 landed red→green, signatures in every red
+  commit, plus FOUR browser-truth findings the gate forced, each
+  red→green (packet defects 4–7). 4B is APP-ONLY:
+  `supabase/migrations`, `supabase/tests`, `supabase/seed.sql` and
+  `scripts/` are BYTE-IDENTICAL to main (the F12 subtree hashes in
+  the packet; `supabase/` itself moves ONLY at auth config + the
+  token_hash mail template — zero DDL) — the migration bound stays
+  spent at 8 of ≤ 8 with nothing added; the pgTAP suite is untouched
+  at 51 files, the concurrency suite untouched at 38 cases.
+  Dependencies: exactly `tus-js-client@4.3.1` (Q4-approved); the
+  dev-dep reserve untouched.
 
 THE AUTHORITIES, in order:
   `docs/review/round-13-packet.md` (the claim set — head ledger,
-  F12 binding, evidence block, pointed questions Q-i…Q-vi) →
-  `docs/adr/0019-4b-app-ingestion-deltas.md` (Proposed — D1–D15; this
+  F12 binding, evidence block, pointed questions Q-i…Q-vii) →
+  `docs/adr/0019-4b-app-ingestion-deltas.md` (Proposed — D1–D16; this
   round ratifies or amends) → `docs/review/slice-4-plan.md` (Q1–Q7
   SETTLED verbatim) → ADR-0018 + addendum (the inherited obligations:
   the §11.5 byte purge landed at B5 — verify; 049 pre-discharged
@@ -52,7 +58,14 @@ THE REVIEW SURFACE (where scrutiny pays):
   6. The Q6 binds on the inbox (existence leakage, the empty-state
      copy, the lookalike verdict display).
   7. The B9 leg's claims vs its assertions (EICAR live; the cliff
-     probe; the relay finishing a duplicate resolution).
+     probe; the relay finishing a duplicate resolution — now bound to
+     the CHILD row, packet defect 7).
+  8. The same-origin TUS proxy (D16, Q-vii): try to defeat the HMAC
+     grant (scope, expiry, timing), the upstream pin, the Location
+     rewrite; and the FWD-01 delivery chain's three config surfaces
+     (allow-list rows, token_hash template, NEXT_PUBLIC_SITE_URL —
+     each fails SILENTLY when absent; the pins in
+     tests/config/auth-config.test.ts are the guard).
 
 RECORDED TRAPS (this review's set):
   gh is UNAUTHENTICATED — CI via the anonymous public API; never
