@@ -21,9 +21,9 @@ import { Pool } from 'pg';
  * fence, recorded as a 4B delta (ADR-0019) and a standing candidate for
  * a definer (hc.log_artifact_read) at the next DB-opening slice.
  *
- * The credential rides HC_MAINTENANCE_DB_URL once B8 flips HC_DB_URL to
- * hc_runtime (hc_runtime cannot reach hc.log — by design); until the
- * flip both names resolve to the same local URL.
+ * The credential is HC_MAINTENANCE_DB_URL (B8's split): the runtime's
+ * HC_DB_URL authenticates as hc_runtime and cannot reach hc.log — by
+ * design, and pinned in tests/db/runtime-credential.test.ts.
  */
 
 const LOCAL_DEFAULT = 'postgresql://postgres:postgres@127.0.0.1:54342/postgres';
@@ -34,7 +34,6 @@ function db(): Pool {
   if (!pool) {
     const url =
       process.env.HC_MAINTENANCE_DB_URL ??
-      process.env.HC_DB_URL ??
       (process.env.NODE_ENV === 'production' ? undefined : LOCAL_DEFAULT);
     if (!url) throw new Error('evidentiary boundary: HC_MAINTENANCE_DB_URL is not set');
     pool = new Pool({ connectionString: url, max: 3 });

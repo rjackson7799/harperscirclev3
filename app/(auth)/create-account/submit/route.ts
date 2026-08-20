@@ -64,7 +64,9 @@ export async function POST(req: Request): Promise<Response> {
     // LOUDLY; the residual states are enumerated in ADR-0015.
     try {
       await unconfirmEmail(data.user.id);
-      await bootstrapAccount(data.user.id, name);
+      // B8: the bootstrap rides hc.create_account as the fresh session's
+      // OWN claims — keyed hc.uid(), no target parameter to aim elsewhere.
+      await bootstrapAccount({ sub: data.user.id, role: 'authenticated', email }, name);
     } catch (cause) {
       console.error('create-account: flow failed after signUp; aborting the half-made account', cause);
       await abortAccountCreation(data.user.id);

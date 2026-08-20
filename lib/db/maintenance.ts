@@ -2,22 +2,20 @@ import 'server-only';
 import { Pool } from 'pg';
 
 /**
- * The maintenance boundary — the ENUMERATED identity writes 2A left to
- * the app layer (each with the 2A precedent that sanctions it), running
- * as the connection identity the migration runner and mirror triggers
- * already use (DEF-07's documented maintenance exemption).
+ * The maintenance boundary AFTER the B8 credential split (ADR-0015
+ * R3/R8; BAT-02; docs/ops/runtime-db-credentials.md) — the ENUMERATED
+ * auth.* writes and NOTHING else. The four public-schema ops this module
+ * carried through 2B/3 (create-account bootstrap, declared slice,
+ * opening context, the invite describe) moved onto M1's definers through
+ * the request-role channel; what remains is exactly what auth-schema
+ * ungrantability forces here (the recorded PG17-image trap: auth is
+ * ungrantable from migrations, so no definer can exist).
  *
- * This module is deliberately narrow and closed:
- *  - No generic query surface. Every export is one named operation with
- *    one parameterized statement and a spec pointer.
- *  - ESLint fences imports to lib/hc/**; the operations are consumed
- *    through typed wrappers only.
- *  - Anything that CAN ride a definer function does (the request-role
- *    channel); an operation lands here only when the DB deliberately has
- *    no request-path privilege for it and 2B may not add DDL (the spent
- *    migration reserve, slice-2-plan Status). Each entry is a standing
- *    round-10 question: "should this become a definer under a bound
- *    amendment?" — recorded in the 2B build ADR.
+ * The credential is HC_MAINTENANCE_DB_URL — deliberately NOT HC_DB_URL,
+ * which authenticates as hc_runtime after the flip and can never reach
+ * auth.*. This module stays deliberately narrow and closed: no generic
+ * query surface, one named operation per export, ESLint-fenced to
+ * lib/hc/**.
  */
 
 const LOCAL_DEFAULT = 'postgresql://postgres:postgres@127.0.0.1:54342/postgres';
@@ -27,123 +25,12 @@ let pool: Pool | undefined;
 function db(): Pool {
   if (!pool) {
     const url =
-      process.env.HC_DB_URL ??
+      process.env.HC_MAINTENANCE_DB_URL ??
       (process.env.NODE_ENV === 'production' ? undefined : LOCAL_DEFAULT);
-    if (!url) throw new Error('maintenance boundary: HC_DB_URL is not set');
+    if (!url) throw new Error('maintenance boundary: HC_MAINTENANCE_DB_URL is not set');
     pool = new Pool({ connectionString: url, max: 5 });
   }
   return pool;
-}
-
-/**
- * The accounts-row bootstrap at create-account (TSD §2.3).
- *
- * public.accounts has zero request-path INSERT privilege by design and 2A
- * shipped no creation definer; the 2A suite seeds accounts exactly this
- * way (the auth.users row exists first — GoTrue admin createUser — then
- * the accounts row; the M3/M5 mirror trigger fills email columns on
- * insert). Idempotent: a replayed bootstrap changes nothing.
- */
-export async function insertAccountRow(userId: string, displayName: string): Promise<void> {
-  await db().query(
-    `insert into public.accounts (id, kind, display_name)
-     values ($1, 'member', $2)
-     on conflict (id) do nothing`,
-    [userId, displayName],
-  );
-}
-
-/**
- * The declared slice (PRD §4.1.3 step 1, §4.1.6). accounts.slice exists
- * for exactly this write (§2.3) and no request-path UPDATE on accounts
- * exists; 2A's precedent is the same free-text column the schema
- * annotates "declared slice". Scoped to the single account id. Reports
- * the affected-row count (round-10 finding 7): a ghost or deleted target
- * must be distinguishable from persistence — the wrapper enforces it.
- */
-export async function setAccountSlice(accountId: string, slice: string): Promise<number> {
-  const r = await db().query(
-    'update public.accounts set slice = $2 where id = $1 and deleted_at is null',
-    [accountId, slice],
-  );
-  return r.rowCount ?? 0;
-}
-
-/**
- * The opening context (PRD §4.1.3 step 3). circles.opening_context exists
- * for this multi-select ("step 3 multi-select" in the 1A DDL) but
- * hc.create_circle — step 2's writer — is its only request-path writer,
- * and step 3 happens after step 2 by construction. The guard is in the
- * statement: only the founder's own circle, only while still in setup.
- */
-export async function updateOpeningContext(
-  accountId: string,
-  circleId: string,
-  context: string[],
-): Promise<number> {
-  const r = await db().query(
-    `update public.circles
-        set opening_context = $3
-      where id = $2 and created_by = $1 and state = 'setup'`,
-    [accountId, circleId, context],
-  );
-  return r.rowCount ?? 0;
-}
-
-export type InviteDescription = {
-  state: 'pending' | 'used' | 'revoked' | 'expired';
-  invite_id: string;
-  circle_id: string;
-  circle_name: string;
-  inviter_name: string;
-  invited_email: string;
-  tier: 'family' | 'care_circle';
-  subject_names: string[];
-};
-
-/**
- * The accept screen's pre-auth window (PRD §4.1.4 item 2: the screen
- * shows which circle, who invited them, which subjects and the ceiling
- * BEFORE asking for anything — necessarily before any session exists).
- * The DB deliberately gives invites zero request-path reads and 2A
- * shipped no describe definer, so this read rides the maintenance
- * boundary, keyed STRICTLY on the sha256 of the 32-byte token — the
- * capability the mail recipient already holds, disclosing only what
- * their invite email already said. Unknown token ⇒ null, one shape.
- */
-export async function describeInviteByToken(token: string): Promise<InviteDescription | null> {
-  if (!/^[0-9a-f]{64}$/.test(token)) return null;
-  const r = await db().query(
-    `select i.id, i.circle_id, i.invited_email::text as invited_email, i.tier::text as tier,
-            i.expires_at, i.accepted_at, i.revoked_at,
-            c.name as circle_name, a.display_name as inviter_name,
-            coalesce((select array_agg(s.first_name order by s.first_name)
-                        from public.subjects s where s.id = any(i.subject_ids)), '{}') as subject_names
-       from public.invites i
-       join public.circles c on c.id = i.circle_id
-       join public.accounts a on a.id = i.invited_by
-      where i.token_hash = extensions.digest($1, 'sha256')`,
-    [token],
-  );
-  const row = r.rows[0];
-  if (!row) return null;
-  const state = row.accepted_at
-    ? 'used'
-    : row.revoked_at
-      ? 'revoked'
-      : new Date(row.expires_at).getTime() <= Date.now()
-        ? 'expired'
-        : 'pending';
-  return {
-    state,
-    invite_id: row.id,
-    circle_id: row.circle_id,
-    circle_name: row.circle_name,
-    inviter_name: row.inviter_name,
-    invited_email: row.invited_email,
-    tier: row.tier,
-    subject_names: row.subject_names,
-  };
 }
 
 /**

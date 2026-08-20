@@ -39,7 +39,16 @@ export default defineConfig({
       // see lib/db/service-role.ts and scripts/check-service-role-containment.mjs.
       ['SUPABASE_SERVICE_ROLE' + '_KEY']:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU',
-      HC_DB_URL: 'postgresql://postgres:postgres@127.0.0.1:54342/postgres',
+      // B8: the walkthrough runs with production's credential shape —
+      // the request path on hc_runtime, the two-op maintenance boundary
+      // and the evidentiary append on the maintenance identity.
+      HC_DB_URL: 'postgresql://hc_runtime_login:postgres@127.0.0.1:54342/postgres',
+      HC_MAINTENANCE_DB_URL: 'postgresql://postgres:postgres@127.0.0.1:54342/postgres',
+      HC_PIPELINE_DB_URL: 'postgresql://postgres:postgres@127.0.0.1:54342/postgres',
+      HC_WORKER_KEY: 'local-gate-worker-key-0123456789abcdef0123456789abcdef',
+      POSTMARK_INBOUND_SECRET: 'local-gate-inbound-secret-0123456789abcdef0123456789',
+      HC_AUTHSERV_ID: 'inbound.harperscircle.app',
+      HC_TRUSTED_HOP: 'inbound.harperscircle.app',
     },
   },
 });

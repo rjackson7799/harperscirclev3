@@ -25,10 +25,13 @@ import { Pool, type PoolClient, type QueryResult } from 'pg';
  *  - Import is fenced by ESLint to lib/hc/** (the typed wrappers), so a
  *    surface never talks to this channel directly.
  *
- * The connection credential (HC_DB_URL) is the maintenance identity the
- *  migration runner and test harnesses already use; hosted it is the
- * project's direct/pooler URL. The credential's own authority is never
- * exposed through this module.
+ * The connection credential (HC_DB_URL) is the RUNTIME credential —
+ * since B8, a login IN ROLE hc_runtime whose whole authority is
+ * membership in anon + authenticated (locally the seed-provisioned
+ * hc_runtime_login; hosted the deploy-provisioned login,
+ * docs/ops/runtime-db-credentials.md). The request path's blast radius
+ * is the enumerated surface; the maintenance credential lives behind
+ * its own two-op module on HC_MAINTENANCE_DB_URL and never rides here.
  */
 
 export type RequestRole = 'anon' | 'authenticated';
@@ -50,7 +53,9 @@ export interface RequestRoleQuery {
   query(text: string, params?: unknown[]): Promise<QueryResult>;
 }
 
-const LOCAL_DEFAULT = 'postgresql://postgres:postgres@127.0.0.1:54342/postgres';
+// The local default is the seed-provisioned runtime login (B8's flip):
+// dev and the walkthrough run with production's blast-radius shape.
+const LOCAL_DEFAULT = 'postgresql://hc_runtime_login:postgres@127.0.0.1:54342/postgres';
 
 let pool: Pool | undefined;
 

@@ -140,8 +140,13 @@ describe('A7/B8 · sign out everywhere (AC-AUTH-10 — BOTH halves)', () => {
   });
 
   it('an anonymous request still signs out quietly — no log, no refusal', async () => {
-    getClaims.mockResolvedValueOnce({ data: { claims: null }, error: null });
-    getUser.mockResolvedValueOnce({ data: { user: null }, error: null });
+    // getUser null short-circuits liveSessionClaims before getClaims runs,
+    // so only the user probe is queued (a leaked once-mock would poison
+    // the next test's claims read).
+    getUser.mockResolvedValueOnce({
+      data: { user: null as unknown as { id: string } },
+      error: null,
+    });
     const { POST } = await import('@/app/account/sign-out-everywhere/route');
     const res = await POST(post('/account/sign-out-everywhere'));
     expect(accountsHc.logSignOut).not.toHaveBeenCalled();
