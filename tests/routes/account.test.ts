@@ -27,6 +27,16 @@ const members = {
 };
 vi.mock('@/lib/hc/members', () => members);
 
+// B8: APP-09b's app half — the sign-out route writes the signed_out
+// entry through the request-role channel before the GoTrue kill.
+const accountsHc = {
+  bootstrapAccount: vi.fn(async () => {}),
+  unconfirmEmail: vi.fn(async () => {}),
+  abortAccountCreation: vi.fn(async () => {}),
+  logSignOut: vi.fn(async () => ({ logged: 0 })),
+};
+vi.mock('@/lib/hc/accounts', () => accountsHc);
+
 const signOut = vi.fn(async () => ({ error: null }));
 const signInWithPassword = vi.fn();
 const getClaims = vi.fn();
@@ -58,6 +68,7 @@ beforeEach(() => {
     error: null,
   });
   throttleMock.consultThrottle.mockResolvedValue({ failures: 0, wait_seconds: 0 });
+  accountsHc.logSignOut.mockResolvedValue({ logged: 0 });
 });
 
 describe('A7 · the account screen', () => {
@@ -98,13 +109,43 @@ describe('A7 · the account screen', () => {
   });
 });
 
-describe('A7 · sign out everywhere (AC-AUTH-10)', () => {
-  it("calls GoTrue with scope 'global' and lands on sign-in", async () => {
+describe('A7/B8 · sign out everywhere (AC-AUTH-10 — BOTH halves)', () => {
+  it("writes the signed_out access-log entry BEFORE GoTrue's global kill, then lands on sign-in", async () => {
+    const order: string[] = [];
+    accountsHc.logSignOut.mockImplementationOnce(async () => {
+      order.push('log');
+      return { logged: 1 };
+    });
+    signOut.mockImplementationOnce(async () => {
+      order.push('signOut');
+      return { error: null };
+    });
+    const { POST } = await import('@/app/account/sign-out-everywhere/route');
+    const res = await POST(post('/account/sign-out-everywhere'));
+    expect(order).toEqual(['log', 'signOut']);
+    expect(accountsHc.logSignOut).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: 'u-1' }),
+    );
+    expect(signOut).toHaveBeenCalledWith({ scope: 'global' });
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toContain('/sign-in');
+  });
+
+  it('a failed log entry never blocks the sign-out itself (sign-out is never refused)', async () => {
+    accountsHc.logSignOut.mockRejectedValueOnce(new Error('channel down'));
     const { POST } = await import('@/app/account/sign-out-everywhere/route');
     const res = await POST(post('/account/sign-out-everywhere'));
     expect(signOut).toHaveBeenCalledWith({ scope: 'global' });
     expect(res.status).toBe(303);
-    expect(res.headers.get('location')).toContain('/sign-in');
+  });
+
+  it('an anonymous request still signs out quietly — no log, no refusal', async () => {
+    getClaims.mockResolvedValueOnce({ data: { claims: null }, error: null });
+    getUser.mockResolvedValueOnce({ data: { user: null }, error: null });
+    const { POST } = await import('@/app/account/sign-out-everywhere/route');
+    const res = await POST(post('/account/sign-out-everywhere'));
+    expect(accountsHc.logSignOut).not.toHaveBeenCalled();
+    expect(res.status).toBe(303);
   });
 });
 

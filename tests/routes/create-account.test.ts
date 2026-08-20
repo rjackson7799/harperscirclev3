@@ -120,7 +120,12 @@ describe('A3 · created vs already-exists: one visible response', () => {
     await POST(post({ name: 'Sarah Chen', email: 'fresh@x.y', password: 'long-enough-pw' }));
 
     expect(accounts.unconfirmEmail).toHaveBeenCalledWith(FRESH_USER.id);
-    expect(accounts.bootstrapAccount).toHaveBeenCalledWith(FRESH_USER.id, 'Sarah Chen');
+    // B8: the bootstrap rides hc.create_account as the fresh session's
+    // OWN claims — no target parameter exists to aim elsewhere.
+    expect(accounts.bootstrapAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: FRESH_USER.id }),
+      'Sarah Chen',
+    );
     const unconfirmOrder = accounts.unconfirmEmail.mock.invocationCallOrder[0];
     const bootstrapOrder = accounts.bootstrapAccount.mock.invocationCallOrder[0];
     expect(unconfirmOrder).toBeLessThan(bootstrapOrder);
