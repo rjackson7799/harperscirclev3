@@ -133,7 +133,12 @@ test.describe.serial('the §11.4-3 walkthrough', () => {
     const message = await fetch(
       `${MAILPIT}/api/v1/message/${search.messages[0].ID}`,
     ).then((r) => r.json());
-    const link = String(message.Text ?? message.HTML).match(/https?:\/\/[^\s"'<>]+verify[^\s"'<>]*/)?.[0];
+    // B9: the confirmation template routes through /confirm?token_hash
+    // (the link-extraction accessor widens; the walkthrough's steps are
+    // unchanged — recorded in the round-13 packet).
+    const link = String(message.Text ?? message.HTML).match(
+      /https?:\/\/[^\s"'<>]+(?:verify|confirm)[^\s"'<>]*/,
+    )?.[0];
     expect(link).toBeTruthy();
     await page.goto(link!);
 

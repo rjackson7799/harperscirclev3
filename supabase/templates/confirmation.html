@@ -1,0 +1,22 @@
+<!-- The B9 confirmation template (TSD §5.1/§5.5; the documented Supabase
+     SSR shape): the link routes through OUR /confirm with token_hash, so
+     the server consumes it via verifyOtp — cookie-free and flow-type-
+     independent — and the §5.1 forwarding-activation pass actually runs
+     on the click. GoTrue's default template verifies at the API and
+     redirects with FRAGMENT tokens a server route can never read; that
+     is how FWD-01 went dead three times before this file. SiteURL keeps
+     the origin config-first (site_url locally; the dashboard's Site URL
+     hosted — the ingestion deploy checklist's auth rows). -->
+<h2>Confirm your email</h2>
+<p>
+  Hello — confirm this address to finish setting up your Harper's Circle
+  account. Confirming also switches on the forwarding address
+  {{ if .Data.display_name }}for the people {{ .Data.display_name }}
+  cares for{{ end }} (nothing is mailed anywhere until you do).
+</p>
+<p>
+  <a href="{{ .SiteURL }}/confirm?token_hash={{ .TokenHash }}&type=signup&flow=signup"
+    >Confirm my email</a
+  >
+</p>
+<p>If you did not create this account, you can ignore this email.</p>

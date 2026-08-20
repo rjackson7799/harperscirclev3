@@ -160,7 +160,12 @@ site_url = "http://127.0.0.1:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# The /confirm* entry is the B9 fix's second half: GoTrue SILENTLY drops an
+# un-listed emailRedirectTo and falls back to the site root, which is exactly
+# how the §5.1 forwarding-activation pass on /confirm went dead (the signup,
+# recovery and resend links all land there). Hosted parity: the same entry in
+# the dashboard's Redirect URLs — the ingestion deploy checklist's row.
+additional_redirect_urls = ["https://127.0.0.1:3000", "http://127.0.0.1:3000/confirm*"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -252,6 +257,17 @@ otp_expiry = 1800
 # [auth.email.template.invite]
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
+
+# The B9 confirmation template (pinned by tests/config/auth-config.test.ts):
+# the link routes through OUR /confirm with token_hash so the server
+# consumes it via verifyOtp — flow-type-independent — and the §5.1
+# forwarding-activation pass runs on the click. GoTrue's default template
+# self-verifies and redirects with fragment tokens a server route can
+# never read. Hosted parity: the same template body in the dashboard's
+# Email Templates (the ingestion deploy checklist's auth rows).
+[auth.email.template.confirmation]
+subject = "Confirm your email"
+content_path = "./supabase/templates/confirmation.html"
 
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]

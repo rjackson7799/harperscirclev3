@@ -140,7 +140,7 @@ test.describe.serial('the 4B ingestion leg', () => {
       r.json(),
     );
     const link = String(message.Text ?? message.HTML).match(
-      /https?:\/\/[^\s"'<>]+verify[^\s"'<>]*/,
+      /https?:\/\/[^\s"'<>]+(?:verify|confirm)[^\s"'<>]*/,
     )?.[0];
     expect(link).toBeTruthy();
     await page.goto(link!);
