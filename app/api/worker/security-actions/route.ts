@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import {
+  claimSecurityActions,
   completeSecurityAction,
   killAllSessionsAndForceReset,
   pendingSecurityActions,
@@ -22,10 +23,13 @@ import {
  *
  * The sweep is BOUNDED and ORDERED (finding 9): oldest first — the
  * longest-owed kill is the most urgent — at most BATCH_LIMIT per run, so
- * a backlog defers instead of blowing the execution window; concurrent
- * sweeps are safe (completion is retry-safe; a double rotation is two
- * random passwords, the same forced-reset outcome). The response carries
- * what a monitor needs: drained / of / deferred / oldest_pending_age_s.
+ * a backlog defers instead of blowing the execution window. Since 4B B5
+ * the batch is CLAIMED through M1's primitive (hc.claim_security_actions,
+ * BAT-05): concurrent sweeps are DISJOINT by construction — FOR UPDATE
+ * SKIP LOCKED, 5-minute lease, a crashed sweep's rows reclaimable — on
+ * top of the idempotence that already made double-performing safe. The
+ * response carries what a monitor needs:
+ * drained / of / deferred / oldest_pending_age_s.
  */
 
 const BATCH_LIMIT = 20;
@@ -39,6 +43,7 @@ function secretMatches(supplied: string | null, expected: string): boolean {
 }
 
 async function drain(): Promise<Response> {
+  // Observability reads the UNCLAIMED truth; the work rides the claim.
   const pending = await pendingSecurityActions();
   const ordered = [...pending].sort(
     (x, y) => new Date(x.created_at).getTime() - new Date(y.created_at).getTime(),
@@ -46,7 +51,9 @@ async function drain(): Promise<Response> {
   const oldestAgeS = ordered.length
     ? Math.max(0, Math.round((Date.now() - new Date(ordered[0].created_at).getTime()) / 1000))
     : 0;
-  const batch = ordered.slice(0, BATCH_LIMIT);
+
+  // BAT-05: oldest-first, leased, disjoint across concurrent sweeps.
+  const batch = await claimSecurityActions(BATCH_LIMIT);
 
   let drained = 0;
   for (const action of batch) {
@@ -55,13 +62,14 @@ async function drain(): Promise<Response> {
       await completeSecurityAction(action.id);
       drained += 1;
     } catch {
-      // Leave pending; the next sweep retries (at-least-once posture).
+      // Leave claimed-but-incomplete; the 5-minute lease lapses and the
+      // next sweep reclaims it (at-least-once posture).
     }
   }
   return Response.json({
     drained,
     of: pending.length,
-    deferred: ordered.length - batch.length,
+    deferred: Math.max(0, pending.length - batch.length),
     oldest_pending_age_s: oldestAgeS,
   });
 }

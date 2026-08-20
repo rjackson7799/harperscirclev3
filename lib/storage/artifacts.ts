@@ -123,6 +123,43 @@ export async function removeStagedObject(circleId: string, arrivalId: string): P
 }
 
 /**
+ * The §11.5 quarantine BYTE purge (ADR-0018 F2's named owner — B5's
+ * scheduler family): quarantined malware BYTES are removed at 7 days;
+ * the hash + verdict stay forever in scan_results (the X1
+ * safety-monotonic evidence row, which this sweep never touches).
+ * Quarantine is tiny by construction (confirmed malware only), so a
+ * bounded tree walk per nightly run is the honest, dependency-free
+ * implementation.
+ */
+export async function purgeQuarantineOlderThan(days: number): Promise<{ removed: number }> {
+  const store = asStoragePlane();
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const staleKeys: string[] = [];
+
+  async function walk(prefix: string, depth: number): Promise<void> {
+    const { data, error } = await store
+      .from(QUARANTINE)
+      .list(prefix, { limit: 1000, sortBy: { column: 'name', order: 'asc' } });
+    if (error) throw new Error(`purgeQuarantine list: ${error.message}`);
+    for (const entry of data ?? []) {
+      const path = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.id === null && depth < 6) {
+        await walk(path, depth + 1); // a folder
+      } else if (entry.created_at && new Date(entry.created_at).getTime() < cutoff) {
+        staleKeys.push(path);
+      }
+    }
+  }
+
+  await walk('', 0);
+  if (staleKeys.length > 0) {
+    const { error } = await store.from(QUARANTINE).remove(staleKeys);
+    if (error) throw new Error(`purgeQuarantine remove: ${error.message}`);
+  }
+  return { removed: staleKeys.length };
+}
+
+/**
  * Confirmed malware moves to the quarantine bucket (PRD §4.2.2: not
  * releasable by any user action — no read grant exists for any role) and
  * leaves the artifacts bucket entirely.

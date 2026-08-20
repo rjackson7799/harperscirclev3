@@ -49,8 +49,21 @@ export type PendingSecurityAction = {
   created_at: string;
 };
 
-/** hc_pipeline only — the retry sweep's work list. */
+/** hc_pipeline only — the retry sweep's work list (observability: the
+ *  monitor's counts and oldest-age come from here, never from claims). */
 export async function pendingSecurityActions(): Promise<PendingSecurityAction[]> {
   const r = await asPipeline().query('select * from hc.pending_security_actions()');
+  return r.rows as PendingSecurityAction[];
+}
+
+/**
+ * hc_pipeline only — M1's claim/lease primitive (BAT-05), adopted by the
+ * sweep at 4B B5: oldest-first under FOR UPDATE SKIP LOCKED over a
+ * once-materialized CTE, 5-minute claim lease — concurrent sweeps are
+ * DISJOINT by construction rather than safe-by-idempotence alone, and a
+ * crashed sweep's rows re-deliver when the lease lapses.
+ */
+export async function claimSecurityActions(limit: number): Promise<PendingSecurityAction[]> {
+  const r = await asPipeline().query('select * from hc.claim_security_actions($1)', [limit]);
   return r.rows as PendingSecurityAction[];
 }

@@ -30,7 +30,9 @@ export type StageClaim = {
 export type PipelineStage = 'store' | 'scan' | 'gate' | 'extract' | 'interpret';
 
 export type PipelineMessage = {
-  circle_id: string;
+  /** Null on relay/sweeper-originated messages whose lineage is gone;
+   *  store/scan then fail closed to their bytes-missing outcome. */
+  circle_id: string | null;
   arrival_id: string;
   stage: PipelineStage;
   channel: 'email' | 'upload' | null;
@@ -164,23 +166,97 @@ export async function sendPipelineWork(message: PipelineMessage): Promise<void> 
 }
 
 /**
- * The channel lineage for a bare (sweeper-requeued) message: the oldest
- * queued or archived message for this arrival that carried a channel.
- * Unknown ⇒ null, and the gate FAILS CLOSED to the sender question.
+ * The message lineage for a bare (relay/sweeper-originated) message: the
+ * oldest queued or archived message for this arrival that carried the
+ * intake facts. Unknown ⇒ null — the gate FAILS CLOSED to the sender
+ * question, and store/scan report bytes-missing honestly.
  */
-export async function lookupChannel(arrivalId: string): Promise<'email' | 'upload' | null> {
+export async function lookupLineage(
+  arrivalId: string,
+): Promise<{ circle_id: string | null; channel: 'email' | 'upload' | null } | null> {
   const r = await asPipeline().query(
-    `select channel from (
-       select (message ->> 'channel') as channel, msg_id
+    `select channel, circle_id from (
+       select (message ->> 'channel') as channel,
+              (message ->> 'circle_id') as circle_id, msg_id
          from pgmq.q_pipeline_work
         where (message ->> 'arrival_id') = $1 and (message ->> 'channel') is not null
        union all
-       select (message ->> 'channel') as channel, msg_id
+       select (message ->> 'channel') as channel,
+              (message ->> 'circle_id') as circle_id, msg_id
          from pgmq.a_pipeline_work
         where (message ->> 'arrival_id') = $1 and (message ->> 'channel') is not null
      ) x order by x.msg_id limit 1`,
     [arrivalId],
   );
-  const c = r.rows[0]?.channel as string | undefined;
-  return c === 'email' || c === 'upload' ? c : null;
+  const row = r.rows[0];
+  if (!row) return null;
+  const c = row.channel as string | null;
+  return {
+    circle_id: (row.circle_id as string | null) ?? null,
+    channel: c === 'email' || c === 'upload' ? c : null,
+  };
+}
+
+/** The channel half of the lineage (the gate's question). */
+export async function lookupChannel(arrivalId: string): Promise<'email' | 'upload' | null> {
+  return (await lookupLineage(arrivalId))?.channel ?? null;
+}
+
+export type OutboxRow = {
+  outboxId: string;
+  arrivalId: string;
+  stage: PipelineStage | null;
+};
+
+/** hc.outbox_drain — CLAIM, not consume (OBX-01): unacked rows past the
+ *  300 s window re-deliver; stage derives from the arrival's LIVE state
+ *  (null ⇒ the arrival moved on — stale, ack without work). */
+export async function outboxDrain(limit: number): Promise<OutboxRow[]> {
+  const r = await asPipeline().query('select * from hc.outbox_drain($1)', [limit]);
+  return r.rows.map((row) => ({
+    outboxId: row.outbox_id as string,
+    arrivalId: row.arrival_id as string,
+    stage: (row.stage as PipelineStage | null) ?? null,
+  }));
+}
+
+/** hc.outbox_ack — closes delivery; binds to a claim; idempotent. */
+export async function outboxAck(outboxIds: string[]): Promise<number> {
+  if (outboxIds.length === 0) return 0;
+  const r = await asPipeline().query('select hc.outbox_ack($1::uuid[]) as n', [outboxIds]);
+  return Number(r.rows[0].n);
+}
+
+export type SweeperReport = {
+  expired_leases: number;
+  terminalized: Array<{ arrival_id: string; state: string }>;
+  requeue: Array<{ arrival_id: string; stage: PipelineStage }>;
+  stuck: string[];
+  queue_age_alert: boolean;
+};
+
+/** hc.sweeper_pass — §4.11's four duties; steps 3–5 are ADVISORY
+ *  listings revalidated by claim_stage at claim time. */
+export async function sweeperPass(): Promise<SweeperReport> {
+  const r = await asPipeline().query('select hc.sweeper_pass() as r');
+  return r.rows[0].r as SweeperReport;
+}
+
+/** hc.run_taint_sweep — nightly (OPS-01/D6); recorded in hc.sweep_runs. */
+export async function runTaintSweep(): Promise<number> {
+  const r = await asPipeline().query('select hc.run_taint_sweep() as n');
+  return Number(r.rows[0].n);
+}
+
+/** hc.expire_scan_results — the §11.5 clean-cache expiry; infected
+ *  evidence rows (expires_at null) are never touched. */
+export async function expireScanResults(): Promise<{ removed: number }> {
+  const r = await asPipeline().query('select hc.expire_scan_results() as r');
+  return r.rows[0].r as { removed: number };
+}
+
+/** hc.expire_held_mail — §5.4's 30-day expiry of unaccepted stranger mail. */
+export async function expireHeldMail(): Promise<{ expired_count: number }> {
+  const r = await asPipeline().query('select hc.expire_held_mail() as r');
+  return r.rows[0].r as { expired_count: number };
 }

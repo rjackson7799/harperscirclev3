@@ -7,6 +7,7 @@ import {
   finalizeScan,
   finalizeStore,
   lookupChannel,
+  lookupLineage,
   readPipelineWork,
   scanCacheLookup,
   senderRecognised,
@@ -71,12 +72,18 @@ function sha256Hex(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+async function resolveCircle(msg: PipelineMessage): Promise<string | null> {
+  if (msg.circle_id) return msg.circle_id;
+  return (await lookupLineage(msg.arrival_id))?.circle_id ?? null;
+}
+
 async function processStore(msg: PipelineMessage, origin: string, key: string): Promise<string> {
   const claim = await claimStage(msg.arrival_id, 'store');
   if (claim.result !== 'claimed') return claim.result;
 
-  const bytes = await readStagedObject(msg.circle_id, msg.arrival_id);
-  if (!bytes) {
+  const circleId = await resolveCircle(msg);
+  const bytes = circleId ? await readStagedObject(circleId, msg.arrival_id) : null;
+  if (!circleId || !bytes) {
     // Nothing to keep and nothing to invent: the lease expires, the
     // machinery retries, exhaustion says store_failed honestly.
     return 'store_bytes_missing';
@@ -84,7 +91,7 @@ async function processStore(msg: PipelineMessage, origin: string, key: string): 
 
   const sha = sha256Hex(bytes);
   const mime = sniffMime(bytes);
-  const storageKey = artifactKey(msg.circle_id, msg.arrival_id, sha);
+  const storageKey = artifactKey(circleId, msg.arrival_id, sha);
   await writeArtifactObject(storageKey, bytes, mime);
 
   const r = await finalizeStore({
@@ -98,7 +105,7 @@ async function processStore(msg: PipelineMessage, origin: string, key: string): 
   if (r === 'advanced') {
     // Staging stays until scan's definitive exit — scan needs the bytes.
     await sendPipelineWork({
-      circle_id: msg.circle_id,
+      circle_id: circleId,
       arrival_id: msg.arrival_id,
       stage: 'scan',
       channel: msg.channel ?? null,
@@ -114,8 +121,9 @@ async function processScan(msg: PipelineMessage, origin: string, key: string): P
   const claim = await claimStage(msg.arrival_id, 'scan');
   if (claim.result !== 'claimed') return claim.result;
 
-  const bytes = await readStagedObject(msg.circle_id, msg.arrival_id);
-  if (!bytes) return 'scan_bytes_missing';
+  const circleId = await resolveCircle(msg);
+  const bytes = circleId ? await readStagedObject(circleId, msg.arrival_id) : null;
+  if (!circleId || !bytes) return 'scan_bytes_missing';
 
   const sha = sha256Hex(bytes);
   const cached = await scanCacheLookup(sha);
@@ -132,16 +140,16 @@ async function processScan(msg: PipelineMessage, origin: string, key: string): P
     if (outcome.verdict === 'infected') {
       // Confirmed malware leaves the artifacts bucket entirely; the
       // quarantine bucket has no read grant for any role (§3.11).
-      const contentKey = artifactKey(msg.circle_id, msg.arrival_id, sha);
+      const contentKey = artifactKey(circleId, msg.arrival_id, sha);
       await moveToQuarantine(contentKey, contentKey, bytes);
-      await removeStagedObject(msg.circle_id, msg.arrival_id);
+      await removeStagedObject(circleId, msg.arrival_id);
     } else {
-      await removeStagedObject(msg.circle_id, msg.arrival_id);
+      await removeStagedObject(circleId, msg.arrival_id);
       if (outcome.verdict === 'clean') {
         // A clean duplicate landed duplicate_suspected instead of
         // scanned; the gate claim absorbs that message quietly.
         await sendPipelineWork({
-          circle_id: msg.circle_id,
+          circle_id: circleId,
           arrival_id: msg.arrival_id,
           stage: 'gate',
           channel: msg.channel ?? null,

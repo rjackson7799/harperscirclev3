@@ -4,6 +4,14 @@
     {
       "path": "/api/worker/security-actions",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/worker/relay",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/worker/nightly",
+      "schedule": "0 3 * * *"
     }
   ]
 }
