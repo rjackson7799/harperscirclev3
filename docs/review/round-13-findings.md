@@ -201,6 +201,23 @@ to `true` and asserts only that the Location-named id is forwarded — it
 cannot catch this). Until fixed, ADR-0019 D16’s “pins the upstream to the
 storage resumable family” should not be ratified as-built.
 
+**Remediation constraint the fix must not trip over (verified against the
+client).** The current resume behaviour (PRD §13.4, the hospital-corridor
+resume — the B9 browser leg’s recorded proof) *depends on the absence of
+target binding*. `start()` mints a **fresh** `upload_id`/`key`/`grant` on
+every invocation (`app/(app)/[circle]/upload/upload-form.tsx:54–65`), then
+`resumeFromPreviousUpload(previous[0])` (`:94`) points that fresh grant at
+the *previous* attempt’s upstream resource (keyed to the OLD staging key).
+So the resume PATCH hops today carry a new grant against an old upstream,
+and only succeed because nothing binds the two. A naïve binding fix
+(“the grant’s key must equal the object the id resolves to”) will therefore
+break resume, not just tighten it. A correct fix needs an explicit
+server-side continuation design that re-authorises the *existing* upstream
+upload for the caller (and reconciles completion, which today keys off the
+freshly-minted `upload_id` — `app/api/upload/complete/route.ts:53`).
+Tightening the comparison alone is not sufficient and would regress a
+stated capability.
+
 ### 2. LOW — the §5.3 header-path hop binding degenerates to “all headers” when the payload carries no foreign `Received` line
 
 The trusted-hop binding sets the A-R search window to everything above the
@@ -333,3 +350,76 @@ by anything above — finding 1 is an app-layer fix — so the migration bound
 stays spent at 8 of ≤ 8. Per ADR-0006 the dispositions (ADR-0019
 ratified/amended, with finding 1 resolved), owner sign-off, and merge are
 each their own session.
+
+---
+
+# Addendum — the external second-opinion pass (received 2026-08-20, verbatim)
+
+> Received from the owner-commissioned external reviewer AFTER the findings
+> above landed (commit `7f23d66`); landed verbatim before any disposition,
+> per the standing rule. It reaches the same verdict independently and
+> corroborates findings 1–3 file-for-file. The one net-new, load-bearing
+> item is the **resume-remediation constraint** on finding 1 — already
+> folded into finding 1’s disposition above (verified against the client:
+> `upload-form.tsx:54–65,94`). Dispositions: ADR-0019’s ratification session.
+
+Verdict: approve with findings, but do not merge until the HIGH issue is fixed and re-reviewed.
+I made no changes, created no files, ran no mutating commands, and made no commits. The existing round-13-findings.md and commit 7f23d66 were already present when this review began.
+
+## Findings
+
+### 1. HIGH — TUS proxy access-control bypass
+
+The proxy validates the decoded upstream URL using a raw `startsWith()` check, then forwards HEAD or PATCH with the storage service credential:
+- `app/api/upload/tus/[[...id]]/route.ts:127`
+- `app/api/upload/tus/[[...id]]/route.ts:132`
+- `app/api/upload/tus/[[...id]]/route.ts:144`
+
+A URL such as:
+
+```
+<supabase>/storage/v1/upload/resumable/../../object/list/artifacts
+```
+
+passes the prefix check but normalizes outside the resumable endpoint before `fetch()` sends it.
+
+The second problem is that the HMAC grant authenticates only the client-supplied `x-hc-key`; nothing binds that key to the decoded upstream upload URL:
+- `app/api/upload/tus/[[...id]]/route.ts:118`
+- `lib/storage/artifacts.ts:65`
+
+Consequently, any authenticated ingestion-capable member can make service-credentialed HEAD or PATCH requests to unintended same-host Storage API paths. Response bodies are discarded, limiting impact, but status and selected TUS headers remain observable and mutation behavior depends on the targeted endpoint.
+
+This falsifies ADR-0019 D16’s claim that the proxy pins requests to the resumable family.
+
+Required disposition: app-layer fix before merge. Parse and validate the normalized URL’s exact origin and pathname, and cryptographically or server-side bind the issued grant to the actual upstream upload resource.
+
+Important remediation constraint: the UI mints a new upload key/grant before calling `resumeFromPreviousUpload()`. Existing cross-attempt resume currently benefits from the same missing target binding. Once binding is corrected, resume will require an explicit server-side continuation design linking the old upload resource to the newly authorized attempt; simply tightening the comparison is likely to break the stated resume behavior.
+
+### 2. LOW — Authentication-Results search loses its hop boundary when no foreign Received header exists
+
+The header-path algorithm initializes `firstForeignReceived` to the end of the header list. If no foreign Received header appears, every header becomes eligible and a matching forged Authentication-Results header can be accepted based only on its authserv-id.
+
+The live Postmark path is substantially defended because provider-supplied authentication fields take precedence and a correctly configured trusted MTA should strip untrusted A-R headers and prepend its own. The residual issue appears when that deploy precondition fails.
+
+Disposition: either require a genuine trusted-hop boundary in code or explicitly record the MTA strip/emit guarantee as a necessary precondition in D11.
+
+### 3. LOW — stale upload documentation describes the retired transport
+
+The upload component still says the browser uploads directly to Storage using x-signature:
+- `app/(app)/[circle]/upload/upload-form.tsx:16`
+
+The implementation actually uses the same-origin proxy and `x-hc-grant`/`x-hc-key`. The comment contradicts D16 and the as-built security model.
+
+Disposition: correct or remove the stale comment.
+
+## Claims verified
+
+- The F12 hashes at `d6a6a22` exactly match the packet.
+- `supabase/migrations`, `supabase/tests`, `supabase/seed.sql`, and `scripts` are byte-identical to base `3195713`.
+- The Supabase changes are configuration/template-only; no DDL was added.
+- The only dependency addition is pinned `tus-js-client@4.3.1`; dev dependencies are unchanged.
+- Changes from `d6a6a22` through `cfd97b5`, and the subsequent findings commit, are documentation-only.
+- The webhook’s bounce/drop alignment behavior and rows-plus-bytes-before-200 ordering hold.
+- Worker claim/work/finalize behavior, unavailable-scan handling, lineage fail-closed behavior, artifact one-404 discipline, credential split, Q6 inbox behavior, and FWD-01 configuration chain agree with the packet.
+
+I did not rerun the optional suites because doing so could create or alter local artifacts, contrary to the explicit read-only instruction. The recorded gate evidence therefore remains recorded evidence rather than independently rerun evidence.
