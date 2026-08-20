@@ -62,6 +62,37 @@ export async function activateForwarding(
   });
 }
 
+/**
+ * §5.1's lifecycle moment, wired at email verification (FWD-01 app
+ * half): every not-yet-active subject THIS caller can see gets an
+ * activation attempt. Refusals are per-subject and quiet — activation
+ * itself enforces the gates (live coordinator, the founder's verified
+ * mirror, no live freeze) and is idempotent; a subject the caller may
+ * not activate refuses without disturbing the rest. Provider-side route
+ * creation is the deploy checklist's row (docs/ops/ingestion-deploy.md).
+ */
+export async function activateForwardingAfterVerification(
+  claims: RequestClaims,
+): Promise<{ activated: number }> {
+  return withRequestRole('authenticated', claims, async (q) => {
+    const subjects = await q.query(
+      `select s.id from public.subjects s
+        where s.deleted_at is null and s.forwarding_active_at is null`,
+    );
+    let activated = 0;
+    for (const row of subjects.rows as { id: string }[]) {
+      await q.query('savepoint fa');
+      try {
+        const r = await q.query('select hc.activate_forwarding($1) as r', [row.id]);
+        if ((r.rows[0].r as { activated: boolean }).activated) activated += 1;
+      } catch {
+        await q.query('rollback to savepoint fa');
+      }
+    }
+    return { activated };
+  });
+}
+
 export type EmailAttachmentMeta = {
   contentType: string | null;
   contentLength: number | null;

@@ -44,6 +44,10 @@ export const OPENING_CONTEXT = [
  *  never terracotta (attention) or green (the product's voice). */
 export const SUBJECT_ACCENTS = ['#7A6E9B', '#6E8F73'] as const;
 
+/** The forwarding-address domain (ADR-0011; §5.1) — one home, shared by
+ *  the completion screen and the inbox's first-run empty state. */
+export const FORWARDING_DOMAIN = 'harperscircle.app';
+
 /**
  * AC-AUTH-9 — resume lands on the furthest step, derived ONLY from state
  * that survives abandonment: steps 1–2 write nothing until step 2 creates

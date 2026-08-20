@@ -1,5 +1,7 @@
 import { asUser } from '@/lib/db/user';
 import { redirect303 } from '@/lib/auth/http';
+import { liveSessionClaims } from '@/lib/auth/session';
+import { activateForwardingAfterVerification } from '@/lib/hc/ingest';
 import type { EmailOtpType } from '@supabase/supabase-js';
 
 /**
@@ -35,6 +37,15 @@ export async function GET(req: Request): Promise<Response> {
     return redirect303(req, '/reset/confirm');
   }
   // signup / email verification: the mirror has already flipped
-  // accounts.email_verified_at via the 2A trigger.
+  // accounts.email_verified_at via the 2A trigger. §5.1's lifecycle
+  // moment rides here (4B B6/FWD-01): the founder's verification is
+  // what activates the forwarding addresses — idempotent, per-subject
+  // quiet refusals, never a reason to fail the verification itself.
+  try {
+    const claims = await liveSessionClaims(supabase);
+    if (claims?.sub) await activateForwardingAfterVerification(claims);
+  } catch (err) {
+    console.error(`confirm: forwarding activation pass failed: ${(err as Error).message}`);
+  }
   return redirect303(req, '/account?verified=1');
 }

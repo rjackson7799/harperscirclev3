@@ -4,8 +4,7 @@ import { completionPromises, custodianshipLine } from '@/lib/setup/completion-co
 import { CopyButton } from './copy-button';
 import { Button } from '@/components/ui/Button';
 import { liveSessionClaims } from '@/lib/auth/session';
-
-const FORWARDING_DOMAIN = 'harperscircle.app';
+import { FORWARDING_DOMAIN } from '@/lib/setup/steps';
 
 /**
  * All set — the completion screen (PRD §4.1.3; AC-AUTH-5: names ONLY
