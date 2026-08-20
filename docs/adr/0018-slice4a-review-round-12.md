@@ -1,8 +1,11 @@
 # ADR-0018 — Slice 4A review round 12: the findings dispositions
 
-**Status:** Proposed — dispositions recorded 2026-08-19; awaiting owner
-sign-off (the round-12 gate ⏸; merge authority is the owner's alone,
-ADR-0006; an unanswered item defaults to NOT MERGED).
+**Status:** Accepted — owner sign-off recorded 2026-08-19 in the
+sign-off session; rulings S1–S4 verbatim in the sign-off addendum
+below (merge of PR #8 authorized: MERGE COMMIT never squash, the
+ADR-0015 sign-off-with-merge pattern, ADR-0006; the merge SHA is
+stamped here once CI is confirmed green on `main` at the merge
+commit).
 **Deciders:** the review session (owner ratifies at the sign-off gate)
 **Context:** The round-12 third-party review of slice 4A — packet
 `docs/review/round-12-packet.md` at head `bc3f93c`, evidence head
@@ -257,3 +260,40 @@ pass concurred).
   COULD DO. Both layers stay in the cadence.
 - The gate is unchanged: owner sign-off and the merge (never squash)
   are the owner's, ADR-0006.
+
+---
+
+# Addendum — owner sign-off (2026-08-19, the sign-off session)
+
+CI confirmed green at the presented head FIRST (runs 71 `32292376832`
+and 72 `32318932833`, both at `a394797` — completed, success; public
+API, anonymous). PR #8 confirmed open and clean (base `main`, head
+`slice/4-ingestion` @ `a394797`, `mergeable_state: clean`, not draft,
+title as drafted). The owner ruled in-session (ADR-0006, sole
+authority); recorded verbatim:
+
+**S1.** The round-12 commissioned-review dispositions (F1–F4, all
+docs-only) and the pointed-question ratifications Q-A–Q-G stand as
+recorded in ADR-0018, with the Q-C/Q-F conditions executed (TSD annex
+A9; the §11.5 byte-purge owner named at 4B B5 + deploy-checklist row).
+
+**S2.** The external-pass dispositions stand as recorded in the
+ADR-0018 addendum: X1 and X2 accepted as blockers and fixed red→green
+(`dc1e0ba` → `08ff72e`, M8 `20260818200008_round12_fixes` — the
+infected-wins conflict arm; the canonical strictly-earlier
+`(received_at, id)` match). The F2 premise is corrected; Q-F
+re-confirmed at the fix. **M8 is spent (8 of ≤ 8)** — any further 4A
+DDL requires an owner bound-amendment first.
+
+**S3.** ADR-0017 is ratified as amended (round-12 markers, the
+superseded Consequences).
+
+**S4.** Merge authorized: PR #8, **merge commit, never squash** (the
+ADR-0015 sign-off-with-merge pattern) — the owner's own act in the
+browser; CI confirmed green on `main` at the merge commit afterward,
+then the merge SHA stamped into the ADR-0018/0017 status lines.
+
+This recording commit is itself docs-only (the run-66/68 precedent):
+the `08ff72e` evidence block transfers per the packet's F12
+per-directory binding, and the binding post-merge check is CI green on
+`main` at the merge commit.
