@@ -101,6 +101,43 @@
 //           token — exactly one consumes it, and exactly ONE durable
 //           security action is enqueued for the event (UNIQUE(event_id)
 //           + the conditional UPDATE, under contention).
+//   Case 33 4A M1 item 5 (round-10 F9's DB half): two concurrent
+//           security-action sweeps — the second claims WHILE the first's
+//           claiming transaction is still open — receive DISJOINT rows
+//           (FOR UPDATE SKIP LOCKED), together cover every pending row
+//           (no row starved), and the first claim is oldest-first.
+//   Case 34 4A M2 (the ING-08 orphan-row class extended to the new
+//           finalizers, raced through the reachable mid-wait defeats —
+//           member cancellation is unrepresentable at store/scan by
+//           construction, cancel_invalid_state): (a) a freeze committing
+//           while finalize_store waits does NOT defeat it — store is the
+//           §7.5 accept-and-store carve-out, and the artifact facts land;
+//           (b) a freeze committing while finalize_scan waits DEFEATS it
+//           (frozen) — and writes NOTHING: no verdict, no scan_at, no
+//           cache row.
+//   Case 35 4A M3: quota-vs-intake, the honest contract — check-then-
+//           create is deliberately unserialized (intake takes no lock,
+//           ADR-0007 D2; acceptance is never lost to a rate question), so
+//           two messages racing at the boundary may BOTH land; the
+//           overshoot is bounded by the concurrency degree and the NEXT
+//           quota answer refuses. Backpressure sheds processing, never
+//           acceptance (§13.1).
+//   Case 36 4A M6 (R-rule): a freeze committing while resolve_duplicate
+//           waits on the per-circle lock DEFEATS it (freeze_active,
+//           named) — the suspect stays parked, no gate lease survives as
+//           current, no re-queue row lands.
+//   Case 37 4A M8 (round-12 X2): two identical-sha copies scanned clean
+//           CONCURRENTLY — exactly ONE lands duplicate_suspected and it
+//           is the (received_at, id)-later copy; the canonical earliest
+//           stays scanned. Detection depends on row EXISTENCE (set at
+//           store), never on scan commit order, so the outcome is
+//           order-independent whichever way the circle lock serializes.
+//   Case 38 4A M8 (round-12 X1): an infected and a clean verdict racing
+//           the same sha's scan_results row — the end state is
+//           infected/expires-null in EITHER commit order (clean-first is
+//           overwritten by the infected upsert; infected-first refuses
+//           the clean downgrade arm). The §11.5 evidence is monotonic
+//           under the race, not just sequentially.
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -112,7 +149,7 @@
 // ============================================================================
 
 import pg from 'pg';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
 
 const DB_URL = process.env.DATABASE_URL
   ?? 'postgresql://postgres:postgres@127.0.0.1:54342/postgres';
@@ -1895,6 +1932,382 @@ async function case32(admin) {
   }
 }
 
+// --- case 33: concurrent security-action sweeps claim disjoint rows (4A M1) ----
+
+async function case33(admin) {
+  const holder = await mkInvitee(admin, 'c33');
+  const s1 = await connect();
+  const s2 = await connect();
+  const eventIds = [];
+  const actionIds = [];
+  try {
+    // Six owed kills, minted oldest-first (staggered created_at).
+    for (let i = 0; i < 6; i += 1) {
+      const ev = (await admin.query(
+        `insert into public.security_events (account_id, kind, token_hash, token_expires_at)
+         values ($1, 'suspicious_signin', extensions.digest($2, 'sha256'),
+                 now() + interval '15 minutes')
+         returning id`, [holder.id, `c33-${i}-${randomUUID()}`])).rows[0].id;
+      eventIds.push(ev);
+      const act = (await admin.query(
+        `insert into public.security_actions (event_id, account_id, action, created_at)
+         values ($1, $2, 'global_signout_force_reset',
+                 now() - interval '10 minutes' + make_interval(secs => $3))
+         returning id`, [ev, holder.id, i])).rows[0].id;
+      actionIds.push(act);
+    }
+
+    // S1 claims three and HOLDS its transaction open (a sweep mid-flight)…
+    await s1.query(`set role hc_pipeline`);
+    await s1.query('begin');
+    const a = (await s1.query(
+      `select id from hc.claim_security_actions(3) order by created_at`))
+      .rows.map(r => r.id);
+
+    // …S2 sweeps concurrently: SKIP LOCKED must hand it the OTHER three,
+    // without blocking and without overlap.
+    await s2.query(`set role hc_pipeline`);
+    const b = (await withTimeout(
+      s2.query(`select id from hc.claim_security_actions(3) order by created_at`),
+      'case33 second sweep must not block on the first'))
+      .rows.map(r => r.id);
+
+    await s1.query('commit');
+
+    const overlap = a.filter(x => b.includes(x));
+    const union = new Set([...a, ...b]);
+    check('case33: two concurrent sweeps are DISJOINT by construction (SKIP LOCKED) and together cover every pending row — none starved',
+      a.length === 3 && b.length === 3 && overlap.length === 0
+        && actionIds.every(x => union.has(x)),
+      `a=${a.length} b=${b.length} overlap=${overlap.length} covered=${union.size}/6`);
+
+    const leases = await admin.query(
+      `select count(*)::int as n from public.security_actions
+       where id = any($1::uuid[]) and claimed_until > now()`, [actionIds]);
+    check('case33: the first claim took the three OLDEST (the longest-owed kills first); every claimed row carries a live lease',
+      a.join(',') === actionIds.slice(0, 3).join(',') && leases.rows[0].n === 6,
+      `first=${JSON.stringify(a)} expected=${JSON.stringify(actionIds.slice(0, 3))} leased=${leases.rows[0].n}/6`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await admin.query(`delete from public.security_actions where account_id = $1`, [holder.id]).catch(() => {});
+    await admin.query(`delete from public.security_events where account_id = $1`, [holder.id]).catch(() => {});
+    await admin.query(`delete from public.accounts where id = $1`, [holder.id]).catch(() => {});
+    await admin.query(`delete from auth.users where id = $1`, [holder.id]).catch(() => {});
+  }
+}
+
+// --- case 34: freeze-mid-wait against the M2 finalizers (4A) -------------------
+
+async function case34(admin) {
+  const fxa = await mkCircle(admin, 'c34a');
+  const fxb = await mkCircle(admin, 'c34b');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // (a) store is the accept-and-store carve-out: a freeze committing
+    // mid-wait must NOT defeat finalize_store.
+    const a1 = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c34-a') as id`,
+      [fxa.c, fxa.s])).rows[0].id;
+    const l1 = (await admin.query(`select * from hc.claim_stage($1, 'store')`, [a1]))
+      .rows[0].lease_id;
+    const shaA = createHash('sha256').update('c34-body-a').digest('hex');
+    const keyA = `circle/${fxa.c}/arrival/${a1}/${shaA}`;
+
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fxa.c]);
+
+    const pa = s2.query(
+      `select hc.finalize_store($1, $2, $3, decode($4, 'hex'), 'application/pdf', 2048)::text as r`,
+      [a1, l1, keyA, shaA]).then(r => r.rows[0].r).catch(e => e);
+    const pidA = await findActivePid(admin, 'select hc.finalize_store%', 'finalize_store backend');
+    await waitForLockWait(admin, pidA, 's2 finalize_store on the circle lock');
+
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fxa.c]);
+    await s1.query('commit');
+
+    const ra = await withTimeout(pa, 'case34a finalize_store after freeze');
+    const stA = (await admin.query(
+      `select a.state::text as s, a.storage_key is not null as kept
+       from public.arrivals a where a.id = $1`, [a1])).rows[0];
+    check('case34a: a freeze committing while finalize_store waits does NOT defeat it — §7.5 accept-and-store holds under the serialization point, facts landed',
+      ra === 'advanced' && stA.s === 'stored' && stA.kept === true,
+      `r=${ra instanceof Error ? ra.message : ra} state=${stA.s} kept=${stA.kept}`);
+
+    // (b) scan is NOT exempt: a freeze committing mid-wait parks it, and
+    // the lost transition writes nothing — no verdict, no cache row.
+    const a2 = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c34-b') as id`,
+      [fxb.c, fxb.s])).rows[0].id;
+    const shaB = createHash('sha256').update('c34-body-b').digest('hex');
+    await admin.query(
+      `update public.arrivals
+          set state = 'stored', content_sha256 = decode($2, 'hex'),
+              storage_key = $3, byte_size = 10
+        where id = $1`, [a2, shaB, `circle/${fxb.c}/arrival/${a2}/${shaB}`]);
+    const l2 = (await admin.query(`select * from hc.claim_stage($1, 'scan')`, [a2]))
+      .rows[0].lease_id;
+
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fxb.c]);
+
+    const pb = s2.query(
+      `select hc.finalize_scan($1, $2, 'clean', '{}'::jsonb)::text as r`,
+      [a2, l2]).then(r => r.rows[0].r).catch(e => e);
+    const pidB = await findActivePid(admin, 'select hc.finalize_scan%', 'finalize_scan backend');
+    await waitForLockWait(admin, pidB, 's2 finalize_scan on the circle lock');
+
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fxb.c]);
+    await s1.query('commit');
+
+    const rb = await withTimeout(pb, 'case34b finalize_scan after freeze');
+    const stB = (await admin.query(
+      `select a.state::text as s, a.scan_verdict is null as noverdict,
+              a.scan_at is null as nowhen,
+              not exists (select 1 from public.scan_results r
+                          where r.content_sha256 = decode($2, 'hex')) as nocache
+       from public.arrivals a where a.id = $1`, [a2, shaB])).rows[0];
+    check('case34b: a freeze committing while finalize_scan waits DEFEATS it (frozen) and writes NOTHING — no verdict, no scan_at, no cache row (ING-08\'s class)',
+      rb === 'frozen' && stB.s === 'stored' && stB.noverdict === true
+        && stB.nowhen === true && stB.nocache === true,
+      `r=${rb instanceof Error ? rb.message : rb} state=${stB.s} noverdict=${stB.noverdict} nocache=${stB.nocache}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fxa.c);
+    await cleanupCircle(admin, fxb.c);
+  }
+}
+
+// --- case 35: quota check under concurrent intake (4A M3) ----------------------
+
+async function case35(admin) {
+  const fx = await mkCircle(admin, 'c35');
+  const s1 = await connect();
+  const s2 = await connect();
+  const sender = 'racing@example.org';
+  try {
+    // Nineteen of the twenty-per-hour budget already spent.
+    await admin.query(
+      `insert into public.arrivals
+         (circle_id, subject_id, channel, sender_address, byte_size, received_at)
+       select $1, $2, 'email', $3, 100, now() - (i * interval '1 minute')
+       from generate_series(1, 19) i`, [fx.c, fx.s, sender]);
+
+    // Two webhooks race the last slot: each checks, then creates, in its
+    // own transaction — deliberately unserialized (intake takes no lock).
+    await s1.query(`set role hc_pipeline`);
+    await s2.query(`set role hc_pipeline`);
+    await s1.query('begin');
+    const q1 = (await s1.query(
+      `select hc.check_quota($1, $2) ->> 'outcome' as o`, [fx.c, sender])).rows[0].o;
+    await s1.query(
+      `select hc.create_arrival($1, $2, 'email', p_sender_address => $3,
+                                p_ingest_idempotency_key => 'c35-a')`,
+      [fx.c, fx.s, sender]);
+
+    await s2.query('begin');
+    const q2 = (await s2.query(
+      `select hc.check_quota($1, $2) ->> 'outcome' as o`, [fx.c, sender])).rows[0].o;
+    await s2.query(
+      `select hc.create_arrival($1, $2, 'email', p_sender_address => $3,
+                                p_ingest_idempotency_key => 'c35-b')`,
+      [fx.c, fx.s, sender]);
+
+    await s1.query('commit');
+    await s2.query('commit');
+
+    const n = (await admin.query(
+      `select count(*)::int as n from public.arrivals
+       where circle_id = $1 and parent_arrival_id is null
+         and lower(sender_address::text) = $2`, [fx.c, sender])).rows[0].n;
+    const qAfter = (await admin.query(
+      `select hc.check_quota($1, $2) ->> 'outcome' as o`, [fx.c, sender])).rows[0].o;
+
+    check('case35: quota-vs-intake — both racing messages at the boundary pass their check and BOTH land (acceptance is never lost); the overshoot is bounded and the NEXT answer refuses',
+      q1 === 'ok' && q2 === 'ok' && n === 21 && qAfter === 'over_sender',
+      `q1=${q1} q2=${q2} landed=${n} after=${qAfter}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 36: freeze-mid-wait defeats resolve_duplicate (4A M6, R-rule) --------
+
+async function case36(admin) {
+  const fx = await mkCircle(admin, 'c36');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // A suspect, fixture-level (the detection path is 048's; this case
+    // races the RESOLUTION).
+    const a = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c36-a') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    await admin.query(
+      `update public.arrivals set state = 'duplicate_suspected',
+              scan_verdict = 'clean', scan_at = now()
+        where id = $1`, [a]);
+
+    // S1 holds the per-circle lock in an open transaction…
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+
+    // …the founder's resolution blocks on it…
+    await asUser(s2, fx.u1);
+    const p2 = s2.query(`select hc.resolve_duplicate($1, 'different')`, [a])
+      .then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.resolve_duplicate%', 'resolve backend');
+    await waitForLockWait(admin, pid2, 's2 resolution on the circle lock');
+
+    // …a freeze commits mid-wait…
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fx.c]);
+    await s1.query('commit');
+
+    const e2 = await withTimeout(p2, 'case36 resolution after freeze');
+    const st = (await admin.query(
+      `select a.state::text as s,
+              not exists (select 1 from public.pipeline_outbox o
+                          where o.arrival_id = a.id) as noqueue,
+              not exists (select 1 from public.pipeline_leases l
+                          where l.arrival_id = a.id and l.closed_at is null) as nolease
+       from public.arrivals a where a.id = $1`, [a])).rows[0];
+    check('case36 (R-rule): a freeze committing while resolve_duplicate waits DEFEATS it (freeze_active) — the suspect stays parked, no open lease, no re-queue row',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'freeze_active'
+        && st.s === 'duplicate_suspected' && st.noqueue === true && st.nolease === true,
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'} state=${st.s} noqueue=${st.noqueue} nolease=${st.nolease}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 37: canonical-original duplicates under concurrent scans (4A M8) ----
+
+async function case37(admin) {
+  const fx = await mkCircle(admin, 'c37');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const sha = createHash('sha256').update('c37-same-bytes').digest('hex');
+    const a = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c37-a') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    const b = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c37-b') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    // Both copies STORED before either scans (the external pass's defect
+    // shape); received_at staggered explicitly so a is the canonical.
+    await admin.query(
+      `update public.arrivals
+          set state = 'stored', content_sha256 = decode($2, 'hex'),
+              storage_key = 'circle/' || circle_id || '/arrival/' || id || '/' || $2,
+              byte_size = 10,
+              received_at = case when id = $1 then now() - interval '1 minute'
+                                 else now() end
+        where id in ($1, $3)`, [a, sha, b]);
+    const la = (await admin.query(`select * from hc.claim_stage($1, 'scan')`, [a]))
+      .rows[0].lease_id;
+    const lb = (await admin.query(`select * from hc.claim_stage($1, 'scan')`, [b]))
+      .rows[0].lease_id;
+
+    await s1.query(`set role hc_pipeline`);
+    await s2.query(`set role hc_pipeline`);
+    // Fire both finalizers concurrently; the per-circle lock serializes
+    // them in whichever order it admits — the outcome must not depend on it.
+    const pa = s1.query(
+      `select hc.finalize_scan($1, $2, 'clean', '{}'::jsonb)::text as r`,
+      [a, la]).then(r => r.rows[0].r).catch(e => e);
+    const pb = s2.query(
+      `select hc.finalize_scan($1, $2, 'clean', '{}'::jsonb)::text as r`,
+      [b, lb]).then(r => r.rows[0].r).catch(e => e);
+    const ra = await withTimeout(pa, 'case37 finalize_scan A');
+    const rb = await withTimeout(pb, 'case37 finalize_scan B');
+
+    const st = (await admin.query(
+      `select
+         (select state::text from public.arrivals where id = $1) as sa,
+         (select state::text from public.arrivals where id = $2) as sb`,
+      [a, b])).rows[0];
+    check('case37 (round-12 X2): identical copies scanned clean concurrently — exactly ONE suspect, and it is the later copy; the canonical earliest stays scanned (order-independent by construction: detection reads row existence, not scan order)',
+      ra === 'advanced' && rb === 'advanced'
+        && st.sa === 'scanned' && st.sb === 'duplicate_suspected',
+      `rA=${ra instanceof Error ? ra.message : ra} rB=${rb instanceof Error ? rb.message : rb} canonical=${st.sa} later=${st.sb}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 38: infected-wins under a racing clean verdict (4A M8) --------------
+
+async function case38(admin) {
+  const fx = await mkCircle(admin, 'c38');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const sha = createHash('sha256').update('c38-same-bytes').digest('hex');
+    // d is the EARLIER copy (its clean scan raises no suspect and writes
+    // the cache); c is the later copy whose scanner says infected.
+    const d = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c38-d') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    const c = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c38-c') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    await admin.query(
+      `update public.arrivals
+          set state = 'stored', content_sha256 = decode($2, 'hex'),
+              storage_key = 'circle/' || circle_id || '/arrival/' || id || '/' || $2,
+              byte_size = 10,
+              received_at = case when id = $1 then now() - interval '1 minute'
+                                 else now() end
+        where id in ($1, $3)`, [d, sha, c]);
+    const ld = (await admin.query(`select * from hc.claim_stage($1, 'scan')`, [d]))
+      .rows[0].lease_id;
+    const lc = (await admin.query(`select * from hc.claim_stage($1, 'scan')`, [c]))
+      .rows[0].lease_id;
+
+    await s1.query(`set role hc_pipeline`);
+    await s2.query(`set role hc_pipeline`);
+    const pd = s1.query(
+      `select hc.finalize_scan($1, $2, 'clean', '{}'::jsonb)::text as r`,
+      [d, ld]).then(r => r.rows[0].r).catch(e => e);
+    const pc = s2.query(
+      `select hc.finalize_scan($1, $2, 'infected', '{"sig":"c38"}'::jsonb)::text as r`,
+      [c, lc]).then(r => r.rows[0].r).catch(e => e);
+    const rd = await withTimeout(pd, 'case38 finalize_scan clean');
+    const rc = await withTimeout(pc, 'case38 finalize_scan infected');
+
+    const row = (await admin.query(
+      `select r.verdict, r.expires_at is null as retained
+       from public.scan_results r where r.content_sha256 = decode($1, 'hex')`,
+      [sha])).rows[0];
+    check('case38 (round-12 X1): an infected and a clean verdict racing one sha — the row ends infected/expires-null in EITHER commit order (clean-first overwritten upward, infected-first immune to the downgrade arm): the §11.5 evidence is monotonic under the race',
+      rd === 'advanced' && rc === 'advanced'
+        && row && row.verdict === 'infected' && row.retained === true,
+      `rClean=${rd instanceof Error ? rd.message : rd} rInfected=${rc instanceof Error ? rc.message : rc} verdict=${row ? row.verdict : 'MISSING'} retained=${row ? row.retained : 'MISSING'}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -1932,6 +2345,12 @@ try {
   await case30(admin);
   await case31(admin);
   await case32(admin);
+  await case33(admin);
+  await case34(admin);
+  await case35(admin);
+  await case36(admin);
+  await case37(admin);
+  await case38(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;

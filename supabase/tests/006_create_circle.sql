@@ -229,12 +229,14 @@ select ok(exists (
   'the row still resolves to its subject, custodianship retained as history (PRD §7.5)');
 
 -- Closure.
-select ok(has_function_privilege('authenticated', 'hc.create_circle(text,jsonb,text[])', 'execute'),
+-- 4A M1 (R2/Q2): the signature gained p_relationship; the old overload
+-- was DROPPED, never left beside it (the exact-inventory invariant).
+select ok(has_function_privilege('authenticated', 'hc.create_circle(text,jsonb,text[],text)', 'execute'),
   'the founder path is callable by authenticated');
 select ok(
-      not has_function_privilege('anon',        'hc.create_circle(text,jsonb,text[])', 'execute')
-  and not has_function_privilege('hc_pipeline', 'hc.create_circle(text,jsonb,text[])', 'execute')
-  and not has_function_privilege('hc_admin',    'hc.create_circle(text,jsonb,text[])', 'execute'),
+      not has_function_privilege('anon',        'hc.create_circle(text,jsonb,text[],text)', 'execute')
+  and not has_function_privilege('hc_pipeline', 'hc.create_circle(text,jsonb,text[],text)', 'execute')
+  and not has_function_privilege('hc_admin',    'hc.create_circle(text,jsonb,text[],text)', 'execute'),
   'and by nothing else');
 
 -- Round-5 finding 4: the universal property, driven from CIRCLES — a

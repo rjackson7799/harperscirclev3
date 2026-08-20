@@ -247,8 +247,8 @@ select fk_ok('public', 'access_log', array['circle_id','corrects_id'],
 select index_is_unique('public', 'access_log', 'access_log_circle_id_seq_key',
   'seq is unique per circle — the chain cannot fork');
 
-select is((select count(*)::int from hc.log_event_types), 18,
-  'the event-type enumeration is seeded (1A''s seven + 1B–1D''s three + 2A''s eight: three invite events, member_removed, task_unassigned, object_share_revoked, sender_accepted, sender_revoked)');
+select is((select count(*)::int from hc.log_event_types), 21,
+  'the event-type enumeration is seeded (1A''s seven + 1B–1D''s three + 2A''s eight + 4A''s three: signed_out, forwarding_activated, artifact_read)');
 
 -- Round-5 F1: the declaration precedes the subject row it binds, so the
 -- (circle_id, subject_id) FK must be deferrable — checked at commit, when

@@ -3116,3 +3116,34 @@ The left nav is grouped: primary actions ungrouped → `THE RECORD` →
 label; counts and review badges sit right-aligned inside the item; a
 utility button pins to the bottom via `margin-top: auto`. Groups appear
 as their first live route lands — the nav promises nothing unbuilt.
+
+### A9 — §4.4/§1.6: the 4A product-state contract and the scanner vocabulary (ADR-0017 D6; ADR-0018 round-12 dispositions)
+
+**§4.4's sketch is superseded by the shipped contract**
+(`hc.product_state`, migration `20260818200004`; pinned 046):
+
+- The rollup computes over the **caller's visible children only** (the
+  A.4 oracle), with the DEF-10 one shape for nonexistent, unauthorized
+  and below-cliff callers — the 027:31 manage-on-four-of-five cliff
+  carried to this oracle.
+- A "live child" excludes **deleted AND cancelled** children — a
+  member's deliberate stop must not drag filed siblings; no live
+  children ⇒ the parent's own state.
+- `hc.state_rank` is a total distinct order, stuck states ranking below
+  that phase's moving states; `hc.state_label` is PRD §4.2.2's fifteen
+  strings exactly.
+
+**`received` labels `Checking`.** PRD §4.2.2's states table is the
+vocabulary authority: `Arrived` means stored AND cleared, and an
+arrival at `received` is neither — labelling it `Arrived` would promise
+an openable original the artifact route refuses. PRD §13.1's "still
+shows in the inbox as `Arrived` the entire time" is read as "visibly
+exists in the inbox", not as the §4.2.2 `Arrived` state (the wording
+reconciliation named at round 12 — ADR-0018, Q-C).
+
+**§1.6's scanner row is reconciled to the four-state contract:**
+`lib/scan/scanner.ts` returns `clean | infected | unavailable |
+inconclusive`, as §2.4's `scan_verdict` CHECK, §4.3's stage table and
+PRD §4.2.2's internal states already say; the swap-cost row's "three
+states" reads "four" (round-12 finding 4's citation drift, closed at
+source — ADR-0018 F4).
