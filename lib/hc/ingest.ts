@@ -140,13 +140,18 @@ export async function createEmailArrivals(input: EmailArrivalInput): Promise<Ema
 }
 
 /** §5.2 step 6 / §1.4: one work item per arrival on the pgmq data plane.
- *  Duplicate deliveries are absorbed downstream (claim_stage). */
-export async function enqueuePipeline(circleId: string, arrivalIds: string[]): Promise<void> {
+ *  The message carries the CHANNEL lineage the gate worker reads (B4);
+ *  duplicate deliveries are absorbed downstream (claim_stage). */
+export async function enqueuePipeline(
+  circleId: string,
+  arrivalIds: string[],
+  channel: 'email' | 'upload',
+): Promise<void> {
   if (arrivalIds.length === 0) return;
   await asPipeline().withSession(async (q) => {
     for (const id of arrivalIds) {
       await q.query(`select pgmq.send('pipeline_work', $1::jsonb)`, [
-        JSON.stringify({ circle_id: circleId, arrival_id: id, stage: 'store' }),
+        JSON.stringify({ circle_id: circleId, arrival_id: id, stage: 'store', channel }),
       ]);
     }
   });

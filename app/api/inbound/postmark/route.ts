@@ -196,7 +196,7 @@ export async function POST(req: Request): Promise<Response> {
 
     // ── 6 · enqueue; 200 BEFORE any processing.
     const ids = [created.parentId, ...created.childIds];
-    await enqueuePipeline(resolved.circle_id, ids);
+    await enqueuePipeline(resolved.circle_id, ids, 'email');
 
     if (quota.monthly_ceiling_reached) {
       console.warn(

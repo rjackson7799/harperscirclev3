@@ -165,7 +165,8 @@ describe('B4 · store — claim → COMMIT → bytes → finalize; the chain con
       channel: 'email',
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0])).toBe('http://local.test/api/worker/scan');
+    const [fireUrl] = fetchMock.mock.calls[0] as unknown as [string];
+    expect(String(fireUrl)).toBe('http://local.test/api/worker/scan');
     expect(workers.archivePipelineWork).toHaveBeenCalledWith(7);
   });
 

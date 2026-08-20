@@ -71,7 +71,7 @@ export async function POST(req: Request): Promise<Response> {
   // The store worker's staging contract; idempotent on completion retry.
   await stageIntakeObject(right.circle_id, arrivalId, staged.bytes, staged.contentType);
   await removeObject(stagingKey);
-  await enqueuePipeline(right.circle_id, [arrivalId]);
+  await enqueuePipeline(right.circle_id, [arrivalId], 'upload');
 
   const origin = new URL(req.url).origin;
   after(async () => {
