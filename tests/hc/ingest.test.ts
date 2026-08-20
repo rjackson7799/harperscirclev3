@@ -237,13 +237,15 @@ describe('B2 · the pgmq data plane (§1.4)', () => {
       attachments: [{ contentType: 'application/pdf', contentLength: 64 }],
     });
     const ids = [made.parentId, ...made.childIds];
-    await ingest.enqueuePipeline(circleId, ids);
+    await ingest.enqueuePipeline(circleId, ids, 'email');
     const q = await raw.query(
       `select message from pgmq.q_pipeline_work where message ->> 'circle_id' = $1`,
       [circleId],
     );
     const queued = q.rows.map((r) => r.message.arrival_id);
     for (const id of ids) expect(queued).toContain(id);
+    // the message carries the channel lineage the gate worker reads
+    expect(q.rows.every((r) => r.message.channel === 'email')).toBe(true);
   });
 });
 

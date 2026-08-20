@@ -198,7 +198,7 @@ describe('B3 · the completion route — rights re-checked, bytes measured, arri
     expect(storage.removeObject).toHaveBeenCalledWith(
       `intake/upload/${CIRCLE}/${SUBJECT}/${UPLOAD_ID}`,
     );
-    expect(ingest.enqueuePipeline).toHaveBeenCalledWith(CIRCLE, ['a-up-1']);
+    expect(ingest.enqueuePipeline).toHaveBeenCalledWith(CIRCLE, ['a-up-1'], 'upload');
   });
 
   it('the eager store fire rides after() — strictly post-response', async () => {
