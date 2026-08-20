@@ -25,6 +25,33 @@ export function asServiceRole(): never {
 }
 
 /**
+ * asStoragePlane() — the STORAGE plane only (4B; ADR-0018 F2's sanction:
+ * "a service-role storage client under the A2 allowlist discipline").
+ * Same credential, deliberately narrower shape: the returned surface is
+ * the storage API alone — intake staging (B2), the store worker's
+ * content-addressed writes and the quarantine move (B4), the §11.5
+ * quarantine byte purge (B5), upload staging (B3) and the artifact
+ * route's signed-URL half (B7). M7 ships ZERO storage.objects policies
+ * (049 pins the absence), so every byte in either bucket moves through
+ * this plane or not at all — which is exactly what makes revocation
+ * close access on the next request (AC-PPL-4). Never used for PostgREST
+ * data reads, the same containment note asServiceRole() carries.
+ * Consumed only through lib/storage/** (the ESLint fence's storage-module
+ * block).
+ */
+export function asStoragePlane() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error('asStoragePlane(): NEXT_PUBLIC_SUPABASE_URL and the service key must be set');
+  }
+  const client = createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  return client.storage;
+}
+
+/**
  * asGoTrueAdmin() — the GoTrue ADMIN surface only (2B, ADR-0013 F3 and
  * TSD §5.8's sessions row). Same credential, deliberately narrower shape:
  * the returned client is used exclusively for auth-admin operations
