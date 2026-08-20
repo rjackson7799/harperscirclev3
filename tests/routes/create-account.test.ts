@@ -112,6 +112,29 @@ describe('A3 · created vs already-exists: one visible response', () => {
     expect(resend).toHaveBeenCalledTimes(2);
   });
 
+  it('the verification link lands on OUR /confirm (B9 fix: FWD-01 rides it) — signUp and resend both carry the redirect', async () => {
+    // Found by the B9 gate leg: GoTrue's default confirmation link
+    // self-verifies at the API and redirects to the site ROOT — the
+    // /confirm route (and the forwarding-activation pass on it) never
+    // ran. The reset flow's config-first origin rule applies verbatim:
+    // local loopback falls back to the request origin; elsewhere the
+    // redirect comes from NEXT_PUBLIC_SITE_URL or is omitted (a
+    // neutered link, never a poisoned one).
+    signUp.mockResolvedValueOnce({
+      data: { user: FRESH_USER, session: { access_token: 'a.b.c', refresh_token: 'r' } },
+      error: null,
+    });
+    await POST(post({ name: 'Sarah', email: 'fresh@x.y', password: 'long-enough-pw' }));
+    const [signUpArgs] = signUp.mock.calls[0] as unknown as [
+      { options?: { emailRedirectTo?: string } },
+    ];
+    expect(signUpArgs.options?.emailRedirectTo).toBe('http://local.test/confirm?flow=signup');
+    const [resendArgs] = resend.mock.calls[0] as unknown as [
+      { options?: { emailRedirectTo?: string } },
+    ];
+    expect(resendArgs.options?.emailRedirectTo).toBe('http://local.test/confirm?flow=signup');
+  });
+
   it('fresh: un-confirm strictly before the accounts bootstrap, with the typed name', async () => {
     signUp.mockResolvedValueOnce({
       data: { user: FRESH_USER, session: { access_token: 'a.b.c', refresh_token: 'r' } },
