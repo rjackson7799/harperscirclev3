@@ -31,6 +31,45 @@ export function artifactKey(circleId: string, arrivalId: string, sha256Hex: stri
   return `circle/${circleId}/arrival/${arrivalId}/${sha256Hex}`;
 }
 
+/** §2.12: the subject-scoped upload staging key — one key per minted
+ *  upload attempt, unreachable from any user-facing read path. */
+export function uploadStagingKey(circleId: string, subjectId: string, uploadId: string): string {
+  return `intake/upload/${circleId}/${subjectId}/${uploadId}`;
+}
+
+/**
+ * The server-minted, expiring upload authorization (§2.12; §3.11): a
+ * signed upload token for exactly ONE staging key, honoured by the
+ * storage resumable (TUS) endpoint via the x-signature header — which is
+ * what lets a resumable upload proceed against buckets that deliberately
+ * have ZERO storage policies (M7/049).
+ */
+export async function createUploadToken(key: string): Promise<{ token: string }> {
+  const { data, error } = await asStoragePlane().from(ARTIFACTS).createSignedUploadUrl(key);
+  if (error || !data) {
+    throw new Error(`createUploadToken: ${error?.message ?? 'no token returned'}`);
+  }
+  return { token: data.token };
+}
+
+/** Generic read of one artifacts-bucket object (completion's measure). */
+export async function downloadObject(
+  key: string,
+): Promise<{ bytes: Uint8Array; contentType: string } | null> {
+  const { data, error } = await asStoragePlane().from(ARTIFACTS).download(key);
+  if (error || !data) return null;
+  return {
+    bytes: new Uint8Array(await data.arrayBuffer()),
+    contentType: data.type || 'application/octet-stream',
+  };
+}
+
+/** Remove one artifacts-bucket object (upload staging cleanup). */
+export async function removeObject(key: string): Promise<void> {
+  const { error } = await asStoragePlane().from(ARTIFACTS).remove([key]);
+  if (error) throw new Error(`removeObject: ${error.message}`);
+}
+
 /** Stage intake bytes durably before the webhook answers 200 (§5.2/§13.1).
  *  Idempotent: a Postmark redelivery re-writes the same key. */
 export async function stageIntakeObject(

@@ -1,0 +1,54 @@
+import { randomUUID } from 'node:crypto';
+import { asUser } from '@/lib/db/user';
+import { liveSessionClaims } from '@/lib/auth/session';
+import { canIngestForSubject } from '@/lib/hc/upload';
+import { createUploadToken, uploadStagingKey } from '@/lib/storage/artifacts';
+
+/**
+ * POST /api/upload/token — the §2.12 mint (slice-4 plan B3; UPL-01):
+ * a server-minted, SUBJECT-SCOPED, expiring upload authorization,
+ * minted only after the caller's right to ingest for that subject is
+ * checked (manage over the all-domain taint — who can approve can
+ * ingest). The token authorizes exactly one staging key on the storage
+ * resumable endpoint (x-signature), which is what keeps M7's
+ * zero-policy posture intact: the browser never holds a credential
+ * wider than one expiring key.
+ *
+ * The session gate is getUser truth (liveSessionClaims — AC-AUTH-10:
+ * a killed session bites within seconds). Nonexistent and unauthorized
+ * subjects answer ONE 404 shape (DEF-10).
+ */
+export async function POST(req: Request): Promise<Response> {
+  const supabase = await asUser();
+  const claims = await liveSessionClaims(supabase);
+  if (!claims?.sub) return new Response('sign in first', { status: 401 });
+
+  let subjectId: string;
+  try {
+    const body = (await req.json()) as { subject_id?: unknown };
+    if (typeof body.subject_id !== 'string' || !body.subject_id) {
+      return new Response('malformed', { status: 400 });
+    }
+    subjectId = body.subject_id;
+  } catch {
+    return new Response('malformed', { status: 400 });
+  }
+
+  const right = await canIngestForSubject(claims, subjectId);
+  if (!right) return new Response('not found', { status: 404 });
+
+  const uploadId = randomUUID();
+  const key = uploadStagingKey(right.circle_id, subjectId, uploadId);
+  const { token } = await createUploadToken(key);
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+  return Response.json({
+    upload: {
+      upload_id: uploadId,
+      bucket: 'artifacts',
+      key,
+      token,
+      endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
+    },
+  });
+}
