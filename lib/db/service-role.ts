@@ -14,14 +14,24 @@ import { createClient } from '@supabase/supabase-js';
  *  - `lib/db/index.ts` does not re-export it — importing it is a deliberate,
  *    reviewable act, not something a barrel hands out.
  *
- * The permitted call-site list has exactly one entry: the artifact-streaming
- * route (app/api/artifact/[id]). Migrations are applied by the Supabase CLI
- * over its own connection — no application migration runner exists. Whether
- * even the artifact route needs the full service-role key, rather than a
- * narrowly privileged storage path, is a Step 2 spike question (claim 12).
+ * The permitted call-site list has exactly one FULL-CLIENT entry: the
+ * artifact-streaming route (app/api/artifact/[id], 4B B7 — the §1.3
+ * signed-URL half, created and consumed server-side). The narrower
+ * shapes below (storage plane, GoTrue admin) carry their own fenced
+ * consumers. Migrations are applied by the Supabase CLI over its own
+ * connection — no application migration runner exists. Whether the
+ * artifact route needs the full key rather than a narrowly privileged
+ * storage path remains the recorded Step-2 spike question (claim 12).
  */
-export function asServiceRole(): never {
-  throw new Error('asServiceRole(): not implemented until the artifact route lands (TSD §1.3)');
+export function asServiceRole() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error('asServiceRole(): NEXT_PUBLIC_SUPABASE_URL and the service key must be set');
+  }
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }
 
 /**
