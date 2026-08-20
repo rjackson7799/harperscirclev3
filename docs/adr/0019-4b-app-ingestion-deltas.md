@@ -1,7 +1,21 @@
 # ADR-0019 — 4B as-built: the app half of ingestion (B1–B9)
 
-**Status:** Proposed — round 13 ratifies or amends it.
-**Deciders:** the 4B build session (owner ratifies at the round-13 gate).
+**Status:** Ratified as amended at round 13 (2026-08-20), with ONE
+carve-out: **D16's transport-containment half is AMENDED, not ratified.**
+Round-13 finding 1 (HIGH) is a real code defect in the same-origin TUS
+proxy — the upstream "pin" is a bypassable `startsWith` prefix check and
+the grant does not bind to the forwarded target — so D16's "pins the
+upstream to the storage resumable family" is FALSE as-built. It is fixed
+in its OWN build session (a code change, red→green, a fresh local gate —
+ADR-0006) and re-reviewed BEFORE merge. Everything else the round-13
+review examined ratifies as-built. The dispositions — one HIGH, two LOW,
+and the pointed questions Q-i…Q-vii — are recorded in "Round-13 findings
+and dispositions" below; Q-i/Q-ii/Q-v carry TSD annex A10 (the §5.4/§4.3/
+§1.6 reconciliations). NO DDL is required by anything here — finding 1 is
+an app-layer fix —
+so the migration bound stays spent at **8 of ≤ 8**. Owner sign-off and
+merge are each their own session after finding 1's fix (ADR-0006).
+**Deciders:** the round-13 review session (owner ratifies at sign-off).
 **Context:** Slice 4B built the app half of ingestion on `slice/4b-app-ingestion`
 per the SETTLED plan (`docs/review/slice-4-plan.md`, Q1–Q7 verbatim; no
 new plan gate) and ADR-0018 WITH its addendum (the inherited round-12
@@ -176,6 +190,25 @@ verdict-field NAMES, and the provider's A-R strip posture
 stored result (a DMARC-passing lookalike domain is more suspicious,
 not less) and the inbox shows it its own copy.
 
+*(Round 13 — finding 2 (LOW), the hop-binding precondition RECORDED: the
+header path's trusted-hop window degenerates to the WHOLE header list when
+the payload carries no foreign `Received` line (`lib/mail/inbound.ts:248`
+— `firstForeignReceived` initialises to `headers.length`), so an A-R
+matching our authserv-id is accepted on POSITION alone, not on a proven
+trusted-hop boundary. Defended in the live path — Step 1's out-of-band
+provider fields fire first and the header path is never reached; where it
+is reached, the trusted MTA prepends its own genuine A-R at the top,
+returned first, shadowing any forgery below. The residual is exactly the
+case where the Step-3 MTA A-R strip/emit guarantee — the deploy-checklist
+row this module already defers to (`:25–30`) — is already violated.
+**Recorded precondition:** the header path is trustworthy only under that
+Step-3 MTA A-R guarantee and carries no independent defence when no
+foreign hop is present. The code-tightening alternative — require a
+genuine trusted-hop `Received` present AND the accepted A-R strictly above
+the first foreign hop before honouring a header-parsed verdict — stays
+available as a future hardening; docs-or-code, owner's call, no live
+defect today. See "Round-13 findings and dispositions".)*
+
 ## D12 — UXA-01's binds as rendered
 
 The inbox is the manage-×5 audience by the RLS cliff, and the empty
@@ -274,6 +307,109 @@ test browser used `127.0.0.1` against a `localhost` dev server:
 `allowedDevOrigins` is pinned (`tests/config/next-config.test.ts`),
 a dev-only concern by definition.
 
+*(Round 13 — finding 1 (HIGH), the transport-containment AMENDMENT: the
+clause "**pins the upstream to the storage resumable family**" is FALSE
+as-built. The pin is a bare `startsWith` prefix check over a base64url-
+decoded client segment that `../` normalisation defeats
+(`app/api/upload/tus/[[...id]]/route.ts:127,132`, `fetch` at `:144`
+carrying `storageAuthHeaders()`'s service credential), and the grant binds
+only to a client-supplied `x-hc-key`, never to the forwarded target
+(`route.ts:118`; `verifyUploadGrant`, `lib/storage/artifacts.ts:65`) — so
+any ingest-capable member drives the service credential to arbitrary
+same-host `/storage/v1/…` paths on HEAD/PATCH. The same-origin DIRECTION,
+the server-held credential, and the Location rewrite STAND (Q-vii, ratified
+as strictly better than re-opening a browser-facing storage URL); the
+CONTAINMENT half does NOT and is not ratified as-built. Fixed in finding
+1's own build session — normalised `origin`+`pathname` validation AND a
+grant-to-target binding that preserves PRD §13.4 resume through an explicit
+server-side continuation design — red→green, fresh gate, BEFORE merge. See
+"Round-13 findings and dispositions".)*
+
+## Round-13 findings and dispositions
+
+The round-13 packet (`docs/review/round-13-packet.md`, evidence head
+`d6a6a22`) drew a commissioned third-party review AND an owner-commissioned
+external second-opinion pass. Both returned **approve with findings — do
+NOT merge until the HIGH is fixed and re-reviewed**, and converged
+file-for-file on one HIGH and two LOWs. The findings landed VERBATIM at
+`docs/review/round-13-findings.md` (commits `7f23d66` + `d742c08`) BEFORE
+any disposition, per the standing rule; each was then re-verified against
+the tree in this session before disposition. Every disposition here is
+DOCS-ONLY — no migration, no test, no non-docs tree move — so the packet's
+F12 per-directory binding transfers the full `d6a6a22` evidence block to
+this head unchanged, and the migration bound stays spent at **8 of ≤ 8**.
+
+| # | Severity | Finding (compressed; the verbatim text is the findings file) | Disposition |
+|---|---|---|---|
+| 1 | **HIGH** | The same-origin TUS proxy pins the upstream with a bare `startsWith` prefix check that base64url + `../` normalisation defeats (`route.ts:127,132,144`), and `verifyUploadGrant` binds only to a client-supplied `x-hc-key` never checked against the forwarded target (`route.ts:118`; `lib/storage/artifacts.ts:65`) — any ingest-capable member drives service-credentialed HEAD/PATCH to arbitrary same-host `/storage/v1/…` paths, falsifying D16's "pins the upstream to the storage resumable family" | **NOT ratified as-built — a code defect fixed before merge.** D16's transport-containment half is AMENDED (the marker above); the fix is its OWN build session (red→green, fresh gate, ADR-0006). Carries the resume-remediation constraint (below). App-layer only — no DDL |
+| 2 | low | The §5.3 header-path hop binding degenerates to "all headers" when the payload carries no foreign `Received` line (`inbound.ts:248,261`), so position alone decides — defended by the Step-3 MTA A-R strip/emit precondition | **Accepted, docs-only.** D11 amended in place to record the precondition explicitly (the marker under D11); the code-tightening alternative stays available as a future hardening, not this slice. No live defect today |
+| 3 | low | A shipped docstring in `upload-form.tsx:16–22` still describes the retired `x-signature` transport, contradicting the as-built proxy and D16 | **Accepted; folded into finding 1's build session.** The docstring lives in a NON-DOCS tree (`app/`); correcting it in this docs-only session would void the F12 evidence and force a re-gate for zero behavioural value (the round-12 F4 argument). The inline comment at `:69–72` already states the correct proxy/`x-hc-grant` transport, so no reader following the code is misled; finding 1's fix touches this same file, so the docstring correction rides that red→green |
+
+### Finding 1 — the disposition in full (the HIGH)
+
+Re-verified against the tree this session. `route.ts:132` is a bare
+`upstreamUrl.startsWith(<resumable base>)` over a value base64url-decoded
+straight from the client path segment (`:127`); base64url carries no `/`,
+so an attacker-chosen URL with `../` dot-segments survives the prefix
+check as one catch-all segment and `fetch` (`:144`, carrying the service
+credential via `forwardHeaders` → `storageAuthHeaders()`) normalises the
+dots away to a DIFFERENT `/storage/v1/…` path. Independently,
+`verifyUploadGrant(key, grant)` (`lib/storage/artifacts.ts:65–74`) binds
+the HMAC to `key` alone — `route.ts:118–120` reads `key` from the client's
+`x-hc-key` and never checks it against `upstreamUrl`. Impact is bounded
+(the response body is discarded — `route.ts:82–95`; `GET` is not proxied)
+but real: broken access control on the highest-privilege credential — a
+cross-tenant existence/metadata oracle via `HEAD` status + the whitelisted
+`upload-offset`/`upload-length`/`upload-expires` headers, and `PATCH` to
+non-resumable storage endpoints outside any gate the design intends. This
+is exactly the round-12 Q-G caveat ("the fence/containment pin proves
+nothing about the route's own RUNTIME discipline", ADR-0018) landing on
+the write path — and Q-iv carries it forward.
+
+**Disposition: treat as a code defect, fix before merge — not a
+ratification.** The minimal shape (both passes converged): parse
+`upstreamUrl` with `new URL(...)` and validate the NORMALISED `origin` +
+`pathname` against the resumable prefix (reject any resolved path outside
+`/storage/v1/upload/resumable/…`), AND bind the grant to the forwarded
+target so `x-hc-key` cannot be a free-floating token; add a route test
+that a valid grant + a `..`-bearing / foreign-path id is REFUSED (the
+current `tests/routes/upload.test.ts` PATCH case mocks
+`verifyUploadGrant → true` and cannot catch this). App-layer only — NO
+DDL, the migration bound is untouched.
+
+**The resume-remediation constraint the fix MUST NOT trip over (verified
+against the client this session).** Current resume (PRD §13.4, the B9
+hospital-corridor leg) DEPENDS on the absence of target binding: `start()`
+mints a FRESH `upload_id`/`key`/`grant` on every invocation
+(`app/(app)/[circle]/upload/upload-form.tsx:54–65`), then
+`resumeFromPreviousUpload(previous[0])` (`:94`) points that fresh grant at
+the PREVIOUS attempt's upstream resource (keyed to the OLD staging key). So
+resume PATCH hops today carry a new grant against an old upstream and
+succeed only because nothing binds the two. A naïve "the grant's key must
+equal the object the id resolves to" fix would therefore BREAK resume, not
+merely tighten it. A correct fix needs an explicit server-side continuation
+design that re-authorises the EXISTING upstream upload for the caller AND
+reconciles completion, which today keys off the freshly-minted `upload_id`
+(`app/api/upload/complete/route.ts:53`). Tightening the comparison alone is
+insufficient and would regress a stated capability. **This constraint is
+BINDING on finding 1's build session.**
+
+### The pointed questions Q-i … Q-vii — dispositions
+
+Honouring the reviewers' recommended answers where they survived
+interrogation (both passes concurred; Q-iv carries the round-12
+runtime-discipline caveat; Q-vii's transport half rides finding 1).
+
+| Q | Delta | Disposition |
+|---|---|---|
+| Q-i | D9 | **Ratified as-built.** Unauthenticated over-* mail (capacity included) is DROPPED with a 200 and no send; only DMARC-aligned senders are bounced — the backscatter argument holds at the product's most attacker-reachable address, and a send failure never turns a refusal into a retry. §5.4's capacity row reconciled in TSD annex A10 |
+| Q-ii | D10 | **Ratified §1.3 as the letter.** The route refuses everything non-clean in the one 404 shape (`app/api/artifact/[id]/route.ts:53`); the inbox states the reason. Any future unchecked-but-honest download is a deliberate carve-out with its own warning surface, never a quiet widening. §4.3's sentence reconciled in TSD annex A10 |
+| Q-iii | D7 | **Accepted as the A2-disciplined interim.** One named op assuming `hc_internal` for a single statement, actor display-name read in the same transaction, the two-op maintenance pin untouched. `hc.log_artifact_read` queued as a definer candidate for the next DB-opening slice |
+| Q-iv | D1 | **Fence architecture CONFIRMED, with the round-12 caveat carried forward.** The ESLint allowlist is the three entries claimed and the containment grep holds — but the import fence and the single-file grep prove nothing about the proxy's RUNTIME discipline, and finding 1 is exactly a runtime-discipline defect on that same storage plane. Confirm the fence; it does NOT cover the proxy's request handling |
+| Q-v | D2 | **Ratified.** The webhook stages durably before its 200 and the store worker reads `readStagedObject`; acceptance survives a provider-retention gap and the synthetic webhook exercises the identical path the live one takes. §1.6's swap-cost row annex-touched in TSD annex A10 |
+| Q-vi | D8 | **Corrected probes accepted; NOINHERIT is the owner's DDL call.** Zero direct grants, RLS-empty without an identity, `auth.*`/`hc.log` unreachable — pinned live and catalog-based (`tests/db/runtime-credential.test.ts`; the segfault trap avoided). NOINHERIT is a role-attribute change (DDL) for the owner's bound-amendment queue, never this slice |
+| Q-vii | D16 | **Direction ratified; "pins the upstream to the storage resumable family" NOT ratified as-built — see finding 1.** The same-origin proxy is the right call and strictly better than re-opening a browser-facing storage URL; the FWD-01 config chain (the `/confirm*` allow-list rows, the `token_hash` template, `NEXT_PUBLIC_SITE_URL`) is verified and config-first. But the transport's central containment claim is false as written — D16's ratification of the transport is CONDITIONAL on finding 1's fix |
+
 ## Consequences
 
 - The pipeline runs `arrive → store → scan → gate` end-to-end under
@@ -289,7 +425,20 @@ a dev-only concern by definition.
   `tests/lint/db-fence.test.ts`.
 - The coverage flips recorded with this build: APP-09b · RLY-01 ·
   UXA-01 (review-green with the Q6 disposition) · RLS-10 · BAT-02/03
-  completed · STO/SCN/QTA/SAU/DUP/FWD/INB/UPL-01's 4B halves.
-- Round 13 inherits three pointed questions from these deltas (packet
-  Q-i/Q-ii plus the D8 NOINHERIT note) and the two G4 deploy
-  verification rows (payload fields, strip posture).
+  completed · STO/SCN/QTA/SAU/DUP/FWD/INB's 4B halves green.
+  *(Round 13: UPL-01 is the ONE exception — its transport half carries
+  finding 1 (HIGH), so the row is BLOCKED, not green (`docs/coverage.md`);
+  the mint / right-to-ingest / completion halves held. It flips green only
+  after finding 1's fix + re-review, never as `pending`.)*
+- Round 13's dispositions are RECORDED above (finding 1 HIGH amends D16's
+  transport-containment half; findings 2–3 low; Q-i…Q-vii ratified per the
+  reviewers' recommendations, Q-iv with the runtime-discipline caveat,
+  Q-vii's transport half riding finding 1). Q-i/Q-ii/Q-v carry TSD annex
+  A10; the two G4 deploy verification rows (payload fields, strip posture)
+  and the D8 NOINHERIT note stand as recorded owner-queue obligations.
+- No DDL is required by any disposition — finding 1 is an app-layer fix —
+  so the migration bound stays **spent at 8 of ≤ 8**; the dispositions are
+  docs-only and the packet's F12 evidence transfers to this head. The gate
+  cadence (ADR-0006, each its own session): finding 1's fix (a code change,
+  red→green, a fresh local gate) → re-review → owner sign-off → merge
+  (MERGE COMMIT, never squash). The owner is the sole merge authority.

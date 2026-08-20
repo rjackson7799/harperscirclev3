@@ -3147,3 +3147,46 @@ inconclusive`, as §2.4's `scan_verdict` CHECK, §4.3's stage table and
 PRD §4.2.2's internal states already say; the swap-cost row's "three
 states" reads "four" (round-12 finding 4's citation drift, closed at
 source — ADR-0018 F4).
+
+### A10 — §5.4/§4.3/§1.6: the 4B as-built reconciliations (ADR-0019 D2/D9/D10; ADR-0019 round-13 dispositions Q-i/Q-ii/Q-v)
+
+Three shipped-behaviour reconciliations the round-13 review ratified
+(recommended answers, both passes concurring), recorded here so the
+normative TSD text starts from the true 4B contract — the round-12 A9
+precedent (shipped sections are reconciled in the annex, never edited in
+place).
+
+**§5.4's capacity row — unauthenticated capacity mail is DROPPED, not
+bounced (Q-i; ADR-0019 D9).** §5.4's capacity row reads "bounce with the
+limit in plain words" with no alignment qualifier. As built and ratified:
+the alignment rule the rest of the table already applies does not stop at
+the capacity bound. **Aligned** (DMARC-aligned) senders over capacity are
+bounced, the reply naming the limit in plain words; **unauthenticated**
+over-capacity mail is DROPPED (200, nothing stored, no send) — bouncing it
+would send our reply to a forged victim, and the product's most
+attacker-reachable address is exactly where that backscatter channel would
+open. Attachment-count and per-file-size breaches ride the same rule (they
+are quota dimensions). A bounce SEND failure never turns a refusal into a
+retry. `app/api/inbound/postmark/route.ts:119–150`.
+
+**§4.3's "downloadable with the reason stated" yields to §1.3's clean gate
+(Q-ii; ADR-0019 D10).** §4.3 says `scan_unavailable`/`scan_inconclusive`
+artifacts are "downloadable with the reason stated"; §1.3 step 3 (and the
+B7 plan row AC-INBOX-15) gates the artifact route on `scan_verdict =
+'clean'` INDEPENDENTLY. Built and ratified to §1.3's letter: the route
+refuses everything non-clean in the one 404 shape
+(`app/api/artifact/[id]/route.ts:53`) and the inbox states the reason.
+§4.3's sentence reads: the reason is SURFACED (in the inbox), and any
+future unchecked-but-honest download is a deliberate later carve-out with
+its own warning surface — never a quiet widening of the clean-gated route.
+
+**§1.6's swap-cost row — the store worker reads STAGING, not a provider
+fetch-back (Q-v; ADR-0019 D2).** §1.6's swap-cost row sketched raw-MIME
+retrieval from the provider. As built and ratified: the webhook stages
+every part durably (`intake/<circle>/<arrival>`) BEFORE answering 200 and
+the store worker reads staging (`readStagedObject`) — no provider
+fetch-back exists. §1.6's row reads accordingly: acceptance is rows AND
+bytes, the swap-cost's expensive "re-fetch from the provider" half shrinks
+to a staging read, acceptance survives a provider-retention gap, and a
+synthetic (fixture) webhook exercises the identical path the live one
+takes.
