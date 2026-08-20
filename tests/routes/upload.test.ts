@@ -31,7 +31,9 @@ const storage = {
   uploadStagingKey: vi.fn(
     (c: string, s: string, u: string) => `intake/upload/${c}/${s}/${u}`,
   ),
-  createUploadToken: vi.fn(),
+  mintUploadGrant: vi.fn(),
+  verifyUploadGrant: vi.fn(),
+  storageAuthHeaders: vi.fn(),
   downloadObject: vi.fn(),
   stageIntakeObject: vi.fn(),
   removeObject: vi.fn(),
@@ -74,7 +76,12 @@ beforeEach(async () => {
   storage.uploadStagingKey.mockImplementation(
     (c: string, s: string, u: string) => `intake/upload/${c}/${s}/${u}`,
   );
-  storage.createUploadToken.mockResolvedValue({ token: 'signed-token' });
+  storage.mintUploadGrant.mockReturnValue('1799999999.deadbeef');
+  storage.verifyUploadGrant.mockReturnValue(true);
+  storage.storageAuthHeaders.mockReturnValue({
+    authorization: 'Bearer service-plane',
+    apikey: 'service-plane',
+  });
   storage.downloadObject.mockResolvedValue({
     bytes: new Uint8Array([1, 2, 3, 4]),
     contentType: 'application/pdf',
@@ -113,7 +120,7 @@ describe('B3 · the mint route — subject-scoped, right-to-ingest checked FIRST
     const res = await tokenRoute.POST(post('/api/upload/token', { subject_id: SUBJECT }));
     expect(res.status).toBe(404);
     expect(await res.text()).toBe('not found');
-    expect(storage.createUploadToken).not.toHaveBeenCalled();
+    expect(storage.mintUploadGrant).not.toHaveBeenCalled();
   });
 
   it('a malformed body answers 400 before any probe', async () => {
@@ -122,7 +129,7 @@ describe('B3 · the mint route — subject-scoped, right-to-ingest checked FIRST
     expect(upload.canIngestForSubject).not.toHaveBeenCalled();
   });
 
-  it('mints a subject-scoped staging key + signed token + the resumable endpoint', async () => {
+  it('mints a subject-scoped staging key + the HMAC grant + the SAME-ORIGIN proxy endpoint (B9: the local storage build ignores x-signature on the resumable endpoint — the proxy is the mechanism)', async () => {
     const res = await tokenRoute.POST(post('/api/upload/token', { subject_id: SUBJECT }));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -130,11 +137,99 @@ describe('B3 · the mint route — subject-scoped, right-to-ingest checked FIRST
     expect(body.upload.key).toMatch(
       new RegExp(`^intake/upload/${CIRCLE}/${SUBJECT}/[0-9a-f-]{36}$`),
     );
-    expect(body.upload.token).toBe('signed-token');
-    expect(body.upload.endpoint).toBe('http://127.0.0.1:54341/storage/v1/upload/resumable');
+    expect(body.upload.grant).toBe('1799999999.deadbeef');
+    expect(body.upload.endpoint).toBe('/api/upload/tus'); // same-origin: no CORS class at all
     expect(upload.canIngestForSubject).toHaveBeenCalledWith(CLAIMS, SUBJECT);
-    const [key] = storage.createUploadToken.mock.calls[0];
+    const [key] = storage.mintUploadGrant.mock.calls[0];
     expect(key).toBe(body.upload.key);
+  });
+});
+
+describe('B9 · the TUS proxy — the grant gates every hop; storage sees only the service plane', () => {
+  function tusPost(headers: Record<string, string>): Request {
+    return new Request('http://local.test/api/upload/tus', {
+      method: 'POST',
+      headers: {
+        'tus-resumable': '1.0.0',
+        'upload-length': '4',
+        // bucketName artifacts, objectName <key> (base64 per TUS)
+        'upload-metadata':
+          'bucketName YXJ0aWZhY3Rz,objectName ' +
+          Buffer.from(`intake/upload/${CIRCLE}/${SUBJECT}/u-1`).toString('base64'),
+        ...headers,
+      },
+    });
+  }
+
+  let tusRoute: {
+    POST: (r: Request) => Promise<Response>;
+    PATCH: (r: Request, ctx: { params: Promise<{ id?: string[] }> }) => Promise<Response>;
+    HEAD: (r: Request, ctx: { params: Promise<{ id?: string[] }> }) => Promise<Response>;
+  };
+
+  beforeEach(async () => {
+    tusRoute = (await import('@/app/api/upload/tus/[[...id]]/route')) as typeof tusRoute;
+    storage.verifyUploadGrant.mockReturnValue(true);
+    fetchMock.mockResolvedValue(
+      new Response(null, {
+        status: 201,
+        headers: {
+          location: 'http://127.0.0.1:54341/storage/v1/upload/resumable/abc%2Fdef',
+          'tus-resumable': '1.0.0',
+        },
+      }),
+    );
+  });
+
+  it('no grant / a refused grant ⇒ 403; storage is never contacted', async () => {
+    const res = await tusRoute.POST(tusPost({}));
+    expect(res.status).toBe(403);
+    storage.verifyUploadGrant.mockReturnValueOnce(false);
+    const res2 = await tusRoute.POST(tusPost({ 'x-hc-grant': '123.bad' }));
+    expect(res2.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a valid grant creates the upload upstream WITH the service credential and rewrites Location to our origin', async () => {
+    const res = await tusRoute.POST(tusPost({ 'x-hc-grant': '1799999999.deadbeef' }));
+    expect(res.status).toBe(201);
+    const [key] = storage.verifyUploadGrant.mock.calls[0];
+    expect(key).toBe(`intake/upload/${CIRCLE}/${SUBJECT}/u-1`);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(String(url)).toContain('/storage/v1/upload/resumable');
+    const headers = init.headers as Record<string, string>;
+    expect(headers.authorization).toMatch(/^Bearer /);
+    expect(headers['x-hc-grant']).toBeUndefined(); // our grant never leaves
+    const loc = res.headers.get('location')!;
+    expect(loc).toMatch(/^\/api\/upload\/tus\//);
+    expect(loc).not.toContain('127.0.0.1:54341'); // no storage URL browser-side
+  });
+
+  it('PATCH forwards the chunk to the upstream upload the Location named, grant re-checked', async () => {
+    const created = await tusRoute.POST(tusPost({ 'x-hc-grant': '1799999999.deadbeef' }));
+    const id = created.headers.get('location')!.split('/').pop()!;
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 204, headers: { 'upload-offset': '4' } }),
+    );
+    const res = await tusRoute.PATCH(
+      new Request(`http://local.test/api/upload/tus/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'tus-resumable': '1.0.0',
+          'upload-offset': '0',
+          'content-type': 'application/offset+octet-stream',
+          'x-hc-grant': '1799999999.deadbeef',
+          'x-hc-key': `intake/upload/${CIRCLE}/${SUBJECT}/u-1`,
+        },
+        body: new Uint8Array([1, 2, 3, 4]),
+      }),
+      { params: Promise.resolve({ id: [id] }) },
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get('upload-offset')).toBe('4');
+    const [url] = fetchMock.mock.calls[0] as unknown as [string];
+    expect(String(url)).toContain('/storage/v1/upload/resumable/');
   });
 });
 
