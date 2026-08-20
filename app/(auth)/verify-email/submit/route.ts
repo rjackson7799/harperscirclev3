@@ -1,5 +1,5 @@
 import { asUser } from '@/lib/db/user';
-import { safeNext } from '@/lib/auth/redirect';
+import { emailLinkOrigin, safeNext } from '@/lib/auth/redirect';
 import { formFields, redirect303 } from '@/lib/auth/http';
 
 /**
@@ -16,7 +16,18 @@ export async function POST(req: Request): Promise<Response> {
 
   if (email) {
     const supabase = await asUser();
-    await supabase.auth.resend({ type: 'signup', email }).catch(() => {});
+    // B9 fix: the resent link lands on /confirm too, so the §5.1
+    // activation pass runs on whichever mail the founder clicks.
+    const linkOrigin = emailLinkOrigin(req);
+    await supabase.auth
+      .resend({
+        type: 'signup',
+        email,
+        ...(linkOrigin
+          ? { options: { emailRedirectTo: `${linkOrigin}/confirm?flow=signup` } }
+          : {}),
+      })
+      .catch(() => {});
   }
   return redirect303(req, `/sign-in?e=unverified&resent=1${back}`);
 }

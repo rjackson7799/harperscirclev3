@@ -124,7 +124,16 @@ describe('A3 · created vs already-exists: one visible response', () => {
       data: { user: FRESH_USER, session: { access_token: 'a.b.c', refresh_token: 'r' } },
       error: null,
     });
-    await POST(post({ name: 'Sarah', email: 'fresh@x.y', password: 'long-enough-pw' }));
+    // The origin comes from CONFIGURATION (local.test is not a loopback,
+    // so without config the link would be neutered — also asserted).
+    const saved = process.env.NEXT_PUBLIC_SITE_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = 'http://local.test';
+    try {
+      await POST(post({ name: 'Sarah', email: 'fresh@x.y', password: 'long-enough-pw' }));
+    } finally {
+      if (saved === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+      else process.env.NEXT_PUBLIC_SITE_URL = saved;
+    }
     const [signUpArgs] = signUp.mock.calls[0] as unknown as [
       { options?: { emailRedirectTo?: string } },
     ];
@@ -133,6 +142,18 @@ describe('A3 · created vs already-exists: one visible response', () => {
       { options?: { emailRedirectTo?: string } },
     ];
     expect(resendArgs.options?.emailRedirectTo).toBe('http://local.test/confirm?flow=signup');
+
+    // Unconfigured non-loopback: the redirect is OMITTED — neutered,
+    // never Host-derived.
+    signUp.mockResolvedValueOnce({
+      data: { user: FRESH_USER, session: { access_token: 'a.b.c', refresh_token: 'r' } },
+      error: null,
+    });
+    await POST(post({ name: 'Sarah', email: 'fresh2@x.y', password: 'long-enough-pw' }));
+    const [bare] = signUp.mock.calls[1] as unknown as [
+      { options?: { emailRedirectTo?: string } },
+    ];
+    expect(bare.options?.emailRedirectTo).toBeUndefined();
   });
 
   it('fresh: un-confirm strictly before the accounts bootstrap, with the typed name', async () => {
