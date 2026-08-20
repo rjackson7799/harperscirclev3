@@ -190,6 +190,20 @@ describe('B1 · §5.3 step 2 — the trusted A-R, and the forged set refused', (
     expect(v.result).toBe('authenticated');
   });
 
+  it('a BLANK config (unset env) can never accept: empty authserv-id and hop fail closed', () => {
+    const v = evaluateSenderAuth(
+      payload({
+        Headers: [
+          TRUSTED_RECEIVED,
+          arHeader('inbound.harperscircle.app; dmarc=pass header.from=cardiology.org'),
+        ],
+      }),
+      { authservId: '', trustedHop: '' },
+    );
+    expect(v.result).toBe('unauthenticated');
+    expect(v.method).toBe('fail_closed');
+  });
+
   it('no trusted-hop Received line ⇒ nothing to bind to ⇒ fail closed', () => {
     const v = evaluateSenderAuth(
       payload({
