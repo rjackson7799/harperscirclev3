@@ -7,9 +7,11 @@ EXTERNAL pass then surfaced two real blockers, both fixed red→green in
 Dispositions **ADR-0018** + its addendum: the D4/D5/D8 markers below,
 D10 extended, TSD annex A9); owner sign-off recorded 2026-08-19 —
 ADR-0018's sign-off addendum S3 ratifies this ADR as amended, S4
-authorizes the merge of PR #8 (MERGE COMMIT never squash, ADR-0006);
-the merge SHA is stamped here once CI is confirmed green on `main` at
-the merge commit
+authorized the merge of PR #8 (MERGE COMMIT never squash, ADR-0006);
+**merged at `71ac794`** (merge commit
+`71ac79429efd63c2a1cb1685c9208985b41b564a`, parents `8d945f8` +
+`5386036`, tree identical to `5386036`'s; CI green on `main` at the
+merge commit, run 75 `32320712106`)
 **Date:** 2026-08-18
 **Scope:** Decisions made while building 4A (seven migrations,
 `20260818200001`–`20260818200007`; M8 stays reserved for round-12

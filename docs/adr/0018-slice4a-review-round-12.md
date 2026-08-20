@@ -1,11 +1,12 @@
 # ADR-0018 — Slice 4A review round 12: the findings dispositions
 
-**Status:** Accepted — owner sign-off recorded 2026-08-19 in the
-sign-off session; rulings S1–S4 verbatim in the sign-off addendum
-below (merge of PR #8 authorized: MERGE COMMIT never squash, the
-ADR-0015 sign-off-with-merge pattern, ADR-0006; the merge SHA is
-stamped here once CI is confirmed green on `main` at the merge
-commit).
+**Status:** **Accepted — merged at `71ac794`** (merge commit
+`71ac79429efd63c2a1cb1685c9208985b41b564a`, parents `8d945f8` +
+`5386036`; owner sign-off recorded 2026-08-19 in the sign-off session —
+rulings S1–S4 verbatim in the sign-off addendum below; merged tree
+verified identical to `5386036`'s; PR #8 merged, MERGE COMMIT never
+squash, the ADR-0015 sign-off-with-merge pattern, ADR-0006; CI green
+on `main` at the merge commit, run 75 `32320712106`).
 **Deciders:** the review session (owner ratifies at the sign-off gate)
 **Context:** The round-12 third-party review of slice 4A — packet
 `docs/review/round-12-packet.md` at head `bc3f93c`, evidence head
