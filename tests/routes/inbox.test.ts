@@ -156,6 +156,31 @@ describe('B6 · the list renders product states and the §5.3 verdict', () => {
     expect(html).toMatch(/expires/i);
   });
 
+  it("a duplicate CHILD is resolvable from its parent's row (B9: the inbox lists parents; the §4.7 affordance must bind to the CHILD or a mailed duplicate can never be resolved)", async () => {
+    parents = [
+      {
+        id: 'p-dup',
+        state: 'extracting',
+        channel: 'email',
+        sender_address: 'front-desk@cardiology.org',
+        sender_display_name: null,
+        auth_result: 'authenticated',
+        scan_verdict: 'clean',
+        received_at: new Date(Date.now() - HOURS).toISOString(),
+      },
+    ];
+    children = [
+      { id: 'c-dup', parent_arrival_id: 'p-dup', state: 'duplicate_suspected' },
+      { id: 'c-ok', parent_arrival_id: 'p-dup', state: 'extracting' },
+    ];
+    inbox.productStates.mockResolvedValueOnce(new Map([['p-dup', 'Looks like a duplicate']]));
+    const html = await renderInbox();
+    // The resolution form binds to the CHILD's arrival id.
+    expect(html).toContain('value="c-dup"');
+    expect(html).toContain('value="different"');
+    expect(html).toContain('value="same_thing"');
+  });
+
   it('a duplicate suspect renders BOTH resolutions and no third option', async () => {
     parents = [
       {
