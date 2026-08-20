@@ -28,3 +28,25 @@ describe('A8 · vercel.json schedules the security-actions sweep', () => {
     expect(cron?.schedule).toMatch(/^\S+ \* \* \* \*$/);
   });
 });
+
+// ============================================================================
+// B5 · RLY-01: the relay and the nightly sweep have CHECKED-IN invokers
+// too — §1.4's "swept by a one-minute Vercel Cron" and OPS-01/D6's
+// nightly taint sweep are claims about vercel.json, not comments.
+// ============================================================================
+
+describe('B5 · vercel.json schedules the RLY-01 relay and the nightly sweep', () => {
+  const cfg = JSON.parse(
+    readFileSync(path.resolve(__dirname, '../../vercel.json'), 'utf8'),
+  ) as { crons?: { path: string; schedule: string }[] };
+
+  it('the relay runs every minute (§1.4/§4.11 — the sweeper is the detector)', () => {
+    const cron = (cfg.crons ?? []).find((c) => c.path === '/api/worker/relay');
+    expect(cron?.schedule).toBe('* * * * *');
+  });
+
+  it('the nightly sweep runs daily (OPS-01: run_taint_sweep nightly; §11.5 retention legs)', () => {
+    const cron = (cfg.crons ?? []).find((c) => c.path === '/api/worker/nightly');
+    expect(cron?.schedule).toMatch(/^\d+ \d+ \* \* \*$/);
+  });
+});
