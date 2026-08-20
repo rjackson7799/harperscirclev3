@@ -21,12 +21,28 @@ in the spec (`CONTRAST_EXEMPT`) — G12 re-audits each use. One
 steps stay the regression instrument, the a11y leg is this slice's new
 surface.
 
+**Slice 4 (B9) adds the ingestion leg** — `e2e/ingestion.spec.ts` — to
+the same gate run: founder → verified → forwarding active (FWD-01),
+the TUS upload through store/scan/gate to its honest label (UPL-01),
+the artifact route streaming the clean original with ONE 404 shape
+(RLS-10 at HTTP depth), the synthetic signed webhook → held → accept →
+release (INB-01/SAU-01/SND-02), EICAR quarantined ≠ scan_unavailable
+LIVE (SCN-01), the duplicate suspect resolved by a person with the
+relay finishing the job (DUP-01 + RLY-01), cancel, and the Q6 cliff
+probed from a family-tier member's live session. The walkthrough's 11
+steps and the a11y leg stay the regression instrument, unchanged.
+
 ## Prerequisites (hermetic startup)
 
 ```
 npx supabase start          # DB 54342 · API 54341 · Mailpit 54344
-npm run db:reset            # 46 migrations, clean leg
+npm run db:reset            # clean leg — exact 54 migrations (4A)
 node scripts/verify-migration-state.mjs supabase/migrations
+docker run -d --name hc_clamd -p 3310:3310 clamav/clamav:stable
+                            # the B9 gate stack's scanner (§1.6): wait
+                            # for "socket found, clamd started" in
+                            # `docker logs hc_clamd` (~1–3 min first
+                            # run) or the EICAR leg reads unavailable
 ```
 
 - Node 22.15.0 / npm 10.9.2 (`.nvmrc`); browsers via
