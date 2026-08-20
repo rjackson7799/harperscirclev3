@@ -1,0 +1,206 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// ============================================================================
+// B7 · GET /api/artifact/[id] — the §1.3 six steps, literally (RLS-10
+// flips; AC-PERM-2; AC-INBOX-15; AC-PPL-4): the ONE sanctioned
+// asServiceRole consumer outside the migration runner.
+//
+//   1+2. session → the RLS-scoped read at ≥ view. NO ROW ⇒ 404 — and
+//        the 404 is BYTE-IDENTICAL across no-session / nonexistent /
+//        unauthorized / not-clean: 404 ≡ 403, no oracle.
+//   3.   scan_verdict = 'clean' checked INDEPENDENTLY — a pipeline bug
+//        cannot expose an unscanned file.
+//   4.   the service-role signed URL (30 s) is created AND consumed
+//        server-side; bytes stream back through this route; the
+//        browser never receives a storage URL.
+//   5.   Cache-Control: private, no-store; Range requests supported.
+//   6.   the artifact_read access-log entry is written BEFORE bytes
+//        move; a failed entry refuses the read (evidence before
+//        bytes, §10.5).
+//
+// Test class: MOCKED ROUTE CONTRACT; the live halves are
+// tests/hc/artifacts.test.ts and the B9 gate leg (pre-revocation URL
+// fails, live).
+// ============================================================================
+
+const session = { liveSessionClaims: vi.fn() };
+vi.mock('@/lib/auth/session', () => session);
+vi.mock('@/lib/db/user', () => ({
+  asUser: vi.fn(async () => ({}) as unknown),
+}));
+
+const artifacts = {
+  readableArtifact: vi.fn(),
+  logArtifactRead: vi.fn(),
+};
+vi.mock('@/lib/hc/artifacts', () => artifacts);
+
+const createSignedUrl = vi.fn();
+vi.mock('@/lib/db/service-role', () => ({
+  asServiceRole: () => ({
+    storage: { from: () => ({ createSignedUrl }) },
+  }),
+}));
+
+const CLAIMS = { sub: '33333333-0000-4000-8000-000000000003', role: 'authenticated' };
+const ARRIVAL = '55555555-0000-4000-8000-000000000005';
+const ROW = {
+  circle_id: '11111111-0000-4000-8000-000000000001',
+  subject_id: '22222222-0000-4000-8000-000000000002',
+  storage_key: 'circle/c/arrival/a/deadbeef',
+  scan_verdict: 'clean',
+  mime_detected: 'application/pdf',
+  byte_size: 4,
+};
+
+type RouteModule = {
+  GET: (r: Request, ctx: { params: Promise<{ id: string }> }) => Promise<Response>;
+};
+let route: RouteModule;
+
+const fetchMock = vi.fn();
+
+function get(headers: Record<string, string> = {}): Request {
+  return new Request(`http://local.test/api/artifact/${ARRIVAL}`, { method: 'GET', headers });
+}
+const ctx = { params: Promise.resolve({ id: ARRIVAL }) };
+
+beforeEach(async () => {
+  vi.resetAllMocks();
+  session.liveSessionClaims.mockResolvedValue(CLAIMS);
+  artifacts.readableArtifact.mockResolvedValue(ROW);
+  artifacts.logArtifactRead.mockResolvedValue(undefined);
+  createSignedUrl.mockResolvedValue({
+    data: { signedUrl: 'http://storage.internal/signed/abc' },
+    error: null,
+  });
+  fetchMock.mockResolvedValue(
+    new Response(new Uint8Array([1, 2, 3, 4]), {
+      status: 200,
+      headers: { 'content-type': 'application/pdf', 'content-length': '4' },
+    }),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  route = (await import('@/app/api/artifact/[id]/route')) as RouteModule;
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('B7 · one 404, byte-identical — 404 ≡ 403 (AC-PERM-2; RLS-10)', () => {
+  it('no session / nonexistent / unauthorized / not-clean all answer the SAME bytes', async () => {
+    const bodies: string[] = [];
+    const statuses: number[] = [];
+
+    session.liveSessionClaims.mockResolvedValueOnce(null);
+    let res = await route.GET(get(), ctx);
+    statuses.push(res.status);
+    bodies.push(await res.text());
+
+    artifacts.readableArtifact.mockResolvedValueOnce(null); // ghost OR revoked: one shape upstream
+    res = await route.GET(get(), ctx);
+    statuses.push(res.status);
+    bodies.push(await res.text());
+
+    artifacts.readableArtifact.mockResolvedValueOnce({ ...ROW, scan_verdict: 'inconclusive' });
+    res = await route.GET(get(), ctx);
+    statuses.push(res.status);
+    bodies.push(await res.text());
+
+    artifacts.readableArtifact.mockResolvedValueOnce({ ...ROW, scan_verdict: null });
+    res = await route.GET(get(), ctx);
+    statuses.push(res.status);
+    bodies.push(await res.text());
+
+    expect(statuses).toEqual([404, 404, 404, 404]);
+    expect(new Set(bodies).size).toBe(1);
+    expect(createSignedUrl).not.toHaveBeenCalled();
+    expect(artifacts.logArtifactRead).not.toHaveBeenCalled();
+  });
+
+  it('quarantined is REFUSED the same way — not releasable by any read path (AC-INBOX-15)', async () => {
+    artifacts.readableArtifact.mockResolvedValueOnce({ ...ROW, scan_verdict: 'infected' });
+    const res = await route.GET(get(), ctx);
+    expect(res.status).toBe(404);
+    expect(createSignedUrl).not.toHaveBeenCalled();
+  });
+});
+
+describe('B7 · the signed URL is server-consumed; bytes stream through the route', () => {
+  it('creates a 30 s signed URL, fetches it server-side, and answers private/no-store', async () => {
+    const res = await route.GET(get(), ctx);
+    expect(res.status).toBe(200);
+    expect(createSignedUrl).toHaveBeenCalledWith(ROW.storage_key, 30);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0] as unknown as [string];
+    expect(String(url)).toBe('http://storage.internal/signed/abc');
+
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+    expect(res.headers.get('content-type')).toBe('application/pdf');
+    expect(res.headers.get('accept-ranges')).toBe('bytes');
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3, 4]));
+  });
+
+  it('the browser never receives a storage URL — no redirect, no location header', async () => {
+    const res = await route.GET(get(), ctx);
+    expect(res.headers.get('location')).toBeNull();
+    expect(res.status).not.toBe(302);
+  });
+
+  it('Range requests pass through both ways (206 + content-range)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(new Uint8Array([2, 3]), {
+        status: 206,
+        headers: {
+          'content-type': 'application/pdf',
+          'content-range': 'bytes 1-2/4',
+          'content-length': '2',
+        },
+      }),
+    );
+    const res = await route.GET(get({ range: 'bytes=1-2' }), ctx);
+    expect(res.status).toBe(206);
+    expect(res.headers.get('content-range')).toBe('bytes 1-2/4');
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>).range).toBe('bytes=1-2');
+  });
+
+  it('an unreachable or refused storage answer is a 404-shaped refusal, never a leaky 500 body', async () => {
+    createSignedUrl.mockResolvedValueOnce({ data: null, error: { message: 'nope' } });
+    const res = await route.GET(get(), ctx);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('B7 · evidence before bytes (§1.3 step 6; §10.5)', () => {
+  it('the artifact_read entry is written BEFORE the stream starts', async () => {
+    const order: string[] = [];
+    artifacts.logArtifactRead.mockImplementationOnce(async () => {
+      order.push('log');
+    });
+    fetchMock.mockImplementationOnce(async () => {
+      order.push('fetch');
+      return new Response(new Uint8Array([1]), {
+        status: 200,
+        headers: { 'content-type': 'application/pdf' },
+      });
+    });
+    await route.GET(get(), ctx);
+    expect(order).toEqual(['log', 'fetch']);
+    const [logged] = artifacts.logArtifactRead.mock.calls[0];
+    expect(logged).toMatchObject({
+      claims: CLAIMS,
+      circleId: ROW.circle_id,
+      subjectId: ROW.subject_id,
+      arrivalId: ARRIVAL,
+    });
+  });
+
+  it('a failed evidentiary write refuses the read — no bytes without a trail', async () => {
+    artifacts.logArtifactRead.mockRejectedValueOnce(new Error('log unavailable'));
+    const res = await route.GET(get(), ctx);
+    expect(res.status).toBe(500);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
