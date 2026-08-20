@@ -92,21 +92,34 @@ export default async function InboxPage({
   const parents = (parentData ?? []) as ArrivalRow[];
 
   const childCounts = new Map<string, number>();
+  // §4.7's resolution binds to the SUSPECTED row, and a mailed duplicate
+  // is a CHILD arrival — the parent's rollup label alone would name the
+  // duplicate with nothing to click (the B9 gate finding).
+  const childDuplicates = new Map<string, string[]>();
   if (parents.length > 0) {
     const { data: childData } = await supabase
       .from('arrivals')
-      .select('id, parent_arrival_id')
+      .select('id, parent_arrival_id, state')
       .eq('circle_id', circle)
       .in(
         'parent_arrival_id',
         parents.map((p) => p.id),
       )
       .is('deleted_at', null);
-    for (const child of (childData ?? []) as { parent_arrival_id: string }[]) {
+    for (const child of (childData ?? []) as {
+      id: string;
+      parent_arrival_id: string;
+      state: string;
+    }[]) {
       childCounts.set(
         child.parent_arrival_id,
         (childCounts.get(child.parent_arrival_id) ?? 0) + 1,
       );
+      if (child.state === 'duplicate_suspected') {
+        const ids = childDuplicates.get(child.parent_arrival_id) ?? [];
+        ids.push(child.id);
+        childDuplicates.set(child.parent_arrival_id, ids);
+      }
     }
   }
 
@@ -197,17 +210,26 @@ export default async function InboxPage({
                 </>
               ) : null}
 
-              {row.state === 'duplicate_suspected' ? (
-                <form method="post" action={`/${circle}/inbox/resolve/submit`}>
-                  <input type="hidden" name="arrival_id" value={row.id} />
-                  <Button type="submit" name="resolution" value="different">
-                    It&apos;s different — continue
-                  </Button>{' '}
-                  <Button type="submit" name="resolution" value="same_thing" variant="quiet">
-                    Same thing — keep the original
-                  </Button>
-                </form>
-              ) : null}
+              {(row.state === 'duplicate_suspected'
+                ? [row.id]
+                : []
+              )
+                .concat(childDuplicates.get(row.id) ?? [])
+                .map((arrivalId) => (
+                  <form
+                    key={arrivalId}
+                    method="post"
+                    action={`/${circle}/inbox/resolve/submit`}
+                  >
+                    <input type="hidden" name="arrival_id" value={arrivalId} />
+                    <Button type="submit" name="resolution" value="different">
+                      It&apos;s different — continue
+                    </Button>{' '}
+                    <Button type="submit" name="resolution" value="same_thing" variant="quiet">
+                      Same thing — keep the original
+                    </Button>
+                  </form>
+                ))}
 
               {CANCEL_WINDOW.has(row.state) ? (
                 <form method="post" action={`/${circle}/inbox/cancel/submit`}>
