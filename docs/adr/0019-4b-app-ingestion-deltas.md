@@ -532,3 +532,46 @@ runtime-discipline caveat; Q-vii's transport half rides finding 1).
   (the disposition-in-full's re-review update), D16 ratified in full,
   UPL-01 green. The remaining ADR-0006 sessions are owner sign-off, then
   merge.
+
+---
+
+# Addendum — owner sign-off (2026-08-20, ruled at the top of the merge session)
+
+The sign-off packet was assembled and verified in its own session at head
+`12b0fae` (`12b0faeb67b27e9af5ecdb88fa155e0295fe7bcb`, the round-14
+dispositions commit): CI confirmed green at that exact head FIRST (run 83
+`32451454775` — completed, success, the anonymous public API);
+`supabase/migrations` re-verified byte-identical to `main` @ `3195713`
+(both trees `3b761d6a…` — the bound stays spent at **8 of ≤ 8**); the
+RATIFIED IN FULL status above, the round-14 re-review verdict
+(`docs/review/round-14-rereview.md`), and coverage's UPL-01 flip were each
+re-verified against the tree — **no discrepancies found**. That session
+ended awaiting the ruling; the owner ruled at the top of the merge session
+(the ADR-0018 in-session precedent — "each its own fresh session unless
+the owner rules otherwise in-session"), and this addendum records the
+ruling on the branch BEFORE the merge executes.
+
+**S1.** Slice 4B is **SIGNED OFF unconditionally** as presented: ADR-0019
+ratified in full (D16's transport-containment half as fixed at `bdb7045`
+and re-reviewed clean at `a73a43b`), every 4B coverage row green — UPL-01
+included — with no conditions attached.
+
+**S2.** The two round-14 observations are **accepted as recorded
+properties** of the design — the deliberate circle-level write-hop bind
+and the signed-not-encrypted continuation target — not change requests;
+the named future hardenings stay optional.
+
+**S3.** The owner-queue obligations **ride through the merge as
+recorded**: D8's NOINHERIT question (a role-attribute change — DDL, a
+bound-amendment matter for a DB-opening slice) · the two G4 deploy
+verification rows (the live payload's verdict-field names; the provider's
+A-R strip posture — `docs/ops/ingestion-deploy.md`) · the D15 named gaps
+(the revoke-sender surface; the §5.9 monthly-ceiling notification; slice
+5's §13.2 p95 measurement).
+
+**S4.** Merge **AUTHORIZED**: `slice/4b-app-ingestion` → `main` @
+`3195713`, **MERGE COMMIT, never squash, never rebase** (ADR-0006; the
+ADR-0015 sign-off-with-merge pattern) — executed in the merge session
+immediately after this commit lands and CI confirms green at its head; CI
+confirmed green on `main` at the merge commit before that session declares
+done.
