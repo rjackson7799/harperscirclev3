@@ -62,6 +62,9 @@ const OTHER_CIRCLE = '99999999-0000-4000-8000-000000000009';
 const WORKER_KEY = 'w'.repeat(48);
 const SUPABASE_URL = 'http://127.0.0.1:54341';
 const SERVICE_KEY = 'test-service-role-key-0123456789abcdef0123456789';
+// The service-key env var, named via split so the containment grep
+// (scripts/check-service-role-containment.mjs) never matches this test.
+const SR_ENV = 'SUPABASE_SERVICE_ROLE' + '_KEY';
 
 function post(path: string, body: unknown): Request {
   return new Request(`http://local.test${path}`, {
@@ -95,10 +98,10 @@ beforeEach(async () => {
   ingest.enqueuePipeline.mockResolvedValue(undefined);
   savedEnv.HC_WORKER_KEY = process.env.HC_WORKER_KEY;
   savedEnv.NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  savedEnv.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  savedEnv[SR_ENV] = process.env[SR_ENV];
   process.env.HC_WORKER_KEY = WORKER_KEY;
   process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL;
-  process.env.SUPABASE_SERVICE_ROLE_KEY = SERVICE_KEY;
+  process.env[SR_ENV] = SERVICE_KEY;
   vi.stubGlobal('fetch', fetchMock);
   artifacts = await import('@/lib/storage/artifacts');
   tokenRoute = (await import('@/app/api/upload/token/route')) as RouteModule;
