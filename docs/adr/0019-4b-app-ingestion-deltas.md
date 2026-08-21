@@ -1,21 +1,28 @@
 # ADR-0019 — 4B as-built: the app half of ingestion (B1–B9)
 
-**Status:** Ratified as amended at round 13 (2026-08-20), with ONE
-carve-out: **D16's transport-containment half is AMENDED, not ratified.**
-Round-13 finding 1 (HIGH) is a real code defect in the same-origin TUS
-proxy — the upstream "pin" is a bypassable `startsWith` prefix check and
-the grant does not bind to the forwarded target — so D16's "pins the
-upstream to the storage resumable family" is FALSE as-built. It is fixed
-in its OWN build session (a code change, red→green, a fresh local gate —
-ADR-0006) and re-reviewed BEFORE merge. Everything else the round-13
-review examined ratifies as-built. The dispositions — one HIGH, two LOW,
-and the pointed questions Q-i…Q-vii — are recorded in "Round-13 findings
-and dispositions" below; Q-i/Q-ii/Q-v carry TSD annex A10 (the §5.4/§4.3/
-§1.6 reconciliations). NO DDL is required by anything here — finding 1 is
-an app-layer fix —
+**Status:** RATIFIED IN FULL as of the round-14 dispositions (2026-08-20).
+Round 13 ratified everything it examined as amended, with ONE carve-out:
+D16's transport-containment half stayed AMENDED, not ratified — round-13
+finding 1 (HIGH), a real code defect in the same-origin TUS proxy (the
+upstream "pin" was a bypassable `startsWith` prefix check and the grant
+did not bind to the forwarded target), falsified D16's "pins the upstream
+to the storage resumable family" as then built. That carve-out is now
+LIFTED: the fix landed in its own build session (`bdb7045`, app-layer
+only, red→green, fresh gate — ADR-0006) and the round-14 re-review
+(`docs/review/round-14-rereview.md`, landed at `a73a43b`) confirms it
+resolves finding 1 in full — both gaps closed on two enforcement layers,
+§13.4 resume preserved, NO new findings — so **D16's transport-containment
+half moves AMENDED → RATIFIED as fixed and re-reviewed at round 14.**
+The dispositions — one HIGH (now resolved), two LOW, and the pointed
+questions Q-i…Q-vii — are recorded in "Round-13 findings and dispositions"
+below, with the round-14 resolution and its two non-defect observations;
+Q-i/Q-ii/Q-v carry TSD annex A10 (the §5.4/§4.3/§1.6 reconciliations).
+NO DDL was required by anything here — finding 1 was an app-layer fix —
 so the migration bound stays spent at **8 of ≤ 8**. Owner sign-off and
-merge are each their own session after finding 1's fix (ADR-0006).
-**Deciders:** the round-13 review session (owner ratifies at sign-off).
+merge are each their own session after these dispositions (ADR-0006;
+MERGE COMMIT, never squash — the owner is the sole merge authority).
+**Deciders:** the round-13 review session; the round-14 re-review and
+dispositions sessions (owner ratifies at sign-off).
 **Context:** Slice 4B built the app half of ingestion on `slice/4b-app-ingestion`
 per the SETTLED plan (`docs/review/slice-4-plan.md`, Q1–Q7 verbatim; no
 new plan gate) and ADR-0018 WITH its addendum (the inherited round-12
@@ -319,10 +326,14 @@ any ingest-capable member drives the service credential to arbitrary
 same-host `/storage/v1/…` paths on HEAD/PATCH. The same-origin DIRECTION,
 the server-held credential, and the Location rewrite STAND (Q-vii, ratified
 as strictly better than re-opening a browser-facing storage URL); the
-CONTAINMENT half does NOT and is not ratified as-built. Fixed in finding
+CONTAINMENT half did NOT as then built. Fixed in finding
 1's own build session — normalised `origin`+`pathname` validation AND a
 grant-to-target binding that preserves PRD §13.4 resume through an explicit
-server-side continuation design — red→green, fresh gate, BEFORE merge. See
+server-side continuation design — red→green, fresh gate, BEFORE merge.
+**Round 14 (2026-08-20): the re-review confirms the fix resolves the
+finding in full (`docs/review/round-14-rereview.md`) — the
+transport-containment half is RATIFIED as fixed and re-reviewed, and the
+pin sentence above is TRUE of the tree again.** See
 "Round-13 findings and dispositions".)*
 
 ## Round-13 findings and dispositions
@@ -341,7 +352,7 @@ this head unchanged, and the migration bound stays spent at **8 of ≤ 8**.
 
 | # | Severity | Finding (compressed; the verbatim text is the findings file) | Disposition |
 |---|---|---|---|
-| 1 | **HIGH** | The same-origin TUS proxy pins the upstream with a bare `startsWith` prefix check that base64url + `../` normalisation defeats (`route.ts:127,132,144`), and `verifyUploadGrant` binds only to a client-supplied `x-hc-key` never checked against the forwarded target (`route.ts:118`; `lib/storage/artifacts.ts:65`) — any ingest-capable member drives service-credentialed HEAD/PATCH to arbitrary same-host `/storage/v1/…` paths, falsifying D16's "pins the upstream to the storage resumable family" | **NOT ratified as-built — a code defect fixed before merge.** D16's transport-containment half is AMENDED (the marker above); the fix is its OWN build session (red→green, fresh gate, ADR-0006). Carries the resume-remediation constraint (below). App-layer only — no DDL |
+| 1 | **HIGH** | The same-origin TUS proxy pins the upstream with a bare `startsWith` prefix check that base64url + `../` normalisation defeats (`route.ts:127,132,144`), and `verifyUploadGrant` binds only to a client-supplied `x-hc-key` never checked against the forwarded target (`route.ts:118`; `lib/storage/artifacts.ts:65`) — any ingest-capable member drives service-credentialed HEAD/PATCH to arbitrary same-host `/storage/v1/…` paths, falsifying D16's "pins the upstream to the storage resumable family" | **NOT ratified as-built — a code defect fixed before merge.** D16's transport-containment half is AMENDED (the marker above); the fix is its OWN build session (red→green, fresh gate, ADR-0006). Carries the resume-remediation constraint (below). App-layer only — no DDL. **Round 14: RESOLVED — fixed (`bdb7045`) + re-reviewed clean (`a73a43b`); the transport-containment half RATIFIED as fixed. Two non-defect observations recorded (the re-review + dispositions update below)** |
 | 2 | low | The §5.3 header-path hop binding degenerates to "all headers" when the payload carries no foreign `Received` line (`inbound.ts:248,261`), so position alone decides — defended by the Step-3 MTA A-R strip/emit precondition | **Accepted, docs-only.** D11 amended in place to record the precondition explicitly (the marker under D11); the code-tightening alternative stays available as a future hardening, not this slice. No live defect today |
 | 3 | low | A shipped docstring in `upload-form.tsx:16–22` still describes the retired `x-signature` transport, contradicting the as-built proxy and D16 | **Accepted; folded into finding 1's build session.** The docstring lives in a NON-DOCS tree (`app/`); correcting it in this docs-only session would void the F12 evidence and force a re-gate for zero behavioural value (the round-12 F4 argument). The inline comment at `:69–72` already states the correct proxy/`x-hc-grant` transport, so no reader following the code is misled; finding 1's fix touches this same file, so the docstring correction rides that red→green |
 
@@ -420,6 +431,52 @@ stays BLOCKED** (`docs/coverage.md`): both turn on the re-review of this fix
 (finding 1's bypass test + resume proof) and owner sign-off — the next two
 sessions in the ADR-0006 cadence.
 
+**Re-review + dispositions update (2026-08-20) — finding 1 RESOLVED; D16
+RATIFIED in full; UPL-01 GREEN.** The round-14 re-review
+(`docs/review/round-14-rereview.md`, landed at `a73a43b`; CI green at that
+head, run 32450417228) verified the fix against the tree — not the packet —
+and re-ran the mandated route suite (19/19). Gap (a) is closed: the client
+no longer supplies the fetch URL at all (the create hop forwards the fixed
+server-derived resumable base) and `isResumableUpstream()` validates the
+`new URL()`-NORMALISED origin + pathname at BOTH enforcement points (before
+the server will sign a Location, and again on the way back in via
+`verifyUploadTarget`). Gap (b) is closed: the forwarded target is a
+server-signed unforgeable HMAC token bound to the caller's grant by circle
+on every write hop and by circle+subject with a live `canIngestForSubject`
+re-check at completion. Cross-circle replay is refused on both routes;
+cross-subject within a circle is not exploitable (the target is unforgeable
+and minted only under mint-time subject authorisation, with subject
+identity re-enforced at completion); the non-expiring target is inert
+without a fresh < 2 h grant; §13.4 resume is preserved (circle-stable bind;
+completion reconciles at the ORIGINAL staging key) — proven by test and by
+re-reading the client. **No new findings.** Two OBSERVATIONS recorded for
+the record — neither a defect, neither a change request:
+
+1. *The write-hop grant→target bind is deliberately CIRCLE-level*, looser
+   than completion's circle+subject bind. Sound as built: the write hop is
+   the "continue an upload I already own" operation, proven by possession
+   of the unforgeable target (issued only to the subject-authorised
+   creator), with the circle as an additional coarse guard and subject
+   identity enforced at the two ends that matter — the mint and completion.
+   Tightening the write hop to subject level stays available as a future
+   hardening; it is not required and would not change the reachable
+   surface.
+2. *The signed continuation target is signed, not encrypted.* Its base64url
+   payload is client-readable and reveals the upstream storage resumable
+   URL and the staging key — both inert without the server-held service
+   credential (storage keeps zero policies on the resumable endpoint,
+   M7/049), and the caller already knows its own staging key. Accepted
+   property, not a change request.
+
+Accordingly: **D16's transport-containment half moves AMENDED → RATIFIED
+(as fixed and re-reviewed at round 14), and UPL-01 flips green**
+(`docs/coverage.md`, citing `bdb7045` + `a73a43b` as the evidence). Still
+no DDL anywhere in the fix or its dispositions — the migration bound stays
+spent at **8 of ≤ 8**, and this dispositions commit is docs-only, so the
+F12 app-tree binding holds. The remaining ADR-0006 sessions are owner
+sign-off, then merge (MERGE COMMIT, never squash; the owner is the sole
+merge authority).
+
 ### The pointed questions Q-i … Q-vii — dispositions
 
 Honouring the reviewers' recommended answers where they survived
@@ -434,7 +491,7 @@ runtime-discipline caveat; Q-vii's transport half rides finding 1).
 | Q-iv | D1 | **Fence architecture CONFIRMED, with the round-12 caveat carried forward.** The ESLint allowlist is the three entries claimed and the containment grep holds — but the import fence and the single-file grep prove nothing about the proxy's RUNTIME discipline, and finding 1 is exactly a runtime-discipline defect on that same storage plane. Confirm the fence; it does NOT cover the proxy's request handling |
 | Q-v | D2 | **Ratified.** The webhook stages durably before its 200 and the store worker reads `readStagedObject`; acceptance survives a provider-retention gap and the synthetic webhook exercises the identical path the live one takes. §1.6's swap-cost row annex-touched in TSD annex A10 |
 | Q-vi | D8 | **Corrected probes accepted; NOINHERIT is the owner's DDL call.** Zero direct grants, RLS-empty without an identity, `auth.*`/`hc.log` unreachable — pinned live and catalog-based (`tests/db/runtime-credential.test.ts`; the segfault trap avoided). NOINHERIT is a role-attribute change (DDL) for the owner's bound-amendment queue, never this slice |
-| Q-vii | D16 | **Direction ratified; "pins the upstream to the storage resumable family" NOT ratified as-built — see finding 1.** The same-origin proxy is the right call and strictly better than re-opening a browser-facing storage URL; the FWD-01 config chain (the `/confirm*` allow-list rows, the `token_hash` template, `NEXT_PUBLIC_SITE_URL`) is verified and config-first. But the transport's central containment claim is false as written — D16's ratification of the transport is CONDITIONAL on finding 1's fix |
+| Q-vii | D16 | **Direction ratified; "pins the upstream to the storage resumable family" NOT ratified as-built — see finding 1.** The same-origin proxy is the right call and strictly better than re-opening a browser-facing storage URL; the FWD-01 config chain (the `/confirm*` allow-list rows, the `token_hash` template, `NEXT_PUBLIC_SITE_URL`) is verified and config-first. But the transport's central containment claim is false as written — D16's ratification of the transport is CONDITIONAL on finding 1's fix. *(Round 14: the condition is satisfied — fixed and re-reviewed clean; the transport ratifies in full)* |
 
 ## Consequences
 
@@ -455,7 +512,9 @@ runtime-discipline caveat; Q-vii's transport half rides finding 1).
   *(Round 13: UPL-01 is the ONE exception — its transport half carries
   finding 1 (HIGH), so the row is BLOCKED, not green (`docs/coverage.md`);
   the mint / right-to-ingest / completion halves held. It flips green only
-  after finding 1's fix + re-review, never as `pending`.)*
+  after finding 1's fix + re-review, never as `pending`. Round 14: that
+  condition is met — fixed (`bdb7045`), re-reviewed clean (`a73a43b`) —
+  and UPL-01 is GREEN.)*
 - Round 13's dispositions are RECORDED above (finding 1 HIGH amends D16's
   transport-containment half; findings 2–3 low; Q-i…Q-vii ratified per the
   reviewers' recommendations, Q-iv with the runtime-discipline caveat,
@@ -468,3 +527,8 @@ runtime-discipline caveat; Q-vii's transport half rides finding 1).
   cadence (ADR-0006, each its own session): finding 1's fix (a code change,
   red→green, a fresh local gate) → re-review → owner sign-off → merge
   (MERGE COMMIT, never squash). The owner is the sole merge authority.
+- Round 14 (2026-08-20): the fix and its re-review are DONE — finding 1
+  RESOLVED with no new findings, the two non-defect observations recorded
+  (the disposition-in-full's re-review update), D16 ratified in full,
+  UPL-01 green. The remaining ADR-0006 sessions are owner sign-off, then
+  merge.
