@@ -80,6 +80,87 @@ export function storageAuthHeaders(): { authorization: string; apikey: string } 
   return { authorization: `Bearer ${key}`, apikey: key };
 }
 
+/**
+ * The signed continuation target (round-13 finding 1). The create hop's
+ * upstream Location is NEVER handed to the browser as a raw base64url URL —
+ * a client could then name any `/storage/v1/…` path and the service
+ * credential would follow it (the finding's gap (a): a bare `startsWith`
+ * prefix check is defeated by `../` normalisation). Instead the server
+ * SIGNS the upstream resumable URL together with its staging key, keyed by
+ * the service credential; subsequent hops — and completion — present that
+ * signature, which the browser cannot forge. This is also gap (b)'s bind:
+ * the target is no longer a free-floating client value.
+ *
+ * NON-EXPIRING by design: session freshness lives on the grant
+ * (mintUploadGrant, 2 h), which every hop re-checks, so a hours-later
+ * §13.4 resume presents a fresh grant against this durable target. The
+ * target is an identity binding, not a session token.
+ */
+export function signUploadTarget(upstreamUrl: string, key: string): string {
+  const payload = Buffer.from(JSON.stringify({ u: upstreamUrl, k: key })).toString('base64url');
+  const sig = createHmac('sha256', grantSecret()).update(payload).digest('hex');
+  return `${payload}.${sig}`;
+}
+
+export function verifyUploadTarget(token: string): { url: string; key: string } | null {
+  const dot = token.indexOf('.');
+  if (dot <= 0) return null;
+  const payload = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const expected = createHmac('sha256', grantSecret()).update(payload).digest();
+  const supplied = Buffer.from(sig, 'hex');
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return null;
+  let parsed: { u?: unknown; k?: unknown };
+  try {
+    parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+  if (typeof parsed.u !== 'string' || typeof parsed.k !== 'string') return null;
+  // Defence in depth: even a server-signed target must resolve INSIDE the
+  // storage resumable family — a bug that signed a bad URL still cannot be
+  // driven to a different endpoint.
+  if (!isResumableUpstream(parsed.u)) return null;
+  return { url: parsed.u, key: parsed.k };
+}
+
+/** The upload staging key's scope — `intake/upload/<circle>/<subject>/<uploadId>`.
+ *  Null for any other shape, so a forged key cannot masquerade as a scope. */
+export function uploadKeyScope(
+  key: string,
+): { circleId: string; subjectId: string; uploadId: string } | null {
+  const parts = key.split('/');
+  if (parts.length !== 5 || parts[0] !== 'intake' || parts[1] !== 'upload') return null;
+  const [, , circleId, subjectId, uploadId] = parts;
+  if (!circleId || !subjectId || !uploadId) return null;
+  return { circleId, subjectId, uploadId };
+}
+
+/**
+ * Normalised validation that a URL is inside OUR storage resumable family
+ * (round-13 finding 1 (a)). `new URL()` resolves `../` dot-segments before
+ * the check, so an `…/resumable/../../object/list/…` target — which a bare
+ * `startsWith` over a base64url segment lets through — is rejected on its
+ * true, normalised pathname.
+ */
+export function isResumableUpstream(url: string): boolean {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base) return false;
+  let u: URL;
+  let b: URL;
+  try {
+    u = new URL(url);
+    b = new URL(base);
+  } catch {
+    return false;
+  }
+  if (u.origin !== b.origin) return false;
+  return (
+    u.pathname === '/storage/v1/upload/resumable' ||
+    u.pathname.startsWith('/storage/v1/upload/resumable/')
+  );
+}
+
 /** Generic read of one artifacts-bucket object (completion's measure). */
 export async function downloadObject(
   key: string,

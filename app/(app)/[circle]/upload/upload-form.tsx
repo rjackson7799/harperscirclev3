@@ -11,16 +11,19 @@ import { Field } from '@/components/ui/Field';
  * corridor resumes). The flow:
  *
  *   1. POST /api/upload/token — the server checks the right to ingest
- *      and mints a subject-scoped, expiring signed token for ONE
- *      staging key.
- *   2. tus upload straight to the storage resumable endpoint with the
- *      token in x-signature — the browser never holds a credential
- *      wider than this one key. The tus fingerprint is KEPT on success
- *      of each chunk, so a dropped connection resumes where it stopped.
- *   3. POST /api/upload/complete — the server measures the staged
- *      bytes, creates the arrival, and the pipeline takes over. The
- *      item appears in the inbox with its honest state from that
- *      moment (§4.4).
+ *      and mints a subject-scoped, expiring HMAC grant for ONE staging
+ *      key.
+ *   2. tus upload through the SAME-ORIGIN proxy (/api/upload/tus): the
+ *      grant rides x-hc-grant / x-hc-key on every hop, the server
+ *      forwards to storage on a credential the browser never holds, and
+ *      the rewritten Location is a server-signed continuation target —
+ *      no storage URL or credential ever reaches this browser. The tus
+ *      fingerprint is KEPT on success of each chunk, so a dropped
+ *      connection resumes where it stopped (§13.4).
+ *   3. POST /api/upload/complete — the server verifies that signed
+ *      target, measures the staged bytes, creates the arrival, and the
+ *      pipeline takes over. The item appears in the inbox with its
+ *      honest state from that moment (§4.4).
  */
 
 type SubjectOption = { id: string; first_name: string };
@@ -61,9 +64,10 @@ export function UploadForm({
         return;
       }
       const { upload } = (await minted.json()) as {
-        upload: { upload_id: string; key: string; grant: string; endpoint: string };
+        upload: { key: string; grant: string; endpoint: string };
       };
 
+      let signedTarget: string | null = null;
       await new Promise<void>((resolve, reject) => {
         const tusUpload = new Upload(file, {
           // The SAME-ORIGIN proxy (B9): the expiring server-minted grant
@@ -87,7 +91,15 @@ export function UploadForm({
           onProgress: (sent, total) => {
             setPhase({ kind: 'uploading', pct: total ? Math.round((sent / total) * 100) : 0 });
           },
-          onSuccess: () => resolve(),
+          onSuccess: () => {
+            // The final upload URL carries our server-signed continuation
+            // target — on a resumed attempt it is the ORIGINAL upload's,
+            // which is exactly what completion must reconcile against.
+            signedTarget = tusUpload.url
+              ? new URL(tusUpload.url, window.location.origin).pathname.split('/').pop() ?? null
+              : null;
+            resolve();
+          },
         });
         // Resume an interrupted attempt for the same file when one exists.
         tusUpload.findPreviousUploads().then((previous) => {
@@ -97,10 +109,14 @@ export function UploadForm({
       });
 
       setPhase({ kind: 'finishing' });
+      if (!signedTarget) {
+        setPhase({ kind: 'failed', message: 'The upload could not be finished. Try again.' });
+        return;
+      }
       const completed = await fetch('/api/upload/complete', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ subject_id: subjectId, upload_id: upload.upload_id }),
+        body: JSON.stringify({ subject_id: subjectId, token: signedTarget }),
       });
       if (!completed.ok) {
         setPhase({ kind: 'failed', message: 'The upload could not be finished. Try again.' });

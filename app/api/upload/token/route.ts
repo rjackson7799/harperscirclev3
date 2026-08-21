@@ -45,9 +45,11 @@ export async function POST(req: Request): Promise<Response> {
   // on its resumable endpoint, so the proxy is the mechanism).
   const grant = mintUploadGrant(key);
 
+  // Completion reconciles off the server-signed continuation target the
+  // proxy returns (finding 1), not an id echoed by the client — so the
+  // mint hands back only what the browser drives the upload with.
   return Response.json({
     upload: {
-      upload_id: uploadId,
       bucket: 'artifacts',
       key,
       grant,

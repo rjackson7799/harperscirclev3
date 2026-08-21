@@ -8,7 +8,8 @@ import {
   downloadObject,
   removeObject,
   stageIntakeObject,
-  uploadStagingKey,
+  uploadKeyScope,
+  verifyUploadTarget,
 } from '@/lib/storage/artifacts';
 
 /** The P5 per-file cap (PRD §13.3), re-checked against MEASURED bytes. */
@@ -19,10 +20,16 @@ const FILE_BYTES_MAX = 52428800;
  * rights RE-CHECKED at write time (a grant lowered mid-upload bites,
  * the §4.9 principle), the staged bytes measured (the declared size
  * never grandfathers the real one), the sha computed, the
- * upload-channel arrival created keyed to THIS attempt, the bytes
- * re-staged under the store worker's intake contract, and the work
- * enqueued. The eager store fire rides after() — acceptance never
- * waits on processing.
+ * upload-channel arrival created, the bytes re-staged under the store
+ * worker's intake contract, and the work enqueued. The eager store fire
+ * rides after() — acceptance never waits on processing.
+ *
+ * The client passes the SERVER-SIGNED continuation target (round-13
+ * finding 1), not a raw upload id: it is the source of truth for WHERE
+ * the bytes landed. On a §13.4 resume the bytes sit under the ORIGINAL
+ * attempt's staging key, so keying completion off a freshly-minted id
+ * would miss them — the signed target reconciles that, and its key is
+ * bound to the caller's re-checked circle + subject.
  */
 export async function POST(req: Request): Promise<Response> {
   const supabase = await asUser();
@@ -30,19 +37,19 @@ export async function POST(req: Request): Promise<Response> {
   if (!claims?.sub) return new Response('sign in first', { status: 401 });
 
   let subjectId: string;
-  let uploadId: string;
+  let token: string;
   try {
-    const body = (await req.json()) as { subject_id?: unknown; upload_id?: unknown };
+    const body = (await req.json()) as { subject_id?: unknown; token?: unknown };
     if (
       typeof body.subject_id !== 'string' ||
       !body.subject_id ||
-      typeof body.upload_id !== 'string' ||
-      !body.upload_id
+      typeof body.token !== 'string' ||
+      !body.token
     ) {
       return new Response('malformed', { status: 400 });
     }
     subjectId = body.subject_id;
-    uploadId = body.upload_id;
+    token = body.token;
   } catch {
     return new Response('malformed', { status: 400 });
   }
@@ -50,7 +57,14 @@ export async function POST(req: Request): Promise<Response> {
   const right = await canIngestForSubject(claims, subjectId);
   if (!right) return new Response('not found', { status: 404 });
 
-  const stagingKey = uploadStagingKey(right.circle_id, subjectId, uploadId);
+  const target = verifyUploadTarget(token);
+  if (!target) return new Response('malformed', { status: 400 });
+  const scope = uploadKeyScope(target.key);
+  if (!scope || scope.circleId !== right.circle_id || scope.subjectId !== subjectId) {
+    return new Response('not found', { status: 404 });
+  }
+  const stagingKey = target.key;
+
   const staged = await downloadObject(stagingKey);
   if (!staged) {
     return Response.json({ refused: 'upload_missing' }, { status: 400 });
@@ -65,7 +79,7 @@ export async function POST(req: Request): Promise<Response> {
     subjectId,
     byteSize: staged.bytes.byteLength,
     mimeDeclared: staged.contentType || null,
-    uploadId,
+    uploadId: scope.uploadId,
   });
 
   // The store worker's staging contract; idempotent on completion retry.

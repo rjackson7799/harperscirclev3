@@ -1,4 +1,11 @@
-import { storageAuthHeaders, verifyUploadGrant } from '@/lib/storage/artifacts';
+import {
+  isResumableUpstream,
+  signUploadTarget,
+  storageAuthHeaders,
+  uploadKeyScope,
+  verifyUploadGrant,
+  verifyUploadTarget,
+} from '@/lib/storage/artifacts';
 
 /**
  * The same-origin TUS proxy (4B B9; §2.12/§3.11; UPL-01) — the §1.3
@@ -17,11 +24,16 @@ import { storageAuthHeaders, verifyUploadGrant } from '@/lib/storage/artifacts';
  *   - Same-origin by construction: the entire CORS/dev-origin class
  *     the gate exposed cannot recur here.
  *
- * The upstream upload id (itself a URL path) travels base64url-encoded
- * as our path segment; the client echoes the staging key in x-hc-key on
- * follow-up hops so the grant can bind to it (the create hop reads the
- * key from TUS upload-metadata instead — both are grant-verified, so a
- * mismatched echo simply refuses).
+ * The forwarded target is CONTAINED (round-13 finding 1). On the create
+ * hop the server validates the upstream Location against the normalised
+ * storage resumable family (`isResumableUpstream` — `../` cannot escape a
+ * `new URL()` origin+pathname check) and hands the browser a SERVER-SIGNED
+ * continuation target (`signUploadTarget`), never a raw base64url URL a
+ * client could forge. Every write hop re-verifies that signature and binds
+ * it to the caller's grant: the target's circle must equal the grant key's
+ * circle (`x-hc-key`), so a valid grant can drive only its own circle's
+ * uploads. §13.4 resume survives — the fresh grant on a resumed attempt
+ * shares the circle of the original target, and the signature never expires.
  */
 
 const FORWARD_REQUEST_HEADERS = [
@@ -79,7 +91,7 @@ function forwardHeaders(req: Request): Headers {
   return headers;
 }
 
-function proxyResponse(upstream: Response): Response {
+function proxyResponse(upstream: Response, key: string): Response {
   const headers = new Headers();
   for (const name of FORWARD_RESPONSE_HEADERS) {
     const value = upstream.headers.get(name);
@@ -87,9 +99,14 @@ function proxyResponse(upstream: Response): Response {
   }
   const location = upstream.headers.get('location');
   if (location) {
-    // The upstream upload id is a URL path of its own; encode it whole.
-    const id = Buffer.from(location).toString('base64url');
-    headers.set('location', `/api/upload/tus/${id}`);
+    // Never hand the browser a raw storage URL: validate the upstream
+    // Location against the normalised resumable family, then sign it into
+    // a continuation target bound to this staging key (finding 1).
+    if (!isResumableUpstream(location)) {
+      return new Response('bad gateway', { status: 502 });
+    }
+    const target = signUploadTarget(location, key);
+    headers.set('location', `/api/upload/tus/${target}`);
   }
   return new Response(null, { status: upstream.status, headers });
 }
@@ -107,7 +124,7 @@ export async function POST(req: Request): Promise<Response> {
     duplex: 'half', // undici requires it for streamed bodies
   };
   const upstream = await fetch(upstreamBase(), init);
-  return proxyResponse(upstream);
+  return proxyResponse(upstream, key);
 }
 
 async function forwardToUpload(
@@ -118,18 +135,20 @@ async function forwardToUpload(
   const grant = req.headers.get('x-hc-grant');
   const key = req.headers.get('x-hc-key');
   if (!grant || !key || !verifyUploadGrant(key, grant)) return grantRefused();
+  const scope = uploadKeyScope(key);
+  if (!scope) return grantRefused();
 
   const { id } = await ctx.params;
   const encoded = id?.[0];
   if (!encoded) return new Response('not found', { status: 404 });
-  let upstreamUrl: string;
-  try {
-    upstreamUrl = Buffer.from(encoded, 'base64url').toString('utf8');
-  } catch {
-    return new Response('not found', { status: 404 });
-  }
-  // Never proxy anywhere but the storage resumable family.
-  if (!upstreamUrl.startsWith(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/upload/resumable`)) {
+
+  // The target is a server-signed continuation reference, never a
+  // client-forgeable URL (finding 1). Verify the signature, then BIND it
+  // to the caller's grant: the target's circle must be the grant's circle.
+  const target = verifyUploadTarget(encoded);
+  if (!target) return new Response('not found', { status: 404 });
+  const targetScope = uploadKeyScope(target.key);
+  if (!targetScope || targetScope.circleId !== scope.circleId) {
     return new Response('not found', { status: 404 });
   }
 
@@ -141,8 +160,8 @@ async function forwardToUpload(
     init.body = req.body;
     init.duplex = 'half'; // undici requires it for streamed bodies
   }
-  const upstream = await fetch(upstreamUrl, init);
-  return proxyResponse(upstream);
+  const upstream = await fetch(target.url, init);
+  return proxyResponse(upstream, target.key);
 }
 
 export async function PATCH(
