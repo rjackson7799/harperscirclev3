@@ -394,6 +394,32 @@ reconciles completion, which today keys off the freshly-minted `upload_id`
 insufficient and would regress a stated capability. **This constraint is
 BINDING on finding 1's build session.**
 
+**Build-session update (2026-08-20) — finding 1 FIXED, red→green (ADR-0006;
+this is NOT the ratification).** The fix landed app-layer only, no DDL (the
+migration bound stays spent at **8 of ≤ 8**). The forwarded target is no
+longer a client-forgeable `base64url(upstreamUrl)`: the create hop validates
+the upstream Location against the NORMALISED storage resumable family
+(`isResumableUpstream` — `new URL()` resolves `../` before the origin +
+pathname check, so gap (a)'s prefix escape is closed) and returns a
+SERVER-SIGNED continuation target (`signUploadTarget`/`verifyUploadTarget`,
+HMAC keyed by the fenced service credential, non-expiring by design —
+session freshness lives on the grant). Every write hop re-verifies that
+signature and binds it to the caller's grant by CIRCLE
+(`circleOf(x-hc-key) === circleOf(target.key)`, gap (b)), which is stable
+across a resume re-mint, so §13.4 resume survives. Completion consumes the
+same signed target and reconciles the bytes at the ORIGINAL staging key.
+Finding 3's stale `x-signature` docstring was corrected in the same file
+family. Red→green was watched: the mandated route test — a valid grant + a
+`..`-bearing raw id — returned 201 (forwarded) before the fix, 404 after
+(`tests/routes/upload.test.ts`). A fresh full local gate is GREEN at this
+head — **24 passed** (walkthrough 11 + a11y 5 + ingestion 8, incl. the
+UPL-01 live upload → store → scan → gate leg and EICAR quarantine), with the
+CI-shaped suites green (upload 19/19, `test:app` 431/431, typecheck, lint).
+**D16's transport-containment half stays AMENDED, NOT ratified, and UPL-01
+stays BLOCKED** (`docs/coverage.md`): both turn on the re-review of this fix
+(finding 1's bypass test + resume proof) and owner sign-off — the next two
+sessions in the ADR-0006 cadence.
+
 ### The pointed questions Q-i … Q-vii — dispositions
 
 Honouring the reviewers' recommended answers where they survived

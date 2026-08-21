@@ -338,7 +338,13 @@ is BLOCKED on round-13 finding 1 (HIGH) — the same-origin TUS proxy's
 upstream containment is bypassable (ADR-0019 finding 1, amending D16); it
 is a code defect fixed before merge in its own build session, and the row
 flips green only after that fix + re-review (never as `pending`).** Every
-other 4B row ratified as-built at round 13.
+other 4B row ratified as-built at round 13. **Build-session update
+(2026-08-20): finding 1 FIXED red→green (app-layer, no DDL) — a server-signed
+continuation target with normalised-URL validation and a grant-to-target
+circle binding, completion reconciled; fresh full local gate GREEN (24
+passed, incl. the UPL-01 live upload leg). The row STAYS BLOCKED — it flips
+green only after the re-review of that fix + owner sign-off (ADR-0019
+build-session update).**
 
 | ID | Assertion | Source | Layer | Slice | Status | Test |
 |---|---|---|---|---|---|---|
