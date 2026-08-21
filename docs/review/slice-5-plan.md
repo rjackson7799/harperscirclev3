@@ -11,7 +11,11 @@ commit, clean, in sync with origin) with CI green at that head (run
 checked first per the kickoff). The plan itself landed docs-only at
 `efb11ed`, **CI green on main — run 87, 32475831700, SUCCESS** (public
 API, confirmed in-session); the owner then ruled in-session and the
-rulings landed in this docs-only follow-up.
+rulings landed docs-only at `561a105` (CI green, run 88,
+32518046026). **A commissioned post-gate review pass returned
+fourteen findings the same day; the strengthenings are integrated
+throughout with two further rulings, Q8/Q9, recorded verbatim** —
+see "Post-gate review integration".
 
 **Authority:** TSD §11.1 row 5 ("Extraction + interpretation (§6) —
 the AI layer, proposals, conflicts, the evaluation set; needs slice
@@ -70,11 +74,25 @@ structural, not aspirational:
    carries the G3 rows (the four terms in writing · ZDR confirmed on
    THE workspace whose key the deploy uses · structured outputs'
    qualified technical retention confirmed for the surfaces we use ·
-   the Files API never used — §6.2) and the G9 row (per-field bands
-   exist and the shipped `(model_id, prompt_version)` pair matches a
-   completed eval run). Until G9's bands exist, **every field is
-   treated as high-risk** (§6.5) — the all-high-risk mode is slice 5's
-   shipping default, not a degraded state.
+   the Files API never used — §6.2), **the §4.2.2 cancellation
+   confirmation as its own required, evidence-linked row** — what
+   happens to a request already dispatched when we abandon it,
+   including disconnect/timeout behaviour and any resulting retention
+   (the PRD's G3 row says "confirmed"; the TSD's recorded
+   reconciliation holds it BESIDE the four terms, not as a fifth —
+   both honoured: §6.2/TSD:2090, PRD §11.2), **the pre-activation
+   live smoke test** — the EXACT worker adapter's synchronous
+   Messages request, synthetic material only, against the cleared
+   workspace, asserting the returned model, stop handling, schema
+   parse, the ZDR-eligible feature combination, and the absence of
+   fallback/Files parameters (neither the CI fixture server nor the
+   Batch-API eval harness proves this path) — and the G9 row
+   (per-field bands exist and the shipped `(model_id,
+   prompt_version)` pair matches a completed eval run on the BLIND
+   partition). Until G9's bands exist, **every field is treated as
+   high-risk** (§6.5) — the all-high-risk mode is slice 5's shipping
+   default, not a degraded state, and it is structural (B4's
+   fail-closed band loading).
 
 **Two adapter properties are pinned as tests, not habits:** the model
 allowlist is exactly §6.1's table (`claude-opus-5` for
@@ -259,19 +277,24 @@ Slice 5 is the two AI stages over machinery that already runs.
 | # | File | Contents | Spec |
 |---|---|---|---|
 | M1 | `inherited_obligations` | The owner-queue batch (the R8 precedent — inherited DB items land FIRST, before slice-5-proper work): (1) **`hc.log_artifact_read(p_arrival)`** — authenticated definer with in-function authorization, writing the §1.3 step-6 entry the artifact route today appends via the D7 hc_internal-assumption boundary; the ADR-0019 Q-iii queued candidate, retiring that interim (app half B8). (2) **The known-senders read surface** (D15's revoke-sender gap): `hc.list_known_senders(p_circle)` — live rows with accepted-by/at, the SND-02 authorization shape (coordinator/manage-gated, DEF-10), giving `hc.revoke_sender` its member surface at B8. (3) **D8's NOINHERIT** per Q4's ruling: `hc_runtime`'s two memberships re-granted `WITH INHERIT FALSE` (SET ROLE preserved — the channel is SET ROLE, not inheritance), flipping the bare-login probe from RLS-empty-zero-rows to an honest privilege refusal; `tests/db/runtime-credential.test.ts` and BAT-04's pins re-pinned same commit; `docs/ops/runtime-db-credentials.md` row updated. | ADR-0019 D7/D8/D15, Q-iii/Q-vi, S3 |
-| M2 | `record_context` | **`hc.record_context_for(p_arrival)`** to §3.10's letter: hc_pipeline-only EXECUTE, owner `hc_internal`, revoked from everything else; returns ONLY the arrival's own subject's record in the arrival's own circle — current `profile_facts`, recent `timeline_events`, open tasks, documents in the same categories (§6.6's shape) — cross-subject/cross-circle unreadable **by signature**, DEF-10 one shape for nonexistent/foreign. Output bounded (a cap per section — the P5 discipline) so the interpretation prompt has a stated size, and shaped stably (deterministic ordering) so the §6.6 cache prefix is byte-stable per subject. | §3.10, §6.6 |
-| M3 | `extraction_runs` | The §4.3/§6.4 run-versioning contract made structural: `extraction_runs` (arrival, model_id, prompt_version, attempt, lease-bound; a run row exists even when zero facts land — refusals/failures are countable per class, PRD §10.4) with **supersede-not-append** enforced at `hc.write_extractions` (a re-run's publication supersedes the arrival's prior facts in the same transaction — a retry cannot double a fact); `hc.reason_codes` appends the honest §6.8 exits (`provider_refusal`, `extract_budget_exhausted` if absent, `needs_password`/`unsupported_type` codes as the normalize outcomes need); `write_proposals` verified to carry `anomaly_flags` through (§6.7) and refined here if not. Exact shapes red-first at build; the CONTRACT (runs recorded, supersession total, reasons enumerated) is this row's letter. | §4.3, §6.4, §6.8; PRD §10.4 |
-| M4 | `conflict_outcomes` | CNF-01's lifted refusal: `hc.approve_proposal`'s conflict arm — §4.8's three outcomes exactly. **Use the new one**: new `profile_facts` row + `superseded_at`/`superseded_by_id` on the old IN ONE transaction, both provenances intact (the `profile_facts_current` partial unique index stays the only path — no quiet overwrite exists); **keep what's there**: nothing written, proposal closes `rejected`, the conflict logged; **keep both and ask**: no fact, a drafted task instead. One proposal, one object, one transaction — `proposal_commits` unchanged; §4.9 versioning/idempotency ride as-is. pgTAP drives all three plus the version-race and double-approve edges. | §4.8, §4.9, §2.5 |
-| M5 | `duplicates_stage2` | §4.7 point 2: the key-field match against FILED documents (document type, date, provider, amount, policy number — normalised SQL comparison over approved extraction values; deterministic and pgTAP-provable; the §6.1 model-assisted comparison stays a recorded G9-calibrated future refinement, not this migration), run inside `hc.finalize_extraction`'s transaction on successful publication (the D8 stage-1-in-finalize_scan precedent — the work answer still lands in full; the duplicate question is held by state). Graph appends + ING-10 re-pin same commit; **the exact state shape (reusing `duplicate_suspected` with a stage discriminant vs a distinct state) is a named red-first build decision inside this migration** — the letter is: entry after extract, the two human resolutions, `different` resumes toward interpret via a real lease + CAS + outbox re-queue (the SND-02/D8 pattern), **`same_thing` attaches the arrival to the matched document as an additional source (`provenance_edges` — the document now cites both) and files nothing new** (ADR-0017 D8's refinement lands), never auto-discarded either way. Catches ADR-0018's recorded same-email identical-pair edge — pinned by that exact scenario. | §4.7 p2; PRD §8.9; ADR-0018 |
+| M2 | `record_context` | **`hc.record_context_for(p_arrival)`** to §3.10's letter: hc_pipeline-only EXECUTE, owner `hc_internal`, revoked from everything else; returns ONLY the arrival's own subject's record in the arrival's own circle — current `profile_facts`, recent `timeline_events`, open tasks, documents in the same categories (§6.6's shape) — cross-subject/cross-circle unreadable **by signature**, DEF-10 one shape for nonexistent/foreign. Output bounded (per-section caps stated IN the migration — the P5 discipline) with the **inclusion priority settled here, not at build**: current facts in PRD §6.4's high-risk classes (allergies, medications, directives and their kin) are NEVER truncated and never lose their place to merely-recent low-risk rows; the remaining sections cap by recency within category; **a truncated section says so in the payload** (the §6.8 honest-limits discipline — interpretation must never be handed a partial record presented as complete). Shaped stably (deterministic ordering) so the §6.6 cache prefix is byte-stable per subject. | §3.10, §6.6; PRD §6.4 |
+| M3 | `extraction_runs` | The §4.3/§6.4 run-versioning contract made structural, **with the durable recording point settled here**: the run row is INSERTED IN THE CLAIM TRANSACTION (claim-before-work extended to accounting — a timeout, kill, render failure or provider error can never consume a lease without its run row existing), lease-bound, stamped `model_id`/`prompt_version` at insert; the outcome CLOSES WITH THE LEASE — finalize closes it on every outcome, and a sweeper-expired lease closes its run as abandoned, so **no open run outlives its lease**. A run row exists even when zero facts land — refusals/failures countable per class (PRD §10.4). **Supersede-not-append** enforced at `hc.write_extractions` (a re-run's publication supersedes the arrival's prior facts in the same transaction — a retry cannot double a fact); `hc.reason_codes` appends the honest §6.8 exits (`provider_refusal`, `extract_budget_exhausted` if absent, `needs_password`/`unsupported_type` codes as the normalize outcomes need); `write_proposals` verified to carry `anomaly_flags` through (§6.7) and refined here if not. **`prompt_version`'s semantics are pinned**: it names the FULL inference-and-rendering configuration (the output schema, effort/token parameters, the §6.3 render rules) — a change to any covered input bumps it; the B9 eval manifest stores the complete configuration hash, with the `(model_id, prompt_version)` pair as its public identity (the TSD's normative key, kept). Remaining column shapes red-first at build; the CONTRACT above is this row's letter. | §4.3, §6.4, §6.8; PRD §10.4 |
+| M4 | `conflict_outcomes` | CNF-01's lifted refusal: `hc.approve_proposal`'s conflict arm — §4.8's three outcomes with **the exact rows written settled here (Q9)**. **Use the new one**: proposal closes `approved`; a new `profile_facts` row + `superseded_at`/`superseded_by_id` on the old IN ONE transaction, both provenances intact, `proposal_commits` claims the new fact row (the `profile_facts_current` partial unique index stays the only path — no quiet overwrite exists). **Keep what's there**: proposal closes `rejected` with the decider recorded, NOTHING written to the record, no commit row, the conflict logged. **Keep both and ask (Q9 — SETTLED)**: proposal closes `approved` and **the task COMMITS as the approval's one object** (`proposal_commits`: conflict → task; unassigned — assignment stays human and separate, §3.6; no second approval — the person's choice IS the decision; §4.8's word "drafted" gets its annex reconciliation offered at round 15, the A9/A10 pattern). One proposal, one object, one transaction throughout. **The idempotency identity includes the chosen outcome**: a replayed `approval_attempts` key with the SAME outcome replays the result; the same key with a DIFFERENT outcome conflicts, writing nothing (the ING-11 pattern). §4.9 versioning rides as-is. pgTAP drives all three outcomes, the version race, double-approve, and the same-key-different-outcome refusal. | §4.8, §4.9, §2.5; Q9 |
+| M5 | `duplicates_stage2` | §4.7 point 2, **with the matching contract and the state shape settled at this gate, not inside the migration**. **The state (Q8 — SETTLED): a DISTINCT internal state** for post-extract suspects (family-facing label stays `Looks like a duplicate`; its own `state_rank` row; enum append is append-only-safe and 046's rank/label guard extends) — the graph encodes `extracting → <state>` and `<state> → interpreting \| nothing_filed`, so a stage-1 suspect resuming toward interpret is GRAPH-illegal, not merely machinery-refused (the ING-10 closed-graph philosophy); graph appends + ING-10/046 re-pins same commit. **The matching contract**: candidates are the SAME CIRCLE and SAME SUBJECT's filed, current documents (non-deleted, non-superseded); the predicate is normalised equality on **document type + date + at least one corroborating field** (provider / amount / policy number), every contributing field PRESENT on both sides — **absence never wildcards**; exact-after-normalisation (tolerance windows are a BGT-01-style provisional revision by migration, never silent); candidate selection deterministic — the most-recently-filed match wins, ties on id; one suspect references one canonical target. Normalised SQL over approved extraction values — deterministic and pgTAP-provable; the §6.1 model-assisted comparison stays a recorded G9-calibrated future refinement. Detection runs inside `hc.finalize_extraction`'s transaction on successful publication (the D8 stage-1-in-finalize_scan precedent — the work answer still lands in full; the duplicate question is held by state). The two human resolutions: `different` resumes to interpret via a real lease + CAS + outbox re-queue (the SND-02/D8 pattern); **`same_thing` attaches the arrival to the matched document as an additional source (`provenance_edges` — the document now cites both) and files nothing new** (ADR-0017 D8's refinement lands); never auto-discarded either way. **Per-document-class false-positive AND false-negative fixtures required** (same type+date, different provider ⇒ no suspect; the ADR-0018 same-email identical pair ⇒ suspect — pinned by that exact scenario). | §4.7 p2; PRD §8.9; ADR-0018; Q8 |
 | M6 | *(reserved)* | Round-15 dispositions/fixes — the standing precedent. | — |
 
 **5A test plan:** pgTAP 051–055 (one file per migration; refusal
 shapes, replay, privilege closure catalog-based — the segfault trap);
-concurrency additions (teed): conflict approval version-race (two
-coordinators, §4.9) · stage-2 resolution vs a freeze committing
-mid-wait (R-rule) · re-run supersession vs cancellation (the ING-08
-class extended to M3's contract) · record_context_for vs concurrent
-record writes (stable read, no torn context). CI:
+**the M3 run-accounting matrix asserted case by case**:
+kill-before-provider, kill-during-provider, refusal, normalisation
+failure, stale lease, and timeout each leave a closed run row with the
+honest outcome — no lease consumed without its run, no open run
+outliving its lease; concurrency additions (teed): conflict approval
+version-race (two coordinators, §4.9) · same-key-different-outcome
+approval race (M4's identity) · stage-2 resolution vs a freeze
+committing mid-wait (R-rule) · re-run supersession vs cancellation
+(the ING-08 class extended to M3's contract) · record_context_for vs
+concurrent record writes (stable read, no torn context). CI:
 verify-migration-state exact counts 54 → 54+N; upgrade leg green;
 db:verify clean under `--fail-on warning`.
 
@@ -279,15 +302,15 @@ db:verify clean under `--fail-on warning`.
 
 | # | Unit | Contents | Spec |
 |---|---|---|---|
-| B1 | The G9 corpus | The labelled synthetic corpus FIRST (per Q5): discharge summaries, EOBs, pill bottles, handwritten notes, phone photos at an angle — never real family material (PRD Appendix B); per-field labels matching PRD §6.4's risk-class list; checked into the repo as fixtures. **One corpus, two consumers:** the eval harness measures per-field precision/recall against it (§6.10), and the worker/adapter tests and the fixture server serve from it — the build never invents a second, unlabelled fixture world. | §6.10; PRD §6.4, App. B |
-| B2 | The rasterizer | The `mupdf` verification spike (the four legs above) THEN `lib/pipeline/render.ts` as the §6.3 rules-as-code: born-digital PDF → standard-res images + the text layer together; scans/photos/pill bottles → high-res (2576 px), **never downsampled**; email bodies text-first; `page_count` bounds enforced BEFORE rendering (200 high-res pages must never be dispatched by accident — §6.3); rendered pages staged under attempt-scoped keys, unreachable from user paths, GC'd when the lease closes as anything but `advanced` (§4.5). | §6.3, §4.5 |
+| B1 | The G9 corpus | The labelled synthetic corpus FIRST (per Q5): discharge summaries, EOBs, pill bottles, handwritten notes, phone photos at an angle — never real family material (PRD Appendix B); per-field labels matching PRD §6.4's risk-class list; checked into the repo as fixtures. **One GOVERNED corpus, two consumers, with immutable partitions**: a DEVELOPMENT partition feeds the worker/adapter tests, the fixture server, and prompt/schema iteration; a **BLIND EVALUATION partition** is read by scored eval runs ONLY — never by prompt development — so the reported bands are not measured on their own development set. The build never invents a second, unlabelled fixture world. **B1's deliverable includes the corpus spec**: minimum support per field × source type, negative examples (fields genuinely absent), ambiguous-label handling (double-label + adjudication), and the proposed per-field acceptance bands the owner signs at the G9 gate. | §6.10; PRD §6.4, App. B |
+| B2 | The rasterizer | The `mupdf` verification spike — the four legs above PLUS the hostile-and-limits legs: malformed/truncated PDFs refuse cleanly; decompression/pixel-bomb shapes abort under explicit page-dimension, memory and wall-clock ceilings **BEFORE any provider dispatch** (the §4.6 bounded-decompression stance carried to rendering); **EXIF orientation normalised before geometry** (a phone photo's stored orientation must not rotate the citation space — coordinates are against the image as displayed); **deterministic geometry proven round-trip** (a normalised `{page, bbox}` cuts the visible crop from the rendered page — the §6.4 coordinate space verified end to end). THEN `lib/pipeline/render.ts` as the §6.3 rules-as-code: born-digital PDF → standard-res images + the text layer together; scans/photos/pill bottles → high-res (2576 px), **never downsampled**; email bodies text-first; `page_count` bounds enforced BEFORE rendering (§6.3). **The rendered-page lifecycle, settled**: during an attempt, pages live under attempt-scoped staging keys, unreachable from user paths; a lease closing as anything but `advanced` GC's them (§4.5); **on `advanced` they PROMOTE to durable write-once per-arrival keys** — the §6.4 rendering source slice 6's review screen shows and crops from, served only through the artifact-route discipline (clean-gated, evidence-before-bytes), deleted with the arrival (the DEL-01 cascade, named not built). **Slice-5 exit assertion (the OCR seam):** stored citation coordinates and the promoted page artifacts accept slice 6's OCR text as a later addition without changing either — pinned so Q6's deferral cannot force rework. | §6.3, §4.5, §6.4 |
 | B3 | `lib/ai/` — the provider adapter | ONE fenced module family (the §1.9 one-adapter G3 posture; ESLint-fenced to the worker routes + the eval harness, the lib/hc precedent). Messages API via the SDK: **structured outputs** (`output_config.format` — a parseable object, never a JSON-shaped string; the provider's citations feature never sent, §6.4's recorded incompatibility), vision blocks per B2's rendering, **our own normalised citation geometry** `{page, bbox}` in our schema; `max_tokens` sized for thinking PLUS output (§6.1's truncation trap); the record-context prefix behind a `cache_control` breakpoint with the 512-token minimum **checked, not assumed** (§6.6); operator context as `{"role":"system"}` messages, never in the arrival's turn; source text as delimited data (§6.7); **`stop_reason` checked first — a refusal is HTTP 200** and maps to the honest terminal path, never "unsafe" copy (§6.8); **no server-side fallbacks, ever** (pinned); no Files API (pinned); the model allowlist pinned with `claude-fable-5` refused; client-side timeout inside the lease deadline (the §1.9 check); `model_id` + `prompt_version` from config, recorded on every run. | §6.1–§6.8 |
-| B4 | The extract worker | `[stage]` gains `extract`: claim → COMMIT → render (B2) → provider (B3) → `hc.finalize_extraction` (facts + drafted proposals in the won transaction; M3's supersession). `risk_class` assigned **by field, before the call**, from PRD §6.4's list — the all-high-risk mode is the shipping default until G9's bands exist (§6.5); uncited facts become questions or are dropped at the pipeline (the CHECK has nowhere to hide); normalize outcomes (`needs_password`, `unsupported_type`) land their honest states; refusal/exhaustion terminalize with M3's reasons; `maxDuration` set explicitly per the §1.9 check. The P5 publication caps (≤200 facts, ≤8 KB values, ≤50 proposals) bound the schema the model is asked for — refusal-shaped, not truncation-shaped. | §4.3, §6.3–§6.5, §6.8 |
+| B4 | The extract worker | `[stage]` gains `extract`: claim → COMMIT → render (B2) → provider (B3) → `hc.finalize_extraction` (facts + drafted proposals in the won transaction; M3's supersession). `risk_class` assigned **by field, before the call**, from PRD §6.4's list — and the all-high-risk mode is **structural, not configured**: high-risk is the code-level fallback; calibrated bands load ONLY from an allowlisted eval artifact whose configuration hash matches the running `(model_id, prompt_version)` manifest, and a missing, stale, altered or partial artifact fails closed to all-high (tests for each shape — a config accident can never enable bands G9 did not sign); uncited facts become questions or are dropped at the pipeline (the CHECK has nowhere to hide); normalize outcomes (`needs_password`, `unsupported_type`) land their honest states; refusal/exhaustion terminalize with M3's reasons; `maxDuration` set explicitly per the §1.9 check. The P5 publication caps (≤200 facts, ≤8 KB values, ≤50 proposals) bound the schema the model is asked for — refusal-shaped, not truncation-shaped. | §4.3, §6.3–§6.5, §6.8 |
 | B5 | The interpret worker | `[stage]` gains `interpret` (claim's in-flight transition — ING-07): `hc.record_context_for` (M2) → the record-aware pass (§6.6) → proposals AND conflicts drafted (§4.8's Phase-1 conflict list; a high-risk change is ALWAYS a conflict, never a quiet update), `anomaly_flags` set for injection shapes (§6.7/§4.10 defence 3) → `hc.finalize_interpretation` → `proposals_ready`. Structural guarantees restated as tests, not prose: the pipeline cannot reach another subject's record (M2's signature) and cannot act on its conclusions (§3.10's absent privilege — the blast radius of full injection success is a proposal a person must read). | §6.6–§6.7, §4.8, §3.10 |
 | B6 | Stage-2 surface + copy | The §4.7 p2 member surface on the EXISTING inbox machinery (D12's resolution affordances bound to the suspected row): the stage-2 copy cites the matched FILED document (*"This looks like the discharge summary you filed on Jul 12"*), `same_thing` lands the additional-source outcome, `different` resumes; **`ProvenanceLine.tsx` takes its first consumer here if the matched-document line renders provenance (the natural fit), else its design-conformance citation moves honestly to slice 6 with the review screen — decided red-first, recorded either way (Q6).** | §4.7; PRD §8.9 |
 | B7 | The relay flip + the seam consumed | D13's defer branch flips to consume: extract/interpret messages eager-fire and queue-read like every other stage; the +1 h deferred backlog drains; the sweeper's listings now advance the new stages (no sweeper change expected — stage-agnostic by construction, asserted not assumed). The Q7 seam CLOSES: a gated arrival proceeds `extracting → extracted → interpreting → proposals_ready` and the inbox label reads `Needs you`. Production activation remains G4/G7-gated throughout — nothing real exists to process. | ADR-0019 D13; §4.3 |
 | B8 | Inherited surfaces + boundary retirement | The artifact route moves its access-log append onto M1's `hc.log_artifact_read` — `lib/db/evidentiary.ts` is DELETED (the D7 interim retired; evidence-before-bytes unchanged), the fence and containment pins re-pinned to the shrunken surface. The known-senders member surface (M1's read + the existing `hc.revoke_sender`): list + revoke on the inbox's sender management, composed from slice-3 components. | ADR-0019 D7/D15 |
-| B9 | The eval harness, the p95 harness, the E2E leg | (1) **The G9 harness**: the corpus through the Batch API (50%), keyed `(model_id, prompt_version)`, per-field precision/recall emitted against B1's labels — the §6.10 letter: a model or prompt change is not shippable without a re-run; opt-in with a real key, never CI. (2) **The §13.2 p95 harness** (D15's named gap, discharged as far as locally possible): arrival→`proposals_ready` measured over the eager path against the fixture server — **report-only locally** (it proves OUR machinery's share of the 60 s budget; provider latency rides §4.3's lease budgets; the hosted measurement is a named `ai-provider.md` deploy row — the PRF-06 cold-leg precedent). (3) **The E2E extraction leg** under the local-gate protocol (fixture server in the gate stack, the clamd-container precedent): upload → store → scan → gate → extract → interpret → `Needs you` on screen; a refusal fixture → `Couldn't read it` with the artifact still viewable; a needs-password fixture; the stage-2 same-email pair → suspect → both resolutions live; walkthrough 11 + a11y 5 + ingestion 8 re-run UNCHANGED. | §6.10, §13.2 (PRD); ADR-0019 D15 |
+| B9 | The eval harness, the p95 harness, the E2E leg | (1) **The G9 harness**: the BLIND partition through the Batch API (50%), keyed `(model_id, prompt_version)`, per-field precision/recall emitted against B1's labels; **every run writes an immutable manifest** — the full configuration hash (schema, params, render rules, SDK version) behind the public pair (M3's semantics) — the §6.10 letter: a model or prompt change is not shippable without a re-run; opt-in with a real key, never CI. (2) **The §13.2 p95 harness** (D15's named gap, discharged as far as locally possible), **method stated**: representative cohorts per corpus document class, a stated sample count, warm and cold reported SEPARATELY, the PRF-06 warm-p95 percentile method, single and concurrent queue depth — arrival→`proposals_ready` over the eager path against the fixture server, **report-only locally** (it proves OUR machinery's share of the 60 s budget; provider latency rides §4.3's lease budgets); the hosted, provider-inclusive measurement against the full 60 s budget is a named `ai-provider.md` activation row carrying the PRF-06 breach-clause discipline — a breach goes to the owner, never quietly absorbed. (3) **The E2E extraction leg** under the local-gate protocol (fixture server in the gate stack, the clamd-container precedent): upload → store → scan → gate → extract → interpret → `Needs you` on screen; a refusal fixture → `Couldn't read it` with the artifact still viewable; a needs-password fixture; the stage-2 same-email pair → suspect → both resolutions live; walkthrough 11 + a11y 5 + ingestion 8 re-run UNCHANGED. | §6.10, §13.2 (PRD); ADR-0019 D15 |
 
 **The inter-slice seam, stated (Q7).** Entry: slice 4's Q7 seam is
 consumed exactly as ruled — the deferred messages are the work items,
@@ -357,14 +380,14 @@ slices/gates).
 | SND-03 | Known-senders member surface: authorized list read + revoke live end-to-end (D15's gap closed) | pgTAP + app | green |
 | RTC-01 | `hc_runtime` memberships INHERIT FALSE (per Q4): bare login privilege-refused, SET ROLE channel intact, BAT-04 re-pinned | pgTAP + review | green |
 | CTX-01 | `hc.record_context_for`: pipeline-only, own-subject/own-circle by signature, bounded and byte-stable output | pgTAP | green |
-| RUN-01 | Run versioning + supersede-not-append: a re-run cannot double a fact; zero-fact runs recorded; §6.8 reasons enumerated | pgTAP | green |
+| RUN-01 | Run versioning + supersede-not-append: the run row born in the claim transaction, closed with the lease — no lease consumed without its run, no open run outlives its lease (the kill matrix asserted case by case); a re-run cannot double a fact; zero-fact runs recorded; §6.8 reasons enumerated; prompt_version names the full inference+render configuration | pgTAP | green |
 | CNF-01 | *(flip — pending since 1C)* §4.8's three conflict outcomes through `hc.approve_proposal`; supersession the only path to a current value; keep-both drafts a task | pgTAP | green (5A) |
-| DUP-02 | Stage-2 duplicates: key-field match vs filed documents in the finalize transaction; the ADR-0018 same-email pair caught by name; additional-source outcome real; never auto-discarded | pgTAP + app | green |
-| RND-01 | §6.3 rendering rules as code: source-typed resolution, never-downsample floor, page bounds before render, attempt-scoped staging GC'd | app | green |
+| DUP-02 | Stage-2 duplicates: the settled matching contract (same circle+subject, current filed targets, type+date+corroborating field all present, absence never wildcards, deterministic canonical target) on the Q8 distinct state (wrong resumes graph-illegal); the ADR-0018 same-email pair caught by name; per-class FP/FN fixtures; additional-source outcome real; never auto-discarded | pgTAP + app | green |
+| RND-01 | §6.3 rendering rules as code: source-typed resolution, never-downsample floor, page bounds before render, EXIF orientation normalised before geometry, bbox round-trips to the visible crop, hostile inputs abort under stated ceilings before any dispatch; attempt staging GC'd on non-advance, pages PROMOTED write-once on advance (slice 6's rendering source; the OCR-compatibility exit assertion) | app | green |
 | AIA-01 | The adapter contract: structured outputs, own citation geometry, refusal = honest terminal never "unsafe" copy, no fallbacks, no Files API, model allowlist with the Fable-5 refusal, operator channel + delimited data | app + review | green |
 | WRK-02 | Extract/interpret workers live on the §4.3 sequence; the D13 backlog consumed; relay defer branch gone; exhaustion terminal with stated reasons | app + e2e | green |
 | INJ-01 | §4.10/§6.7 in the live path: privilege absence re-proven at the worker layer; anomaly_flags set and surfaced; injected-instruction fixture lands as a flagged proposal, nothing else | pgTAP + app | green |
-| EVA-01 | The G9 evaluation set: labelled corpus + per-field precision/recall keyed (model_id, prompt_version) via the Batch API; re-run required on any model/prompt change; all-high-risk until bands exist | review + harness | green (harness + corpus; the G9 GATE itself closes at owner sign-off of the bands, before any real document — never quietly) |
+| EVA-01 | The G9 evaluation set: the governed corpus with immutable development/BLIND partitions (bands never measured on their development set); per-field precision/recall keyed (model_id, prompt_version) with the full-config manifest behind the pair; re-run required on any covered change; bands enabled only via the B4 fail-closed artifact match — all-high-risk otherwise | review + harness | green (harness + corpus + spec; the G9 GATE itself closes at owner sign-off of the bands, before any real document — never quietly) |
 | PRF-07 | §13.2 arrival→proposals p95: measured over the eager path (fixture server), report-only locally, the hosted row named on ai-provider.md (D15's gap discharged to its honest local limit) | bench + review | green |
 | UXA-02 | The stage-2 duplicate copy + resolution on the inbox; ProvenanceLine's first consumer recorded per Q6 | review | review |
 
@@ -413,6 +436,23 @@ executes on these:
   approval incl. conflict outcomes before the surface exists); the
   coverage-row set as tabled (fourteen rows opening, CNF-01 flipping
   at 5A, A11Y-08 re-tagged to 6, SIG-01 explicitly NOT absorbed).
+
+**Ruled later the same day, at the post-gate review integration
+(recorded verbatim):**
+
+- **Q8 — SETTLED:** **A DISTINCT internal state** for post-extract
+  duplicate suspects (family label stays `Looks like a duplicate`;
+  own rank; the graph encodes `extracting → <state>` and `<state> →
+  interpreting | nothing_filed`, so the CAS refuses a wrong resume by
+  construction — the ING-10 closed-graph philosophy). Review finding
+  5's cross-layer decision settled at the gate, not inside M5.
+- **Q9 — SETTLED:** **"Keep both and ask" COMMITS the task as the
+  approval's one object** (`proposal_commits`: conflict → task;
+  unassigned — assignment stays human and separate, §3.6; no second
+  approval — the person's choice IS the decision). §4.8's word
+  "drafted" is offered its annex reconciliation at round 15 (the
+  A9/A10 pattern). The idempotency identity includes the chosen
+  outcome.
 
 The questions as put to the owner (with the recommendations that were
 accepted) are preserved below for the record.
@@ -499,6 +539,52 @@ pending with its slice untagged). Alternative on the seam: hold the
 gate's exit closed until 6 — rejected for the same reason slice 4's
 Q7 rejected it (re-editing the transition graph twice to hide an
 honest state).
+
+---
+
+## Post-gate review integration (2026-08-21) — nothing diverges silently
+
+After the Q1–Q7 rulings landed (`561a105`), an owner-commissioned
+review pass returned **fourteen findings** against the plan. The owner
+directed integration of what strengthens it; the strengthenings are
+folded into the sections above (the rows read as amended — this
+section records WHAT moved and what was corrected, so the deltas are
+auditable against `561a105`):
+
+- **Integrated as tightened contracts:** the §4.2.2 cancellation
+  confirmation and the pre-activation live smoke test as
+  `ai-provider.md` rows (findings 1, 9) · M3's durable run-accounting
+  point — run born in the claim transaction, closed with the lease,
+  the kill matrix in the 5A test plan (finding 2) ·
+  development/BLIND corpus partitions + the corpus spec deliverable
+  (finding 3) · M5's matching contract settled at the gate
+  (finding 4) · M4's exact rows per outcome + the outcome-bearing
+  idempotency identity (finding 6) · M2's inclusion priority —
+  current high-risk facts never truncated, truncation indicated
+  (finding 7) · `prompt_version` semantics + the full-config eval
+  manifest behind the normative pair (finding 8) · the rasterizer's
+  hostile/limits/EXIF/geometry-round-trip legs (finding 10) · the
+  rendered-page promote-on-advance lifecycle (finding 11) ·
+  fail-closed band loading (finding 12) · the p95 method + the
+  hosted breach-clause row (finding 13) · the OCR-compatibility exit
+  assertion (finding 14's first half).
+- **Ruled by the owner (Q8/Q9, verbatim above):** finding 5's
+  state-shape decision (distinct state) and finding 6's keep-both
+  object model (task commits as the one object).
+- **Framing corrected, substance kept (finding 1):** the reviewer
+  read cancellation semantics as part of G3; PRD §11.2's G3 row does
+  say "confirmed", and TSD §6.2 records the deliberate
+  reconciliation — four terms ARE the gate, cancellation is held
+  BESIDE it as the §4.2.2 requirement. The checklist row is added;
+  the four-term letter is not reopened.
+- **Not integrated (finding 14's second half):** "update the coverage
+  manifest's 5/6 ownership at the documentation checkpoint" — already
+  planned (A11Y-08's re-tag is Q6's ruling, executed at the 5A/5B
+  coverage edit like every row move).
+
+No ruling from Q1–Q7 changed; the migration and dependency bounds are
+untouched (the settlements live inside the already-named M1–M6 and
+B1–B9).
 
 ---
 
