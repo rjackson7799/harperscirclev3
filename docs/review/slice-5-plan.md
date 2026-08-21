@@ -1,14 +1,17 @@
 # Slice 5 — Extraction + interpretation: the slice plan
 
-**Status:** **PLANNED — the Q1–Q7 batch is put to the owner at this
-plan gate** (recommendations argued below, the slice-4 precedent;
-rulings will be recorded verbatim here and this status flipped to
-RULED before the 5A build opens — ADR-0006). Written 2026-08-21 in the
-planning session; main confirmed at `dd39f42`
+**Status:** **PLANNED — RULED. Q1–Q7 SETTLED 2026-08-21 at the plan
+gate** (rulings recorded verbatim below; every recommendation
+accepted). The 5A build (M1 the inherited-obligations batch FIRST)
+runs in its own fresh session on `slice/5-extraction`. Written
+2026-08-21 in the planning session; main confirmed at `dd39f42`
 (`dd39f427bd06404406f0e59f11bf6172a2440d79`, the 4B merge-stamp
 commit, clean, in sync with origin) with CI green at that head (run
 86, 32473677474 — completed/success, the anonymous public API,
-checked first per the kickoff).
+checked first per the kickoff). The plan itself landed docs-only at
+`efb11ed`, **CI green on main — run 87, 32475831700, SUCCESS** (public
+API, confirmed in-session); the owner then ruled in-session and the
+rulings landed in this docs-only follow-up.
 
 **Authority:** TSD §11.1 row 5 ("Extraction + interpretation (§6) —
 the AI layer, proposals, conflicts, the evaluation set; needs slice
@@ -26,8 +29,8 @@ DB candidates, S3 the queue ratified through the merge) → ADR-0006
 `docs/ops/{ingestion-deploy, runtime-db-credentials,
 security-actions-worker, e2e-local-gate}.md`.
 
-**Branch (Q7):** proposed `slice/5-extraction` for 5A (branched from
-main @ `dd39f42` or later docs-only), `slice/5b-app-extraction` for 5B
+**Branch (Q7 — SETTLED):** `slice/5-extraction` for 5A (branched from
+main @ `efb11ed` or later docs-only), `slice/5b-app-extraction` for 5B
 at its own kickoff — the 4A/4B naming precedent. Red→green per unit,
 failure signatures in every red commit, merge commit never squash.
 
@@ -366,6 +369,53 @@ slices/gates).
 | UXA-02 | The stage-2 duplicate copy + resolution on the inbox; ProvenanceLine's first consumer recorded per Q6 | review | review |
 
 ---
+
+## Owner decisions — SETTLED 2026-08-21 (the plan-gate rulings)
+
+The owner ruled on the seven batched questions at the plan gate,
+2026-08-21, in the planning session. Recorded verbatim; the build
+executes on these:
+
+- **Q1 — SETTLED:** **5A/5B split** — 5A (M1–M6 DB, incl. the
+  inherited-obligations batch) → round-15 review → merge; then 5B
+  (app B1–B9) → round-16. The 2A/2B and 4A/4B cadence.
+- **Q2 — SETTLED:** Migration bound **≤ 6 as mapped** (M1
+  `inherited_obligations` · M2 `record_context` · M3
+  `extraction_runs` · M4 `conflict_outcomes` · M5 `duplicates_stage2`
+  · M6 reserved for round-15 dispositions).
+- **Q3 — SETTLED:** **Both dependencies approved as argued** —
+  `@anthropic-ai/sdk` (the provider client, one fenced adapter
+  family) and `mupdf` (the §6.3 rasterizer, spike-gated at B2), plus
+  the one spike-contingent runtime reserve and the standing dev-dep
+  reserve.
+- **Q4 — SETTLED:** **D8's NOINHERIT taken now, in M1** —
+  `hc_runtime`'s two memberships re-granted `WITH INHERIT FALSE`; the
+  SET ROLE channel untouched; the bare-login probe flips to an honest
+  privilege refusal; BAT-04 and the runtime-credential tests
+  re-pinned. The round-13 owner-queue item (ADR-0019 Q-vi/S3)
+  discharges here.
+- **Q5 — SETTLED:** **Corpus-first, as argued** — B1 before any
+  provider-shaped unit; one corpus, two consumers; the harness
+  runnable from the first adapter commit; all-high-risk mode the
+  shipping default until the bands exist; **the fixtures-only
+  discipline ratified as the slice's standing constraint** (CI
+  keyless; fixture server in the gate; the eval harness the sole
+  real-key path, synthetic material only).
+- **Q6 — SETTLED:** **OCR (§6.9) moves wholesale to slice 6; A11Y-08
+  re-tags 5/6 → 6, recorded not dropped; ProvenanceLine per build
+  truth** — first consumer at B6's stage-2 matched-document line if
+  build truth fits, else its design-conformance citation moves to
+  slice 6 explicitly.
+- **Q7 — SETTLED:** **All three as stated** — branches
+  `slice/5-extraction` / `slice/5b-app-extraction`; the exit seam
+  accepted (proposals rest `pending` until slice 6's review screen;
+  `Needs you` a true label; production G4/G7-gated; pgTAP proves
+  approval incl. conflict outcomes before the surface exists); the
+  coverage-row set as tabled (fourteen rows opening, CNF-01 flipping
+  at 5A, A11Y-08 re-tagged to 6, SIG-01 explicitly NOT absorbed).
+
+The questions as put to the owner (with the recommendations that were
+accepted) are preserved below for the record.
 
 ## Owner decisions needed — the batched questions (the slice-4 Q1–Q7 pattern)
 
