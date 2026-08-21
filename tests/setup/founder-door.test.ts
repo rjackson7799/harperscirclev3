@@ -112,7 +112,30 @@ describe('A4 · step 2 writes through hc.create_circle (and nothing before it wr
     expect(input.subjects[1].forwarding_local_part).toMatch(/^marcus\.[a-z0-9]{6}$/);
     expect(input.subjects[0].accent_color).not.toBe(input.subjects[1].accent_color);
 
-    expect(circle.setDeclaredSlice).toHaveBeenCalledWith(CLAIMS.sub, 'money-paperwork');
+    // B8: the write rides the caller's CLAIMS (hc.set_slice keys hc.uid()).
+    expect(circle.setDeclaredSlice).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: CLAIMS.sub }),
+      'money-paperwork',
+    );
+  });
+
+  it('the step-1 relationship rides into create_circle (BAT-03: the F1 one-line write)', async () => {
+    const { POST } = await import('@/app/setup/step/2/submit/route');
+    await POST(
+      post('/setup/step/2/submit', {
+        subject_name_1: 'Nell',
+        situation_1: 'At home, on their own',
+        zip_1: '02140',
+        timezone: 'America/New_York',
+        slice: 'money-paperwork',
+        relationship: 'daughter',
+      }),
+    );
+    const [, input] = circle.createCircleFromSetup.mock.calls[0] as unknown as [
+      unknown,
+      { relationship?: string },
+    ];
+    expect(input.relationship).toBe('daughter');
   });
 
   it('an empty second zip defaults to the first (one-tap default, §4.1.3)', async () => {
@@ -160,10 +183,11 @@ describe('A4 · step 2 writes through hc.create_circle (and nothing before it wr
         context: ['a-hospital-stay-or-discharge', 'paperwork-piling-up'],
       }),
     );
-    expect(circle.setOpeningContext).toHaveBeenCalledWith(CLAIMS.sub, 'c-9', [
-      'a-hospital-stay-or-discharge',
-      'paperwork-piling-up',
-    ]);
+    expect(circle.setOpeningContext).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: CLAIMS.sub }),
+      'c-9',
+      ['a-hospital-stay-or-discharge', 'paperwork-piling-up'],
+    );
     expect(res.headers.get('location')).toContain('/setup/step/4');
   });
 

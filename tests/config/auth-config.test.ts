@@ -49,6 +49,24 @@ describe('A1 · supabase/config.toml pins §5.5 exactly', () => {
     expect(auth.enable_signup).toBe(true);
   });
 
+  it("the /confirm landing is on GoTrue's redirect allow-list (B9 fix, completed): emailRedirectTo is SILENTLY dropped for un-listed URLs, which is exactly how FWD-01's activation pass went dead twice", () => {
+    const urls = auth.additional_redirect_urls as string[];
+    expect(Array.isArray(urls)).toBe(true);
+    expect(urls).toContain('http://127.0.0.1:3000/confirm*');
+  });
+
+  it('the confirmation mail routes through /confirm with token_hash (B9, the flow-type-independent half): the default template verifies AT GoTrue and redirects with FRAGMENT tokens the server can never read, so the §5.1 activation pass still never ran', () => {
+    const template = section('auth', 'email', 'template', 'confirmation');
+    expect(template.content_path).toBe('./supabase/templates/confirmation.html');
+    const html = readFileSync(
+      path.resolve(__dirname, '../../supabase/templates/confirmation.html'),
+      'utf8',
+    );
+    expect(html).toContain('{{ .SiteURL }}/confirm?token_hash={{ .TokenHash }}');
+    expect(html).toContain('type=signup');
+    expect(html).toContain('flow=signup');
+  });
+
   it('email+password only: anonymous, SMS and every social provider off (§4.1.1)', () => {
     expect(auth.enable_anonymous_sign_ins).toBe(false);
     expect(section('auth', 'sms').enable_signup).toBe(false);

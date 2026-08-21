@@ -1,6 +1,7 @@
 import { asUser } from '@/lib/db/user';
 import { createCircleFromSetup, setDeclaredSlice, type SetupSubject } from '@/lib/hc/circle';
 import {
+  RELATIONSHIPS,
   SITUATIONS,
   SLICES,
   SUBJECT_ACCENTS,
@@ -56,11 +57,19 @@ export async function POST(req: Request): Promise<Response> {
       ? `${subjects[0].first_name}'s circle`
       : subjects.map((s) => s.first_name).join(' & ');
 
-  const { circle_id } = await createCircleFromSetup({ ...claims }, { name, subjects });
+  // BAT-03: the step-1 relationship lands inside create_circle's
+  // transaction (the 2B carry delivers it; the F1 one-line write).
+  const relationship = RELATIONSHIPS.some((r) => r.value === fields.relationship)
+    ? fields.relationship
+    : undefined;
+  const { circle_id } = await createCircleFromSetup(
+    { ...claims },
+    { name, subjects, relationship },
+  );
 
   const slice = fields.slice ?? '';
   if (SLICES.some((s) => s.value === slice)) {
-    await setDeclaredSlice(claims.sub, slice);
+    await setDeclaredSlice({ ...claims }, slice);
   }
 
   return redirect303(req, `/setup/step/3?circle=${circle_id}`);

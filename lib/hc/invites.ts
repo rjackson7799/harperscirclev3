@@ -1,14 +1,15 @@
 import 'server-only';
 import { withRequestRole, type RequestClaims } from '@/lib/db/request-role';
-import { describeInviteByToken, type InviteDescription } from '@/lib/db/maintenance';
 import type { InvitableTier } from '@/lib/permissions/tiers';
 
 /**
  * The invite lifecycle wrappers (TSD §5.10; IVT-01/02/03 are the DB
  * proofs). Issuance and acceptance run as the authenticated caller —
  * coordinator-only and AC-AUTH-4 are in-function; the address binding is
- * the session's SIGNED claims, never a parameter. The describe read is
- * the maintenance-boundary pre-auth window (see lib/db/maintenance).
+ * the session's SIGNED claims, never a parameter. Since B8 the describe
+ * read rides hc.describe_invite on the ANON channel — the pre-auth
+ * accept screen's read, keyed strictly on the token, DEF-10 one-shape
+ * null — and the maintenance boundary is out of this module entirely.
  */
 
 export type CreateInviteInput = {
@@ -51,8 +52,22 @@ export async function acceptInvite(
   });
 }
 
-export type { InviteDescription };
+export type InviteDescription = {
+  state: 'pending' | 'used' | 'revoked' | 'expired';
+  invite_id: string;
+  circle_id: string;
+  circle_name: string;
+  inviter_name: string;
+  invited_email: string;
+  tier: 'family' | 'care_circle';
+  subject_names: string[];
+};
 
+/** hc.describe_invite on the anon channel: malformed and unknown both
+ *  answer null — byte-identical, no oracle. */
 export async function describeInvite(token: string): Promise<InviteDescription | null> {
-  return describeInviteByToken(token);
+  return withRequestRole('anon', null, async (q) => {
+    const r = await q.query('select hc.describe_invite($1) as r', [token]);
+    return (r.rows[0]?.r as InviteDescription | null) ?? null;
+  });
 }

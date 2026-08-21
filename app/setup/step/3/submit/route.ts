@@ -26,7 +26,7 @@ export async function POST(req: Request): Promise<Response> {
 
   if (!circleId) return redirect303(req, '/setup/step/3?e=circle');
 
-  const wrote = await setOpeningContext(claims.sub, circleId, context);
+  const wrote = await setOpeningContext({ ...claims }, circleId, context);
   if (!wrote) {
     return redirect303(req, `/setup/step/3?circle=${encodeURIComponent(circleId)}&e=circle`);
   }

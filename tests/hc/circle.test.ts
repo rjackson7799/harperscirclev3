@@ -51,11 +51,12 @@ beforeAll(async () => {
 });
 
 describe('A4 · createCircleFromSetup drives hc.create_circle as the founder', () => {
-  it('creates the circle with two subjects, coordinator membership, and the seq-1 declarations', async () => {
+  it('creates the circle with two subjects, coordinator membership, the seq-1 declarations, and the STEP-1 RELATIONSHIP (BAT-03)', async () => {
     const result = await circle.createCircleFromSetup(
       { sub: FOUNDER, role: 'authenticated', email: FOUNDER_EMAIL },
       {
         name: 'Nell & Marcus',
+        relationship: 'daughter',
         subjects: [
           {
             first_name: 'Nell',
@@ -90,21 +91,50 @@ describe('A4 · createCircleFromSetup drives hc.create_circle as the founder', (
       [circleId],
     );
     expect(firstLog.rows[0].event_type).toBe('custodianship_declared');
+
+    // BAT-03: the F1 closure — durable on the FOUNDER's membership row,
+    // written inside hc.create_circle's transaction (the Q2 ruling).
+    const rel = await raw.query(
+      `select relationship from public.circle_members
+        where circle_id = $1 and account_id = $2`,
+      [circleId, FOUNDER],
+    );
+    expect(rel.rows[0].relationship).toBe('daughter');
   });
 
-  it('setDeclaredSlice records the founder slice on their own account only', async () => {
-    await circle.setDeclaredSlice(FOUNDER, 'money-paperwork');
+  it('setDeclaredSlice rides hc.set_slice as the caller (B8: request-role authority)', async () => {
+    await circle.setDeclaredSlice(
+      { sub: FOUNDER, role: 'authenticated', email: FOUNDER_EMAIL },
+      'money-paperwork',
+    );
     const r = await raw.query('select slice from public.accounts where id = $1', [FOUNDER]);
     expect(r.rows[0].slice).toBe('money-paperwork');
   });
 
+  it('setDeclaredSlice for a ghost caller refuses loudly (round-10 F7, now in-function)', async () => {
+    await expect(
+      circle.setDeclaredSlice({ sub: randomUUID(), role: 'authenticated' }, 'everything'),
+    ).rejects.toThrow(/slice/);
+  });
+
   it('setOpeningContext writes only the founder-owned, still-in-setup circle', async () => {
-    await circle.setOpeningContext(FOUNDER, circleId, ['paperwork-piling-up']);
+    const ok = await circle.setOpeningContext(
+      { sub: FOUNDER, role: 'authenticated', email: FOUNDER_EMAIL },
+      circleId,
+      ['paperwork-piling-up'],
+    );
+    expect(ok).toBe(true);
     const r = await raw.query('select opening_context from public.circles where id = $1', [circleId]);
     expect(r.rows[0].opening_context).toEqual(['paperwork-piling-up']);
 
-    // A different account writes nothing.
-    await circle.setOpeningContext(randomUUID(), circleId, ['sharing-the-load']);
+    // A different account writes nothing — the F7 postcondition is
+    // IN-FUNCTION now; the wrapper reports false, never a silent pass.
+    const foreign = await circle.setOpeningContext(
+      { sub: randomUUID(), role: 'authenticated' },
+      circleId,
+      ['sharing-the-load'],
+    );
+    expect(foreign).toBe(false);
     const unchanged = await raw.query('select opening_context from public.circles where id = $1', [
       circleId,
     ]);

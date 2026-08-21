@@ -95,3 +95,67 @@ describe('A2 · the request-role channel and maintenance boundary are lib/hc-onl
     expect(restricted(msgs)).toBe(false);
   });
 });
+
+// ============================================================================
+// 4B · The storage plane (ADR-0018 F2's A2-discipline sanction): every
+// byte in the artifacts/quarantine buckets moves through lib/storage/**
+// on the service credential's STORAGE surface; importable only by the
+// pipeline surfaces. The credential itself stays in lib/db/service-role.
+// ============================================================================
+
+describe('B2 · the storage plane is fenced to the pipeline surfaces', () => {
+  it('lib/storage may reach the service-role module (the storage plane lives there)', async () => {
+    const msgs = await messagesFor(
+      'lib/storage/artifacts.ts',
+      "import { asStoragePlane } from '@/lib/db/service-role';\nexport const x = asStoragePlane;\n",
+    );
+    expect(restricted(msgs)).toBe(false);
+  });
+
+  it('a worker route may use the storage module but NOT the raw service credential', async () => {
+    const storage = await messagesFor(
+      'app/api/worker/store/route.ts',
+      "import { stageIntakeObject } from '@/lib/storage/artifacts';\nexport const x = stageIntakeObject;\n",
+    );
+    expect(restricted(storage)).toBe(false);
+    const raw = await messagesFor(
+      'app/api/worker/store/route.ts',
+      "import { asStoragePlane } from '@/lib/db/service-role';\nexport const x = asStoragePlane;\n",
+    );
+    expect(restricted(raw)).toBe(true);
+  });
+
+  it('the inbound webhook may stage bytes; an app page may not touch the plane', async () => {
+    const webhook = await messagesFor(
+      'app/api/inbound/postmark/route.ts',
+      "import { stageIntakeObject } from '@/lib/storage/artifacts';\nexport const x = stageIntakeObject;\n",
+    );
+    expect(restricted(webhook)).toBe(false);
+    const page = await messagesFor(
+      'app/(app)/[circle]/inbox/page.tsx',
+      "import { stageIntakeObject } from '@/lib/storage/artifacts';\nexport const x = stageIntakeObject;\n",
+    );
+    expect(restricted(page)).toBe(true);
+  });
+
+  it('lib/hc may not touch the storage plane — bytes never ride the typed hc wrappers', async () => {
+    const msgs = await messagesFor(
+      'lib/hc/ingest.ts',
+      "import { stageIntakeObject } from '@/lib/storage/artifacts';\nexport const x = stageIntakeObject;\n",
+    );
+    expect(restricted(msgs)).toBe(true);
+  });
+
+  it('the artifact route keeps service-role AND the storage plane, channels still out', async () => {
+    const svc = await messagesFor(
+      'app/api/artifact/[id]/route.ts',
+      "import { asServiceRole } from '@/lib/db/service-role';\nimport { artifactKey } from '@/lib/storage/artifacts';\nexport const x = [asServiceRole, artifactKey];\n",
+    );
+    expect(restricted(svc)).toBe(false);
+    const chan = await messagesFor(
+      'app/api/artifact/[id]/route.ts',
+      "import { withRequestRole } from '@/lib/db/request-role';\nexport const x = withRequestRole;\n",
+    );
+    expect(restricted(chan)).toBe(true);
+  });
+});

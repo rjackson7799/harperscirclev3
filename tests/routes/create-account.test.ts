@@ -112,6 +112,50 @@ describe('A3 · created vs already-exists: one visible response', () => {
     expect(resend).toHaveBeenCalledTimes(2);
   });
 
+  it('the verification link lands on OUR /confirm (B9 fix: FWD-01 rides it) — signUp and resend both carry the redirect', async () => {
+    // Found by the B9 gate leg: GoTrue's default confirmation link
+    // self-verifies at the API and redirects to the site ROOT — the
+    // /confirm route (and the forwarding-activation pass on it) never
+    // ran. The reset flow's config-first origin rule applies verbatim:
+    // local loopback falls back to the request origin; elsewhere the
+    // redirect comes from NEXT_PUBLIC_SITE_URL or is omitted (a
+    // neutered link, never a poisoned one).
+    signUp.mockResolvedValueOnce({
+      data: { user: FRESH_USER, session: { access_token: 'a.b.c', refresh_token: 'r' } },
+      error: null,
+    });
+    // The origin comes from CONFIGURATION (local.test is not a loopback,
+    // so without config the link would be neutered — also asserted).
+    const saved = process.env.NEXT_PUBLIC_SITE_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = 'http://local.test';
+    try {
+      await POST(post({ name: 'Sarah', email: 'fresh@x.y', password: 'long-enough-pw' }));
+    } finally {
+      if (saved === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+      else process.env.NEXT_PUBLIC_SITE_URL = saved;
+    }
+    const [signUpArgs] = signUp.mock.calls[0] as unknown as [
+      { options?: { emailRedirectTo?: string } },
+    ];
+    expect(signUpArgs.options?.emailRedirectTo).toBe('http://local.test/confirm?flow=signup');
+    const [resendArgs] = resend.mock.calls[0] as unknown as [
+      { options?: { emailRedirectTo?: string } },
+    ];
+    expect(resendArgs.options?.emailRedirectTo).toBe('http://local.test/confirm?flow=signup');
+
+    // Unconfigured non-loopback: the redirect is OMITTED — neutered,
+    // never Host-derived.
+    signUp.mockResolvedValueOnce({
+      data: { user: FRESH_USER, session: { access_token: 'a.b.c', refresh_token: 'r' } },
+      error: null,
+    });
+    await POST(post({ name: 'Sarah', email: 'fresh2@x.y', password: 'long-enough-pw' }));
+    const [bare] = signUp.mock.calls[1] as unknown as [
+      { options?: { emailRedirectTo?: string } },
+    ];
+    expect(bare.options?.emailRedirectTo).toBeUndefined();
+  });
+
   it('fresh: un-confirm strictly before the accounts bootstrap, with the typed name', async () => {
     signUp.mockResolvedValueOnce({
       data: { user: FRESH_USER, session: { access_token: 'a.b.c', refresh_token: 'r' } },
@@ -120,7 +164,12 @@ describe('A3 · created vs already-exists: one visible response', () => {
     await POST(post({ name: 'Sarah Chen', email: 'fresh@x.y', password: 'long-enough-pw' }));
 
     expect(accounts.unconfirmEmail).toHaveBeenCalledWith(FRESH_USER.id);
-    expect(accounts.bootstrapAccount).toHaveBeenCalledWith(FRESH_USER.id, 'Sarah Chen');
+    // B8: the bootstrap rides hc.create_account as the fresh session's
+    // OWN claims — no target parameter exists to aim elsewhere.
+    expect(accounts.bootstrapAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: FRESH_USER.id }),
+      'Sarah Chen',
+    );
     const unconfirmOrder = accounts.unconfirmEmail.mock.invocationCallOrder[0];
     const bootstrapOrder = accounts.bootstrapAccount.mock.invocationCallOrder[0];
     expect(unconfirmOrder).toBeLessThan(bootstrapOrder);

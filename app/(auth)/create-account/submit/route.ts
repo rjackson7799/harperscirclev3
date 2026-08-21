@@ -1,7 +1,7 @@
 import { asUser } from '@/lib/db/user';
 import { abortAccountCreation, bootstrapAccount, unconfirmEmail } from '@/lib/hc/accounts';
 import { describeInvite } from '@/lib/hc/invites';
-import { safeNext } from '@/lib/auth/redirect';
+import { emailLinkOrigin, safeNext } from '@/lib/auth/redirect';
 import { formFields, redirect303 } from '@/lib/auth/http';
 
 /**
@@ -50,10 +50,20 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const supabase = await asUser();
+  // The B9 fix: GoTrue's default confirmation link self-verifies at the
+  // API and redirects to the site ROOT — /confirm (where the §5.1
+  // forwarding-activation pass rides, B6/FWD-01) never ran. Both mails
+  // land on /confirm?flow=signup; the origin follows the reset flow's
+  // config-first rule (emailLinkOrigin — never the Host header).
+  const linkOrigin = emailLinkOrigin(req);
+  const confirmRedirect = linkOrigin ? `${linkOrigin}/confirm?flow=signup` : undefined;
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { display_name: name } },
+    options: {
+      data: { display_name: name },
+      ...(confirmRedirect ? { emailRedirectTo: confirmRedirect } : {}),
+    },
   });
 
   if (!error && data?.user?.id) {
@@ -64,7 +74,9 @@ export async function POST(req: Request): Promise<Response> {
     // LOUDLY; the residual states are enumerated in ADR-0015.
     try {
       await unconfirmEmail(data.user.id);
-      await bootstrapAccount(data.user.id, name);
+      // B8: the bootstrap rides hc.create_account as the fresh session's
+      // OWN claims — keyed hc.uid(), no target parameter to aim elsewhere.
+      await bootstrapAccount({ sub: data.user.id, role: 'authenticated', email }, name);
     } catch (cause) {
       console.error('create-account: flow failed after signUp; aborting the half-made account', cause);
       await abortAccountCreation(data.user.id);
@@ -77,7 +89,11 @@ export async function POST(req: Request): Promise<Response> {
   // outcome, but a refusal is surfaced to the server log, not swallowed
   // (round-10 finding 6).
   const resent = await supabase.auth
-    .resend({ type: 'signup', email })
+    .resend({
+      type: 'signup',
+      email,
+      ...(confirmRedirect ? { options: { emailRedirectTo: confirmRedirect } } : {}),
+    })
     .catch((err: unknown) => ({ error: err }));
   if (resent?.error) {
     console.error('create-account: verification resend failed', resent.error);

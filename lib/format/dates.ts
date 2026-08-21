@@ -100,6 +100,22 @@ export function formatFloating(localAt: string): string {
   return `${datePart} · ${timePart} (no time zone given)`;
 }
 
+/** §13.1/§4.11 (4B B6): is this arrival past the 4-hour queue-age bound?
+ *  Lives here (not in render) so the page stays compiler-pure. */
+export function pastQueueAgeBound(receivedAt: string, boundHours = 4): boolean {
+  return Date.now() - new Date(receivedAt).getTime() > boundHours * 3600 * 1000;
+}
+
+/** §5.4 (4B B6): the 30-day held-mail expiry date, human ("Sep 13, 2026"). */
+export function heldExpiryLabel(receivedAt: string): string {
+  const expires = new Date(new Date(receivedAt).getTime() + 30 * 24 * 3600 * 1000);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(expires);
+}
+
 /** The calendar day/month for a date-only value (the §8.6 numeral). */
 export function calendarParts(dueOn: string): { month: string; day: number } {
   const d = dateOnlyToUtc(dueOn);

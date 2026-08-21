@@ -21,12 +21,22 @@ import jsxA11y from "eslint-plugin-jsx-a11y";
 const fenceServiceRole = {
   group: ["**/db/service-role"],
   message:
-    "asServiceRole() is fenced to the §1.7 allowlist (artifact route, lib/auth/gotrue-admin). See lib/db/service-role.ts.",
+    "The service credential is fenced to the §1.7 allowlist (artifact route, lib/auth/gotrue-admin, lib/storage — ADR-0018 F2). See lib/db/service-role.ts.",
 };
 const fenceChannels = {
-  group: ["**/db/request-role", "**/db/maintenance", "**/db/role-pool"],
+  group: ["**/db/request-role", "**/db/maintenance", "**/db/role-pool", "**/db/evidentiary"],
   message:
-    "The request-role channel and maintenance boundary are reachable only through lib/hc/** (typed wrappers).",
+    "The request-role channel and the maintenance/evidentiary boundaries are reachable only through lib/hc/** (typed wrappers).",
+};
+// 4B (ADR-0018 F2): the storage plane — every byte in the artifacts and
+// quarantine buckets moves through lib/storage/** on the service
+// credential's storage surface (M7 ships ZERO storage policies; the
+// absence is the §3.11 mechanism). Importable only by the pipeline
+// surfaces: the inbound webhook, the workers, upload, the artifact route.
+const fenceStoragePlane = {
+  group: ["**/storage/artifacts", "**/lib/storage/**"],
+  message:
+    "The storage plane (lib/storage) is fenced to the pipeline surfaces: app/api/{inbound,worker,upload,artifact}/**.",
 };
 
 const eslintConfig = defineConfig([
@@ -86,19 +96,56 @@ const eslintConfig = defineConfig([
     name: "hc/db-fences",
     files: ["**/*.ts", "**/*.tsx", "**/*.mjs"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [fenceServiceRole, fenceChannels] }],
+      "no-restricted-imports": [
+        "error",
+        { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane] },
+      ],
     },
   },
   {
     name: "hc/db-fences-lib-hc",
     files: ["lib/hc/**"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [fenceServiceRole] }],
+      "no-restricted-imports": ["error", { patterns: [fenceServiceRole, fenceStoragePlane] }],
+    },
+  },
+  // The storage-plane consumers: bytes may move here, the channels and
+  // the raw service credential still may not.
+  {
+    name: "hc/db-fences-storage-consumers",
+    files: ["app/api/inbound/**", "app/api/worker/**", "app/api/upload/**"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [fenceServiceRole, fenceChannels] }],
+    },
+  },
+  // The storage module itself: the service credential's storage plane is
+  // its whole purpose; the channels stay out.
+  {
+    name: "hc/db-fences-storage-module",
+    files: ["lib/storage/**"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [fenceChannels] }],
+    },
+  },
+  // The artifact route (§1.3): service credential + storage plane; the
+  // channels stay out. gotrue-admin: service credential only.
+  {
+    name: "hc/db-fences-artifact-route",
+    files: ["app/api/artifact/**"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [fenceChannels] }],
     },
   },
   {
-    name: "hc/db-fences-allowlist",
-    files: ["lib/db/**", "app/api/artifact/**", "lib/auth/gotrue-admin.ts"],
+    name: "hc/db-fences-gotrue-admin",
+    files: ["lib/auth/gotrue-admin.ts"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [fenceChannels, fenceStoragePlane] }],
+    },
+  },
+  {
+    name: "hc/db-fences-lib-db",
+    files: ["lib/db/**"],
     rules: {
       "no-restricted-imports": "off",
     },

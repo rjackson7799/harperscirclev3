@@ -29,6 +29,8 @@ export const GROUP_LABELS: Partial<Record<NavGroup, string>> = {
 };
 
 export const NAV_MANIFEST: NavEntry[] = [
+  { key: 'inbox', label: 'Care Inbox', group: 'primary', href: (c) => `/${c}/inbox` },
+  { key: 'upload', label: 'Add a document', group: 'primary', href: (c) => `/${c}/upload` },
   { key: 'tasks', label: 'Tasks', group: 'primary', href: (c) => `/${c}/tasks` },
   { key: 'invite', label: 'Invite', group: 'primary', href: (c) => `/${c}/invite` },
   { key: 'timeline', label: 'Timeline', group: 'record', href: (c) => `/${c}/timeline` },

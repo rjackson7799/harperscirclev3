@@ -26,6 +26,9 @@ const security = {
     async () => undefined,
   ),
   pendingSecurityActions: vi.fn(async (): Promise<unknown[]> => []),
+  // B5: the sweep adopts M1's claim primitive (BAT-05's app half) —
+  // concurrent sweeps are disjoint by construction, not by idempotence.
+  claimSecurityActions: vi.fn(async (): Promise<unknown[]> => []),
 };
 vi.mock('@/lib/hc/security-actions', () => security);
 
@@ -70,6 +73,7 @@ beforeEach(async () => {
   security.completeSecurityAction.mockResolvedValue(undefined);
   security.killAllSessionsAndForceReset.mockResolvedValue(undefined);
   security.pendingSecurityActions.mockResolvedValue([]);
+  security.claimSecurityActions.mockResolvedValue([]);
   savedEnv.HC_WORKER_KEY = process.env.HC_WORKER_KEY;
   savedEnv.CRON_SECRET = process.env.CRON_SECRET;
   process.env.HC_WORKER_KEY = WORKER_KEY;
@@ -115,6 +119,7 @@ describe('A8 · both auth paths refuse before any work', () => {
 describe('A8 · the cron path drains exactly like the keyed POST', () => {
   it('GET with the configured bearer performs the sweep', async () => {
     security.pendingSecurityActions.mockResolvedValueOnce([pendingRow('a1', 60_000)]);
+    security.claimSecurityActions.mockResolvedValueOnce([pendingRow('a1', 60_000)]);
     const res = await route.GET(getReq({ authorization: `Bearer ${CRON_SECRET}` }));
     expect(security.killAllSessionsAndForceReset).toHaveBeenCalledWith('acct-a1');
     expect(security.completeSecurityAction).toHaveBeenCalledWith('a1');
@@ -122,22 +127,28 @@ describe('A8 · the cron path drains exactly like the keyed POST', () => {
   });
 });
 
-describe('A8 · bounded, ordered, observable (round-10 finding 9)', () => {
-  it('oldest actions drain first — the longest-owed kill is the most urgent', async () => {
+describe('A8/B5 · bounded, ordered, observable — the sweep on M1\'s claim primitive', () => {
+  it('the batch is CLAIMED (BAT-05: oldest-first, leased, disjoint under concurrency) and processed in claim order', async () => {
     security.pendingSecurityActions.mockResolvedValueOnce([
-      pendingRow('newer', 10_000),
       pendingRow('oldest', 3_600_000),
       pendingRow('middle', 600_000),
+      pendingRow('newer', 10_000),
+    ]);
+    security.claimSecurityActions.mockResolvedValueOnce([
+      pendingRow('oldest', 3_600_000),
+      pendingRow('middle', 600_000),
+      pendingRow('newer', 10_000),
     ]);
     await route.POST(postReq({ 'x-worker-key': WORKER_KEY }));
+    expect(security.claimSecurityActions).toHaveBeenCalledWith(20);
     const order = security.killAllSessionsAndForceReset.mock.calls.map((c) => c[0]);
     expect(order).toEqual(['acct-oldest', 'acct-middle', 'acct-newer']);
   });
 
   it('a backlog beyond the batch bound defers, and the response says so', async () => {
-    security.pendingSecurityActions.mockResolvedValueOnce(
-      Array.from({ length: 25 }, (_, i) => pendingRow(`p${i}`, (25 - i) * 1000)),
-    );
+    const rows = Array.from({ length: 25 }, (_, i) => pendingRow(`p${i}`, (25 - i) * 1000));
+    security.pendingSecurityActions.mockResolvedValueOnce(rows);
+    security.claimSecurityActions.mockResolvedValueOnce(rows.slice(0, 20));
     const res = await route.POST(postReq({ 'x-worker-key': WORKER_KEY }));
     expect(security.killAllSessionsAndForceReset).toHaveBeenCalledTimes(20);
     const body = (await res.json()) as Record<string, number>;
@@ -151,6 +162,7 @@ describe('A8 · bounded, ordered, observable (round-10 finding 9)', () => {
       pendingRow('young', 5_000),
       pendingRow('old', 3_600_000),
     ]);
+    security.claimSecurityActions.mockResolvedValueOnce([]);
     const res = await route.POST(postReq({ 'x-worker-key': WORKER_KEY }));
     const body = (await res.json()) as Record<string, number>;
     expect(body.oldest_pending_age_s).toBeGreaterThanOrEqual(3599);
@@ -159,13 +171,18 @@ describe('A8 · bounded, ordered, observable (round-10 finding 9)', () => {
 
   it('an empty queue reports zeroes, not absence', async () => {
     security.pendingSecurityActions.mockResolvedValueOnce([]);
+    security.claimSecurityActions.mockResolvedValueOnce([]);
     const res = await route.POST(postReq({ 'x-worker-key': WORKER_KEY }));
     const body = (await res.json()) as Record<string, number>;
     expect(body).toMatchObject({ drained: 0, of: 0, deferred: 0, oldest_pending_age_s: 0 });
   });
 
-  it('one failing kill leaves its row pending and never blocks the rest', async () => {
+  it('one failing kill leaves its row pending (the claim lease lapses and re-delivers) and never blocks the rest', async () => {
     security.pendingSecurityActions.mockResolvedValueOnce([
+      pendingRow('fails', 120_000),
+      pendingRow('works', 60_000),
+    ]);
+    security.claimSecurityActions.mockResolvedValueOnce([
       pendingRow('fails', 120_000),
       pendingRow('works', 60_000),
     ]);
