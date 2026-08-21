@@ -18,9 +18,14 @@ questions Q-i…Q-vii — are recorded in "Round-13 findings and dispositions"
 below, with the round-14 resolution and its two non-defect observations;
 Q-i/Q-ii/Q-v carry TSD annex A10 (the §5.4/§4.3/§1.6 reconciliations).
 NO DDL was required by anything here — finding 1 was an app-layer fix —
-so the migration bound stays spent at **8 of ≤ 8**. Owner sign-off and
-merge are each their own session after these dispositions (ADR-0006;
-MERGE COMMIT, never squash — the owner is the sole merge authority).
+so the migration bound stays spent at **8 of ≤ 8**. Owner sign-off
+recorded at `4d21763` (the S1–S4 addendum below — UNCONDITIONAL, merge
+authorized; CI green at that head, run 84 `32470177248`);
+**merged at `d7f2f36`** (merge commit
+`d7f2f3690ff744686260e37fc31fd987fac1a639`, parents `3195713` +
+`4d21763`, MERGE COMMIT never squash per ADR-0006, tree identical to
+`4d21763`'s; CI green on `main` at the merge commit, run 85
+`32470541491`).
 **Deciders:** the round-13 review session; the round-14 re-review and
 dispositions sessions (owner ratifies at sign-off).
 **Context:** Slice 4B built the app half of ingestion on `slice/4b-app-ingestion`

@@ -352,8 +352,11 @@ fixed and re-reviewed, and UPL-01 is GREEN below — every 4B row is now
 green; the round-13 one-non-green-row exception is CLOSED. Two non-defect
 observations are recorded in ADR-0019's round-14 update (the deliberate
 circle-level write-hop bind; the signed-not-encrypted continuation
-target). Owner sign-off and merge remain their own sessions (ADR-0006;
-MERGE COMMIT, never squash — the owner is the sole merge authority).**
+target). Owner sign-off recorded at `4d21763` (ADR-0019's S1–S4
+addendum — UNCONDITIONAL, merge authorized), and 4B is **merged at
+`d7f2f36`** (merge commit `d7f2f3690ff744686260e37fc31fd987fac1a639`,
+parents `3195713` + `4d21763`, MERGE COMMIT never squash; CI green on
+`main` at the merge commit, run 85 `32470541491`).**
 
 | ID | Assertion | Source | Layer | Slice | Status | Test |
 |---|---|---|---|---|---|---|
