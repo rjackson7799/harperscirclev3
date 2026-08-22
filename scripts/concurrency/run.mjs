@@ -2650,6 +2650,101 @@ async function case43(admin) {
   }
 }
 
+// --- case 44: stage-2 detection vs a document committing mid-wait -----------
+//
+// Round-15 finding 1 (HIGH), the behavioural half of pgTAP 056 test 1.
+// hc.finalize_extraction used to ask the duplicate question with NO lock
+// held and only then block on the per-circle taint lock inside
+// hc.advance_arrival. A matching document committing in that window was
+// invisible to the detector, so the arrival advanced to 'extracted' and
+// the settled stage-2 question was skipped — a state that depended on
+// transaction timing. The fix hoists the R-rule lock ABOVE detection:
+// hc.approve_proposal files its document under the same key, so the
+// predicate now runs on the far side of the same serialization point and
+// a fresh statement snapshot sees the committed row.
+
+async function case44(admin) {
+  const fx = await mkCircle(admin, 'c44');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // The arrival about to finalize, claimed for extract so a real lease
+    // and extraction run exist (the M3 mint point).
+    const a = (await admin.query(
+      `insert into public.arrivals (circle_id, subject_id, channel, state, sender_address)
+       values ($1, $2, 'email', 'extracting', 'billing@clinic.example')
+       returning id`, [fx.c, fx.s])).rows[0].id;
+    const lease = (await admin.query(
+      `select lease_id from hc.claim_stage($1, 'extract', 'm1', 'p1')`, [a])).rows[0].lease_id;
+
+    // S1 holds the per-circle lock and files a MATCHING document inside
+    // its open transaction — uncommitted, so S2's snapshot cannot see it.
+    await s1.query('begin');
+    // The fixture document is filed directly, so the DEFERRED record-claim
+    // trigger (record_write_unclaimed, which fires at COMMIT) is suppressed
+    // for this session exactly as mkCircle does for its baseline rows.
+    await s1.query(`set session_replication_role = replica`);
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+    const cArr = (await s1.query(
+      `insert into public.arrivals (circle_id, subject_id, channel, state, sender_address)
+       values ($1, $2, 'email', 'filed', 'billing@clinic.example')
+       returning id`, [fx.c, fx.s])).rows[0].id;
+    await s1.query(
+      `insert into public.extractions (arrival_id, circle_id, subject_id, field, value,
+         confidence, risk_class, citation, model_id, prompt_version)
+       values ($1, $2, $3, 'document_date', '"2026-07-12"'::jsonb, 0.9, 'standard',
+               '{"page": 1}'::jsonb, 'm0', 'p0'),
+              ($1, $2, $3, 'provider', '"Mercy Hospital"'::jsonb, 0.9, 'standard',
+               '{"page": 1}'::jsonb, 'm0', 'p0')`, [cArr, fx.c, fx.s]);
+    const cDoc = (await s1.query(
+      `insert into public.documents (circle_id, subject_id, title, category, summary_text,
+         artifact_arrival_id, filed_at, approved_by, approved_at, approver_display_name, taint)
+       values ($1, $2, 'Discharge summary (Jul 12)', 'medical', 'fixture', $3,
+               now(), $4, now(), 'Sarah', '{health}')
+       returning id`, [fx.c, fx.s, cArr, fx.u1])).rows[0].id;
+
+    // S2 finalizes the same-key extraction and must BLOCK on the circle lock.
+    const facts = JSON.stringify([
+      { field: 'document_date', value: '2026-07-12', confidence: 0.9, risk_class: 'standard',
+        citation: { page: 1 }, model_id: 'm1', prompt_version: 'p1' },
+      { field: 'provider', value: 'Mercy Hospital', confidence: 0.9, risk_class: 'standard',
+        citation: { page: 1 }, model_id: 'm1', prompt_version: 'p1' },
+    ]);
+    const props = JSON.stringify([
+      { kind: 'document', payload: { title: 'Fixture doc', category: 'medical' } },
+    ]);
+    const p2 = s2.query(
+      `select hc.finalize_extraction($1, $2, $3::jsonb, $4::jsonb) as r`,
+      [a, lease, facts, props]).then(r => r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.finalize_extraction%', 'finalize backend');
+    await waitForLockWait(admin, pid2, 's2 finalize on the circle lock');
+
+    // …the matching document commits mid-wait.
+    await s1.query('commit');
+    await s1.query(`set session_replication_role = default`);
+
+    const r2 = await withTimeout(p2, 'case44 finalize after the document commits');
+    const st = (await admin.query(
+      `select a.state::text as s, a.duplicate_of_document_id as d,
+              exists (select 1 from public.extractions e
+                       where e.arrival_id = a.id and e.superseded_at is null) as facts_landed,
+              exists (select 1 from public.extraction_runs r
+                       where r.lease_id = $2 and r.outcome = 'published') as run_published
+       from public.arrivals a where a.id = $1`, [a, lease])).rows[0];
+    check('case44 (5A M6, round-15 finding 1): a matching document committing while finalization WAITS on the circle lock is SEEN — the arrival lands on duplicate_suspected_stage2 pointing at it, and the work answer still lands in full (facts published, run published)',
+      !(r2 instanceof Error) && st.s === 'duplicate_suspected_stage2' && st.d === cDoc
+        && st.facts_landed === true && st.run_published === true,
+      `err=${r2 instanceof Error ? r2.message : 'none'} state=${st.s} dup=${st.d === cDoc} facts=${st.facts_landed} run=${st.run_published}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.query(`set session_replication_role = default`).catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -2698,6 +2793,7 @@ try {
   await case41(admin);
   await case42(admin);
   await case43(admin);
+  await case44(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;
