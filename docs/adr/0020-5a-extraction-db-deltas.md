@@ -1,6 +1,14 @@
 # ADR-0020 — Slice 5A: the extraction + interpretation DB increment, design decisions and deltas as built
 
-**Status:** Proposed (round 15 ratifies or amends)
+**Status:** **Accepted — RATIFIED AS WRITTEN at round 15** (owner
+sign-off recorded 2026-08-22, ADR-0021 addendum S3). The reviewer
+ratified all seven pointed questions Q-A–Q-G with argument and amended
+none; round 15's three findings are dispositioned in **ADR-0021**,
+which carries the three fixes this ADR's D-numbers did not anticipate.
+**The Scope line below is superseded on one number:** M6 was spent on
+the round-15 dispositions (`20260821120006_round15_fixes`), so Q2's
+migration bound closes **SPENT at 6 of ≤ 6**, not 5 — any further 5A
+DDL is an owner bound-amendment. Q-B's annex adopted: TSD **A11**.
 **Date:** 2026-08-21
 **Scope:** Decisions made while building 5A (five migrations,
 `20260821120001`–`20260821120005`; **M6 stays reserved** for round-15

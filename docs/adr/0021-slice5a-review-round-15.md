@@ -1,7 +1,10 @@
 # ADR-0021 — Slice 5A review round 15: the findings dispositions
 
-**Status:** Proposed (the owner ratifies at the sign-off gate; merge is
-the owner's alone — ADR-0006)
+**Status:** **Accepted — owner sign-off recorded 2026-08-22** in the
+sign-off session; rulings S1–S4 verbatim in the sign-off addendum below.
+Merge authorized as **MERGE COMMIT, never squash** (the ADR-0015
+sign-off-with-merge pattern, ADR-0006 — the owner is sole merge
+authority).
 **Deciders:** the round-15 dispositions session (owner ratifies at sign-off)
 **Date:** 2026-08-21
 
@@ -245,3 +248,85 @@ diagnosed. CI's own run is the independent check.
 - Round 15 ends at the gate: **owner sign-off and merge (never squash)
   are the owner's**, each its own session unless the owner rules
   otherwise in-session.
+
+# Addendum — owner sign-off (2026-08-22, the sign-off session)
+
+CI confirmed green at the presented head FIRST: runs `32565338850`
+(`push`) and `32565341392` (`pull_request`), **both at `af0a80a`**,
+both completed / success — public API, anonymous, `gh` never
+authenticated. A PR update fires a `pull_request` run distinct from the
+`push` run; both at the signed-off head were confirmed, and neither was
+pending. Job `checks` succeeded in each across 22 steps, the only
+non-success being `Capture database logs (on failure) → skipped`, which
+is the on-failure conditional. The upgrade leg — base reset, increment
+apply, both suites, **with M6 in the chain** — is inside both. PR #9
+confirmed **open**, not draft, base `main` @ `7832d53`, head
+`slice/5-extraction` @ `af0a80a`, `mergeable_state: clean`, 19 commits /
+32 files / +6122 −38.
+
+The evidence head remains **`a0f194b`** — the last commit moving a
+non-docs tree; everything after it is `docs/`-only, so the F12
+per-directory binding transfers, and the binding post-merge check is CI
+green on `main` at the merge commit.
+
+The owner read, in order: the findings file → this ADR → ADR-0020 → the
+round-15 packet → TSD annex A11 → `docs/coverage.md` §5, then ruled
+in-session (ADR-0006, sole merge authority). Recorded verbatim:
+
+**S1.** The round-15 commissioned-review dispositions stand as recorded
+in ADR-0021 — D1 (F1, HIGH: the R-rule per-circle lock hoisted above
+stage-2 detection, its load-bearing premise verified against the tree
+before acceptance), D2 (F2: the live-actor guard added to
+`hc.list_known_senders`, severity premise CORRECTED to currently
+unreachable), D3 (F3: set semantics on the detector's arrival side, the
+reviewer's publication-boundary alternative declined with the argument)
+— all three accepted and fixed red→green, `e3ecffe` → `a0f194b`, **M6**
+`20260821120006_round15_fixes`. The three recorded observations stand
+as recorded, none a defect.
+
+**S2 — D2's scope call, the one open owner decision, ruled (a) QUEUE
+IT.** Verbatim: *"(a) QUEUE it — the round-15 session's recommendation.
+The family audit rides with the account-deletion path whenever that is
+designed; the migration bound stays CLOSED at 6 of ≤ 6. The 5A-owned
+read stays guarded; the two 4A writes stay as shipped on a scenario
+nothing can currently reach."* `hc.accept_sender`
+(`20260818120006:77`) and `hc.revoke_sender` (`:170`) therefore keep
+the unguarded actor lookup for now, and the SND-02 live-actor family
+audit opens as an **owner-queue item** (the ADR-0019 D15 mechanism), to
+be taken with the account-deletion path: *audit the whole live-actor
+family together — `accept_sender`, `revoke_sender`, and every other
+definer resolving `hc.uid()` against `public.accounts` without
+`deleted_at is null`.* The option priced against it — amend the bound
+to ≤ 7 and fix the family in M7 before merge — was **declined**: the
+code is one predicate per function and the refusal shape would not move
+(both already raise `sender_refused` when the actor row does not
+resolve), but it would reopen a bound the owner had closed and buy a
+full M7 evidence leg to shut a scenario ADR-0021 verified as
+unreachable.
+
+**S3.** ADR-0020 is **ratified as written** — all seven pointed
+questions Q-A–Q-G ratified by the reviewer with argument, no question
+amended. Q-B's annex is adopted: TSD **annex A11**. `docs/coverage.md`
+§5 is re-referenced with **no row flips** — each finding strengthens a
+row already carrying its 5A half. Q-E's ratification keeps the
+reviewer's own caveat: the 431 → 442 → 448 archaeology was taken on
+trust, not re-run. The vitest honesty note stands as recorded — an
+unreproduced transient, explicitly NOT diagnosed, and not to be
+re-litigated.
+
+**S4 — merge authorized, and ruled to be taken in-session.** PR #9,
+**MERGE COMMIT, never squash** (the ADR-0015 sign-off-with-merge
+pattern) — the thirteen red→green commits carry every failure signature
+the ADRs cite, and squashing would destroy the evidence. Executed as a
+local `--no-ff` merge into `main` pushed by the owner, the `d7f2f36`
+(4B) precedent, since `gh` is unauthenticated here by standing rule.
+Afterward: CI confirmed green on `main` at the merge commit, then the
+merge SHA stamped into the ADR-0021/0020 status lines (the
+ADR-0014/0016 pattern).
+
+**The migration bound closes SPENT at 6 of ≤ 6.** Any further 5A DDL is
+an owner bound-amendment first, not a session decision.
+
+This recording commit is itself docs-only (the run-66/68 precedent):
+the `a0f194b` evidence block transfers per the F12 per-directory
+binding.
