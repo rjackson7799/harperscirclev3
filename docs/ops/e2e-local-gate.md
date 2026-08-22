@@ -36,7 +36,7 @@ steps and the a11y leg stay the regression instrument, unchanged.
 
 ```
 npx supabase start          # DB 54342 · API 54341 · Mailpit 54344
-npm run db:reset            # clean leg — exact 54 migrations (4A)
+npm run db:reset            # clean leg — exact 59 migrations (5A)
 node scripts/verify-migration-state.mjs supabase/migrations
 docker run -d --name hc_clamd -p 3310:3310 clamav/clamav:stable
                             # the B9 gate stack's scanner (§1.6): wait
