@@ -43,7 +43,7 @@ accepted, and it holds in all three parts:
 
 - `hc.advance_arrival` acquires `pg_advisory_xact_lock(hashtext('taint:'
   || circle))` as its **first act**, before the row lock
-  (`20260816010009_round7_fixes.sql:86–90`) — the ADR-0007 R-rule.
+  (`20260816010009_round7_fixes.sql:88–91`) — the ADR-0007 R-rule.
 - `hc.approve_proposal` takes **the same per-circle key**
   (`20260821120004_conflict_outcomes.sql:146`) and inserts the document
   at `:335`, holding the lock across the write until commit. So the
@@ -87,8 +87,8 @@ consistent-lock-ordering rule is the one that applies.)
 
 The asymmetry is real and was confirmed: `hc.log_artifact_read` resolves
 its actor with `where a.id = v_actor and a.deleted_at is null`
-(`20260821120001:70–72`); `hc.list_known_senders` had only
-`where a.id = v_actor` (`:120`).
+(`20260821120001:66–68`); `hc.list_known_senders` had only
+`where a.id = v_actor` (`:123`).
 
 **But the scenario the finding describes is currently unreachable, and
 the record should say so.** `grep` over every migration finds **no code
@@ -121,7 +121,7 @@ scenario stays unreachable.
 
 Both narrowings are reachable, which was checked rather than assumed:
 `hc.write_proposals` admits **50** proposals with no document-kind limit
-(`20260816010005:206–208`), and `hc.write_extractions` admits **200**
+(`20260816010005:207–209`), and `hc.write_extractions` admits **200**
 facts with **no per-field uniqueness** — `public.extractions` carries no
 unique constraint on `(arrival_id, field)`
 (`20260816010001:152–170`). So a second document proposal or a second
