@@ -11,7 +11,9 @@ import pg from 'pg';
 //
 //   1. the request-role channel works over it (SET ROLE anon/
 //      authenticated + the definers — everything the app needs);
-//   2. the BARE login reads nothing (no direct table grants);
+//   2. the BARE login holds nothing (no direct table grants, and — since
+//      5A M1's Q4 NOINHERIT flip — no INHERITED privileges either: the
+//      probe is an honest 42501 now, not RLS-empty zero rows);
 //   3. the maintenance surface is OUT OF REACH: auth.* and hc.log are
 //      refused — the blast radius really did drop to the enumerated
 //      surface.
@@ -40,19 +42,21 @@ describe('B8 · the runbook probes, locally', () => {
     expect(r.rows[0]).toEqual({ rolsuper: false, rolbypassrls: false, rolcanlogin: true });
   });
 
-  it('hc_runtime holds exactly {anon, authenticated}', async () => {
+  it('hc_runtime holds exactly {anon, authenticated}, both INHERIT FALSE (5A M1, Q4)', async () => {
     const r = await runtime.query(
-      `select array_agg(b.rolname::text order by b.rolname) as roles
+      `select array_agg(b.rolname::text || ':inherit=' || m.inherit_option::text
+                        order by b.rolname) as roles
          from pg_auth_members m join pg_roles b on b.oid = m.roleid
         where m.member = 'hc_runtime'::regrole`,
     );
-    expect(r.rows[0].roles).toEqual(['anon', 'authenticated']);
+    expect(r.rows[0].roles).toEqual(['anon:inherit=false', 'authenticated:inherit=false']);
   });
 
-  it('the BARE login reads NOTHING: RLS-empty without an identity (membership is INHERIT, so the honest probe is zero rows, not 42501 — the runbook row is corrected to match)', async () => {
+  it('the BARE login holds NOTHING: an honest 42501, not RLS-empty (5A M1 flipped the memberships to INHERIT FALSE — the bare credential no longer inherits anon/authenticated privileges at all)', async () => {
     await runtime.query('reset role');
-    const r = await runtime.query('select 1 from public.accounts limit 1');
-    expect(r.rows).toHaveLength(0);
+    await expect(
+      runtime.query('select 1 from public.accounts limit 1'),
+    ).rejects.toMatchObject({ code: '42501' });
     // And zero DIRECT grants exist (BAT-04's catalog half, re-run here):
     const direct = await runtime.query(
       `select count(*)::int as n from information_schema.role_table_grants
@@ -82,11 +86,26 @@ describe('B8 · the channel works; the maintenance surface does not', () => {
   });
 
   it('hc.log is unreachable — the evidentiary boundary cannot ride this credential either (catalog probe: the recorded segfault trap forbids dialing a function-ACL denial)', async () => {
+    // Since 5A M1's INHERIT FALSE flip the bare login cannot even RESOLVE
+    // the hc schema (no inherited USAGE) — the stronger refusal, pinned:
+    await runtime.query('reset role');
+    await expect(
+      runtime.query(
+        `select has_function_privilege('hc_runtime',
+           'hc.log(uuid, text, text, uuid, uuid, uuid, hc.domain, hc.access_level, hc.access_level, hc.object_type, uuid, jsonb, text, text, uuid)',
+           'execute') as fn`,
+      ),
+    ).rejects.toMatchObject({ code: '42501' });
+    // The catalog fact still holds, read over the channel (SET ROLE
+    // authenticated — the only way this credential reaches hc at all):
+    await runtime.query('begin');
+    await runtime.query('set local role authenticated');
     const r = await runtime.query(
       `select has_function_privilege('hc_runtime',
          'hc.log(uuid, text, text, uuid, uuid, uuid, hc.domain, hc.access_level, hc.access_level, hc.object_type, uuid, jsonb, text, text, uuid)',
          'execute') as fn`,
     );
+    await runtime.query('commit');
     expect(r.rows[0].fn).toBe(false);
   });
 });

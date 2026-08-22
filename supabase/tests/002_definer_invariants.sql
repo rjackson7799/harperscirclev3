@@ -82,7 +82,9 @@ select is((
     'head_signature_immutable()',
     'ladder(p_s jsonb, p_taint hc.domain[])',
     'link_provenance(p_child_type hc.object_type, p_child_id uuid, p_parent_type hc.object_type, p_parent_id uuid)',
+    'list_known_senders(p_circle uuid)',
     'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text, p_corrects_id uuid)',
+    'log_artifact_read(p_arrival uuid)',
     'log_chain_heads()',
     'log_denied(p_circle_id uuid, p_domain hc.domain, p_subject_id uuid)',
     'log_sign_out()',
@@ -156,7 +158,8 @@ select is((
         'expire_scan_results',
         'finalize_extraction','finalize_interpretation','finalize_scan',
         'finalize_store',
-        'grant_vectors','link_provenance','log_chain_heads','log_denied',
+        'grant_vectors','link_provenance','list_known_senders',
+        'log_artifact_read','log_chain_heads','log_denied',
         'log_sign_out',
         'mint_step_up','note_suspicious_attempts',
         'outbox_ack','outbox_drain','pending_security_actions','presence',
@@ -170,7 +173,7 @@ select is((
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the sixty-five boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the sixty-seven boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -307,6 +310,10 @@ with actual as (
   -- 4A M6: duplicate resolution is the member's act (manage-gated like
   -- cancel); detect_duplicate is owner-only and appears in no grant row
   union all select 'resolve_duplicate', 'authenticated'
+  -- 5A M1 (ADR-0019 Q-iii / D15): the inherited-obligations member
+  -- surfaces — the §1.3 step-6 log definer and the known-senders read
+  union all select 'log_artifact_read', 'authenticated'
+  union all select 'list_known_senders', 'authenticated'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)

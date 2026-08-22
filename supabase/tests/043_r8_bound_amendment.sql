@@ -210,13 +210,17 @@ select ok(exists (select 1 from pg_roles
                   where rolname = 'hc_runtime' and not rolcanlogin),
   'hc_runtime exists and is NOLOGIN (credentials ride deploy/seed, never DDL)');
 
+-- Re-pinned at 5A M1 (Q4 — SETTLED): the two memberships carry INHERIT
+-- FALSE — the bare credential inherits nothing; SET ROLE (the channel)
+-- rides the SET option, pinned in 051 alongside the flip itself.
 select is((
-  select array_agg(rr.rolname order by rr.rolname)
+  select array_agg(rr.rolname || ':inherit=' || m.inherit_option::text
+                   order by rr.rolname)
   from pg_auth_members m
   join pg_roles rm on rm.oid = m.member and rm.rolname = 'hc_runtime'
   join pg_roles rr on rr.oid = m.roleid),
-  array['anon', 'authenticated']::name[],
-  'hc_runtime is a member of anon + authenticated and NOTHING else (two-way exact)');
+  array['anon:inherit=false', 'authenticated:inherit=false']::text[],
+  'hc_runtime is a member of anon + authenticated and NOTHING else (two-way exact), INHERIT FALSE on both (5A M1, Q4)');
 
 select ok(
   exists (select 1 from pg_auth_members m
