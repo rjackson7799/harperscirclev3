@@ -3190,3 +3190,26 @@ bytes, the swap-cost's expensive "re-fetch from the provider" half shrinks
 to a staging read, acceptance survives a provider-retention gap, and a
 synthetic (fixture) webhook exercises the identical path the live one
 takes.
+
+### A11 — §4.8: "keep both and ask" — the drafted task COMMITS as the approval's one object (ADR-0020 D3; round-15 Q-B, ratified; ADR-0021)
+
+§4.8's conflict row reads "Keep both and ask: no fact is written; a task
+is drafted instead". The word "drafted" predates Q9, which settled the
+object model: the person's choice IS the decision, so a second approval
+step would ask them to approve what they have already chosen. Recorded
+here as-built and ratified (the A9/A10 precedent — shipped sections are
+reconciled in the annex, never edited in place).
+
+**The row reads:** *"no fact is written; the conflict's drafted task
+commits as the approval's one object (unassigned — §3.6)."*
+
+The mechanism: the proposal closes `approved`; `proposal_commits` claims
+the task as the conflict's one committed object; the task's copy is
+sourced from the DRAFTED payload's `task` block (title required,
+detail/due optional under the table's due-pair check) — **the database
+invents no words, and a taskless `keep_both` refuses**
+(refuse-what-you-cannot-validate). The task lands **unassigned**:
+assignment stays a human, separate act (§3.6). One proposal, one object,
+one transaction. High-risk confirmation does not apply to this outcome —
+`keep_both` commits a task, not a value; §6.4's confirmation discipline
+governs `use_new` alone (ADR-0020 D3, round-15 Q-G ratified).
