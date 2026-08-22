@@ -55,7 +55,8 @@ select is((
     'check_quota(p_circle uuid, p_sender text)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
     'claim_security_actions(p_limit integer)',
-    'claim_stage(p_arrival uuid, p_stage text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
+    'claim_stage(p_arrival uuid, p_stage text, p_model_id text, p_prompt_version text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
+    'close_extraction_run()',
     'complete_security_action(p_action_id uuid)',
     'consume_step_up(p_token text, p_operation text, p_target_ref text, p_account uuid)',
     'contact_key(p text)',
@@ -68,6 +69,7 @@ select is((
     'ctx_for(p_account uuid)',
     'describe_invite(p_token text)',
     'detect_duplicate(p_arrival uuid, p_circle uuid, p_sha bytea)',
+    'detect_stage2_duplicate(p_arrival uuid, p_circle uuid, p_subject uuid, p_facts jsonb, p_proposals jsonb)',
     'dom(p jsonb)',
     'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'execute_wasnt_me(p_token text)',
@@ -82,7 +84,9 @@ select is((
     'head_signature_immutable()',
     'ladder(p_s jsonb, p_taint hc.domain[])',
     'link_provenance(p_child_type hc.object_type, p_child_id uuid, p_parent_type hc.object_type, p_parent_id uuid)',
+    'list_known_senders(p_circle uuid)',
     'log(p_circle_id uuid, p_event_type text, p_actor_display_name text, p_actor_account_id uuid, p_subject_id uuid, p_target_member_id uuid, p_domain hc.domain, p_level_before hc.access_level, p_level_after hc.access_level, p_object_type hc.object_type, p_object_id uuid, p_detail jsonb, p_actor_session_id text, p_request_id text, p_corrects_id uuid)',
+    'log_artifact_read(p_arrival uuid)',
     'log_chain_heads()',
     'log_denied(p_circle_id uuid, p_domain hc.domain, p_subject_id uuid)',
     'log_sign_out()',
@@ -101,6 +105,7 @@ select is((
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
     'record_auth_failure(p_identifier text)',
     'record_auth_success(p_kind text)',
+    'record_context_for(p_arrival uuid)',
     'record_tombstone(p_circle_id uuid, p_object_type text, p_object_id uuid, p_storage_keys text[], p_scope text, p_requested_by uuid, p_reason text)',
     'remove_member(p_member_id uuid, p_keep_share_ids uuid[])',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
@@ -148,7 +153,7 @@ select is((
         'adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
         'assert_manual_flag','auth_throttle','cancel_arrival','check_quota',
-        'claim_security_actions','claim_stage',
+        'claim_security_actions','claim_stage','close_extraction_run',
         'complete_security_action','consume_step_up','create_account',
         'create_arrival',
         'create_circle','create_invite','create_manual_proposal',
@@ -156,13 +161,15 @@ select is((
         'expire_scan_results',
         'finalize_extraction','finalize_interpretation','finalize_scan',
         'finalize_store',
-        'grant_vectors','link_provenance','log_chain_heads','log_denied',
+        'grant_vectors','link_provenance','list_known_senders',
+        'log_artifact_read','log_chain_heads','log_denied',
         'log_sign_out',
         'mint_step_up','note_suspicious_attempts',
         'outbox_ack','outbox_drain','pending_security_actions','presence',
         'product_state',
         'propagate_taint_growth','reclassify_taint','record_auth_failure',
-        'record_auth_success','record_tombstone','remove_member',
+        'record_auth_success','record_context_for','record_tombstone',
+        'remove_member',
         'request_freeze','resolve_duplicate','resolve_forwarding',
         'revise_object','revoke_invite',
         'revoke_sender',
@@ -170,7 +177,7 @@ select is((
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the sixty-five boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the sixty-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -307,6 +314,14 @@ with actual as (
   -- 4A M6: duplicate resolution is the member's act (manage-gated like
   -- cancel); detect_duplicate is owner-only and appears in no grant row
   union all select 'resolve_duplicate', 'authenticated'
+  -- 5A M1 (ADR-0019 Q-iii / D15): the inherited-obligations member
+  -- surfaces — the §1.3 step-6 log definer and the known-senders read
+  union all select 'log_artifact_read', 'authenticated'
+  union all select 'list_known_senders', 'authenticated'
+  -- 5A M2 (§3.10's letter): the one pipeline read of the record
+  union all select 'record_context_for', 'hc_pipeline'
+  -- 5A M3: close_extraction_run is a trigger function — hc_internal-owned,
+  -- granted to nobody; it appears in no grant row by design
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -462,6 +477,13 @@ insert into snapshot_expected values
   ('hc_internal',   'pipeline_leases', 'UPDATE'),
   ('hc_internal',   'extractions',     'SELECT'),
   ('hc_internal',   'extractions',     'INSERT'),
+  -- 5A M3: publish-only widens to publish-and-supersede (write_extractions
+  -- marks prior facts superseded in the publication transaction)
+  ('hc_internal',   'extractions',     'UPDATE'),
+  -- 5A M3: the run accounting — opened at claim, closed with the lease
+  ('hc_internal',   'extraction_runs', 'SELECT'),
+  ('hc_internal',   'extraction_runs', 'INSERT'),
+  ('hc_internal',   'extraction_runs', 'UPDATE'),
   ('hc_internal',   'known_senders',   'SELECT'),
   ('hc_internal',   'pipeline_outbox', 'SELECT'),
   ('hc_internal',   'pipeline_outbox', 'INSERT'),
@@ -548,7 +570,10 @@ select is((
         'documents_internal_write',
         'dsc_internal','dsc_internal_update','dsc_internal_write',
         'episodes_internal','episodes_internal_revise','episodes_internal_write',
-        'extractions_internal','extractions_internal_write',
+        'extraction_runs_internal','extraction_runs_internal_close',
+        'extraction_runs_internal_open',
+        'extractions_internal','extractions_internal_supersede',
+        'extractions_internal_write',
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
         'invites_internal','invites_internal_decide','invites_internal_issue',
@@ -582,7 +607,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated ninety-seven');
+  'the hc_internal policy list is exactly the enumerated one hundred one');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:

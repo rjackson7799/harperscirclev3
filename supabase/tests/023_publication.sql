@@ -83,7 +83,9 @@ begin
   a := hc.create_arrival(current_setting('t.c1')::uuid, current_setting('t.s1')::uuid,
                          'upload', p_ingest_idempotency_key => p_key);
   update public.arrivals set state = 'extracting' where id = a;
-  select * into r from hc.claim_stage(a, 'extract');
+  -- Re-pinned at 5A M3: an extract claim carries the run identity, and
+  -- the published facts' stamps must match it (m1/p1 throughout this file).
+  select * into r from hc.claim_stage(a, 'extract', 'm1', 'p1');
   return query select a, r.lease_id;
 end $$;
 

@@ -163,9 +163,10 @@ select is((
   where pg_temp.rank_of(s::text) is null), 0,
   'every internal state has a rank — a 22nd enum value fails this suite');
 
+-- Re-pinned at 5A M5: Q8's distinct suspect state joins the enum (22).
 select is((
   select count(distinct pg_temp.rank_of(s::text))::int
-  from unnest(enum_range(null::hc.arrival_state)) s), 21,
+  from unnest(enum_range(null::hc.arrival_state)) s), 22,
   'ranks are distinct — the least-advanced choice is total, never arbitrary');
 
 select is((

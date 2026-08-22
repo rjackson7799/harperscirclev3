@@ -219,17 +219,21 @@ select is(pg_temp.scalar($$
   'extract:extracting>extract_timeout,extract:extracting>extract_failed,'
   || 'extract:extracting>extracted,extract:extracting>needs_password,'
   || 'extract:extracting>unsupported_type,'
+  || 'extract:extracting>duplicate_suspected_stage2,'  -- 5A M5: the Q8 suspect entry
   || 'gate:scanned>extracting,gate:scanned>held_unknown_sender,'
   || 'gate:held_unknown_sender>extracting,'   -- 2A M6: the SND-02 release edge
   -- 4A M6: the §4.7 stage-1 resolution exits (appended with their
   -- machinery, exactly as B1's recorded decision said they would)
   || 'gate:duplicate_suspected>scanned,gate:duplicate_suspected>nothing_filed,'
+  -- 5A M5: the Q8 stage-2 resolution exits — interpret resume or nothing
+  || 'gate:duplicate_suspected_stage2>interpreting,'
+  || 'gate:duplicate_suspected_stage2>nothing_filed,'
   || 'interpret:interpreting>proposals_ready,'
   || 'scan:stored>quarantined,scan:stored>scan_unavailable,'
   || 'scan:stored>scan_inconclusive,scan:stored>scanned,'
   || 'scan:stored>duplicate_suspected,'       -- 4A M6: the post-scan suspect entry
   || 'store:received>store_failed,store:received>stored',
-  'the seeded allowlist is exactly the §4.3 stage-exit graph as appended by 2A M6 and 4A M6 — closed');
+  'the seeded allowlist is exactly the §4.3 stage-exit graph as appended by 2A M6, 4A M6 and 5A M5 — closed');
 
 -- ----------------------------------------------------------------------------
 -- 3–7 · Graph violations: each holds a VALID current lease, so pre-fix the

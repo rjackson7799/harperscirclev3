@@ -138,6 +138,26 @@
 //           overwritten by the infected upsert; infected-first refuses
 //           the clean downgrade arm). The §11.5 evidence is monotonic
 //           under the race, not just sequentially.
+//   Case 39 5A M4 (§4.9): two coordinators race ONE conflict proposal
+//           with different outcomes — the proposal row lock serialises,
+//           the first decision stands (use_new applied exactly once,
+//           one commit row), the second refuses on the decided proposal.
+//   Case 40 5A M4 (the ING-11 identity): ONE idempotency key raced with
+//           two different outcomes — the attempts PK serialises, the
+//           stored outcome stands, the different outcome refuses and
+//           writes nothing.
+//   Case 41 5A M5 (R-rule): a freeze committing while a STAGE-2
+//           resolution waits DEFEATS it (freeze_active) — the suspect
+//           stays parked, no additional-source edge, no open lease, no
+//           re-queue row.
+//   Case 42 5A M3 (the ING-08 class): a cancellation committing while a
+//           versioned RE-RUN's finalization waits wins the swap — the
+//           supersession never half-runs: run 1's facts stay live, run
+//           2's rows never land, run 2's accounting closes cancelled.
+//   Case 43 5A M2: hc.record_context_for racing a supersede-and-replace
+//           — one statement, one snapshot: the payload always shows
+//           exactly ONE current row for the field (old before the
+//           commit, new after), never zero, never two.
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -785,7 +805,7 @@ async function mkExtracting(admin, fx, key) {
     `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => $3) as id`,
     [fx.c, fx.s, key])).rows[0].id;
   await admin.query(`update public.arrivals set state = 'extracting' where id = $1`, [a]);
-  const r = (await admin.query(`select * from hc.claim_stage($1, 'extract')`, [a])).rows[0];
+  const r = (await admin.query(`select * from hc.claim_stage($1, 'extract', 'm1', 'p1')`, [a])).rows[0];
   return { arrival: a, lease: r.lease_id };
 }
 
@@ -804,7 +824,7 @@ async function case11(admin) {
     await admin.query(
       `update public.pipeline_leases set deadline = now() - interval '1 second'
        where id = $1`, [w.lease]);
-    const l2 = (await admin.query(`select * from hc.claim_stage($1, 'extract')`,
+    const l2 = (await admin.query(`select * from hc.claim_stage($1, 'extract', 'm1', 'p1')`,
       [w.arrival])).rows[0].lease_id;
     const rA1 = (await admin.query(
       `select hc.finalize_extraction($1, $2, $3::jsonb, '[]'::jsonb) as r`,
@@ -824,7 +844,7 @@ async function case11(admin) {
     await admin.query(
       `update public.pipeline_leases set deadline = now() - interval '1 second'
        where id = $1`, [w.lease]);
-    const l2b = (await admin.query(`select * from hc.claim_stage($1, 'extract')`,
+    const l2b = (await admin.query(`select * from hc.claim_stage($1, 'extract', 'm1', 'p1')`,
       [w.arrival])).rows[0].lease_id;
     const rB2 = (await admin.query(
       `select hc.finalize_extraction($1, $2, $3::jsonb, '[]'::jsonb) as r`,
@@ -1116,7 +1136,7 @@ async function case18(admin) {
 
     // S1: a claim that EXHAUSTS inside its own row lock, held open.
     await s1.query('begin');
-    const rc = (await s1.query(`select result::text as r from hc.claim_stage($1, 'extract')`,
+    const rc = (await s1.query(`select result::text as r from hc.claim_stage($1, 'extract', 'm1', 'p1')`,
       [a])).rows[0].r;
 
     // S2: the sweeper blocks on the circle lock…
@@ -1197,7 +1217,7 @@ async function case20(admin) {
     // S1: claim attempt 3 AND finalize, both uncommitted — the worker's
     // whole win happens while the sweeper is queued behind the lock.
     await s1.query('begin');
-    const lease = (await s1.query(`select lease_id from hc.claim_stage($1, 'extract')`,
+    const lease = (await s1.query(`select lease_id from hc.claim_stage($1, 'extract', 'm1', 'p1')`,
       [a])).rows[0].lease_id;
     const rf = (await s1.query(
       `select hc.finalize_extraction($1, $2, $3::jsonb, '[]'::jsonb) as r`,
@@ -2308,6 +2328,423 @@ async function case38(admin) {
   }
 }
 
+// --- 5A fixtures ---------------------------------------------------------------
+
+// A current profile fact + a drafted CONFLICT proposal quoting it (the
+// real drafting path; record-write triggers off for the fixture insert).
+async function mkConflict(admin, fx, field, value) {
+  await admin.query(`set session_replication_role = replica`);
+  const f = (await admin.query(
+    `insert into public.profile_facts
+       (circle_id, subject_id, field, value, risk_class, domain, approved_by,
+        approved_at, approver_display_name, taint)
+     values ($1, $2, $3, to_jsonb($4::text), 'high', 'health', $5,
+             now() - interval '30 days', 'Sarah', '{health}')
+     returning id`,
+    [fx.c, fx.s, field, value, fx.u1])).rows[0].id;
+  await admin.query(`set session_replication_role = default`);
+  const p = (await admin.query(
+    `select hc.draft_proposal($1, $2, $3, 'conflict', jsonb_build_object(
+       'field', $4::text, 'value', 'the new value', 'risk_class', 'high',
+       'domain', 'health',
+       'parents', jsonb_build_array(jsonb_build_object('type', 'profile_fact', 'id', $5::uuid)),
+       'task', jsonb_build_object('title', 'Sort out ' || $4::text))) as id`,
+    [fx.a, fx.c, fx.s, field, f])).rows[0].id;
+  return { fact: f, proposal: p };
+}
+
+// --- case 39: conflict approval version race (5A M4; §4.9) --------------------
+
+async function case39(admin) {
+  const fx = await mkCircle(admin, 'c39');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const cf = await mkConflict(admin, fx, 'allergy_status', 'penicillin');
+
+    // S1: Sarah approves USE_NEW, held open — she owns the proposal row lock.
+    await asUser(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(
+      `select hc.approve_proposal($1, 1, 'c39-k1',
+         '{"conflict_outcome":"use_new","confirm_high":true}'::jsonb)`,
+      [cf.proposal]);
+
+    // S2: Priya's KEEP blocks behind it (her own key)…
+    await asUser(s2, fx.u2);
+    const p2 = s2.query(
+      `select hc.approve_proposal($1, 1, 'c39-k2',
+         '{"conflict_outcome":"keep"}'::jsonb)`,
+      [cf.proposal]).then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.approve_proposal%', 'approve backend');
+    await waitForLockWait(admin, pid2, 's2 approval behind s1');
+
+    // …and Sarah's decision commits first.
+    await s1.query('commit');
+
+    const e2 = await withTimeout(p2, 'case39 second coordinator');
+    const st = (await admin.query(
+      `select (select p.status from public.proposals p where p.id = $1) as status,
+              (select count(*) from public.proposal_commits pc where pc.proposal_id = $1)::int as commits,
+              (select count(*) from public.profile_facts pf
+                where pf.subject_id = $2 and pf.field = 'allergy_status'
+                  and pf.superseded_at is null)::int as current_rows,
+              (select pf.superseded_at is not null from public.profile_facts pf
+                where pf.id = $3) as old_superseded`,
+      [cf.proposal, fx.s, cf.fact])).rows[0];
+    check('case39 (5A M4, §4.9): two coordinators race ONE conflict — the row lock serialises, the first decision stands (use_new applied exactly once), the second refuses on the decided proposal',
+      e2 !== null && e2.code === 'P0001'
+        && st.status === 'approved' && st.commits === 1
+        && st.current_rows === 1 && st.old_superseded === true,
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'} status=${st.status} commits=${st.commits} current=${st.current_rows} oldSuperseded=${st.old_superseded}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 40: same key, different outcome, raced (5A M4 — the ING-11 identity) --
+
+async function case40(admin) {
+  const fx = await mkCircle(admin, 'c40');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const cf = await mkConflict(admin, fx, 'diet_note', 'low sodium');
+
+    // S1: Sarah's USE_NEW under key K, held open — the attempts PK row is hers.
+    await asUser(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(
+      `select hc.approve_proposal($1, 1, 'c40-K',
+         '{"conflict_outcome":"use_new","confirm_high":true}'::jsonb)`,
+      [cf.proposal]);
+
+    // S2: the SAME key with a DIFFERENT outcome blocks on the PK tuple…
+    await asUser(s2, fx.u1);
+    const p2 = s2.query(
+      `select hc.approve_proposal($1, 1, 'c40-K',
+         '{"conflict_outcome":"keep"}'::jsonb)`,
+      [cf.proposal]).then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.approve_proposal%', 'approve backend');
+    await waitForLockWait(admin, pid2, 's2 same-key approval behind s1');
+
+    // …S1 commits, the unique violation resolves, the outcomes differ.
+    await s1.query('commit');
+
+    const e2 = await withTimeout(p2, 'case40 same-key different-outcome');
+    const st = (await admin.query(
+      `select (select count(*) from public.approval_attempts aa
+                where aa.idempotency_key = 'c40-K')::int as attempts,
+              (select aa.conflict_outcome from public.approval_attempts aa
+                where aa.idempotency_key = 'c40-K') as outcome,
+              (select count(*) from public.tasks t
+                where t.circle_id = $1 and t.source_proposal_id = $2)::int as tasks,
+              (select count(*) from public.profile_facts pf
+                where pf.subject_id = $3 and pf.field = 'diet_note'
+                  and pf.superseded_at is null)::int as current_rows`,
+      [fx.c, cf.proposal, fx.s])).rows[0];
+    check('case40 (5A M4, the ING-11 identity): one key raced with TWO outcomes — the PK serialises, the stored outcome stands (use_new), the different outcome refuses and writes NOTHING',
+      e2 !== null && e2.code === 'P0001'
+        && st.attempts === 1 && st.outcome === 'use_new'
+        && st.tasks === 0 && st.current_rows === 1,
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'} attempts=${st.attempts} outcome=${st.outcome} tasks=${st.tasks} current=${st.current_rows}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 41: stage-2 resolve vs a freeze mid-wait (5A M5; R-rule) ------------
+
+async function case41(admin) {
+  const fx = await mkCircle(admin, 'c41');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // A stage-2 suspect, fixture-level, with its canonical target set
+    // (the detection path is 055's; this case races the RESOLUTION).
+    const a = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c41-a') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    await admin.query(
+      `update public.arrivals
+          set state = 'duplicate_suspected_stage2', scan_verdict = 'clean',
+              scan_at = now(), duplicate_of_document_id = $2
+        where id = $1`, [a, fx.doc]);
+
+    // S1 holds the per-circle lock in an open transaction…
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+
+    // …the founder's same_thing resolution blocks on it…
+    await asUser(s2, fx.u1);
+    const p2 = s2.query(`select hc.resolve_duplicate($1, 'same_thing')`, [a])
+      .then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.resolve_duplicate%', 'resolve backend');
+    await waitForLockWait(admin, pid2, 's2 stage-2 resolution on the circle lock');
+
+    // …a freeze commits mid-wait…
+    await admin.query(`insert into public.freezes (circle_id) values ($1)`, [fx.c]);
+    await s1.query('commit');
+
+    const e2 = await withTimeout(p2, 'case41 stage-2 resolution after freeze');
+    const st = (await admin.query(
+      `select a.state::text as s,
+              not exists (select 1 from public.provenance_edges e
+                          where e.parent_type = 'arrival' and e.parent_id = a.id) as noedge,
+              not exists (select 1 from public.pipeline_leases l
+                          where l.arrival_id = a.id and l.closed_at is null) as nolease,
+              not exists (select 1 from public.pipeline_outbox o
+                          where o.arrival_id = a.id) as noqueue
+       from public.arrivals a where a.id = $1`, [a])).rows[0];
+    check('case41 (5A M5, R-rule): a freeze committing while the STAGE-2 resolution waits DEFEATS it (freeze_active) — the suspect stays parked, no additional-source edge, no open lease, no re-queue',
+      e2 !== null && e2.code === 'P0001' && e2.message === 'freeze_active'
+        && st.s === 'duplicate_suspected_stage2'
+        && st.noedge === true && st.nolease === true && st.noqueue === true,
+      `err=${e2 ? e2.code + ':' + e2.message : 'none'} state=${st.s} noedge=${st.noedge} nolease=${st.nolease} noqueue=${st.noqueue}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 42: re-run supersession vs cancellation (5A M3; the ING-08 class) ---
+
+async function case42(admin) {
+  const fx = await mkCircle(admin, 'c42');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // Run 1 publishes two facts through the REAL path…
+    const w1 = await mkExtracting(admin, fx, 'c42-a');
+    await admin.query(
+      `select hc.finalize_extraction($1, $2, $3::jsonb, '[]'::jsonb)`,
+      [w1.arrival, w1.lease, JSON.stringify([
+        { field: 'r1_total', value: '812', confidence: 0.9, risk_class: 'standard',
+          citation: { page: 1 }, model_id: 'm1', prompt_version: 'p1' },
+        { field: 'r1_provider', value: 'Mercy', confidence: 0.9, risk_class: 'standard',
+          citation: { page: 1 }, model_id: 'm1', prompt_version: 'p1' },
+      ])]);
+    // …then the versioned re-run path: state reset, a REAL attempt-2 claim.
+    await admin.query(
+      `update public.arrivals set state = 'extracting', current_lease_id = null
+        where id = $1`, [w1.arrival]);
+    const w2 = (await admin.query(
+      `select * from hc.claim_stage($1, 'extract', 'm1', 'p2')`,
+      [w1.arrival])).rows[0];
+
+    // S1: a member's cancellation, held open — it owns the row and circle locks.
+    await asUser(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.cancel_arrival($1)`, [w1.arrival]);
+
+    // S2: the re-run's finalization (which would SUPERSEDE run 1's facts)
+    // blocks behind it…
+    const p2 = s2.query(
+      `select hc.finalize_extraction($1, $2, $3::jsonb, '[]'::jsonb) as r`,
+      [w1.arrival, w2.lease_id, JSON.stringify([
+        { field: 'r2_total', value: '900', confidence: 0.9, risk_class: 'standard',
+          citation: { page: 1 }, model_id: 'm1', prompt_version: 'p2' },
+      ])]).then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.finalize_extraction%', 'finalize backend');
+    await waitForLockWait(admin, pid2, 's2 re-run finalize behind the cancel');
+
+    // …and the cancellation commits first.
+    await s1.query('commit');
+
+    const r2 = await withTimeout(p2, 'case42 re-run finalize after cancel');
+    const st = (await admin.query(
+      `select (select array_agg(e.field order by e.field) from public.extractions e
+                where e.arrival_id = $1 and e.superseded_at is null) as live,
+              (select count(*) from public.extractions e
+                where e.arrival_id = $1 and e.field like 'r2%')::int as r2rows,
+              (select r.outcome from public.extraction_runs r where r.lease_id = $2) as run2,
+              (select a.state::text from public.arrivals a where a.id = $1) as s`,
+      [w1.arrival, w2.lease_id])).rows[0];
+    check(`case42 (5A M3, the ING-08 class): cancellation beats the re-run — the supersession never half-runs: run 1's facts stay LIVE untouched, nothing of run 2 lands, run 2 closes cancelled`,
+      r2 === 'cancelled'
+        && JSON.stringify(st.live) === JSON.stringify(['r1_provider', 'r1_total'])
+        && st.r2rows === 0 && st.run2 === 'cancelled' && st.s === 'cancelled',
+      `r=${r2 instanceof Error ? r2.message : r2} live=${JSON.stringify(st.live)} r2rows=${st.r2rows} run2=${st.run2} state=${st.s}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 43: record_context_for vs concurrent record writes (5A M2) ----------
+
+async function case43(admin) {
+  const fx = await mkCircle(admin, 'c43');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // A current fact and an arrival for the context read.
+    await admin.query(`set session_replication_role = replica`);
+    const f1 = (await admin.query(
+      `insert into public.profile_facts
+         (circle_id, subject_id, field, value, risk_class, domain, approved_by,
+          approved_at, approver_display_name, taint)
+       values ($1, $2, 'bp_medication', '"v1"', 'high', 'health', $3,
+               now() - interval '10 days', 'Sarah', '{health}')
+       returning id`, [fx.c, fx.s, fx.u1])).rows[0].id;
+    await admin.query(`set session_replication_role = default`);
+    const a = (await admin.query(
+      `select hc.create_arrival($1, $2, 'upload', p_ingest_idempotency_key => 'c43-a') as id`,
+      [fx.c, fx.s])).rows[0].id;
+    await admin.query(
+      `update public.arrivals set state = 'interpreting' where id = $1`, [a]);
+
+    // S2 opens the supersede-and-replace WITHOUT committing (triggers off:
+    // fixture-grade record write, the mkCircle discipline)…
+    await s2.query(`set session_replication_role = replica`);
+    await s2.query('begin');
+    await s2.query(
+      `update public.profile_facts set superseded_at = now() where id = $1`, [f1]);
+    await s2.query(
+      `insert into public.profile_facts
+         (circle_id, subject_id, field, value, risk_class, domain, approved_by,
+          approved_at, approver_display_name, taint, supersedes_id)
+       values ($1, $2, 'bp_medication', '"v2"', 'high', 'health', $3,
+               now(), 'Sarah', '{health}', $4)`, [fx.c, fx.s, fx.u1, f1]);
+
+    // …S1's pipeline read runs MID-WRITE: one statement, one snapshot.
+    await s1.query(`set role hc_pipeline`);
+    const mid = (await s1.query(
+      `select hc.record_context_for($1) as j`, [a])).rows[0].j;
+    const midRows = (mid.profile_facts.rows ?? []).filter(r => r.field === 'bp_medication');
+
+    check('case43a (5A M2): a context read racing an uncommitted supersede-and-replace sees the PRIOR state whole — exactly one current row, the old value, never torn',
+      midRows.length === 1 && JSON.stringify(midRows[0].value) === '"v1"',
+      `rows=${midRows.length} value=${JSON.stringify(midRows[0]?.value)}`);
+
+    // The write commits; the next read sees the NEW state whole.
+    await s2.query('commit');
+    const after = (await s1.query(
+      `select hc.record_context_for($1) as j`, [a])).rows[0].j;
+    const afterRows = (after.profile_facts.rows ?? []).filter(r => r.field === 'bp_medication');
+
+    check('case43b (5A M2): after the commit the next read sees the NEW state whole — exactly one current row, the new value; no interleaving shows zero or two',
+      afterRows.length === 1 && JSON.stringify(afterRows[0].value) === '"v2"',
+      `rows=${afterRows.length} value=${JSON.stringify(afterRows[0]?.value)}`);
+  } finally {
+    await s1.query('reset role').catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s2.query(`set session_replication_role = default`).catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 44: stage-2 detection vs a document committing mid-wait -----------
+//
+// Round-15 finding 1 (HIGH), the behavioural half of pgTAP 056 test 1.
+// hc.finalize_extraction used to ask the duplicate question with NO lock
+// held and only then block on the per-circle taint lock inside
+// hc.advance_arrival. A matching document committing in that window was
+// invisible to the detector, so the arrival advanced to 'extracted' and
+// the settled stage-2 question was skipped — a state that depended on
+// transaction timing. The fix hoists the R-rule lock ABOVE detection:
+// hc.approve_proposal files its document under the same key, so the
+// predicate now runs on the far side of the same serialization point and
+// a fresh statement snapshot sees the committed row.
+
+async function case44(admin) {
+  const fx = await mkCircle(admin, 'c44');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // The arrival about to finalize, claimed for extract so a real lease
+    // and extraction run exist (the M3 mint point).
+    const a = (await admin.query(
+      `insert into public.arrivals (circle_id, subject_id, channel, state, sender_address)
+       values ($1, $2, 'email', 'extracting', 'billing@clinic.example')
+       returning id`, [fx.c, fx.s])).rows[0].id;
+    const lease = (await admin.query(
+      `select lease_id from hc.claim_stage($1, 'extract', 'm1', 'p1')`, [a])).rows[0].lease_id;
+
+    // S1 holds the per-circle lock and files a MATCHING document inside
+    // its open transaction — uncommitted, so S2's snapshot cannot see it.
+    await s1.query('begin');
+    // The fixture document is filed directly, so the DEFERRED record-claim
+    // trigger (record_write_unclaimed, which fires at COMMIT) is suppressed
+    // for this session exactly as mkCircle does for its baseline rows.
+    await s1.query(`set session_replication_role = replica`);
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+    const cArr = (await s1.query(
+      `insert into public.arrivals (circle_id, subject_id, channel, state, sender_address)
+       values ($1, $2, 'email', 'filed', 'billing@clinic.example')
+       returning id`, [fx.c, fx.s])).rows[0].id;
+    await s1.query(
+      `insert into public.extractions (arrival_id, circle_id, subject_id, field, value,
+         confidence, risk_class, citation, model_id, prompt_version)
+       values ($1, $2, $3, 'document_date', '"2026-07-12"'::jsonb, 0.9, 'standard',
+               '{"page": 1}'::jsonb, 'm0', 'p0'),
+              ($1, $2, $3, 'provider', '"Mercy Hospital"'::jsonb, 0.9, 'standard',
+               '{"page": 1}'::jsonb, 'm0', 'p0')`, [cArr, fx.c, fx.s]);
+    const cDoc = (await s1.query(
+      `insert into public.documents (circle_id, subject_id, title, category, summary_text,
+         artifact_arrival_id, filed_at, approved_by, approved_at, approver_display_name, taint)
+       values ($1, $2, 'Discharge summary (Jul 12)', 'medical', 'fixture', $3,
+               now(), $4, now(), 'Sarah', '{health}')
+       returning id`, [fx.c, fx.s, cArr, fx.u1])).rows[0].id;
+
+    // S2 finalizes the same-key extraction and must BLOCK on the circle lock.
+    const facts = JSON.stringify([
+      { field: 'document_date', value: '2026-07-12', confidence: 0.9, risk_class: 'standard',
+        citation: { page: 1 }, model_id: 'm1', prompt_version: 'p1' },
+      { field: 'provider', value: 'Mercy Hospital', confidence: 0.9, risk_class: 'standard',
+        citation: { page: 1 }, model_id: 'm1', prompt_version: 'p1' },
+    ]);
+    const props = JSON.stringify([
+      { kind: 'document', payload: { title: 'Fixture doc', category: 'medical' } },
+    ]);
+    const p2 = s2.query(
+      `select hc.finalize_extraction($1, $2, $3::jsonb, $4::jsonb) as r`,
+      [a, lease, facts, props]).then(r => r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.finalize_extraction%', 'finalize backend');
+    await waitForLockWait(admin, pid2, 's2 finalize on the circle lock');
+
+    // …the matching document commits mid-wait.
+    await s1.query('commit');
+    await s1.query(`set session_replication_role = default`);
+
+    const r2 = await withTimeout(p2, 'case44 finalize after the document commits');
+    const st = (await admin.query(
+      `select a.state::text as s, a.duplicate_of_document_id as d,
+              exists (select 1 from public.extractions e
+                       where e.arrival_id = a.id and e.superseded_at is null) as facts_landed,
+              exists (select 1 from public.extraction_runs r
+                       where r.lease_id = $2 and r.outcome = 'published') as run_published
+       from public.arrivals a where a.id = $1`, [a, lease])).rows[0];
+    check('case44 (5A M6, round-15 finding 1): a matching document committing while finalization WAITS on the circle lock is SEEN — the arrival lands on duplicate_suspected_stage2 pointing at it, and the work answer still lands in full (facts published, run published)',
+      !(r2 instanceof Error) && st.s === 'duplicate_suspected_stage2' && st.d === cDoc
+        && st.facts_landed === true && st.run_published === true,
+      `err=${r2 instanceof Error ? r2.message : 'none'} state=${st.s} dup=${st.d === cDoc} facts=${st.facts_landed} run=${st.run_published}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.query(`set session_replication_role = default`).catch(() => {});
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -2351,6 +2788,12 @@ try {
   await case36(admin);
   await case37(admin);
   await case38(admin);
+  await case39(admin);
+  await case40(admin);
+  await case41(admin);
+  await case42(admin);
+  await case43(admin);
+  await case44(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;
