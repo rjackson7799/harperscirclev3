@@ -103,6 +103,7 @@ select is((
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
     'record_auth_failure(p_identifier text)',
     'record_auth_success(p_kind text)',
+    'record_context_for(p_arrival uuid)',
     'record_tombstone(p_circle_id uuid, p_object_type text, p_object_id uuid, p_storage_keys text[], p_scope text, p_requested_by uuid, p_reason text)',
     'remove_member(p_member_id uuid, p_keep_share_ids uuid[])',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
@@ -165,7 +166,8 @@ select is((
         'outbox_ack','outbox_drain','pending_security_actions','presence',
         'product_state',
         'propagate_taint_growth','reclassify_taint','record_auth_failure',
-        'record_auth_success','record_tombstone','remove_member',
+        'record_auth_success','record_context_for','record_tombstone',
+        'remove_member',
         'request_freeze','resolve_duplicate','resolve_forwarding',
         'revise_object','revoke_invite',
         'revoke_sender',
@@ -173,7 +175,7 @@ select is((
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the sixty-seven boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the sixty-eight boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -314,6 +316,8 @@ with actual as (
   -- surfaces — the §1.3 step-6 log definer and the known-senders read
   union all select 'log_artifact_read', 'authenticated'
   union all select 'list_known_senders', 'authenticated'
+  -- 5A M2 (§3.10's letter): the one pipeline read of the record
+  union all select 'record_context_for', 'hc_pipeline'
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
