@@ -205,8 +205,10 @@ do $$
 declare i int; r record;
 begin
   -- burn the child's extract budget: three claims, each expiring
+  -- (re-pinned at 5A M3: an extract claim carries the run identity)
   for i in 1..3 loop
-    select * into r from hc.claim_stage(current_setting('t.ac')::uuid, 'extract');
+    select * into r from hc.claim_stage(current_setting('t.ac')::uuid, 'extract',
+                                        'm1', 'p1');
     update public.pipeline_leases set deadline = now() - interval '1 second'
      where id = r.lease_id;
   end loop;

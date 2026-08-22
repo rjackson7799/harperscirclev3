@@ -341,10 +341,13 @@ select is(pg_temp.errmsg(format(
   'stage_unknown',
   'an unknown stage name is a worker defect, refused by name');
 
+-- Re-pinned at 5A M3: claim_stage's signature gained the model/prompt
+-- pair (the run born in the claim transaction); the EXECUTE surface is
+-- unchanged.
 select is(pg_temp.scalar($$
-  select (has_function_privilege('hc_pipeline', 'hc.claim_stage(uuid, text)', 'execute')
-      and not has_function_privilege('authenticated', 'hc.claim_stage(uuid, text)', 'execute')
-      and not has_function_privilege('hc_admin', 'hc.claim_stage(uuid, text)', 'execute'))::text $$),
+  select (has_function_privilege('hc_pipeline', 'hc.claim_stage(uuid, text, text, text)', 'execute')
+      and not has_function_privilege('authenticated', 'hc.claim_stage(uuid, text, text, text)', 'execute')
+      and not has_function_privilege('hc_admin', 'hc.claim_stage(uuid, text, text, text)', 'execute'))::text $$),
   'true',
   'claim_stage is hc_pipeline''s entry point and nobody else''s (catalog-asserted, PLT-04)');
 

@@ -55,7 +55,8 @@ select is((
     'check_quota(p_circle uuid, p_sender text)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
     'claim_security_actions(p_limit integer)',
-    'claim_stage(p_arrival uuid, p_stage text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
+    'claim_stage(p_arrival uuid, p_stage text, p_model_id text, p_prompt_version text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
+    'close_extraction_run()',
     'complete_security_action(p_action_id uuid)',
     'consume_step_up(p_token text, p_operation text, p_target_ref text, p_account uuid)',
     'contact_key(p text)',
@@ -151,7 +152,7 @@ select is((
         'adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
         'assert_manual_flag','auth_throttle','cancel_arrival','check_quota',
-        'claim_security_actions','claim_stage',
+        'claim_security_actions','claim_stage','close_extraction_run',
         'complete_security_action','consume_step_up','create_account',
         'create_arrival',
         'create_circle','create_invite','create_manual_proposal',
@@ -175,7 +176,7 @@ select is((
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the sixty-eight boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the sixty-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -318,6 +319,8 @@ with actual as (
   union all select 'list_known_senders', 'authenticated'
   -- 5A M2 (§3.10's letter): the one pipeline read of the record
   union all select 'record_context_for', 'hc_pipeline'
+  -- 5A M3: close_extraction_run is a trigger function — hc_internal-owned,
+  -- granted to nobody; it appears in no grant row by design
 )
 select is(
   (select count(*)::int from (select * from actual except select * from expected) x)
@@ -473,6 +476,13 @@ insert into snapshot_expected values
   ('hc_internal',   'pipeline_leases', 'UPDATE'),
   ('hc_internal',   'extractions',     'SELECT'),
   ('hc_internal',   'extractions',     'INSERT'),
+  -- 5A M3: publish-only widens to publish-and-supersede (write_extractions
+  -- marks prior facts superseded in the publication transaction)
+  ('hc_internal',   'extractions',     'UPDATE'),
+  -- 5A M3: the run accounting — opened at claim, closed with the lease
+  ('hc_internal',   'extraction_runs', 'SELECT'),
+  ('hc_internal',   'extraction_runs', 'INSERT'),
+  ('hc_internal',   'extraction_runs', 'UPDATE'),
   ('hc_internal',   'known_senders',   'SELECT'),
   ('hc_internal',   'pipeline_outbox', 'SELECT'),
   ('hc_internal',   'pipeline_outbox', 'INSERT'),
@@ -559,7 +569,10 @@ select is((
         'documents_internal_write',
         'dsc_internal','dsc_internal_update','dsc_internal_write',
         'episodes_internal','episodes_internal_revise','episodes_internal_write',
-        'extractions_internal','extractions_internal_write',
+        'extraction_runs_internal','extraction_runs_internal_close',
+        'extraction_runs_internal_open',
+        'extractions_internal','extractions_internal_supersede',
+        'extractions_internal_write',
         'freeze_claims_internal','freeze_claims_internal_write',
         'freezes_internal','freezes_internal_adjudicate','freezes_internal_write',
         'invites_internal','invites_internal_decide','invites_internal_issue',
@@ -593,7 +606,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated ninety-seven');
+  'the hc_internal policy list is exactly the enumerated one hundred one');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:

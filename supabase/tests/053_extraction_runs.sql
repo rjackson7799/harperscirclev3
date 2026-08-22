@@ -181,13 +181,13 @@ select has_table('public', 'extraction_runs',
   'extraction_runs exists — the §4.3 run-versioning contract''s table');
 
 select ok((
-  select count(*) filter (where c.contype = 'u') = 2
+  select count(*) filter (where c.contype = 'u') = 3
   from pg_constraint c where c.conrelid = to_regclass('public.extraction_runs'))
   and exists (
     select 1 from pg_constraint c
     where c.conrelid = to_regclass('public.extraction_runs') and c.contype = 'c'
       and pg_get_constraintdef(c.oid) ilike '%closed_at%'),
-  'two unique identities — §4.3''s (arrival, model, prompt, attempt) and one-run-per-lease — and outcome/closed_at travel together by CHECK');
+  'three unique identities — §4.3''s (arrival, model, prompt, attempt), one-run-per-lease, and §2.1''s (circle_id, id) FK target — and outcome/closed_at travel together by CHECK');
 
 select ok((
   select c.relrowsecurity and c.relforcerowsecurity
