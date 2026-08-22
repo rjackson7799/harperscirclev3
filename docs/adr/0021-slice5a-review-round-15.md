@@ -1,10 +1,14 @@
 # ADR-0021 — Slice 5A review round 15: the findings dispositions
 
-**Status:** **Accepted — owner sign-off recorded 2026-08-22** in the
-sign-off session; rulings S1–S4 verbatim in the sign-off addendum below.
-Merge authorized as **MERGE COMMIT, never squash** (the ADR-0015
-sign-off-with-merge pattern, ADR-0006 — the owner is sole merge
-authority).
+**Status:** **Accepted — merged at `7893b80`** (merge commit
+`7893b800218f2f44196daefb5abaeb19f794c238`, parents `7832d53` +
+`b5265cf`; owner sign-off recorded 2026-08-22 in the sign-off session —
+rulings S1–S4 verbatim in the sign-off addendum below; merged tree
+verified identical to `b5265cf`'s; PR #9 merged, **MERGE COMMIT never
+squash** — all thirteen red→green commits reachable from `main` — the
+ADR-0015 sign-off-with-merge pattern, ADR-0006; CI green on `main` at
+the merge commit, run `32600108722`, every step including the upgrade
+leg with M6 in the chain).
 **Deciders:** the round-15 dispositions session (owner ratifies at sign-off)
 **Date:** 2026-08-21
 

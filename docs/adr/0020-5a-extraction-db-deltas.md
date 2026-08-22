@@ -1,7 +1,9 @@
 # ADR-0020 — Slice 5A: the extraction + interpretation DB increment, design decisions and deltas as built
 
-**Status:** **Accepted — RATIFIED AS WRITTEN at round 15** (owner
-sign-off recorded 2026-08-22, ADR-0021 addendum S3). The reviewer
+**Status:** **Accepted — RATIFIED AS WRITTEN at round 15, merged at
+`7893b80`** (merge commit `7893b800218f2f44196daefb5abaeb19f794c238`;
+owner sign-off recorded 2026-08-22, ADR-0021 addendum S3; CI green on
+`main` at the merge commit, run `32600108722`). The reviewer
 ratified all seven pointed questions Q-A–Q-G with argument and amended
 none; round 15's three findings are dispositioned in **ADR-0021**,
 which carries the three fixes this ADR's D-numbers did not anticipate.
