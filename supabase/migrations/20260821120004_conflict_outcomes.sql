@@ -465,3 +465,14 @@ begin
 
   return v_result;
 end $$;
+
+-- ----------------------------------------------------------------------------
+-- 5A · M5-prep — Q8's DISTINCT stage-2 suspect state, appended HERE
+-- (one migration ahead of its first use) because ALTER TYPE … ADD VALUE
+-- in-txn needs a previously COMMITTED enum — the recorded migration-
+-- authoring rule (ADR-0002 note 5; 000_postgres_behaviour's header; the
+-- 1C M3→M4 'claimed'/'exhausted' precedent). This file is 5A's own
+-- unshipped branch migration — no shipped migration is edited. Every
+-- USE (graph rows, machinery, rank/label) lands in 20260821120005.
+-- ----------------------------------------------------------------------------
+alter type hc.arrival_state add value 'duplicate_suspected_stage2';

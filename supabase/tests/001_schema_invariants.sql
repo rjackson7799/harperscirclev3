@@ -99,8 +99,9 @@ select enum_has_labels('hc', 'arrival_state',
         'extracting','extract_timeout','extract_failed','cancelled','extracted',
         'interpreting','proposals_ready',
         'held_unknown_sender','needs_password','duplicate_suspected',
-        'filed','nothing_filed','unsupported_type'],
-  'hc.arrival_state labels');
+        'filed','nothing_filed','unsupported_type',
+        'duplicate_suspected_stage2'],
+  'hc.arrival_state labels (5A M5: Q8''s distinct stage-2 suspect appended)');
 select enum_has_labels('hc', 'timeline_kind',
   array['medical','care','admin','memory'], 'hc.timeline_kind labels');
 select enum_has_labels('hc', 'risk_class',

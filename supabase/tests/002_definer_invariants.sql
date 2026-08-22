@@ -69,6 +69,7 @@ select is((
     'ctx_for(p_account uuid)',
     'describe_invite(p_token text)',
     'detect_duplicate(p_arrival uuid, p_circle uuid, p_sha bytea)',
+    'detect_stage2_duplicate(p_arrival uuid, p_circle uuid, p_subject uuid, p_facts jsonb, p_proposals jsonb)',
     'dom(p jsonb)',
     'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'execute_wasnt_me(p_token text)',
