@@ -38,6 +38,7 @@
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 function loadCorpus(root) {
   const file = path.join(root, 'fixtures', 'g9', 'corpus.json');
@@ -334,7 +335,12 @@ export async function startAnthropicFixtureServer(options = {}) {
 }
 
 // CLI: the local gate stack starts this beside clamd.
-if (import.meta.url === `file://${process.argv[1]?.split('\\').join('/')}`) {
+// pathToFileURL, not a hand-built `file://` string. On Windows the two never
+// match — import.meta.url is `file:///C:/…` (three slashes, drive letter) — so
+// the hand-built comparison silently never fired, the process exited 0 with no
+// output, and Playwright reported only "Process from config.webServer exited
+// early". Found by the gate, which is what the gate is for.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const portArg = process.argv.indexOf('--port');
   const port = portArg > 0 ? Number(process.argv[portArg + 1]) : 8787;
   const fixture = await startAnthropicFixtureServer({ port });

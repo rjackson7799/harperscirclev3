@@ -21,8 +21,10 @@ import path from 'node:path';
 //     unsafe, and never loses access to it);
 //   · a needs-password fixture → `Needs a password`;
 //   · the stage-2 pair — same provider, same date, different bytes → the
-//     second is SUSPECTED, cites the filed document, and both resolutions are
-//     live.
+//     second is SUSPECTED, says WHY through the provenance line, and both
+//     resolutions are live. It does not NAME the matched document:
+//     `authenticated` holds a column-level grant on `arrivals` that 5A M5's
+//     duplicate_of_document_id was never added to (ADR-0022 D15).
 //
 // The corpus fixtures are the B1 development partition, read from disk: the
 // gate exercises the SAME bytes the unit tests do.
@@ -175,7 +177,7 @@ test.describe.serial('the 5B extraction leg', () => {
     expect(runs.rows[0].prompt_version).toBeTruthy();
 
     const proposals = await query(
-      `select count(*)::int as n from public.proposals where arrival_id = $1 and state = 'pending'`,
+      `select count(*)::int as n from public.proposals where arrival_id = $1 and status = 'pending'`,
       [arrival],
     );
     expect(proposals.rows[0].n).toBeGreaterThan(0);
@@ -264,9 +266,10 @@ test.describe.serial('the 5B extraction leg', () => {
     await page.goto(`/${circleId}/inbox`);
     const body = page.locator('body');
     await expect(body).toContainText('Looks like a duplicate');
-    // The copy CITES the filed document, and the citation renders as
-    // provenance (Q6's first consumer).
-    await expect(body).toContainText('Discharge summary');
+    await expect(body).toContainText('already filed for this person');
+    // The WHY renders as provenance (Q6's first consumer). Naming the matched
+    // document needs a column grant `authenticated` does not hold — ADR-0022
+    // D15, and the round-16 pointed question.
     await expect(page.locator('.provenance')).toHaveCount(1);
 
     // `different` resumes to interpret, through a real lease + CAS + outbox.

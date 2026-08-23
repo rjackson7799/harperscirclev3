@@ -368,14 +368,16 @@ describe('B6 · the submit routes ride the wrappers with relative PRG redirects'
 // evidence the arrival is still unresolved; THE STATE IS. A consumer that
 // keyed the affordance on the pointer would offer a resolved arrival its
 // resolution again, forever.
+//
+// AND THE POINTER IS UNREADABLE FROM HERE, which the local gate found the
+// hard way. `authenticated` holds a COLUMN-LEVEL select grant on `arrivals` —
+// 25 of 28 columns — and 5A M5 added duplicate_of_document_id without
+// extending it. Selecting it is refused per-column, supabase-js returns an
+// error rather than rows, and the ENTIRE inbox falls back to its empty state
+// for every caller. So the surface says WHY the match happened — the
+// provenance a person actually needs — and cannot yet say WHICH document.
+// ADR-0022 D15 carries the one-line grant as a round-16 pointed question.
 // ============================================================================
-
-const FILED_DOC = {
-  id: 'doc-77',
-  title: 'Discharge summary',
-  category: 'medical',
-  filed_at: '2026-07-12T15:04:00Z',
-};
 
 function stage2Parent(overrides: Row = {}): Row {
   return {
@@ -387,32 +389,53 @@ function stage2Parent(overrides: Row = {}): Row {
     auth_result: 'authenticated',
     scan_verdict: 'clean',
     received_at: new Date(Date.now() - HOURS).toISOString(),
-    duplicate_of_document_id: FILED_DOC.id,
     ...overrides,
   };
 }
 
 describe('5B B6 · the stage-2 duplicate cites the document it matched', () => {
-  it('the copy names the FILED document and when it was filed', async () => {
+  it('the copy says the arrival looks like something already filed', async () => {
     parents = [stage2Parent()];
-    documents = [FILED_DOC];
     inbox.productStates.mockResolvedValueOnce(new Map([['a-dup2', 'Looks like a duplicate']]));
     const html = await renderInbox();
     expect(html).toContain('Looks like a duplicate');
-    expect(html).toContain('Discharge summary');
-    expect(html).toContain('July 12');
+    expect(html).toMatch(/already filed for this person/i);
   });
 
-  it('the citation renders through ProvenanceLine (Q6: first consumer, decided red-first)', async () => {
+  it('the arrivals query NEVER selects an ungranted column', async () => {
+    // The regression the local gate caught: ONE ungranted column in the
+    // select turns "permission denied for column" into an EMPTY INBOX for
+    // every caller, because supabase-js answers with an error instead of
+    // rows and the page's own empty branch takes over. Asserted on the
+    // select STRING - a render assertion cannot tell "no arrivals" from
+    // "the query was refused", which is exactly why this shipped past the
+    // unit suite and was caught by browser truth.
     parents = [stage2Parent()];
-    documents = [FILED_DOC];
+    await renderInbox();
+    const selects = from.mock.results
+      .flatMap((r) => {
+        const proxy = r.value as { select?: { mock?: { calls: unknown[][] } } };
+        return proxy?.select?.mock?.calls ?? [];
+      })
+      .map((c) => String(c[0]));
+    expect(selects.length).toBeGreaterThan(0);
+    for (const select of selects) {
+      expect(select).not.toContain('duplicate_of_document_id');
+    }
+  });
+
+  it('the WHY renders through ProvenanceLine (Q6: first consumer, decided red-first)', async () => {
+    // The suspicion is downstream of AI-extracted values - document type,
+    // date and provider are exactly what M5 matched on - so showing where it
+    // came from is 8.6 provenance even without the matched document's name.
+    parents = [stage2Parent()];
     const html = await renderInbox();
     expect(html).toContain('class="provenance"');
+    expect(html).toMatch(/type, date and provider read from this document/i);
   });
 
   it('both resolutions are offered, and the stage-2 copy says what each DOES', async () => {
     parents = [stage2Parent()];
-    documents = [FILED_DOC];
     const html = await renderInbox();
     expect(html).toContain('/inbox/resolve/submit');
     expect(html).toContain('value="different"');
@@ -441,36 +464,32 @@ describe('5B B6 · the stage-2 duplicate cites the document it matched', () => {
         id: 'a-child-dup2',
         parent_arrival_id: 'a-parent',
         state: 'duplicate_suspected_stage2',
-        duplicate_of_document_id: FILED_DOC.id,
       },
     ];
-    documents = [FILED_DOC];
     const html = await renderInbox();
     expect(html).toContain('value="a-child-dup2"');
   });
 
-  it('a RESOLVED arrival that still carries the pointer offers NOTHING (round-15 obs. 3)', async () => {
+  it('a RESOLVED arrival offers NOTHING - the STATE decides (round-15 obs. 3)', async () => {
     parents = [stage2Parent({ state: 'nothing_filed' })];
-    documents = [FILED_DOC];
     inbox.productStates.mockResolvedValueOnce(new Map([['a-dup2', 'Nothing filed']]));
     const html = await renderInbox();
     expect(html).not.toContain('value="same_thing"');
     expect(html).not.toContain('value="different"');
   });
 
-  it('a stage-2 suspect whose matched document is not visible still resolves', async () => {
-    // The document read is RLS-scoped like everything else. A caller who
-    // cannot see the match must still be able to answer the question — the
-    // copy degrades, the affordance does not.
+  it('the affordance never depends on naming the match', async () => {
+    // The contract, not a fixture case: whatever a caller can or cannot see
+    // of the matched document, the QUESTION is always answerable. The copy
+    // degrades; the affordance does not.
     parents = [stage2Parent()];
-    documents = [];
     const html = await renderInbox();
     expect(html).toContain('value="same_thing"');
     expect(html).toContain('value="different"');
   });
 
   it('stage 1 keeps its own copy — the two questions are not the same question', async () => {
-    parents = [stage2Parent({ id: 'a-dup1', state: 'duplicate_suspected', duplicate_of_document_id: null })];
+    parents = [stage2Parent({ id: 'a-dup1', state: 'duplicate_suspected' })];
     inbox.productStates.mockResolvedValueOnce(new Map([['a-dup1', 'Looks like a duplicate']]));
     const html = await renderInbox();
     expect(html).toContain('Same thing');
@@ -480,7 +499,7 @@ describe('5B B6 · the stage-2 duplicate cites the document it matched', () => {
 
 describe('5B B8 · the inbox links to the senders it accepts from', () => {
   it('a link to /senders, not a sixth nav item', async () => {
-    parents = [stage2Parent({ state: 'extracting', duplicate_of_document_id: null })];
+    parents = [stage2Parent({ state: 'extracting' })];
     const html = await renderInbox();
     expect(html).toContain(`/${CIRCLE}/senders`);
   });

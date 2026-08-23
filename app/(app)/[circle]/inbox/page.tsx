@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { ProvenanceLine } from '@/components/ui/ProvenanceLine';
 import { FORWARDING_DOMAIN } from '@/lib/setup/steps';
-import { formatShortDate, heldExpiryLabel, pastQueueAgeBound } from '@/lib/format/dates';
+import { heldExpiryLabel, pastQueueAgeBound } from '@/lib/format/dates';
 
 /**
  * The Care Inbox (slice-4 plan B6; PRD §4.2.2 — the state machine IS
@@ -23,10 +23,21 @@ import { formatShortDate, heldExpiryLabel, pastQueueAgeBound } from '@/lib/forma
  *   - Held mail carries the accept-sender release and the §5.4 30-day
  *     expiry warning; duplicates carry §4.7's two human resolutions;
  *     the §4.5 member window carries cancel.
- *   - 5B B6: §4.7 point 2 — a STAGE-2 suspect cites the FILED document it
- *     matched, and its two resolutions do different things from stage 1's:
+ *   - 5B B6: §4.7 point 2 — a STAGE-2 suspect says WHY it is suspected and
+ *     offers two resolutions that do different things from stage 1's:
  *     `different` resumes to interpret, `same_thing` attaches this arrival
- *     to that document as an ADDITIONAL SOURCE and files nothing new.
+ *     to the matched document as an ADDITIONAL SOURCE and files nothing new.
+ *
+ *     **It does NOT name the matched document, and that is not a choice.**
+ *     `authenticated` holds a COLUMN-LEVEL select grant on `arrivals` — 25
+ *     of its 28 columns — and 5A M5 added `duplicate_of_document_id`
+ *     without extending it. Selecting that column here is refused
+ *     ("permission denied for column"), supabase-js returns an error, and
+ *     the ENTIRE inbox renders its empty state. The local gate caught
+ *     exactly that. Until a one-line grant ships (ADR-0022 D15; the
+ *     round-16 pointed question), the copy says why the match happened —
+ *     which is the provenance a person actually needs — rather than which
+ *     document it matched.
  *   - §4.11/§13.1: anything past the 4-hour queue-age bound says
  *     plainly that reading is delayed.
  *   - First run: the forwarding address IS the content — the one §8.6
@@ -56,20 +67,6 @@ type ArrivalRow = {
   auth_result: string | null;
   scan_verdict: string | null;
   received_at: string;
-  /**
-   * ADR-0020 D6: retained after resolution by design — the trace of the
-   * question that was asked. **The pointer is not evidence the arrival is
-   * still unresolved; the STATE is** (round-15 observation 3). Every read of
-   * this column below is gated on the state, never on the column.
-   */
-  duplicate_of_document_id: string | null;
-};
-
-type FiledDocument = {
-  id: string;
-  title: string;
-  category: string;
-  filed_at: string;
 };
 
 /** The states that carry a resolution question, and which question. */
@@ -105,7 +102,7 @@ export default async function InboxPage({
   const { data: parentData } = await supabase
     .from('arrivals')
     .select(
-      'id, state, channel, sender_address, sender_display_name, auth_result, scan_verdict, received_at, duplicate_of_document_id',
+      'id, state, channel, sender_address, sender_display_name, auth_result, scan_verdict, received_at',
     )
     .eq('circle_id', circle)
     .is('parent_arrival_id', null)
@@ -118,12 +115,12 @@ export default async function InboxPage({
   // §4.7's resolution binds to the SUSPECTED row, and a mailed duplicate
   // is a CHILD arrival — the parent's rollup label alone would name the
   // duplicate with nothing to click (the B9 gate finding).
-  type Suspect = { arrivalId: string; stage: 1 | 2; documentId: string | null };
+  type Suspect = { arrivalId: string; stage: 1 | 2 };
   const childSuspects = new Map<string, Suspect[]>();
   if (parents.length > 0) {
     const { data: childData } = await supabase
       .from('arrivals')
-      .select('id, parent_arrival_id, state, duplicate_of_document_id')
+      .select('id, parent_arrival_id, state')
       .eq('circle_id', circle)
       .in(
         'parent_arrival_id',
@@ -134,21 +131,19 @@ export default async function InboxPage({
       id: string;
       parent_arrival_id: string;
       state: string;
-      duplicate_of_document_id: string | null;
     }[]) {
       childCounts.set(
         child.parent_arrival_id,
         (childCounts.get(child.parent_arrival_id) ?? 0) + 1,
       );
-      // Gated on the STATE. A child that resolved keeps its pointer and must
-      // not be asked again (ADR-0020 D6; round-15 observation 3).
+      // Gated on the STATE, which is also the ONLY thing a member can read.
+      // ADR-0020 D6 retains duplicate_of_document_id after resolution as the
+      // trace of the question that was asked — so even when the grant lands,
+      // the pointer must never be what decides whether to ask again
+      // (round-15 observation 3).
       if (child.state === STAGE1 || child.state === STAGE2) {
         const list = childSuspects.get(child.parent_arrival_id) ?? [];
-        list.push({
-          arrivalId: child.id,
-          stage: child.state === STAGE2 ? 2 : 1,
-          documentId: child.state === STAGE2 ? child.duplicate_of_document_id : null,
-        });
+        list.push({ arrivalId: child.id, stage: child.state === STAGE2 ? 2 : 1 });
         childSuspects.set(child.parent_arrival_id, list);
       }
     }
@@ -156,38 +151,10 @@ export default async function InboxPage({
 
   const suspectsFor = (row: ArrivalRow): Suspect[] => [
     ...(row.state === STAGE1 || row.state === STAGE2
-      ? [
-          {
-            arrivalId: row.id,
-            stage: (row.state === STAGE2 ? 2 : 1) as 1 | 2,
-            documentId: row.state === STAGE2 ? row.duplicate_of_document_id : null,
-          },
-        ]
+      ? [{ arrivalId: row.id, stage: (row.state === STAGE2 ? 2 : 1) as 1 | 2 }]
       : []),
     ...(childSuspects.get(row.id) ?? []),
   ];
-
-  // The matched documents, read under RLS like everything else. A caller who
-  // cannot see the match still gets the question — the copy degrades, the
-  // affordance does not.
-  const matchedIds = [
-    ...new Set(
-      parents
-        .flatMap((p) => suspectsFor(p))
-        .map((s) => s.documentId)
-        .filter((id): id is string => !!id),
-    ),
-  ];
-  const matched = new Map<string, FiledDocument>();
-  if (matchedIds.length > 0) {
-    const { data: docData } = await supabase
-      .from('documents')
-      .select('id, title, category, filed_at')
-      .eq('circle_id', circle)
-      .in('id', matchedIds)
-      .is('deleted_at', null);
-    for (const doc of (docData ?? []) as FiledDocument[]) matched.set(doc.id, doc);
-  }
 
   const labels = await productStates(claims, parents.map((p) => p.id));
 
@@ -283,22 +250,21 @@ export default async function InboxPage({
               ) : null}
 
               {suspectsFor(row).map((suspect) => {
-                const doc = suspect.documentId ? matched.get(suspect.documentId) : undefined;
                 return (
                   <div key={suspect.arrivalId}>
                     {suspect.stage === 2 ? (
                       <>
                         <p className="field-help">
-                          {doc
-                            ? `This looks like the ${doc.title.toLowerCase()} you filed on ${formatShortDate(doc.filed_at.slice(0, 10))}.`
-                            : 'This looks like something already filed for this person.'}
+                          This looks like something already filed for this person.
                         </p>
-                        {doc ? (
-                          <ProvenanceLine>
-                            Matched on what was read from this document · {doc.title} ·{' '}
-                            filed {formatShortDate(doc.filed_at.slice(0, 10))}
-                          </ProvenanceLine>
-                        ) : null}
+                        {/* §8.6's provenance line takes its first consumer here
+                            (Q6): the suspicion is downstream of AI-extracted
+                            values, so it shows where it came from. Naming the
+                            matched document needs the column grant above. */}
+                        <ProvenanceLine>
+                          Matched on the document type, date and provider read from this
+                          document
+                        </ProvenanceLine>
                       </>
                     ) : null}
                     <form method="post" action={`/${circle}/inbox/resolve/submit`}>
