@@ -232,11 +232,29 @@ export async function readPipelineWork(qty: number): Promise<QueuedWork[]> {
   }));
 }
 
-/** Ack = ARCHIVE, deliberately: the archive is the message lineage the
- *  gate's channel lookup reads (a_pipeline_work SELECT is granted for
- *  exactly this). */
+/**
+ * Ack = ARCHIVE, deliberately: the archive is the message lineage the gate's
+ * channel lookup reads (a_pipeline_work SELECT is granted for exactly this).
+ *
+ * The values are STRIPPED first (round-16 R4/F-5). The extract → interpret
+ * hand-off carries `facts` — {field, value, …} over the §6.4 high-risk
+ * classes, `ssn` and `date_of_birth` among them — and nothing prunes
+ * `a_pipeline_work`. Without this, an arrival that filed NOTHING could be
+ * soft-deleted and purged at 30 days exactly as PRD §4.2 promises, while a
+ * verbatim copy of the same values sat in the queue archive forever, outside
+ * the §2.9 deletion ledger and outside any tombstone replay.
+ *
+ * `lookupLineage` reads only `channel` and `circle_id`, so the facts are dead
+ * weight the moment the message is acked. Dropping them at the ack keeps the
+ * lineage the gate needs and retains nothing the deletion path cannot reach.
+ * One statement, in the same call, so no ack path can forget it.
+ */
 export async function archivePipelineWork(msgId: number): Promise<void> {
-  await asPipeline().query(`select pgmq.archive($1, $2::bigint)`, [QUEUE, msgId]);
+  const q = asPipeline();
+  await q.query(`update pgmq.q_pipeline_work set message = message - 'facts' where msg_id = $1`, [
+    msgId,
+  ]);
+  await q.query(`select pgmq.archive($1, $2::bigint)`, [QUEUE, msgId]);
 }
 
 /** Push a message out of the visible window without consuming it. 5B: the
