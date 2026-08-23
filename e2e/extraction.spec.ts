@@ -250,7 +250,11 @@ test.describe.serial('the 5B extraction leg', () => {
     await expect(page.locator('body')).toContainText('Needs a password');
   });
 
-  test('the stage-2 pair: suspected, cited, and both resolutions live (DUP-02)', async () => {
+  // Titled for what it ACTUALLY exercises (round-16 R7/F-11, R8/F-8): it
+  // drives `different`. `same_thing` is covered by tests/routes/inbox.test.ts
+  // for the surface and pgTAP 055/056 for the transition — a title claiming
+  // both is how a later reader concludes this leg proved something it did not.
+  test('the stage-2 pair: suspected, CITED by name, and `different` resumes (DUP-02)', async () => {
     // Same provider, same document_date, DIFFERENT bytes — stage 1's sha
     // match cannot see this; M5's key-field predicate can.
     const first = await uploadFixture(
@@ -293,11 +297,17 @@ test.describe.serial('the 5B extraction leg', () => {
     await page.goto(`/${circleId}/inbox`);
     const body = page.locator('body');
     await expect(body).toContainText('Looks like a duplicate');
-    await expect(body).toContainText('already filed for this person');
-    // The WHY renders as provenance (Q6's first consumer). Naming the matched
-    // document needs a column grant `authenticated` does not hold — ADR-0022
-    // D15, and the round-16 pointed question.
+    // AMENDED at round 16, and the GATE is what forced it — this leg pinned
+    // the generic copy and went red the moment Q-A landed, which is the leg
+    // doing its job. M7 grants `duplicate_of_document_id`, so the §4.7 p2
+    // copy now NAMES the filed document, which is what the plan's B6 row
+    // asked for and what ADR-0022 D15 recorded as owed.
+    await expect(body).toContainText('This looks like the discharge summary you filed on');
+    // The WHY still renders as provenance (Q6's first consumer) — and it no
+    // longer claims `provider` matched, because the detector requires
+    // category + date + ≥1 OF provider / amount / policy_number (R5/F-5).
     await expect(page.locator('.provenance')).toHaveCount(1);
+    await expect(body).toContainText('at least one detail read from this document');
 
     // `different` resumes to interpret, through a real lease + CAS + outbox.
     await page.locator(`form:has(input[value="${second}"]) button[value="different"]`).click();
