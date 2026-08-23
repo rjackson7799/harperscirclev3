@@ -235,3 +235,76 @@ describe('B2 · the rendered-page lifecycle and the slice-6 OCR seam', () => {
     expect(text.startsWith(page.slice(0, page.lastIndexOf('.')))).toBe(true);
   });
 });
+
+// ============================================================================
+// Round-16 R3/F-1 and R3/F-2 — the DECLARED-RESOLUTION trap.
+//
+// mupdf's image handler sizes a page as `pixels x 72 / declared_resolution`,
+// and falls back to 96 dpi ONLY when the image declares no resolution at all.
+// Every fixture in fixtures/g9 is density-free, so PT_PER_PX = 0.75 looked
+// like a law of the image path. It is the fallback.
+//
+// Two consequences, both invisible to a density-free corpus:
+//   1 · a 300-dpi scan reports 617x824 of "declared geometry" for a 1928x2576
+//       source, so `nativeLong` collapses and the page renders BELOW the
+//       standard tier - outcome `rendered`, no ceiling fired, nothing logged.
+//       §6.3 says a photo is never downsampled; this downsamples it 3.1x.
+//   2 · the same number gates `page_dimensions`, so the effective ceiling
+//       scales as 80 Mpx x (dpi/96)^2 and a declared-600-dpi pixel bomb walks
+//       through a guard built to refuse it.
+//
+// These fixtures are built HERE rather than added to fixtures/g9, because the
+// corpus is generated from a spec table and its manifest is asserted to BE the
+// corpus (tests/eval/corpus.test.ts). A density header spliced onto corpus
+// bytes at test time keeps that invariant intact.
+// ============================================================================
+function withJfifDensity(bytes: Uint8Array, dpi: number): Uint8Array {
+  // A JFIF APP0 declaring `dpi` in both axes, spliced directly after SOI.
+  const app0 = Buffer.alloc(18);
+  app0.writeUInt16BE(0xffe0, 0);
+  app0.writeUInt16BE(16, 2);
+  app0.write('JFIF\0', 4, 'latin1');
+  app0[9] = 1; // major
+  app0[10] = 2; // minor
+  app0[11] = 1; // units = dots per inch
+  app0.writeUInt16BE(dpi, 12);
+  app0.writeUInt16BE(dpi, 14);
+  return Buffer.concat([Buffer.from(bytes.subarray(0, 2)), app0, Buffer.from(bytes.subarray(2))]);
+}
+
+describe('R3/F-1 · a declared resolution must not change the rendered tier', () => {
+  const item = corpusItem('dev-pill-01');
+  const native = readCorpusFile(item);
+
+  it('the density-free fixture renders at the high tier (the property today)', () => {
+    const page = pages(normalizeArrival(native, 'image/jpeg'))[0];
+    expect(longEdge(page)).toBe(HIGH_LONG_EDGE);
+  });
+
+  it.each([72, 150, 300, 600])(
+    'the SAME pixels tagged %i dpi still render at the high tier',
+    (dpi) => {
+      const result = normalizeArrival(withJfifDensity(native, dpi), 'image/jpeg');
+      expect(result.outcome).toBe('rendered');
+      const page = pages(result)[0];
+      // §6.3: a photo is rendered at the high tier and NEVER downsampled.
+      // The stored pixels are identical in every case; only the header moved.
+      expect(longEdge(page)).toBe(HIGH_LONG_EDGE);
+    },
+  );
+});
+
+describe('R3/F-2 · the page_dimensions ceiling reads STORED pixels, not declared points', () => {
+  const bomb = readCorpusFile(corpusItem('dev-pixelbomb-01'));
+
+  it('refuses the density-free bomb (the property today)', () => {
+    const r = normalizeArrival(bomb, 'image/jpeg');
+    expect(r).toMatchObject({ outcome: 'refused', reason: 'page_dimensions' });
+  });
+
+  it.each([300, 600, 1200])('refuses the SAME bomb tagged %i dpi', (dpi) => {
+    const r = normalizeArrival(withJfifDensity(bomb, dpi), 'image/jpeg');
+    // 30000x30000 stored pixels is 900 Mpx however the header describes it.
+    expect(r).toMatchObject({ outcome: 'refused', reason: 'page_dimensions' });
+  });
+});
