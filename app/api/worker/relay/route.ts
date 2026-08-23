@@ -3,6 +3,7 @@ import {
   lookupLineage,
   outboxAck,
   outboxDrain,
+  releaseDeferredWork,
   sendPipelineWork,
   sweeperPass,
   type PipelineStage,
@@ -24,14 +25,24 @@ import {
  *      DB-side; its advisory requeue listing becomes work items here,
  *      revalidated by hc.claim_stage at claim time.
  *
- * The 4B stages present in a pass are eager-fired once each; extract/
- * interpret items are enqueued for slice 5's workers and never fired
- * (the Q7 seam). Two invokers, two secrets, the security-actions
- * posture: GET = the Vercel cron (CRON_SECRET), POST = the operational
- * path (HC_WORKER_KEY); either absent disables its path with 503.
+ * 5B B7: THE SEAM IS CONSUMED. Every stage present in a pass is eager-
+ * fired once each, extract and interpret included, and D13's deferred
+ * backlog is RELEASED at the head of the pass rather than waited out —
+ * a message pushed an hour into the future would otherwise sit there
+ * for up to an hour after the seam closed, which is a delay with no
+ * reason left behind it. Two invokers, two secrets, the security-
+ * actions posture: GET = the Vercel cron (CRON_SECRET), POST = the
+ * operational path (HC_WORKER_KEY); either absent disables its path
+ * with 503.
  */
 
-const FIREABLE: ReadonlySet<string> = new Set(['store', 'scan', 'gate']);
+const FIREABLE: ReadonlySet<string> = new Set([
+  'store',
+  'scan',
+  'gate',
+  'extract',
+  'interpret',
+]);
 
 function secretMatches(supplied: string | null, expected: string): boolean {
   if (!supplied) return false;
@@ -55,6 +66,17 @@ async function enqueueWithLineage(
 
 async function relayPass(origin: string, workerKey: string): Promise<Response> {
   const firedStages = new Set<string>();
+
+  // ── 0 · release D13's deferred backlog (B7). Best-effort by design: a
+  // release that fails must not cost the pass, and the backlog then simply
+  // waits out its visibility timeout exactly as it would have anyway.
+  let released = 0;
+  try {
+    released = await releaseDeferredWork();
+    if (released > 0) firedStages.add('extract');
+  } catch (err) {
+    console.warn(`worker/relay: deferred release skipped: ${(err as Error).message}`);
+  }
 
   // ── 1 · the outbox leg: drain → enqueue → ack, in that order.
   const drained = await outboxDrain(100);
@@ -107,6 +129,7 @@ async function relayPass(origin: string, workerKey: string): Promise<Response> {
   }
 
   return Response.json({
+    released,
     outbox: { drained: drained.length, acked },
     requeued: sweep.requeue.length,
     sweeper: {

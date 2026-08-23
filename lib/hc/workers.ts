@@ -239,10 +239,55 @@ export async function archivePipelineWork(msgId: number): Promise<void> {
   await asPipeline().query(`select pgmq.archive($1, $2::bigint)`, [QUEUE, msgId]);
 }
 
-/** Push a message out of the visible window without consuming it —
- *  the Q7 seam: extract/interpret work waits for slice 5's workers. */
+/** Push a message out of the visible window without consuming it. 5B: the
+ *  Q7 seam is closed, so the only caller left is the unknown-stage branch —
+ *  a message this build does not recognise is still never lost. */
 export async function deferPipelineWork(msgId: number, seconds = 3600): Promise<void> {
   await asPipeline().query(`select pgmq.set_vt($1, $2::bigint, $3)`, [QUEUE, msgId, seconds]);
+}
+
+/**
+ * 5B B7: release work that D13 deferred, instead of waiting out its vt.
+ *
+ * The seam pushed extract/interpret messages an hour into the future while
+ * nothing consumed them. Those workers exist now, so a message still sitting
+ * in the future is a delay with no reason left behind it. This pulls the
+ * visibility timeout back to zero for any INVISIBLE message whose stage this
+ * build actually handles — bounded per pass, and idempotent once the backlog
+ * is empty (the steady state selects nothing).
+ *
+ * Deliberately narrow on two axes.
+ *
+ * Only stages this build dispatches — a message it does not understand is
+ * still never resurrected.
+ *
+ * And only messages hidden FAR into the future. pgmq gives an in-flight read
+ * and a deliberate deferral exactly the same shape: a `vt` in the future. The
+ * two are separated by HOW far — a read hides for READ_VT_SECONDS (120 s),
+ * D13 deferred for an hour — so the threshold sits well above the read window
+ * and comfortably below the deferral. Without it, a release could hand a
+ * message another worker is holding to a second reader.
+ *
+ * Even then nothing could go wrong twice: claim-before-work means a second
+ * reader's hc.claim_stage answers `stale_lease` before any external call. The
+ * threshold buys the wasted claim, not the correctness.
+ */
+const DEFERRAL_THRESHOLD_SECONDS = READ_VT_SECONDS + 180;
+
+export async function releaseDeferredWork(limit = 200): Promise<number> {
+  const r = await asPipeline().query(
+    `with deferred as (
+       select msg_id from pgmq.q_pipeline_work
+        where vt > now() + make_interval(secs => $4)
+          and (message ->> 'stage') = any ($1::text[])
+        order by msg_id
+        limit $2
+     )
+     select count(*)::int as n
+       from deferred, lateral pgmq.set_vt($3, deferred.msg_id, 0)`,
+    [['extract', 'interpret'], limit, QUEUE, DEFERRAL_THRESHOLD_SECONDS],
+  );
+  return Number(r.rows[0]?.n ?? 0);
 }
 
 /** Enqueue one work item. */
