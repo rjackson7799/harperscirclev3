@@ -814,7 +814,7 @@ says so in the argument.
 | # | Sev | Verdict | Argument |
 |---|---|---|---|
 | F-1 | **BLOCKER** | **FIXED** | D1. |
-| F-2 | MAJOR | **OWED — BLOCKED ON DDL** | Enumerated live during the fix pass: `interpret` has exactly ONE edge, `interpreting → proposals_ready`. There is no failure edge from `interpreting` **at all**, so no app-layer remap exists — every failure target returns `invalid_state`. Closing it needs a new `hc.arrival_transitions` row, which is outside the three things the owner granted for M7. Raised in D21 as a fourth amendment item. |
+| F-2 | MAJOR | **FIXED** | The owner granted the fourth amendment item (D21). **M8** adds `interpret / interpreting → extract_failed` — the terminal `hc.stage_budgets` already names as interpret's `exhaust_state`, so no enum value, no label and no reason code moved, and the app needed no change at all: it had always made this call. `9e97117` RED → `ef48079` GREEN. |
 | F-3 | MAJOR | **FIXED** | The conversion writes `domain`, `risk_class` (through the band mode) and a `task` block, so all three §4.8 outcomes are reachable. A conflict with no domain is DROPPED rather than drafted un-approvable — M2's context carries no domain, so the parent cannot supply it. `bafa5af` RED → `df45fca` GREEN. |
 | F-4 | MAJOR | **OWED** | Same leak as R3/F-3; fix once. |
 | F-5 | MAJOR | **FIXED** | `archivePipelineWork` strips `facts` before archiving — one choke point, so no ack path can forget it. `lookupLineage` reads only `channel`/`circle_id`, both retained and asserted. `hc_pipeline` already held UPDATE on the pgmq tables, so no DDL. `3fcb871` RED → `f6cbc1f` GREEN. |
@@ -883,7 +883,7 @@ says so in the argument.
 | F-8 | MINOR | **ACCEPTED-NOTE** | Two CI-sourced legs in the one-SHA block come from a run three commits behind the declared evidence head, and a green run at the actual PR head goes uncited. Harmless here; the precedent is not. With D16. |
 | F-9 | MINOR | **ACCEPTED-NOTE** | The ledger's last row names ADR-0022 (which did not move after the evidence head) and omits `docs/coverage.md` (which did, substantively). With D16. |
 | F-10 | MINOR | **ACCEPTED** | DUP-02's Status column reads a bare `green` while its evidence cell says "partially met". The same table gets this right twice (EVA-01, PRF-07). Fixed in the coverage flip — D18. |
-| F-11 | MINOR | **ACCEPTED** | "24/24 UNCHANGED holds" states a criterion about *legs* as satisfied by a count, and `extraction.spec.ts:253`'s title still advertises "cited". Both individually defensible, jointly misleading. Title corrected with R8/F-8. |
+| F-11 | MINOR | **FIXED** (the title) / **ACCEPTED** (the count) | The gate leg is retitled to what it exercises. The "24/24 UNCHANGED" framing stands corrected in the record rather than in code: the gate is now **29/29 at the closing head** with the DUP-02 leg deliberately amended, and D23 states that plainly instead of asserting an unchanged count. `36a4735`. |
 | F-12 | OBS | **ACCEPTED-NOTE** | Q-H's "~40 lines" is 126 across two files — D15. |
 | F-13 | OBS | **ACCEPTED-NOTE** | The *direct* dependency bound is honoured exactly (2 runtime, 0 dev, no overrides). Eight production packages arrive transitively, two of them webhook-signature libraries this product does not use. Worth naming because "two runtime deps" is the sentence that will be remembered. |
 | F-14 | OBS | **ACCEPTED-NOTE** | ARC validation and the D11 hop-binding tightening are in the plan's named-exclusion list and not in the packet's. Both have live checklist homes; the packet's completeness claim is not quite true. |
@@ -899,7 +899,7 @@ says so in the argument.
 | F-5 | MINOR | **ACCEPTED-NOTE** | "An UNKNOWN stage is still deferred" is unreachable from any in-branch producer — a forward-compat guard, not a live one. The comment should say so. |
 | F-6 | MINOR | **ACCEPTED-NOTE** | The precedent argument is narrowed (every prior use is teardown or an unguarded table; this is the first guarded record-table *setup*), and "cannot file honestly until slice 6" is overstated — §4.9 wants a `proposal_commits` row, not a surface. |
 | F-7 | OBS | **NOTED** | `replica` also silences both search triggers and all FK enforcement. The predicate reads none of it; worth one sentence in the leg's comment, which names only the claim trigger. |
-| F-8 | MINOR | **ACCEPTED** | The leg is titled "both resolutions live" and clicks `different` only — and `same_thing` is precisely the arm the fixture concession touches. Title corrected with R7/F-11. |
+| F-8 | MINOR | **FIXED** | Retitled to "suspected, CITED by name, and `different` resumes". `same_thing` stays covered by `tests/routes/inbox.test.ts` (surface) and pgTAP 055/056 (transition), and the leg now says so. `36a4735`. |
 | F-9 | OBS | **NOTED** | Decisive for Q-I(3): pgTAP 055 files its canonical document unclaimed too, escaping the trigger by `rollback`. The gap is not specific to the gate leg. |
 | F-10 | OBS | **OWED** | The live idempotence assertion is a global claim over a shared queue; it holds today by file ordering and teardown. Scope it to the circle under test. |
 
@@ -1060,6 +1060,86 @@ matters here more than usual: the inbox and senders surfaces both
 changed, and the gate is what caught D15.
 
 ---
+## D23 — M8, the gate, and the evidence at the signed-off head
+
+**The owner granted the fourth amendment item** (D21) on 2026-08-23, in
+response to this session's recommendation. **M8**
+(`20260823070001_interpret_terminal.sql`) adds one row —
+`interpret / interpreting → extract_failed` — and the migration bound
+closes **SPENT at 8 of ≤ 8**.
+
+Three things did NOT move, deliberately: no `hc.arrival_state` enum
+value (`interpret_failed` would have needed a label and every exact-set
+pin over the enum, to say what the reason code already says), no
+family-facing label (`extract_failed` reads "Couldn't read it", honest
+for a refusal too), and no reason code (`provider_refusal` /
+`provider_error` were seeded at 4A). **The app needed no change at all** —
+`processInterpret` had always made exactly this call; the graph refused
+it.
+
+**Two shipped exact-set pins went red and were amended with the argument
+in place** — `027` test 2 (the seeded allowlist string) and `055` test 2
+(21 → 22 rows). That is the ING-10 pattern paying for itself twice in one
+round: M7 *added* such a pin over column grants because that class had
+none, and here two existing ones caught a graph change the moment it
+landed. `055` still asserts all three Q8 edges **by name**; only the
+count moved, and it moved because a different migration answered a
+different finding.
+
+**One bug in this session's own test**, recorded rather than smoothed
+over: `058` leg 7 named `hc.pipeline_leases` where the table is
+`public.pipeline_leases`. `pg_temp.tq` wraps the error instead of
+aborting the file, so it surfaced as a clean failed assertion — which is
+what that helper is for.
+
+### The local gate, run at the closing head
+
+**It failed first, and it was right to.** The DUP-02 leg pinned the
+generic copy and went red the moment Q-A landed — with a comment three
+lines below saying that naming the matched document "needs a column grant
+`authenticated` does not hold". It holds it now, so the leg asserts the
+named citation and the corrected provenance line, and its title stops
+claiming coverage it never had (R7/F-11, R8/F-8).
+
+A **stale fixture server** on port 8787, started 2026-08-22 18:51, blocked
+the first attempt. That is the failure mode the kickoff warns about and
+it is the SAFE one — the gate fails at startup rather than reaching for a
+provider. It also predated this round's R7/F-2 partition filter, so
+reusing it would have run the gate against a server that still answered
+from the BLIND partition. Killed after confirming no peer run was live.
+
+```
+npx playwright test --trace on   →   29 passed (4.3m)
+onboarding 11 · a11y 5 · ingestion 8 · extraction 5
+```
+
+**On "24/24 UNCHANGED":** this round does not claim it, and R7/F-11 is
+why. Two legs were deliberately amended across the round — ingestion's
+cancel leg (the build session's, ratified at Q-I(2)) and extraction's
+DUP-02 leg (this session's, above). The honest statement is **29/29 at
+the closing head with two argued amendments**, not an unchanged count.
+
+### Evidence, all of it re-run
+
+| Leg | Result |
+|---|---|
+| Clean-leg reset | `migration state exact: 62 applied == supabase/migrations` |
+| pgTAP | **Files=59, Tests=1513, PASS** (1497 at 5A; 057 adds 9, 058 adds 7) |
+| Concurrency | **70/70** (teed) |
+| `db:verify` | **No schema errors found** (`--fail-on warning`) |
+| Upgrade leg | base `a9d9f43` → exact 60 → `migration up` → exact 62 → pgTAP **1513 PASS** → concurrency **70/70** |
+| vitest | **64 files, 685 passed (685)** |
+| typecheck · lint | clean |
+| **Local gate** | **29/29** on a clean reset, no credential anywhere in the run |
+| G9 harness dry-run | **12/12 build; NOTHING sent** |
+| `g9-build.mjs --check` | `corpus matches the spec` — a CI step since `7e83761` |
+
+**Dependency bound untouched**: still exactly the two Q3-approved runtime
+packages, and **the dev-dependency reserve is still UNSPENT** — nothing
+in this round's dispositions needed it.
+
+---
+
 ## Consequences
 
 - **Seven BLOCKERs and three further MAJOR/MINOR findings are fixed on the branch**, red→green, each with its
@@ -1075,11 +1155,11 @@ changed, and the gate is what caught D15.
   single most important sentence in this document.
 - **A 300-dpi scan now renders at the tier §6.3 promises.** Before D2 it
   rendered at 617×824 and said `rendered`.
-- **The migration bound was AMENDED by the owner to ≤ 7 and closes SPENT
-  at 7 of ≤ 7** (D20). `supabase/` is no longer byte-identical to main, so
+- **The migration bound was AMENDED by the owner twice — to ≤ 7 (D20) and
+  then to ≤ 8 (D21/D23) — and closes SPENT at 8 of ≤ 8.** `supabase/` is no longer byte-identical to main, so
   5B is no longer app-only and the DB legs are re-run rather than
   inherited — D22. A **fourth** amendment item is recommended and NOT
-  taken (D21).
+  taken at the time; it was granted afterwards and is now M8 (D23).
 - **The dependency bound is UNTOUCHED**: still exactly the two
   Q3-approved runtime packages. **The dev-dependency reserve remains
   UNSPENT** — nothing in these dispositions needed it, which is the
