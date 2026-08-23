@@ -353,6 +353,14 @@ describe('B5 · §4.8 — a change to an existing value is ALWAYS a conflict', (
     expect(proposals).toHaveLength(0);
   });
 
+  // AMENDED at round 16 (R4/F-3), argued in place rather than quietly edited.
+  // The fixture drafted a conflict with NO domain. That proposal is not
+  // approvable: `hc.approve_proposal`'s use_new arm refuses without one and
+  // its keep_both arm inserts into profile_facts, so the fixture modelled a
+  // row the database would reject in front of a person. It now carries the
+  // domain the model is asked for. The assertion itself — that the parent is
+  // re-derived from the record, never trusted through a second hop — is
+  // unchanged, which is the property this leg exists for.
   it('a conflict the model drafted keeps its parent, taken from the record', async () => {
     interpretMod.interpretArrival.mockResolvedValueOnce(
       okInterpret([
@@ -361,6 +369,7 @@ describe('B5 · §4.8 — a change to an existing value is ALWAYS a conflict', (
           title: 'dose changed',
           summary: 'was 250 mg, now 500 mg',
           ...BLANK,
+          domain: 'health',
           field: 'medication_dose',
           value: '500 mg',
           conflictsWithFactId: FACT_ID,
@@ -610,5 +619,28 @@ describe('R4/F-3 · a converted conflict carries what every §4.8 outcome needs'
   it('still quotes the parent it conflicts with', async () => {
     const payload = await conflictPayload();
     expect(payload.parents).toEqual([{ type: 'profile_fact', id: FACT_ID }]);
+  });
+});
+
+// One more, so the drop is a decision rather than an accident:
+describe('R4/F-3 · a conflict with no domain is DROPPED, not drafted un-approvable', () => {
+  it('the pipeline files nothing rather than something a person cannot act on', async () => {
+    interpretMod.interpretArrival.mockResolvedValueOnce(
+      okInterpret([
+        {
+          kind: 'conflict',
+          title: 'dose changed',
+          summary: 'was 250 mg, now 500 mg',
+          ...BLANK,
+          field: 'medication_dose',
+          value: '500 mg',
+          conflictsWithFactId: FACT_ID,
+        },
+      ]),
+    );
+    workers.readPipelineWork.mockResolvedValueOnce([msg()]);
+    await route.POST(req(), ctx);
+    const proposals = workers.finalizeInterpretation.mock.calls[0][2];
+    expect(proposals).toHaveLength(0);
   });
 });

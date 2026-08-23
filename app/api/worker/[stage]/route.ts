@@ -477,7 +477,9 @@ function draftPayloads(
     }
 
     if (!MAPPABLE_KINDS.has(kind)) continue;
-    if (kind === 'profile_fact' && !p.domain) continue;
+    // A conflict needs a domain for the same reason a profile_fact does:
+    // `use_new` inserts one into public.profile_facts (round-16 R4/F-3).
+    if ((kind === 'profile_fact' || kind === 'conflict') && !p.domain) continue;
     if (kind === 'document' && !p.category) continue;
 
     const anomalyFlags = [...new Set([...callAnomalies, ...p.anomalyFlags])];
@@ -490,6 +492,31 @@ function draftPayloads(
     if (p.value !== null) payload.value = p.value;
     if (p.dueOn) payload.due_on = p.dueOn;
     if (p.occurredOn) payload.occurred_on = p.occurredOn;
+    if (kind === 'conflict') {
+      // §4.8's three outcomes each need something at APPROVAL time, and
+      // hc.approve_proposal refuses without it (round-16 R4/F-3):
+      //   use_new   → field, value, domain — and it INSERTS risk_class,
+      //               which profile_facts declares NOT NULL;
+      //   keep_both → a task object carrying a title;
+      //   keep      → nothing, which is why only that one ever worked.
+      // The conversion below skipped the profile_fact branch, so a drafted
+      // conflict carried none of them and two of the three outcomes raised
+      // `approval_refused` in front of a person.
+      //
+      // `domain` must come from the proposal: M2's record context carries
+      // {id, field, value, risk_class} per fact and NOT the domain, so the
+      // parent cannot supply it. A conflict without one is DROPPED at the
+      // guard below rather than drafted un-approvable — the same posture
+      // the adapter already takes ("a counted drop rather than a raised
+      // exception").
+      payload.domain = p.domain;
+      payload.risk_class = effectiveRiskClass(p.field ?? '', p.value, bands);
+      // keep_both files a task to reconcile the two readings rather than
+      // choosing between them. Title only: due_on and due_zone must be BOTH
+      // set or BOTH absent (the DB pairs them), and nothing here knows a due
+      // date, so neither is written.
+      payload.task = { title: `Reconcile ${p.field ?? 'this value'} — the document and the record disagree` };
+    }
     if (kind === 'profile_fact') {
       payload.domain = p.domain;
       // §6.4: a high-risk field is high-risk however confident anyone is —
