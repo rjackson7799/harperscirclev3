@@ -411,7 +411,14 @@ describe('R2/F-10 · the SDK cannot be told to log request bodies', () => {
 describe('R2/F-11 · a real credential may not be pointed at an arbitrary host', () => {
   const FIXTURE_KEY = 'local-gate-fixture-not-a-credential';
 
-  async function egress(baseURL: string | undefined, apiKey: string | undefined) {
+  // The assertion reads process.env at CALL time, so it must run INSIDE the
+  // window where the vars are set — returning a closure to the caller would
+  // evaluate it after the finally block had already restored them, and the
+  // refusal leg would pass green against a guard that never ran.
+  async function egress(
+    baseURL: string | undefined,
+    apiKey: string | undefined,
+  ): Promise<string | null> {
     const prevBase = process.env.ANTHROPIC_BASE_URL;
     const prevKey = process.env.ANTHROPIC_API_KEY;
     try {
@@ -420,7 +427,12 @@ describe('R2/F-11 · a real credential may not be pointed at an arbitrary host',
       if (apiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = apiKey;
       const { assertProviderEgress } = await import('@/lib/ai/client');
-      return () => assertProviderEgress();
+      try {
+        assertProviderEgress();
+        return null;
+      } catch (err) {
+        return (err as Error).message;
+      }
     } finally {
       if (prevBase === undefined) delete process.env.ANTHROPIC_BASE_URL;
       else process.env.ANTHROPIC_BASE_URL = prevBase;
@@ -430,19 +442,17 @@ describe('R2/F-11 · a real credential may not be pointed at an arbitrary host',
   }
 
   it('REFUSES a real-looking key aimed at a non-Anthropic base URL', async () => {
-    const call = await egress('http://127.0.0.1:8787', 'sk-ant-a-real-looking-key');
+    const message = await egress('http://127.0.0.1:8787', 'sk-ant-a-real-looking-key');
     // Named specifically: a `not a function` TypeError would also contain
     // 'egress', and a RED leg that passes for the wrong reason is worthless.
-    expect(call).toThrow(/ANTHROPIC_BASE_URL/);
+    expect(message).toMatch(/ANTHROPIC_BASE_URL/);
   });
 
   it('allows the gate: the fixture literal may be aimed at the fixture server', async () => {
-    const call = await egress('http://127.0.0.1:8787', FIXTURE_KEY);
-    expect(call).not.toThrow();
+    expect(await egress('http://127.0.0.1:8787', FIXTURE_KEY)).toBeNull();
   });
 
   it('allows production: a real key with NO base URL override', async () => {
-    const call = await egress(undefined, 'sk-ant-a-real-looking-key');
-    expect(call).not.toThrow();
+    expect(await egress(undefined, 'sk-ant-a-real-looking-key')).toBeNull();
   });
 });
