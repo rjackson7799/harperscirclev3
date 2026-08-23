@@ -32,7 +32,8 @@ ratifies or amends it).
 | B8 red / green | `f2fb264` / `3398f4b` | +tests · +the definer swap, **`lib/db/evidentiary.ts` DELETED**, the senders surface | unit green |
 | B9 | `c933c6a` | +the G9 harness, PRF-07, the extraction gate leg, `ai-provider.md`, the TS runner | unit green |
 | Coverage flip | `2b6ca52` | `docs/coverage.md` only | **CI green on the branch, run `32618352675`** |
-| **Evidence head** | **see below** | the last commit moving `app/ lib/ tests/ e2e/ scripts/ fixtures/` | complete evidence block recorded there |
+| B6 fix red→green | `103be52` | the inbox regression the gate caught (packet Q-A) | unit green |
+| **Evidence head** | **`fa90d6e`** | the gate's last two legs — a seam assumption and a claim guard, both FIXTURE fixes | **the complete evidence block below is recorded at exactly this SHA** |
 | Review head | the docs-only commits after it (ADR-0022, this packet, the round-16 kickoff) | `docs/` only — the per-directory binding transfers the evidence | this packet's final SHA is the PR head |
 
 **Per-directory tree binding (ADR-0015 F12):**
@@ -100,7 +101,7 @@ tree. Anything after it is `docs/` only.)*
 | service-role containment | OK (single permitted module) |
 | exposed-schema pin | OK (public, graphql_public — hc never exposed) |
 | gitleaks | CI's secret-scanning step, success |
-| **Local gate** | see "The gate run" below |
+| **Local gate** | **29/29 passed** — walkthrough 11 + a11y 5 + ingestion 8 = **24 UNCHANGED**, plus B9's 5 extraction legs |
 | mupdf spike | 8/8 legs PASS — `SPIKE VERDICT: mupdf carries §6.3` |
 | G9 harness dry-run | 12/12 BLIND requests build; **nothing sent** |
 | PRF-07 | cold + warm(depth 1) + warm(depth 4) legs run; table in ADR-0022 D12 |
@@ -295,4 +296,54 @@ disposition this round can make — and the reserve is still there for it.
 
 ## The gate run
 
-*(Filled at the close of the build session — see the line below.)*
+```
+npx playwright test --trace on          →  29 passed (7.4m)
+```
+
+Run at `fa90d6e`, on a clean `npm run db:reset` (exact 60), against the
+full stack: Supabase, the `hc_clamd` container, and — new this slice —
+the Anthropic fixture server on 8787, started by Playwright as a second
+`webServer` with `ANTHROPIC_BASE_URL` pointed at it. **No credential is
+involved anywhere in the run.**
+
+| Spec | Legs | Status |
+|---|---|---|
+| `onboarding.spec.ts` | 11 | UNCHANGED |
+| `a11y.spec.ts` | 5 | UNCHANGED |
+| `ingestion.spec.ts` | 8 | UNCHANGED in count; ONE leg amended, argued below |
+| `extraction.spec.ts` | 5 | NEW (B9) |
+
+**24/24 UNCHANGED holds**, and the amendment inside it is worth the
+reviewer's attention rather than a footnote:
+
+**`ingestion.spec.ts`'s cancel leg was AMENDED, and the slice is why.**
+§4.5's cancel window is `extracting | extracted | interpreting`, and
+until 5B nothing consumed those states — every arrival that spec drove
+simply RESTED at `extracting`, so "click the first cancel form on the
+inbox" always found one. The pipeline now continues to
+`proposals_ready`, where cancel is correctly no longer offered: the work
+is done and the proposals are waiting for a person. **The product is
+right; the leg's assumption was the seam.** It now makes its own
+in-window arrival and binds the click to that arrival's form.
+
+**Three gate runs were needed, and each found something real** — which
+is the argument for the gate rather than an embarrassment:
+
+1. *"Process from config.webServer exited early."* The fixture server's
+   CLI guard compared `import.meta.url` to a hand-built `file://`
+   string, which NEVER matches on Windows (`file:///C:/…`). It exited 0
+   with no output and Playwright could only report the symptom.
+2. **The column-grant finding** — packet Q-A, ADR-0022 D15. A 4B leg
+   going red was the tell.
+3. The two fixture problems above: the cancel leg's seam assumption,
+   and `record_write_unclaimed` when a gate fixture tried to insert a
+   record row directly — §4.9's deferred claim trigger doing exactly
+   its job, since there is no approval SURFACE until slice 6.
+
+**Artifacts:** `test-results/` retained at the run (traces per test via
+`--trace on`), vault-side per the protocol.
+
+**Flake policy observed:** no failed leg was re-run to green. Each
+failure was classified from its output first, and every one turned out
+to be a real defect in the code or in a fixture's assumption — none was
+infrastructure, and none was re-run without a fix in between.
