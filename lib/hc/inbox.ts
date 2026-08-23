@@ -109,7 +109,17 @@ export async function listKnownSenders(
 ): Promise<KnownSender[]> {
   return withRequestRole('authenticated', claims, async (q) => {
     const r = await q.query('select * from hc.list_known_senders($1)', [circleId]);
-    return r.rows as KnownSender[];
+    // `accepted_at` is timestamptz, and node-pg parses OID 1184 to a Date.
+    // KnownSender declares a string and the surface slices one, so the type
+    // is made TRUE here rather than asserted by a blind cast (round-16
+    // R5/F-1 — a Date reached the page and every non-empty list threw).
+    // Normalising at the boundary is what keeps the declared type honest for
+    // every future consumer, not just the one that happened to break.
+    return r.rows.map((row: Record<string, unknown>) => ({
+      ...row,
+      accepted_at:
+        row.accepted_at instanceof Date ? row.accepted_at.toISOString() : String(row.accepted_at),
+    })) as KnownSender[];
   });
 }
 
