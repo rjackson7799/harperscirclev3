@@ -50,6 +50,43 @@ session touching `lib/ai/`.
 numbering is preserved rather than renumbered into one sequence, so that
 "verbatim" means what it says.
 
+## The tally, as reported
+
+**113 findings: 10 BLOCKER · 40 MAJOR · 33 MINOR · 30 OBSERVATION.**
+
+These are the reviewers' own severities, not this session's. The
+dispositions may downgrade some and will argue every one. Several
+reviewers deliberately recorded a clean area as a finding-shaped entry
+so that the list is not read as blanket doubt — R3/F-10 (the
+orientation door holds and 8/8 spike legs pass), R4/F-13
+(`releaseDeferredWork` holds on every axis D10 claims), R5/F-11 (the
+artifact route's definer swap dropped no check), R5/F-12 ("nothing else
+selects an ungranted column" survives independent enumeration), R6/F-13
+(`--dry-run` genuinely cannot send) and R6/F-14 (the
+manifest-is-the-corpus walk could not be defeated) are all verified
+positives.
+
+Two reviewers were asked to answer the packet's pointed questions
+directly and did: **R7** takes a position on Q-A–Q-H (disagreeing with
+Q-B and Q-D on the record, amending Q-A's framing), **R6** answers Q-G
+with a plain refusal to sign bands against the corpus as it stands, and
+**R8** answers Q-I on all three amendments.
+
+The ten BLOCKERs, by what each falsifies:
+
+| ID | Falsifies |
+|---|---|
+| R4/F-1 | ADR-0022 D8 — the record-context key mismatch makes the conflict mechanism inert |
+| R3/F-1 | D2/D3 — `PT_PER_PX` is a no-DPI fallback; a 300-dpi scan renders below the standard tier |
+| R3/F-2 | D2 — the same number gates `page_dimensions`, so a declared-dpi pixel bomb decodes |
+| R2/F-1 | D4 — the configuration-hash test compares a value to itself |
+| R2/F-19 | D4's framing — a NUL byte makes the adapter binary to git and to gitleaks |
+| R5/F-1 | D11 / SND-03 green — the senders page throws on every non-empty list |
+| R6/F-1 | corpus-spec §1/§4/§6 — 8 of 12 blind items contain no rendition of their labels |
+| R6/F-2 | D1 — `itemsIn('blind')` is exported from an unfenced module |
+| R7/F-2 | D1 / Q5 — the fixture server reads all 28 items with no partition filter |
+| R7/F-1 | Q3 — `mupdf` is AGPL-3.0-or-later and no governance document says so |
+
 ---
 
 ## R1 — the band loader and the risk catalogue
@@ -1789,3 +1826,152 @@ The resolve hook — the half that actually implements the alias and the `server
 **Q-H — the TypeScript runner instead of a dev-dependency.** **Agree, with the figure corrected.** The reasoning is the strongest in the packet: the reserve is one slot held for review dispositions, and spending it before the review would pre-empt exactly this round. Ratify. Two corrections for the record: it is 126 lines across two files, not "~40 lines" in one (F-12), and the unnamed half is a `module.register` resolver hook — the component most likely to break on a Node upgrade. Given F-1 and Q-A both plausibly want the reserve this round, I would not spend it on a TS runner; I would spend it on nothing, keep `ts-run.mjs`, and add the resolve hook to the ADR's description so the next session knows what it is maintaining.
 
 ---
+
+## R8 — packet Q-I: the three amended green assertions
+
+*Commissioned after `6e615fe` added Q-I. Lens: the three assertions the
+build session changed while they were already green — the Q7 seam rows,
+the ingestion cancel leg, and the stage-2 fixture document. Reported 10
+findings including one MAJOR product finding that no test fails on, and
+ratifies all three amendments with amendments of its own.*
+
+### F-1 — The fourth Q7 seam row was never amended: the suite still pins "nothing consumes yet"
+**Severity:** MAJOR
+**Where:** `tests/routes/worker-stage.test.ts:284` and `:297`; production twin at `app/api/worker/[stage]/route.ts:236`
+**Claim under test:** Q-I(1)'s own argument — *"closing the seam is B7's whole purpose, so an assertion that the seam is open must change or the suite is asserting the absence of the feature."*
+**What I found:** Three seam rows were amended. A fourth was not, and it is byte-identical to `a9d9f43`:
+
+```
+it('recognised email advances to extracting and enqueues the extract seam (Q7: enqueued, nothing consumes yet)', async () => {
+  ...
+  expect(fetchMock).not.toHaveBeenCalled(); // no consumer to fire (Q7)
+```
+
+Its production comment is equally stale — `route.ts:236`: `// The Q7 seam: enqueued for slice 5's extract worker; no fire — nothing consumes it yet, and the arrival RESTS at its honest label.` Both statements are false at HEAD. I ran the file: `npx vitest run tests/routes/worker-stage.test.ts tests/routes/relay.test.ts` → 35 passed, so this assertion is live and green. Two rows in the same file now say opposite things about the same seam: `:349` `'no pipeline stage defers any more — the Q7 seam is CLOSED'` and `:284` `'…nothing consumes yet'`.
+**Failure scenario:** A later session notices that `gate → extract` is the only hand-off in the pipeline with no eager fire (`fireWorker` appears at `route.ts:153`, `:197`, `:399` — store→scan, scan→gate, extract→interpret — and nowhere for gate→extract) and adds the missing fire. `tests/routes/worker-stage.test.ts:297` goes RED with a comment asserting that the consumer does not exist. That is exactly the failure mode Q-I(1) says amendment exists to prevent; the amendment set simply missed one.
+**Confidence:** high — the assertion, its comment, and the green run are all verified above.
+
+---
+
+### F-2 — `gate → extract` is the only un-fired hand-off; extraction starts solely on the 60-second relay tick, and that dead time is most of the cancel window
+**Severity:** MAJOR
+**Where:** `app/api/worker/[stage]/route.ts:234-243`; `vercel.json` (`"path": "/api/worker/relay", "schedule": "* * * * *"`)
+**Claim under test:** ADR-0022 D10 — *"B7: the seam is consumed"*; and Q-I(2)'s framing that "the pipeline now continues to `proposals_ready`."
+**What I found:** `processGate` still ends with a bare enqueue and no fire. Nothing else starts extraction: `sendPipelineWork` writes straight to pgmq (not to `pipeline_outbox`), and no trigger writes an outbox row on `scanned → extracting` (the only `insert into public.pipeline_outbox` sites are freeze-dismiss, sender-accept, and the two duplicate resolutions). The extract worker is therefore first invoked when the relay's **sweeper** leg re-lists the arrival (`hc.sweeper_pass` step 3 joins `hc.stage_budgets`, which maps `entry_state='extracting'` → `stage='extract'`) and adds `extract` to `firedStages` — i.e. on the next cron minute. The e2e amendment depends on precisely this: `e2e/ingestion.spec.ts:355-357` — *"The gate stage enqueues extract without firing it, so an arrival driven to `extracting` stays there until something drains the queue — which makes this deterministic rather than a race."*
+
+Wall-clock arithmetic for the §4.5 window (`extracting | extracted | interpreting`):
+
+| Segment | Width | Source |
+|---|---|---|
+| `extracting`, waiting for the relay | **0–60 s, mean 30 s** | `vercel.json` cron `* * * * *`; no eager fire |
+| `extracting`, extract stage running | 1.4–6.9 s (fixture server) | ADR-0022 D12 PRF-07 warm p95, 1417 ms email body → 6866 ms phone photo d4 |
+| `extracted` | sub-second | `route.ts:399` `fireWorker(origin, 'interpret', key)` immediately after `finalizeExtraction` |
+| `interpreting`, interpret stage running | same order (unmeasured by PRF-07) | same lease budget, 300 s |
+
+Median window ≈ **35 s**, of which ~30 s is cron dead time with a message sitting visible in the queue and no worker called. Against a real provider, ADR-0022 D12 says the machinery leaves ~53 s of §13.2's 60 s p95, so the whole window is bounded by PRD §13.2's *"Arrival read, proposals ready — p95 60 s, ceiling 5 min."*
+**Failure scenario:** The only thing keeping the cancel window wide enough to be clickable at all is a leftover of the seam that F-1 shows is still asserted as deliberate. Add the missing eager fire — consistent with every other hand-off, and an obvious latency win against §13.2 — and the window collapses to two provider round trips, plausibly under 15 s, with no test failing and no ADR line noting the change. Neither ADR-0022 D10 nor the packet acknowledges that the gate leg of the seam is still open.
+**Confidence:** high — enqueue-without-fire is in the source, the outbox trigger absence was grepped across all migrations, and PRF-07's numbers are quoted from D12.
+
+---
+
+### F-3 — Product: §4.5's cancel is now unreachable for the forwarding channel — the only arrival notification fires exactly when the window closes
+**Severity:** MAJOR (product finding; no test fails on it)
+**Where:** `docs/PRD.md:780`; `app/(app)/[circle]/inbox/page.tsx:60` (`const CANCEL_WINDOW = new Set(['extracting', 'extracted', 'interpreting']);`)
+**Claim under test:** TSD §4.5 — *"available to any member who can approve"*; PRD §4.2.2's family-facing table — *"**Reading** | The pipeline is working | Wait, open the original, **or cancel**"*.
+**What I found:** Three facts compose badly, and only after 5B:
+
+1. The window is now ~35 s wide (F-2). Before 5B, nothing consumed `extracting`, so it was unbounded — which is why the old e2e leg could click *"the first cancel form on the inbox"* and always find one.
+2. The Care Inbox is a plain server component. `grep -n "revalidate|dynamic|'use client'|setInterval|router.refresh" app/(app)/[circle]/inbox/page.tsx` returns nothing. A member who has the page open sees a stale snapshot; the button they can see may already be dead, and the route's only answer is `redirect303(req, /${circle}/inbox?e=cancel)` (`app/(app)/[circle]/inbox/cancel/submit/route.ts:27`).
+3. PRD §4.8 ships **eight** emails and exactly one concerns an arrival: *"**Ready to review** … When: **An arrival reaches `Needs you`**"* — i.e. `proposals_ready`. **The product's only signal that a document arrived is sent at the first instant cancel is no longer offered.** Nothing tells a family that reading has *started*.
+
+There is no post-window equivalent. There is no delete-arrival surface anywhere under `app/(app)/` (the inbox routes are `accept-sender`, `cancel`, `resolve` only). Slice 6's reject-all lands PRD's *"Nothing filed"*, which is materially weaker than cancel: cancel guarantees *"nothing is persisted and nothing is shown"* (TSD §4.5), whereas by `proposals_ready` the extractions and proposals are committed by `hc.finalize_extraction` and the summaries are on screen for every manage-×5 member.
+**Failure scenario:** A daughter forwards a psychiatric discharge summary to the circle address from her phone, then realises her brother holds manage on the health domain. Under 4B she opened the inbox at any point and pressed *"Stop processing this."* Under 5B: the gate advances the arrival to `extracting`; within a minute the relay fires extract; ~35 s later the arrival is `proposals_ready`; the *"Ready to review"* email lands. She opens the inbox for the first time and there is no cancel button — the facts are already extracted, stored, and visible. She cannot undo it in slice 5, and in slice 6 the best she gets is rejecting proposals that were already read by someone else, with the extractions still on the record. **The amendment to `e2e/ingestion.spec.ts` conceals this**: the new leg has to upload its own file and hand-drive `store`, `scan`, `gate` (`e2e/ingestion.spec.ts:369-375`) to make the button exist at all. Needing to build the arrival by hand to find the affordance *is* the evidence that ordinary use no longer reaches it.
+**Confidence:** high on the mechanism; medium on whether the owner intends this — §13.2 always targeted 60 s, so the narrow window is arguably the design finally becoming real. But PRD §4.2.2 lists cancel as one of three things a family "can do" at Reading, and §4.8 guarantees they are not told until Reading is over. Those two rows are now inconsistent, and 5B is what made them so. Confirmable by an owner ruling on whether "Reading" is meant to be a state a family can act in.
+
+---
+
+### F-4 — The amended cancel leg dropped the circle-wide blast-radius assertion
+**Severity:** MINOR
+**Where:** `e2e/ingestion.spec.ts:393-397`
+**Claim under test:** Q-I(2) — that the amendment is honest and loses nothing.
+**What I found:** The old leg asserted `select count(*) ... where circle_id = $1 and state = 'cancelled'` → `toBe(1)`; the new one asserts `select state from arrivals where id = $1` → `'cancelled'`. The new form is *stronger* on "the right arrival was cancelled" (the old clicked `.first()` and could not tell). It is *weaker* on "and only that one" — the circle-wide count is gone, and nothing replaces it.
+**Failure scenario:** I cannot construct a real one. `hc.cancel_arrival` takes a single `p_arrival` and does `update public.arrivals set state = 'cancelled' ... where id = p_arrival` (`supabase/migrations/20260816010005_publication.sql:338-340`); collateral cancellation is structurally impossible. Downgraded accordingly — record the trade, do not block on it.
+**Confidence:** high.
+
+---
+
+### F-5 — "An UNKNOWN stage is still deferred" is unreachable from any in-branch producer; it is a forward-compatibility guard, not a live one
+**Severity:** MINOR
+**Where:** `tests/routes/worker-stage.test.ts:366`
+**Claim under test:** Q-I(1) — that the new row *"genuinely preserves D13's never-lost guarantee for the one case the branch can still see."*
+**What I found:** The answer to the packet's own question is **no, the branch cannot see it.** `STAGES` is `{store, scan, gate, extract, interpret}` (`route.ts:93`). Every producer is closed over the same five: `PipelineMessage.stage` is typed `PipelineStage = 'store' | 'scan' | 'gate' | 'extract' | 'interpret'` (`lib/hc/workers.ts:30`), and the sweeper's requeue stage is `hc.stage_budgets.stage`, whose seed rows are exactly those five and which is inserted into in only one migration (`supabase/migrations/20260816010001_pipeline_tables.sql:69-75`, no later insert anywhere). The test's `'transcribe'` cannot be produced by this build. Structurally the row is sound — defer called, archive not called, claim not called, all three old guarantees preserved — but it guards a rolling-deploy scenario, not current behaviour, and the amendment's comment ("the only thing the branch can still see") reads as though it guards something live.
+**Failure scenario:** No wrong outcome today. The residual: an unknown-stage message loops forever (deferred 3600 s → visible → read into the batch → deferred again) and `releaseDeferredWork` deliberately excludes it by stage filter (`lib/hc/workers.ts:288`), so "never lost" is preserved but "never processed" is permanent, and each pass spends batch slots on it. Unreachable in this branch, so OBSERVATION-grade in practice.
+**Confidence:** high.
+
+---
+
+### F-6 — The fixture-insert precedent is inexact, and a fully honest fixture is available today without suspending anything
+**Severity:** MINOR
+**Where:** `e2e/extraction.spec.ts:73-83` and `:274`
+**Claim under test:** Q-I(3) — *"There is no approval SURFACE until slice 6, so a gate fixture cannot file a document the honest way yet. The technique is the PRF-06 bench's and the live suites'."*
+**What I found:** Two problems with the argument, neither with the scoping.
+
+*Scoping is correct.* `fixtureInsert` opens its own `pg.Client`, sets `replica`, runs one statement, resets to `default`, and closes. It cannot leak: the second helper `query()` (`:58-65`) opens a separate connection at default role, and there is no pooling. Verified.
+
+*The precedent is not the same technique.* I enumerated every `session_replication_role` site in the repo. In `tests/hc/circle.test.ts:39`, `inbox.test.ts:133`, `artifacts.test.ts:114`, `ingest.test.ts:75`, `upload.test.ts:69`, `invites.test.ts:65`, `relay.test.ts:85`, `workers.test.ts:81`, `scripts/bench/prf07.ts:311`, `scripts/bench/prf06.mjs:373` it is **teardown only**. The two setup uses are `prf06.mjs:66` and `scripts/concurrency/run.mjs:225` (inserting `auth.users`, which no product path can create) and `run.mjs:370` (`public.proposals`, which §4.9 does not guard). `e2e/extraction.spec.ts:274` is the **first** use that manufactures a row in a §4.9-guarded record table and then feeds it to the predicate under test. That is a different kind of concession from cleaning up after yourself.
+
+*"Cannot file the honest way" is overstated.* What §4.9 requires is a `proposal_commits` row, not an approval surface. `public.proposal_commits` is `(proposal_id pk, circle_id, object_type, object_id, committed_at)` with an FK to `proposals(circle_id, id)` (`supabase/migrations/20260815230001_ingestion_prereqs.sql:119-127`). The leg already has real `document`-kind proposals — arrival `first` reached `proposals_ready` at `e2e/extraction.spec.ts:261`. A fixture that mints a document `id`, inserts `proposal_commits(proposal_id, circle_id, 'document', id)` and inserts the document with that `id` in the same transaction satisfies `hc.assert_claimed` **honestly**, with no trigger suspended, no FK skipped, and the search triggers intact. The connection already runs as `postgres` (`DB_URL = postgresql://postgres:postgres@…:54342/postgres`, `:33`), which bypasses the RLS half anyway.
+**Failure scenario:** No wrong result today (see F-9 for why the predicate is unaffected). The cost is a precedent: "suspend the guard for fixtures" is now blessed in a gate spec, in a repo where that guard is the mechanism behind *"nothing is filed without a person approving it."*
+**Confidence:** high on the enumeration and on `proposal_commits`' shape; medium that the alternative fixture is a drop-in — it needs the proposal id looked up, which is one query.
+
+---
+
+### F-7 — `replica` also skips both search triggers and all FK enforcement on the fixture document
+**Severity:** OBSERVATION
+**Where:** `e2e/extraction.spec.ts:77`; triggers at `supabase/migrations/20260816120001_search_write.sql:162` and `:166`
+**Claim under test:** the packet's question — *"does `session_replication_role = replica` disable anything ELSE the leg depends on?"*
+**What I found:** `public.documents` carries three triggers plus RI. `replica` suspends all of them: `hc_claim_documents` (intended), `hc_tsv_documents` BEFORE INSERT (so the row's `tsv_summary` is NULL), `hc_sync_search_documents` AFTER INSERT (so no `document_search_content` row exists for it), and every FK RI trigger — `(circle_id, subject_id)`, `(circle_id, artifact_arrival_id)`, `(circle_id, source_arrival_id)`, `(circle_id, source_proposal_id)`, `approved_by` (`supabase/migrations/20260815230002_record_tables.sql:52-77`). `hc_guard_documents` is BEFORE **UPDATE** and is not implicated. `taint_resolved` defaults `true`; `approve_proposal` would set it from the proposal (`supabase/migrations/20260821120004_conflict_outcomes.sql:338`).
+**Failure scenario:** None in this leg — the stage-2 predicate reads only `circle_id, subject_id, deleted_at, artifact_arrival_id, category, filed_at` and joins to `public.extractions` (`supabase/migrations/20260821120006_round15_fixes.sql:140-163`). No search table, no FK. But the row is an unsearchable, unreferentially-checked document, and a typo'd id in the fixture would silently pass rather than raise. Worth one sentence in the leg's comment, which currently names only the claim trigger.
+**Confidence:** high.
+
+---
+
+### F-8 — The DUP-02 gate leg is titled "both resolutions live" and exercises one
+**Severity:** MINOR
+**Where:** `e2e/extraction.spec.ts:253` (title) vs `:303`
+**Claim under test:** the leg's own name — `'the stage-2 pair: suspected, cited, and both resolutions live (DUP-02)'`.
+**What I found:** The leg clicks `button[value="different"]` and nothing else. `same_thing` is never clicked. That matters here specifically: at stage 2, `same_thing` is the arm that depends on the filed document being real — `hc.resolve_duplicate` refuses when `duplicate_of_document_id is null` and then writes a `provenance_edges` row onto `public.documents` (`supabase/migrations/20260821120005_duplicates_stage2.sql:333-340`). It is the one arm the fixture concession actually touches, and it is the one the leg skips.
+**Failure scenario:** No false green — the substance is covered elsewhere (`tests/routes/inbox.test.ts:441-443` for the surface, pgTAP 055/056 for the transition). The finding is that the title claims coverage the leg does not carry, which is how a later reader concludes `same_thing` is proven end-to-end when it is not.
+**Confidence:** high.
+
+---
+
+### F-9 — No test anywhere composes `hc.approve_proposal` with the stage-2 predicate; pgTAP escapes the same guard by rollback
+**Severity:** OBSERVATION
+**Where:** `supabase/tests/055_duplicates_stage2.sql:193` and the file's closing `rollback;`
+**Claim under test:** Q-I(3)'s stated limit — *"the DUP-02 leg's filed document did not come through the approval boundary … NOT that a real filed document reaches the stage-2 predicate the same way."*
+**What I found:** The limit is real and **wider than the packet states — it is not specific to the e2e leg.** pgTAP 055's fixture does a bare `insert into public.documents` with no `proposal_commits` row and no `session_replication_role`; it never hits `record_write_unclaimed` only because `hc_claim_documents` is `deferrable initially deferred` and the file ends in `rollback;`, so the constraint never fires. So *both* halves of DUP-02 file their canonical document unclaimed. The e2e leg is the same concession made visible, because it commits.
+
+Against that, the composition risk is small and I checked it directly. Every column the predicate reads is written identically by the real path: `approve_proposal` sets `artifact_arrival_id := v_prop.arrival_id` and `category := (v_payload ->> 'category')::hc.doc_category` (`supabase/migrations/20260821120004_conflict_outcomes.sql:334-346`), and the predicate compares `d.category::text` to the raw payload string of the *new* arrival's proposals — both sides originate in a proposal payload. The candidate side of the join (`public.extractions` for the first arrival) is real data written by `hc.finalize_extraction`. And `hc.approve_proposal`'s document write is separately pinned by pgTAP 013.
+**Failure scenario:** I cannot construct one; the divergence surface is five columns and they match by inspection. OBSERVATION, and the basis for ratifying (3) below.
+**Confidence:** high on the rollback mechanism and the column comparison; medium that no divergence exists in a path I did not read (`revise_object`, `20260818120002_step_up_tokens.sql:340`, which is another copy of the same insert).
+
+---
+
+### F-10 — B7's new live idempotence assertion is a global claim over a shared queue
+**Severity:** OBSERVATION
+**Where:** `tests/hc/relay.test.ts:246-247`
+**Claim under test:** *"Idempotent: with nothing hidden, the steady state releases nothing"* — `expect(await workers.releaseDeferredWork()).toBe(0)`.
+**What I found:** `releaseDeferredWork` is unscoped — it counts every `extract`/`interpret` message in `pgmq.q_pipeline_work` with `vt > now() + 300 s`, circle-agnostic (`lib/hc/workers.ts:277-291`). `tests/hc/workers.test.ts:207` defers *arbitrary other* messages off the same shared queue at the default 3600 s: `if (other !== mine) await workers.deferPipelineWork(other.msg_id);`. Under `vitest.config.ts`'s `maxWorkers: 1` the files run sequentially and alphabetical discovery puts `relay` before `workers`, and `workers.test.ts` cleans its own circle's queue rows in teardown — so today it holds.
+**Failure scenario:** Run `npx vitest run tests/hc/workers.test.ts tests/hc/relay.test.ts` in that order, or enable `sequence.shuffle`, and if `workers.test.ts` deferred another circle's extract message and its teardown did not reach it (teardown filters `message ->> 'circle_id' = $1`), the `toBe(0)` sees ≥1 and the leg goes red for a reason unrelated to what it tests. Scoping the assertion to the circle under test, or asserting `toBeLessThan(released)`, would remove the order-dependence.
+**Confidence:** medium — the hazard is real and the mechanism is verified, but the current ordering plus teardown makes it latent rather than live.
+
+---
+
+### R8's positions on Q-I (1), (2) and (3)
+
+**(1) — RATIFY WITH AMENDMENT.** The reasoning is right and the three amended rows are each as strong as what they replaced: the worker-stage row keeps all three of the old guarantees (defer called, archive not called, claim not called) and only moves them onto a different stage; the relay row stays an exact-equality assertion and still proves dedup (two `gate` outbox rows → one fire). But the amendment set is **incomplete**, and the row it missed is the one that matters most: `tests/routes/worker-stage.test.ts:297` still pins `expect(fetchMock).not.toHaveBeenCalled(); // no consumer to fire (Q7)` under a title reading *"nothing consumes yet"* (F-1), and `route.ts:236` still carries the matching stale comment. By the build session's own standard, that row is currently asserting the absence of the feature. And behind it sits F-2: `gate → extract` is the only hand-off in the pipeline with no eager fire, so extraction begins only on the relay's once-a-minute tick — a leg of the seam that neither the amendment set nor ADR-0022 D10 acknowledges is still open. Ratify the three amendments; require the fourth row and both comments to be brought into line, and require D10 to state plainly that the gate's non-fire survives 5B and why. Separately, note that "an UNKNOWN stage is still deferred" is unreachable from any in-branch producer (F-5) — it is a forward-compat guard, and the comment should say so rather than implying it covers a live case.
+
+**(2) — RATIFY THE AMENDMENT; FILE THE PRODUCT FINDING.** The test change itself is honest, not a mask: the old leg genuinely depended on the seam (every arrival rested at `extracting`, so `.first()` always found a form), and the new leg is stronger on the thing that matters — it proves the route cancels *the arrival named in the form*, which clicking `.first()` never did. The dropped circle-wide count (F-4) costs nothing real, because `hc.cancel_arrival` updates `where id = p_arrival`. **But the packet is right to be suspicious, and my answer to its question is that §4.5's promise does not survive 5B as a product matter.** The window is now ~35 s wide at the median (F-2: 0–60 s of cron dead time plus PRF-07's 1.4–6.9 s of extract plus an immediately-fired interpret), the Care Inbox does not refresh, there is no post-`proposals_ready` equivalent anywhere in `app/(app)/`, and — the fact that settles it — PRD §4.8's only arrival-related email, *"Ready to review,"* fires when the arrival reaches `Needs you`, which is the exact instant cancel stops being offered (F-3). For the forwarding channel, which is the product's headline loop, the family is told a document arrived only after they can no longer stop it being read. PRD §4.2.2 lists "cancel" as one of three things a family can do at **Reading**; in 5B nothing tells them Reading is happening. That is a product decision for the owner — narrow the pipeline's start (an arrival-received signal, a hold, or a deliberate delay before `extract` claims), or amend §4.2.2 and §4.5 to say that cancel is a race the family is not expected to win. It should not pass as "the product is right; the leg's assumption was the seam," because the leg's assumption was the seam **and** the product changed underneath a family-facing promise.
+
+**(3) — RATIFY; DUP-02's app half may stay green.** The suspension is scoped correctly — one dedicated `pg.Client`, one statement, reset and closed, no pooling, no path to any other leg or product code — and I verified there is no second `fixtureInsert` call site. `replica` also silences both search triggers and all FK enforcement (F-7), but the stage-2 predicate reads none of that: it touches six `documents` columns and joins to real `public.extractions` rows written by `hc.finalize_extraction`, and every one of those columns is written identically by `hc.approve_proposal`. The gap the packet names is therefore genuine but narrow — and, as F-9 shows, it is **not** unique to the gate leg: pgTAP 055 files its canonical document exactly as unclaimed and escapes the same trigger only because the file ends in `rollback;`. Holding the app half at `review` would not close a gap the pgTAP half also has, and DUP-02's green does not rest on this leg in any case — `docs/coverage.md:415` sources the app half to B6's inbox tests. Two corrections, neither blocking: the precedent argument should be narrowed, because every prior use is teardown or an unguarded table, and this is the first guarded record-table setup (F-6); and "cannot file the honest way until slice 6" is overstated, since §4.9 wants a `proposal_commits` row, not a surface, and the leg already has real proposals to hang one on. Finally, fix the leg's title (F-8): it exercises `different` only, and `same_thing` is precisely the arm the fixture concession touches.
