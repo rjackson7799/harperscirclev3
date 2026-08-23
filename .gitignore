@@ -34,3 +34,9 @@ test-results/
 npm-debug.log*
 .vercel
 *.tsbuildinfo
+
+# 5B B9: eval run manifests. They are written by the SOLE real-key path and
+# they are the artifact an owner allowlists BY DIGEST at the G9 sign-off, so
+# the signed one is committed deliberately (with its ADR) rather than swept in
+# by a wildcard. Nothing here is secret; what matters is that it is chosen.
+eval/runs/

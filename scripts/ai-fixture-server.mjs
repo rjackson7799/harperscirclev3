@@ -243,6 +243,13 @@ export async function startAnthropicFixtureServer(options = {}) {
   const requests = [];
 
   const server = http.createServer((req, res) => {
+    // A health endpoint, so the local gate can wait for this server the same
+    // way Playwright waits for the app (webServer.url needs a 2xx).
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, fixture: 'anthropic-messages' }));
+      return;
+    }
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
     req.on('end', () => {

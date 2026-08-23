@@ -4,7 +4,8 @@ import { defineConfig } from '@playwright/test';
  * A9 · The E2E walkthrough harness (TSD §11.4 item 3).
  *
  * Local-first by design: it drives the real app against the running
- * `supabase start` stack (DB 54342, API 54341, Mailpit 54344) and is NOT
+ * `supabase start` stack (DB 54342, API 54341, Mailpit 54344), the clamd
+ * container, and — from 5B — the Anthropic fixture server on 8787, and is NOT
  * part of the CI merge gate in 2B — CI would need the full auth stack
  * and browsers; the walkthrough is run at build verification and at the
  * round-10 gate (recorded in the build ADR). RLS-10 stays pending.
@@ -25,7 +26,19 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  webServer: {
+  // 5B B9: TWO servers. The Anthropic FIXTURE SERVER comes up first and the
+  // dev server is pointed at it, so the extraction leg exercises the real
+  // adapter against a local Messages-API shape and NO credential is involved
+  // anywhere in the gate (G9/G3's standing constraint, made a deployment fact
+  // rather than a promise).
+  webServer: [
+    {
+      command: 'node scripts/ai-fixture-server.mjs --port 8787',
+      url: 'http://127.0.0.1:8787/',
+      reuseExistingServer: true,
+      timeout: 30_000,
+    },
+    {
     command: 'npm run dev',
     url: 'http://127.0.0.1:3000/sign-in',
     reuseExistingServer: true,
@@ -53,6 +66,12 @@ export default defineConfig({
       // origin is `localhost`, which GoTrue's 127.0.0.1 allow-list
       // silently refuses (the recorded localhost/127.0.0.1 trap).
       NEXT_PUBLIC_SITE_URL: 'http://127.0.0.1:3000',
+      // 5B B9: the adapter's STANDARD base-URL config, pointed at the fixture
+      // server. The adapter never branches on environment; this is the whole
+      // mechanism. The key is a placeholder string, not a credential.
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:8787',
+      ANTHROPIC_API_KEY: 'local-gate-fixture-not-a-credential',
     },
   },
+  ],
 });
