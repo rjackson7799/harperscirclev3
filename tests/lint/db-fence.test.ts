@@ -311,3 +311,90 @@ describe('5B B8 · the evidentiary boundary is gone, and so is its fence entry',
     expect(exported.sort()).toEqual(['revokeAuthSessions', 'unconfirmEmail']);
   });
 });
+
+// ============================================================================
+// Round-16 R6/F-2, R6/F-3, R7/F-2 — the blind fence had three ways around it.
+//
+// The fence is a `no-restricted-imports` group over the module PATH
+// `**/eval/blind`. That blocks the literal specifier and nothing behind it:
+//
+//   1 · `lib/eval/blind.ts` is a two-line wrapper over `itemsIn('blind')`,
+//       and `itemsIn` / `corpusManifest` are exported from `lib/eval/corpus`,
+//       which is fenced to nobody. `corpusManifest().items` is all 28 items
+//       with every label.
+//   2 · ESLint's core rule registers only ImportDeclaration,
+//       ExportNamedDeclaration and ExportAllDeclaration — there is no
+//       ImportExpression handler, so `await import('@/lib/eval/blind')`
+//       walks straight past it.
+//   3 · `scripts/ai-fixture-server.mjs` reads fixtures/g9/corpus.json as
+//       DATA and iterates every item with no partition filter, so the
+//       gate-stack fixture server can answer from BLIND labels.
+//
+// D1 calls the partitions "a property of the tree, not of anyone's
+// discipline". These three make that a convention. All three are closed.
+// ============================================================================
+describe('R6/F-2 · the manifest is not a back door to the blind partition', () => {
+  it('the adapter may NOT reach the whole manifest', async () => {
+    const msgs = await messagesFor(
+      'lib/ai/prompt.ts',
+      "import { corpusManifest } from '@/lib/eval/manifest';\nexport const x = corpusManifest;\n",
+    );
+    expect(restricted(msgs)).toBe(true);
+  });
+
+  it('the adapter may NOT select a partition by name', async () => {
+    const msgs = await messagesFor(
+      'lib/ai/prompt.ts',
+      "import { itemsIn } from '@/lib/eval/manifest';\nexport const x = () => itemsIn('blind');\n",
+    );
+    expect(restricted(msgs)).toBe(true);
+  });
+
+  it('the corpus suite and the harness still may — that is what they are for', async () => {
+    for (const file of ['tests/eval/corpus.test.ts', 'scripts/eval/run.ts']) {
+      const msgs = await messagesFor(
+        file,
+        "import { corpusManifest } from '@/lib/eval/manifest';\nexport const x = corpusManifest;\n",
+      );
+      expect(restricted(msgs), `${file} should reach the manifest`).toBe(false);
+    }
+  });
+});
+
+describe('R6/F-3 · a dynamic import cannot walk past the fence', () => {
+  it('await import() of the blind partition is restricted', async () => {
+    const msgs = await messagesFor(
+      'lib/ai/prompt.ts',
+      "export async function x() { const m = await import('@/lib/eval/blind'); return m.blindCorpus(); }\n",
+    );
+    expect(restricted(msgs)).toBe(true);
+  });
+
+  it('await import() of the manifest is restricted too', async () => {
+    const msgs = await messagesFor(
+      'lib/ai/prompt.ts',
+      "export async function x() { const m = await import('@/lib/eval/manifest'); return m.itemsIn('blind'); }\n",
+    );
+    expect(restricted(msgs)).toBe(true);
+  });
+});
+
+describe('R7/F-2 · the fixture server answers only from the development partition', () => {
+  it('matchItem filters on partition before it can match a label', () => {
+    const src = readFileSync(path.join(process.cwd(), 'scripts/ai-fixture-server.mjs'), 'utf8');
+    expect(src).toMatch(/partition\s*!==\s*'development'/);
+  });
+
+  it('and it cannot match a blind item, driven through the real matcher', async () => {
+    const mod = await import('@/scripts/ai-fixture-server.mjs');
+    const corpus = mod.loadCorpus();
+    const blind = corpus.items.filter((i) => i.partition === 'blind' && i.labels?.length);
+    expect(blind.length).toBeGreaterThan(0);
+    for (const item of blind) {
+      // Feed the matcher the item's own label values — the strongest possible
+      // signal. It must still refuse, because the partition is checked first.
+      const text = item.labels.map((l) => l.value).join(' ');
+      expect(mod.matchItem(corpus, text), `${item.id} must not match`).toBeNull();
+    }
+  });
+});
