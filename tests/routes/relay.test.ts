@@ -17,6 +17,7 @@ const workers = {
   sweeperPass: vi.fn(),
   sendPipelineWork: vi.fn(),
   lookupLineage: vi.fn(),
+  releaseDeferredWork: vi.fn(),
 };
 vi.mock('@/lib/hc/workers', () => workers);
 
@@ -53,6 +54,7 @@ beforeEach(async () => {
   });
   workers.sendPipelineWork.mockResolvedValue(undefined);
   workers.lookupLineage.mockResolvedValue({ circle_id: CIRCLE, channel: 'email' });
+  workers.releaseDeferredWork.mockResolvedValue(0);
   savedEnv.HC_WORKER_KEY = process.env.HC_WORKER_KEY;
   savedEnv.CRON_SECRET = process.env.CRON_SECRET;
   process.env.HC_WORKER_KEY = WORKER_KEY;
@@ -139,7 +141,12 @@ describe('B5 · the outbox leg: drain → enqueue → ack, at-least-once', () =>
     expect(workers.outboxAck).toHaveBeenCalledWith(['ob-5']);
   });
 
-  it('the 4B stages present in the pass are eager-fired once each; the extract seam is not', async () => {
+  // 5B B7 AMENDS this row. The 4B seam was "extract/interpret are enqueued
+  // and never fired, because nothing consumes them". Both are consumed now,
+  // so the assertion inverts: every stage present in a pass is fired once,
+  // extract and interpret included. Amending it rather than deleting it keeps
+  // the flip legible where the seam was recorded.
+  it('EVERY stage present in the pass is eager-fired once each — the seam is consumed', async () => {
     workers.outboxDrain.mockResolvedValueOnce([
       { outboxId: 'ob-6', arrivalId: 'a-6', stage: 'gate' },
       { outboxId: 'ob-7', arrivalId: 'a-7', stage: 'gate' },
@@ -147,7 +154,10 @@ describe('B5 · the outbox leg: drain → enqueue → ack, at-least-once', () =>
     ]);
     await route.POST(post());
     const fired = fetchMock.mock.calls.map((c) => String((c as unknown as [string])[0]));
-    expect(fired).toEqual(['http://local.test/api/worker/gate']);
+    expect(fired.sort()).toEqual([
+      'http://local.test/api/worker/extract',
+      'http://local.test/api/worker/gate',
+    ]);
   });
 });
 
@@ -197,5 +207,71 @@ describe('B5 · the sweeper leg: the advisory listing becomes work', () => {
       circle_id: null,
       channel: null,
     });
+  });
+});
+
+// ============================================================================
+// 5B B7 · The relay flip, and D13's backlog (slice-5 plan B7; ADR-0019 D13;
+// WRK-02).
+//
+// D13 had the worker DEFER extract/interpret messages (pgmq.set_vt, +1 h),
+// never consumed and never lost, because slice 5's workers did not exist. They
+// do now. The defer branch is gone from the pipeline vocabulary (B4/B5), the
+// relay fires the new stages like any other — and the backlog those deferrals
+// built is RELEASED rather than waited out: a message pushed an hour into the
+// future would otherwise sit there for up to an hour after the seam closed,
+// which is a delay with no reason left behind it.
+// ============================================================================
+
+describe('5B B7 · the deferred backlog is released, not waited out', () => {
+  it('a relay pass releases deferred pipeline work before it drains anything', async () => {
+    workers.releaseDeferredWork.mockResolvedValueOnce(3);
+    const res = await route.POST(post());
+    expect(res.status).toBe(200);
+    expect(workers.releaseDeferredWork).toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.released).toBe(3);
+  });
+
+  it('releasing nothing is the steady state, and says so quietly', async () => {
+    workers.releaseDeferredWork.mockResolvedValueOnce(0);
+    const res = await route.POST(post());
+    const body = await res.json();
+    expect(body.released).toBe(0);
+  });
+
+  it('a release failure never costs the pass — the backlog waits out its vt instead', async () => {
+    workers.releaseDeferredWork.mockRejectedValueOnce(new Error('pgmq hiccup'));
+    const res = await route.POST(post());
+    expect(res.status).toBe(200);
+    // The outbox and sweeper legs still ran.
+    expect(workers.outboxDrain).toHaveBeenCalled();
+    expect(workers.sweeperPass).toHaveBeenCalled();
+  });
+});
+
+describe('5B B7 · the sweeper is stage-agnostic — ASSERTED, not assumed', () => {
+  it('a requeue listing naming extract or interpret is enqueued and fired', async () => {
+    workers.sweeperPass.mockResolvedValueOnce({
+      expired_leases: 2,
+      terminalized: [],
+      requeue: [
+        { arrival_id: 'a-ex', stage: 'extract' },
+        { arrival_id: 'a-in', stage: 'interpret' },
+      ],
+      stuck: [],
+      queue_age_alert: false,
+    });
+    await route.POST(post());
+    const sent = workers.sendPipelineWork.mock.calls.map((c) => c[0]);
+    expect(sent).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ arrival_id: 'a-ex', stage: 'extract' }),
+        expect.objectContaining({ arrival_id: 'a-in', stage: 'interpret' }),
+      ]),
+    );
+    const fired = fetchMock.mock.calls.map((c) => String((c as unknown as [string])[0]));
+    expect(fired).toContain('http://local.test/api/worker/extract');
+    expect(fired).toContain('http://local.test/api/worker/interpret');
   });
 });
