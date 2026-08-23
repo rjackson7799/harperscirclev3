@@ -402,36 +402,66 @@ describe('5B B6 · the stage-2 duplicate cites the document it matched', () => {
     expect(html).toMatch(/already filed for this person/i);
   });
 
-  it('the arrivals query NEVER selects an ungranted column', async () => {
-    // The regression the local gate caught: ONE ungranted column in the
-    // select turns "permission denied for column" into an EMPTY INBOX for
-    // every caller, because supabase-js answers with an error instead of
-    // rows and the page's own empty branch takes over. Asserted on the
-    // select STRING - a render assertion cannot tell "no arrivals" from
-    // "the query was refused", which is exactly why this shipped past the
-    // unit suite and was caught by browser truth.
+  // AMENDED at round 16 (Q-A, R5/F-4), argued in place.
+  //
+  // This guard forbade the literal `duplicate_of_document_id` in a `.select()`
+  // string, because the column was NOT granted and naming it emptied the whole
+  // Care Inbox. M7 grants it, so the premise is gone — and R5/F-4 showed the
+  // guard was the wrong SHAPE regardless: it was a denylist of one literal
+  // over `.select()` arguments, while Postgres refuses on `where` and
+  // `order by` references too, which it never read.
+  //
+  // It becomes an ALLOWLIST derived from the grant. Every column this page
+  // names, in any clause, must be one `authenticated` actually holds — the
+  // same exact set pgTAP 057 pins from the DB side, so the two cannot drift
+  // apart without one of them going red.
+  it('every column the arrivals query names is one authenticated holds', async () => {
+    const GRANTED = new Set([
+      'id', 'circle_id', 'subject_id', 'parent_arrival_id', 'channel', 'state',
+      'received_at', 'storage_key', 'content_sha256', 'mime_declared',
+      'mime_detected', 'byte_size', 'page_count', 'sender_address',
+      'sender_display_name', 'message_id', 'auth_result', 'scan_verdict',
+      'scan_at', 'cancelled_by', 'cancelled_at', 'ingest_idempotency_key',
+      'deleted_at', 'purge_at', 'expires_at', 'duplicate_of_document_id',
+    ]);
     parents = [stage2Parent()];
     await renderInbox();
-    const selects = from.mock.results
-      .flatMap((r) => {
-        const proxy = r.value as { select?: { mock?: { calls: unknown[][] } } };
-        return proxy?.select?.mock?.calls ?? [];
-      })
-      .map((c) => String(c[0]));
-    expect(selects.length).toBeGreaterThan(0);
-    for (const select of selects) {
-      expect(select).not.toContain('duplicate_of_document_id');
+    const named = new Set<string>();
+    type Mocked = Record<string, { mock?: { calls: unknown[][] } } | undefined>;
+    for (const r of from.mock.results) {
+      const proxy = r.value as Mocked;
+      for (const call of proxy?.select?.mock?.calls ?? []) {
+        for (const col of String(call[0] ?? '').split(',')) named.add(col.trim());
+      }
+      // Postgres refuses on WHERE and ORDER BY references too — the half the
+      // old denylist never read (round-16 R5/F-4, proven live against the DB).
+      for (const m of ['eq', 'is', 'in', 'order']) {
+        for (const call of proxy?.[m]?.mock?.calls ?? []) {
+          const col = String(call[0] ?? '').trim();
+          if (col) named.add(col);
+        }
+      }
     }
+    named.delete('');
+    const ungranted = [...named].filter((c) => !GRANTED.has(c));
+    expect(ungranted, `these are refused per-column: ${ungranted.join(', ')}`).toEqual([]);
   });
 
   it('the WHY renders through ProvenanceLine (Q6: first consumer, decided red-first)', async () => {
-    // The suspicion is downstream of AI-extracted values - document type,
-    // date and provider are exactly what M5 matched on - so showing where it
-    // came from is 8.6 provenance even without the matched document's name.
+    // The suspicion is downstream of AI-extracted values, so showing where it
+    // came from is §8.6 provenance.
+    //
+    // AMENDED at round 16 (R5/F-5), argued in place. The old wording named
+    // "type, date AND provider" — a three-way conjunction — while
+    // hc.detect_stage2_duplicate requires category + document_date + **≥1 of**
+    // provider / amount / policy_number. Two EOBs matched on AMOUNT alone,
+    // from different providers, were told the providers matched. The property
+    // this leg exists for — that the WHY renders through ProvenanceLine — is
+    // unchanged; only the claim is corrected to the contract M5 implements.
     parents = [stage2Parent()];
     const html = await renderInbox();
     expect(html).toContain('class="provenance"');
-    expect(html).toMatch(/type, date and provider read from this document/i);
+    expect(html).toMatch(/type and date, and at least one detail read from this document/i);
   });
 
   it('both resolutions are offered, and the stage-2 copy says what each DOES', async () => {
@@ -553,8 +583,12 @@ describe('Q-A/R5-F5 · the stage-2 copy names the matched document', () => {
     ];
     documents = [{ id: DOC_ID, title: 'Discharge summary', filed_at: '2026-07-12T10:00:00Z' }];
     const html = await renderInbox();
-    expect(html).toContain('Discharge summary');
-    expect(html).toMatch(/Jul 12/);
+    // The plan's B6 example is "This looks like the discharge summary you
+    // filed on Jul 12" — the title reads lowercase mid-sentence. The date is
+    // whatever the house formatter produces ("July 12"), not the plan's
+    // illustrative abbreviation: formatShortDate is the authority, and the
+    // rest of the app reads the same way.
+    expect(html).toContain('This looks like the discharge summary you filed on July 12');
   });
 
   it('falls back to the honest generic line when no document can be read', async () => {
