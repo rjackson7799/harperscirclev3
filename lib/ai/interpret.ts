@@ -30,7 +30,7 @@ import type { ExtractedFact } from '@/lib/ai/extract';
  */
 
 export type DraftProposal = {
-  kind: 'document' | 'task' | 'timeline_event' | 'profile_fact' | 'conflict' | 'episode';
+  kind: 'document' | 'task' | 'profile_fact' | 'conflict';
   title: string;
   summary: string;
   domain: string | null;
@@ -59,14 +59,7 @@ export type InterpretInput = {
   now?: number;
 };
 
-const KINDS = new Set([
-  'document',
-  'task',
-  'timeline_event',
-  'profile_fact',
-  'conflict',
-  'episode',
-]);
+const KINDS = new Set(['document', 'task', 'profile_fact', 'conflict']);
 const DOMAINS = new Set(['memories', 'health', 'schedule', 'documents', 'finances']);
 const CATEGORIES = new Set([
   'medical',

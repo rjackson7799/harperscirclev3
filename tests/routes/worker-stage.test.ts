@@ -340,18 +340,36 @@ describe('B4 · gate — the SND-01 machinery; uploads pass, strangers hold', ()
 });
 
 describe('B4 · the queue is shared; the seam and mixed batches stay honest', () => {
-  // 5B B4 amends this row. The Q7 seam was "extract/interpret are DEFERRED,
-  // never consumed and never lost"; extract is now CONSUMED, so the assertion
-  // moves to interpret — which B5 consumes in turn, at which point the defer
-  // branch goes entirely (B7). Amending the assertion as each half lands is
-  // the honest shape: the seam closes in two steps and the suite says so.
-  it('interpret messages are still DEFERRED at B4 — not consumed, not lost', async () => {
+  // 5B B4/B5 amend this row. The Q7 seam was "extract/interpret are DEFERRED,
+  // never consumed and never lost". Both are CONSUMED now, so the assertion
+  // inverts: NOTHING in the pipeline vocabulary defers any more, and an
+  // unknown stage — the only thing the branch can still see — is the one case
+  // left. Amending the assertion as each half landed, rather than deleting
+  // it, is what keeps the seam's closure legible in the suite.
+  it('no pipeline stage defers any more — the Q7 seam is CLOSED', async () => {
     workers.readPipelineWork.mockResolvedValueOnce([
       { msg_id: 7, message: { circle_id: CIRCLE, arrival_id: ARRIVAL, stage: 'interpret', channel: 'email' } },
     ]);
+    workers.claimStage.mockResolvedValueOnce({
+      result: 'already_advanced',
+      leaseId: null,
+      attemptNo: null,
+      deadline: null,
+    });
     const res = await route.POST(req('store'), ctx('store'));
     expect(res.status).toBe(200);
-    expect(workers.deferPipelineWork).toHaveBeenCalledWith(7);
+    expect(workers.deferPipelineWork).not.toHaveBeenCalled();
+    expect(workers.claimStage).toHaveBeenCalledWith(ARRIVAL, 'interpret');
+    expect(workers.archivePipelineWork).toHaveBeenCalledWith(7);
+  });
+
+  it('an UNKNOWN stage is still deferred, never consumed and never lost', async () => {
+    workers.readPipelineWork.mockResolvedValueOnce([
+      { msg_id: 9, message: { circle_id: CIRCLE, arrival_id: ARRIVAL, stage: 'transcribe', channel: 'email' } },
+    ]);
+    const res = await route.POST(req('store'), ctx('store'));
+    expect(res.status).toBe(200);
+    expect(workers.deferPipelineWork).toHaveBeenCalledWith(9);
     expect(workers.archivePipelineWork).not.toHaveBeenCalled();
     expect(workers.claimStage).not.toHaveBeenCalled();
   });

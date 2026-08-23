@@ -5,6 +5,8 @@ import {
   claimStage,
   deferPipelineWork,
   finalizeExtraction,
+  finalizeInterpretation,
+  recordContextFor,
   finalizeScan,
   finalizeStore,
   lookupChannel,
@@ -33,8 +35,10 @@ import { sniffMime } from '@/lib/pipeline/mime';
 import { normalizeArrival, type NormalizeResult } from '@/lib/pipeline/render';
 import { extFor, renderStagingKey } from '@/lib/pipeline/page-keys';
 import { extractFromArrival } from '@/lib/ai/extract';
+import { interpretArrival, type DraftProposal } from '@/lib/ai/interpret';
 import { EXTRACT_MODEL, PROMPT_VERSION, configurationHash } from '@/lib/ai/config';
 import { effectiveRiskClass, loadBands } from '@/lib/extraction/bands';
+import { riskClassFor } from '@/lib/extraction/fields';
 
 /**
  * POST /api/worker/[stage] — the pipeline workers (TSD §1.4, §4.3;
@@ -86,7 +90,7 @@ const ROUTE_BUDGET_MS = 300_000;
 const PER_MESSAGE_RESERVE_MS = 20_000;
 
 const BATCH = 10;
-const STAGES = new Set(['store', 'scan', 'gate', 'extract']);
+const STAGES = new Set(['store', 'scan', 'gate', 'extract', 'interpret']);
 
 function secretMatches(supplied: string | null, expected: string): boolean {
   if (!supplied) return false;
@@ -396,6 +400,168 @@ async function processExtract(
   return r + ':' + facts.length + 'f' + (answer.dropped ? '/' + answer.dropped + 'dropped' : '');
 }
 
+/**
+ * One current profile_fact per field, as the record context reported it.
+ * Read defensively: a malformed payload must narrow what the worker will
+ * treat as "already on the record", never widen it.
+ */
+type CurrentFact = { id: string; value: string; risk: string };
+
+function currentFacts(context: unknown): Map<string, CurrentFact> {
+  const byField = new Map<string, CurrentFact>();
+  const rows = (context as { facts?: { rows?: unknown } } | null)?.facts?.rows;
+  if (!Array.isArray(rows)) return byField;
+  for (const row of rows) {
+    const r = row as { id?: unknown; field?: unknown; value?: unknown; risk_class?: unknown };
+    if (typeof r.id !== 'string' || typeof r.field !== 'string') continue;
+    byField.set(r.field, {
+      id: r.id,
+      value: typeof r.value === 'string' ? r.value : JSON.stringify(r.value ?? null),
+      risk: typeof r.risk_class === 'string' ? r.risk_class : 'high',
+    });
+  }
+  return byField;
+}
+
+/**
+ * §4.8, at the worker layer: **a change to an existing value is ALWAYS a
+ * conflict, never a quiet update.**
+ *
+ * The prompt says so too, but a prompt is not a guarantee. Here it is
+ * mechanical: a `profile_fact` proposal for a field the record already
+ * carries with a DIFFERENT value is converted into a conflict quoting that
+ * fact — which is also what hc.draft_proposal needs, since a conflict with
+ * no parents is refused and its taint is the union of theirs. A field the
+ * record does not carry stays a profile_fact. An UNCHANGED value proposes
+ * nothing: a restatement is not a proposal, and putting one in front of a
+ * person costs them attention they will need for the real ones.
+ *
+ * Kinds beyond document/task/profile_fact/conflict are dropped: the DB has
+ * timeline_event and episode, but neither has a payload this slice can map
+ * (a timeline_event needs a `kind` for its own-domain, which nothing here
+ * produces). Recorded as slice-6 scope rather than half-mapped.
+ */
+const MAPPABLE_KINDS = new Set(['document', 'task', 'profile_fact', 'conflict']);
+
+function draftPayloads(
+  proposals: DraftProposal[],
+  context: unknown,
+  callAnomalies: string[],
+): Array<{ kind: string; payload: Record<string, unknown> }> {
+  const current = currentFacts(context);
+  const drafted: Array<{ kind: string; payload: Record<string, unknown> }> = [];
+
+  for (const p of proposals) {
+    let kind: string = p.kind;
+    let parentId: string | null = null;
+
+    if (kind === 'profile_fact' && p.field) {
+      const existing = current.get(p.field);
+      if (existing) {
+        if (existing.value === (p.value ?? '')) continue; // a restatement
+        kind = 'conflict';
+        parentId = existing.id;
+      }
+    } else if (kind === 'conflict') {
+      // The adapter already refused a conflict naming an id the call was not
+      // given; this re-derives the parent from the record rather than
+      // trusting the value through a second hop.
+      const byId = [...current.values()].find((c) => c.id === p.conflictsWithFactId);
+      if (!byId) continue;
+      parentId = byId.id;
+    }
+
+    if (!MAPPABLE_KINDS.has(kind)) continue;
+    if (kind === 'profile_fact' && !p.domain) continue;
+    if (kind === 'document' && !p.category) continue;
+
+    const anomalyFlags = [...new Set([...callAnomalies, ...p.anomalyFlags])];
+    const payload: Record<string, unknown> = {
+      title: p.title,
+      summary_text: p.summary,
+      anomaly_flags: anomalyFlags,
+    };
+    if (p.field) payload.field = p.field;
+    if (p.value !== null) payload.value = p.value;
+    if (p.dueOn) payload.due_on = p.dueOn;
+    if (p.occurredOn) payload.occurred_on = p.occurredOn;
+    if (kind === 'profile_fact') {
+      payload.domain = p.domain;
+      // §6.4: a high-risk field is high-risk however confident anyone is.
+      payload.risk_class = riskClassFor(p.field ?? '', p.value);
+    }
+    if (kind === 'document') payload.category = p.category;
+    if (kind === 'conflict' && parentId) {
+      payload.parents = [{ type: 'profile_fact', id: parentId }];
+    }
+    drafted.push({ kind, payload });
+  }
+  return drafted;
+}
+
+async function processInterpret(msg: PipelineMessage): Promise<string> {
+  // ING-07: the in-flight transition (extracted → interpreting) happens AT
+  // the claim, so one lease spans the stage. M3 REFUSES the run identity off
+  // the extract stage — no stage borrows an identity it does not record.
+  const claim = await claimStage(msg.arrival_id, 'interpret');
+  if (claim.result !== 'claimed') return claim.result;
+  const lease = claim.leaseId!;
+
+  // §3.10's one narrow window. The signature cannot express another subject
+  // or another circle, which is why interpretation's boundary is structural
+  // rather than prompted.
+  const context = await recordContextFor(msg.arrival_id);
+
+  const carried = msg.facts ?? [];
+  const operatorNotes: string[] = [];
+  let documentText: string | null = null;
+
+  if (carried.length === 0) {
+    // A re-queued work item (a resolved stage-2 duplicate, a sweeper rescue)
+    // carries no facts, because hc_pipeline has no read path to what the
+    // extract attempt published. The document itself is always available, so
+    // the pass reads THAT — and the operator channel says so plainly rather
+    // than letting a thinner answer look like a normal one.
+    const circleId = await resolveCircle(msg);
+    const bytes = circleId ? await readArtifactBytes(circleId, msg.arrival_id) : null;
+    if (bytes) {
+      const normalized = normalizeArrival(bytes, sniffMime(bytes));
+      if (normalized.outcome === 'rendered') documentText = normalized.text;
+    }
+    operatorNotes.push(
+      'This work item carried no extracted facts. Read the document text below directly; do not assume a field is absent from the record because it is missing here.',
+    );
+  }
+
+  const answer = await interpretArrival({
+    recordContext: context,
+    facts: carried,
+    documentText,
+    operatorNotes,
+    deadlineIso: claim.deadline,
+  });
+
+  if (answer.outcome !== 'ok') {
+    if (answer.outcome === 'unavailable') return 'interpret_unavailable_retry';
+    const reason = answer.outcome === 'refusal' ? 'provider_refusal' : 'provider_error';
+    const r = await advanceArrival(
+      msg.arrival_id,
+      'interpreting',
+      'extract_failed',
+      lease,
+      reason,
+    );
+    return answer.outcome + ':' + r;
+  }
+
+  const drafted = draftPayloads(answer.data.proposals, context, answer.data.anomalies);
+  const r = await finalizeInterpretation(msg.arrival_id, lease, drafted);
+  // The exit seam (Q7): proposals REST at `pending`. Nothing is enqueued —
+  // the review screen, item-level approval and the receipt are slice 6's, so
+  // `Needs you` labels a true state whose acting surface is one slice away.
+  return r + ':' + drafted.length + 'p';
+}
+
 export async function POST(
   req: Request,
   ctx: { params: Promise<{ stage: string }> },
@@ -434,6 +600,7 @@ export async function POST(
       if (msg.stage === 'store') outcome = await processStore(msg, origin, key);
       else if (msg.stage === 'scan') outcome = await processScan(msg, origin, key);
       else if (msg.stage === 'extract') outcome = await processExtract(msg, origin, key);
+      else if (msg.stage === 'interpret') outcome = await processInterpret(msg);
       else outcome = await processGate(msg);
       await archivePipelineWork(work.msg_id);
       processed.push({ arrival_id: msg.arrival_id, stage: msg.stage, outcome });

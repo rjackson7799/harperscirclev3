@@ -46,14 +46,15 @@ const DOC_CATEGORIES = [
   'other',
 ] as const;
 
-const PROPOSAL_KINDS = [
-  'document',
-  'task',
-  'timeline_event',
-  'profile_fact',
-  'conflict',
-  'episode',
-] as const;
+/**
+ * The kinds slice 5 can MAP. `hc.proposal_kind` also has `timeline_event` and
+ * `episode`, and the DB is ready for both — but a timeline_event's own-domain
+ * needs a `kind` (medical/care/admin/memory) that nothing in this schema
+ * produces, and an episode is a grouping the review screen has no surface for
+ * yet. Asking the model for proposals the worker would then drop wastes
+ * tokens and, worse, makes the drop invisible. Recorded as slice-6 scope.
+ */
+const PROPOSAL_KINDS = ['document', 'task', 'profile_fact', 'conflict'] as const;
 
 const DOMAINS = ['memories', 'health', 'schedule', 'documents', 'finances'] as const;
 
