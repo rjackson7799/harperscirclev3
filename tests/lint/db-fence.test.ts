@@ -159,3 +159,120 @@ describe('B2 · the storage plane is fenced to the pipeline surfaces', () => {
     expect(restricted(chan)).toBe(true);
   });
 });
+
+// ============================================================================
+// 5B B3 · The provider adapter family (slice-5 plan B3; TSD §1.9's
+// one-adapter G3 posture). ONE fenced family reaches an AI provider, so
+// disqualifying a provider stays a swap rather than a rebuild — and, more to
+// the point, no member-facing surface can dispatch a family's document by
+// accident. The worker routes and the eval harness are the two callers.
+// ============================================================================
+
+describe('5B B3 · lib/ai is fenced to the dispatchers', () => {
+  it('an app page reaching the provider reds', async () => {
+    const msgs = await messagesFor(
+      'app/(app)/[circle]/inbox/page.tsx',
+      "import { extractFromArrival } from '@/lib/ai/extract';\nexport const x = extractFromArrival;\n",
+    );
+    expect(restricted(msgs)).toBe(true);
+  });
+
+  it('lib/hc may NOT reach the provider — the typed DB wrappers never dispatch', async () => {
+    const msgs = await messagesFor(
+      'lib/hc/inbox.ts',
+      "import { callProvider } from '@/lib/ai/client';\nexport const x = callProvider;\n",
+    );
+    expect(restricted(msgs)).toBe(true);
+  });
+
+  it('a relative import does not slip the provider fence', async () => {
+    const msgs = await messagesFor(
+      'lib/mail/outbound.ts',
+      "import { callProvider } from '../ai/client';\nexport const x = callProvider;\n",
+    );
+    expect(restricted(msgs)).toBe(true);
+  });
+
+  it('the worker routes may dispatch — they are the surface that does', async () => {
+    const msgs = await messagesFor(
+      'app/api/worker/[stage]/route.ts',
+      "import { extractFromArrival } from '@/lib/ai/extract';\nexport const x = extractFromArrival;\n",
+    );
+    expect(restricted(msgs)).toBe(false);
+  });
+
+  it('the eval harness may dispatch — the SOLE real-key path', async () => {
+    const msgs = await messagesFor(
+      'scripts/eval/run.mjs',
+      "import { EXTRACT_MODEL } from '@/lib/ai/config';\nexport const x = EXTRACT_MODEL;\n",
+    );
+    expect(restricted(msgs)).toBe(false);
+  });
+
+  it('lib/ai may reach its own modules but not the DB channels', async () => {
+    const own = await messagesFor(
+      'lib/ai/extract.ts',
+      "import { callProvider } from '@/lib/ai/client';\nexport const x = callProvider;\n",
+    );
+    expect(restricted(own)).toBe(false);
+    const chan = await messagesFor(
+      'lib/ai/extract.ts',
+      "import { withRequestRole } from '@/lib/db/request-role';\nexport const x = withRequestRole;\n",
+    );
+    expect(restricted(chan)).toBe(true);
+  });
+});
+
+// ============================================================================
+// 5B B1 · The G9 corpus's BLIND partition (Q5 SETTLED). Scored eval runs read
+// it; prompt and schema iteration must not, so the bands are never measured
+// on their own development set. Nothing here is secret — the fence is what
+// makes "blind" a property of the TREE rather than of anyone's discipline.
+// ============================================================================
+
+describe('5B B1 · the BLIND partition is fenced to the scored readers', () => {
+  it('the worker routes may NOT read the blind partition', async () => {
+    const msgs = await messagesFor(
+      'app/api/worker/[stage]/route.ts',
+      "import { blindCorpus } from '@/lib/eval/blind';\nexport const x = blindCorpus;\n",
+    );
+    expect(restricted(msgs)).toBe(true);
+  });
+
+  it('the adapter may NOT read the blind partition — prompt iteration lives there', async () => {
+    const msgs = await messagesFor(
+      'lib/ai/prompt.ts',
+      "import { blindCorpus } from '@/lib/eval/blind';\nexport const x = blindCorpus;\n",
+    );
+    expect(restricted(msgs)).toBe(true);
+  });
+
+  it('an adapter TEST may not reach it either — only the corpus suite may', async () => {
+    const adapterTest = await messagesFor(
+      'tests/ai/adapter.test.ts',
+      "import { blindCorpus } from '@/lib/eval/blind';\nexport const x = blindCorpus;\n",
+    );
+    expect(restricted(adapterTest)).toBe(true);
+    const corpusTest = await messagesFor(
+      'tests/eval/corpus.test.ts',
+      "import { blindCorpus } from '@/lib/eval/blind';\nexport const x = blindCorpus;\n",
+    );
+    expect(restricted(corpusTest)).toBe(false);
+  });
+
+  it('the eval harness may read it — that is what it is for', async () => {
+    const msgs = await messagesFor(
+      'scripts/eval/run.mjs',
+      "import { blindCorpus } from '@/lib/eval/blind';\nexport const x = blindCorpus;\n",
+    );
+    expect(restricted(msgs)).toBe(false);
+  });
+
+  it('the DEVELOPMENT partition stays reachable from the ordinary places', async () => {
+    const msgs = await messagesFor(
+      'tests/ai/adapter.test.ts',
+      "import { developmentCorpus } from '@/lib/eval/corpus';\nexport const x = developmentCorpus;\n",
+    );
+    expect(restricted(msgs)).toBe(false);
+  });
+});
