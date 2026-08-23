@@ -754,9 +754,9 @@ says so in the argument.
 
 | # | Sev | Verdict | Argument |
 |---|---|---|---|
-| F-1 | MAJOR | **OWED** | The interpret arm calls `riskClassFor` directly, bypassing the band mode, so a `profile_fact` proposal can be drafted `standard` while all-high is in force — and `hc.approve_proposal` gates `confirm_high` on exactly that value. Real, and the fix is one parameter. Not taken here only because it lands in `draftPayloads`, which D1's fix already moved; bundling would have muddied that red→green. Next commit on this branch. |
-| F-2 | MAJOR | **OWED** | `containsInstruction` matches `'do not'` with a space, so `"do-not-resuscitate"` — the string the comment names as the case it catches — returns `standard`. The comment states the opposite of the behaviour. Fix with F-1 (same file, same guard). |
-| F-3 | MINOR | **OWED** | Inflections (`Stopping`, `Discontinued`) escape, and the stated justification (`restarted`/`household`) is served by the *leading* boundary alone, so the trailing test buys nothing and costs the inflections. A `(s|ed|ing)?` allowance fixes it without reviving the false positives. |
+| F-1 | MAJOR | **FIXED** | `draftPayloads` now takes the `BandMode` and calls `effectiveRiskClass`; `processInterpret` loads bands exactly as `processExtract` does. The `riskClassFor` import is gone from the route entirely, so the catalogue is reachable from the worker ONLY through the band mode — lint proved the bypass was the sole user. `0ae61f3` RED → `681e839` GREEN. |
+| F-2 | MAJOR | **FIXED** | `containsInstruction` collapses any run of non-alphanumerics to one space before searching, so the phrase matches however it is written — `"do not"`, `"do-not"`, `"do  not"`, or split across a line break. Same commits as F-1. |
+| F-3 | MINOR | **FIXED** | The reviewer's analysis was exactly right: the trailing boundary test was doing no work. Dropping it catches `Stopping`/`Stopped`/`Starting`/`Holding`/`Discontinued` while the LEADING boundary still excludes `restarted` and `household` — both negatives are asserted in the same test so a future widening cannot revive them. Same commits as F-1. |
 | F-4 | MINOR | **OWED** | `typeof null === 'object'`, so `fields: null` passes the shape guard and throws at the field loop — the one malformed shape that does not fail closed, and it lands in an unacked-redelivery poison loop. One `!artifact.fields ||`. Reachability requires a signed artifact, hence not urgent. |
 | F-5 | MINOR | **ACCEPTED-NOTE** | `confidenceBand` has no consumer, no test, and its docblock's "slice 5 records the answer" is false — nothing records a band. ADR-0022's docblock is corrected rather than the function deleted: slice 6 is its consumer and the `null`-means-two-things ambiguity should be resolved *before* that screen is written, not after. |
 | F-6 | MINOR | **OWED** | `HC_BANDS_ARTIFACT` appears in exactly one file and in no ops row, so an owner can complete every G9 checklist step and still run all-high forever, with no log line reporting the band mode. Add the row and a mode log. |
@@ -943,11 +943,11 @@ G12 and the deploy-level rows are untouched.**
 
 ## Consequences
 
-- **Seven BLOCKERs are fixed on the branch**, red→green, each with its
+- **Seven BLOCKERs and three further MAJOR/MINOR findings are fixed on the branch**, red→green, each with its
   failure signature in the red commit message: the record-context key
   (D1), the DPI geometry and the pixel ceiling (D2), the binary adapter
   (D3), the senders crash (D4), the tautological hash pin (D5), the
-  model allowlist (D6), and the three fence bypasses (D7).
+  model allowlist (D6), and the three fence bypasses (D7) — plus R1/F-1/F-2/F-3, the interpret arm's risk-class bypass and the §6.5 keyword rule, at `0ae61f3`/`681e839`.
 - **Three BLOCKERs are escalated** and cannot be closed here: the AGPL
   question, the corpus, and — jointly with Q-A — the migration bound.
 - **§4.8's conflict arm now runs.** It did not before D1, which means
