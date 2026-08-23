@@ -106,9 +106,20 @@ export type NormalizeOptions = {
 };
 
 /**
- * mupdf sizes a page in POINTS at 96 dpi on the image path, so a page point
- * is 0.75 stored pixels. Converting once, here, is why every rule above can
- * be stated in pixels.
+ * mupdf sizes an image page as `pixels x 72 / declared_resolution`, and falls
+ * back to 96 dpi — a page point being 0.75 stored pixels — ONLY when the image
+ * declares no resolution at all.
+ *
+ * That fallback is what this constant is. It is NOT a property of the image
+ * path (round-16 R3/F-1): a scanner or a phone "Scan to JPEG" writes a density
+ * tag, and at 300 dpi a 1928x2576 source reports 617x824 of "declared
+ * geometry" — which would collapse `nativeLong` and render a photo 3.1x below
+ * its own resolution, with no ceiling fired and nothing logged.
+ *
+ * So it is used only where it is right: as the points->pixels proxy for a PDF
+ * page, whose points are real typographic points and which carries no stored
+ * raster at all. For an image, `storedPixels()` reads the true dimensions out
+ * of the header instead.
  */
 const PT_PER_PX = 0.75;
 
@@ -135,10 +146,80 @@ function isTextual(mime: string): boolean {
   return mime === 'text/plain' || mime === 'text/html' || mime === 'message/rfc822';
 }
 
-/** Long edge in pixels of a page's DECLARED geometry (orientation applied). */
-function declaredPixels(page: mupdf.Page): { w: number; h: number } {
+/**
+ * The TRUE stored pixel dimensions of a raster, read from its header — before
+ * any decode, which is what makes the ceilings a property of the code path
+ * rather than an ordering someone has to remember (the spike's legs 3/4/6).
+ *
+ * Deliberately parsed here rather than via `new mupdf.Image(bytes)`: that
+ * constructor reports the STORED frame with EXIF ignored, and §6.4's citation
+ * space is the page as a person SEES it. `render.ts` only ever opens
+ * documents, and this keeps that true (round-16 R3/F-10 verified it holds).
+ *
+ * Returns null for a container this cannot read (TIFF, and anything else),
+ * in which case the caller falls back to the declared-points proxy.
+ */
+function storedPixels(bytes: Uint8Array, mime: string): { w: number; h: number } | null {
+  const b = bytes;
+  if (mime === 'image/png') {
+    // IHDR is fixed at offset 16: width, height, big-endian u32.
+    if (b.length < 24) return null;
+    const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    return { w: dv.getUint32(16), h: dv.getUint32(20) };
+  }
+  if (mime === 'image/gif') {
+    // Logical screen descriptor at offset 6: width, height, little-endian u16.
+    if (b.length < 10) return null;
+    return { w: b[6] | (b[7] << 8), h: b[8] | (b[9] << 8) };
+  }
+  if (mime !== 'image/jpeg') return null;
+  // Walk the segment table to the frame header. SOF0..SOF15 carry the real
+  // dimensions; C4 (DHT), C8 (JPG) and CC (DAC) share the range and do not.
+  let i = 2;
+  while (i + 9 < b.length) {
+    if (b[i] !== 0xff) {
+      i++;
+      continue;
+    }
+    const marker = b[i + 1];
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      i += 2;
+      continue;
+    }
+    const len = (b[i + 2] << 8) | b[i + 3];
+    if (len < 2) return null;
+    const isSof =
+      marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isSof) return { h: (b[i + 5] << 8) | b[i + 6], w: (b[i + 7] << 8) | b[i + 8] };
+    if (marker === 0xda) return null; // scan data: no frame header found
+    i += 2 + len;
+  }
+  return null;
+}
+
+/**
+ * Long edge in pixels of a page's DECLARED geometry (orientation applied).
+ *
+ * For a raster this is the header's own pixel count, oriented to the frame the
+ * document path displays — EXIF 5..8 swap the axes, and the page's own bounds
+ * are the authority on which way round that landed. For a PDF page there is no
+ * stored raster, so points at 96 dpi remain the honest proxy.
+ */
+function declaredPixels(page: mupdf.Page, stored: { w: number; h: number } | null): {
+  w: number;
+  h: number;
+} {
   const [x0, y0, x1, y1] = page.getBounds();
-  return { w: (x1 - x0) / PT_PER_PX, h: (y1 - y0) / PT_PER_PX };
+  const wPt = x1 - x0;
+  const hPt = y1 - y0;
+  if (!stored || !(stored.w > 0) || !(stored.h > 0)) {
+    return { w: wPt / PT_PER_PX, h: hPt / PT_PER_PX };
+  }
+  const displayedIsPortrait = hPt > wPt;
+  const storedIsPortrait = stored.h > stored.w;
+  return displayedIsPortrait === storedIsPortrait
+    ? { w: stored.w, h: stored.h }
+    : { w: stored.h, h: stored.w };
 }
 
 export function normalizeArrival(
@@ -194,6 +275,10 @@ export function normalizeArrival(
   if (pageCount < 1) return { outcome: 'unsupported_type' };
 
   const isPdf = magic === 'application/pdf';
+  // Read once, from the header, before any page is loaded. Null for a PDF and
+  // for any raster container this cannot parse; the caller falls back to the
+  // declared-points proxy in that case.
+  const stored = isPdf ? null : storedPixels(bytes, magic);
 
   // The text layer decides born-digital vs scanned, and it is sampled from
   // the first few pages so the decision costs a fixed amount on a long scan.
@@ -249,8 +334,11 @@ export function normalizeArrival(
     }
 
     // The page-dimension ceiling, on DECLARED geometry — before the decoder
-    // allocates anything (the spike's leg 6).
-    const declared = declaredPixels(page);
+    // allocates anything (the spike's leg 6). For a raster that geometry is
+    // the header's own pixel count, NOT points scaled by a resolution the
+    // uploader chose: 80 Mpx must mean 80 Mpx whatever the file claims its
+    // dpi is (round-16 R3/F-2).
+    const declared = declaredPixels(page, isPdf ? null : stored);
     if ((declared.w * declared.h) / 1e6 > ceilings.maxPageMegapixels) {
       return { outcome: 'refused', reason: 'page_dimensions' };
     }
