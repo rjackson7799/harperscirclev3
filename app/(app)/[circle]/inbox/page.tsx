@@ -5,8 +5,9 @@ import { productStates } from '@/lib/hc/inbox';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { ProvenanceLine } from '@/components/ui/ProvenanceLine';
 import { FORWARDING_DOMAIN } from '@/lib/setup/steps';
-import { heldExpiryLabel, pastQueueAgeBound } from '@/lib/format/dates';
+import { formatShortDate, heldExpiryLabel, pastQueueAgeBound } from '@/lib/format/dates';
 
 /**
  * The Care Inbox (slice-4 plan B6; PRD §4.2.2 — the state machine IS
@@ -22,6 +23,10 @@ import { heldExpiryLabel, pastQueueAgeBound } from '@/lib/format/dates';
  *   - Held mail carries the accept-sender release and the §5.4 30-day
  *     expiry warning; duplicates carry §4.7's two human resolutions;
  *     the §4.5 member window carries cancel.
+ *   - 5B B6: §4.7 point 2 — a STAGE-2 suspect cites the FILED document it
+ *     matched, and its two resolutions do different things from stage 1's:
+ *     `different` resumes to interpret, `same_thing` attaches this arrival
+ *     to that document as an ADDITIONAL SOURCE and files nothing new.
  *   - §4.11/§13.1: anything past the 4-hour queue-age bound says
  *     plainly that reading is delayed.
  *   - First run: the forwarding address IS the content — the one §8.6
@@ -51,7 +56,25 @@ type ArrivalRow = {
   auth_result: string | null;
   scan_verdict: string | null;
   received_at: string;
+  /**
+   * ADR-0020 D6: retained after resolution by design — the trace of the
+   * question that was asked. **The pointer is not evidence the arrival is
+   * still unresolved; the STATE is** (round-15 observation 3). Every read of
+   * this column below is gated on the state, never on the column.
+   */
+  duplicate_of_document_id: string | null;
 };
+
+type FiledDocument = {
+  id: string;
+  title: string;
+  category: string;
+  filed_at: string;
+};
+
+/** The states that carry a resolution question, and which question. */
+const STAGE1 = 'duplicate_suspected';
+const STAGE2 = 'duplicate_suspected_stage2';
 
 type SubjectRow = {
   id: string;
@@ -82,7 +105,7 @@ export default async function InboxPage({
   const { data: parentData } = await supabase
     .from('arrivals')
     .select(
-      'id, state, channel, sender_address, sender_display_name, auth_result, scan_verdict, received_at',
+      'id, state, channel, sender_address, sender_display_name, auth_result, scan_verdict, received_at, duplicate_of_document_id',
     )
     .eq('circle_id', circle)
     .is('parent_arrival_id', null)
@@ -95,11 +118,12 @@ export default async function InboxPage({
   // §4.7's resolution binds to the SUSPECTED row, and a mailed duplicate
   // is a CHILD arrival — the parent's rollup label alone would name the
   // duplicate with nothing to click (the B9 gate finding).
-  const childDuplicates = new Map<string, string[]>();
+  type Suspect = { arrivalId: string; stage: 1 | 2; documentId: string | null };
+  const childSuspects = new Map<string, Suspect[]>();
   if (parents.length > 0) {
     const { data: childData } = await supabase
       .from('arrivals')
-      .select('id, parent_arrival_id, state')
+      .select('id, parent_arrival_id, state, duplicate_of_document_id')
       .eq('circle_id', circle)
       .in(
         'parent_arrival_id',
@@ -110,17 +134,59 @@ export default async function InboxPage({
       id: string;
       parent_arrival_id: string;
       state: string;
+      duplicate_of_document_id: string | null;
     }[]) {
       childCounts.set(
         child.parent_arrival_id,
         (childCounts.get(child.parent_arrival_id) ?? 0) + 1,
       );
-      if (child.state === 'duplicate_suspected') {
-        const ids = childDuplicates.get(child.parent_arrival_id) ?? [];
-        ids.push(child.id);
-        childDuplicates.set(child.parent_arrival_id, ids);
+      // Gated on the STATE. A child that resolved keeps its pointer and must
+      // not be asked again (ADR-0020 D6; round-15 observation 3).
+      if (child.state === STAGE1 || child.state === STAGE2) {
+        const list = childSuspects.get(child.parent_arrival_id) ?? [];
+        list.push({
+          arrivalId: child.id,
+          stage: child.state === STAGE2 ? 2 : 1,
+          documentId: child.state === STAGE2 ? child.duplicate_of_document_id : null,
+        });
+        childSuspects.set(child.parent_arrival_id, list);
       }
     }
+  }
+
+  const suspectsFor = (row: ArrivalRow): Suspect[] => [
+    ...(row.state === STAGE1 || row.state === STAGE2
+      ? [
+          {
+            arrivalId: row.id,
+            stage: (row.state === STAGE2 ? 2 : 1) as 1 | 2,
+            documentId: row.state === STAGE2 ? row.duplicate_of_document_id : null,
+          },
+        ]
+      : []),
+    ...(childSuspects.get(row.id) ?? []),
+  ];
+
+  // The matched documents, read under RLS like everything else. A caller who
+  // cannot see the match still gets the question — the copy degrades, the
+  // affordance does not.
+  const matchedIds = [
+    ...new Set(
+      parents
+        .flatMap((p) => suspectsFor(p))
+        .map((s) => s.documentId)
+        .filter((id): id is string => !!id),
+    ),
+  ];
+  const matched = new Map<string, FiledDocument>();
+  if (matchedIds.length > 0) {
+    const { data: docData } = await supabase
+      .from('documents')
+      .select('id, title, category, filed_at')
+      .eq('circle_id', circle)
+      .in('id', matchedIds)
+      .is('deleted_at', null);
+    for (const doc of (docData ?? []) as FiledDocument[]) matched.set(doc.id, doc);
   }
 
   const labels = await productStates(claims, parents.map((p) => p.id));
@@ -210,26 +276,39 @@ export default async function InboxPage({
                 </>
               ) : null}
 
-              {(row.state === 'duplicate_suspected'
-                ? [row.id]
-                : []
-              )
-                .concat(childDuplicates.get(row.id) ?? [])
-                .map((arrivalId) => (
-                  <form
-                    key={arrivalId}
-                    method="post"
-                    action={`/${circle}/inbox/resolve/submit`}
-                  >
-                    <input type="hidden" name="arrival_id" value={arrivalId} />
-                    <Button type="submit" name="resolution" value="different">
-                      It&apos;s different — continue
-                    </Button>{' '}
-                    <Button type="submit" name="resolution" value="same_thing" variant="quiet">
-                      Same thing — keep the original
-                    </Button>
-                  </form>
-                ))}
+              {suspectsFor(row).map((suspect) => {
+                const doc = suspect.documentId ? matched.get(suspect.documentId) : undefined;
+                return (
+                  <div key={suspect.arrivalId}>
+                    {suspect.stage === 2 ? (
+                      <>
+                        <p className="field-help">
+                          {doc
+                            ? `This looks like the ${doc.title.toLowerCase()} you filed on ${formatShortDate(doc.filed_at.slice(0, 10))}.`
+                            : 'This looks like something already filed for this person.'}
+                        </p>
+                        {doc ? (
+                          <ProvenanceLine>
+                            Matched on what was read from this document · {doc.title} ·{' '}
+                            filed {formatShortDate(doc.filed_at.slice(0, 10))}
+                          </ProvenanceLine>
+                        ) : null}
+                      </>
+                    ) : null}
+                    <form method="post" action={`/${circle}/inbox/resolve/submit`}>
+                      <input type="hidden" name="arrival_id" value={suspect.arrivalId} />
+                      <Button type="submit" name="resolution" value="different">
+                        It&apos;s different — continue
+                      </Button>{' '}
+                      <Button type="submit" name="resolution" value="same_thing" variant="quiet">
+                        {suspect.stage === 2
+                          ? 'Same thing — add it as another source'
+                          : 'Same thing — keep the original'}
+                      </Button>
+                    </form>
+                  </div>
+                );
+              })}
 
               {CANCEL_WINDOW.has(row.state) ? (
                 <form method="post" action={`/${circle}/inbox/cancel/submit`}>
