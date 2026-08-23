@@ -151,7 +151,7 @@ beforeEach(async () => {
   });
   workers.finalizeExtraction.mockResolvedValue('advanced');
   workers.finalizeInterpretation.mockResolvedValue('advanced');
-  workers.recordContextFor.mockResolvedValue({ facts: { rows: [] } });
+  workers.recordContextFor.mockResolvedValue({ profile_facts: { rows: [] } });
   workers.advanceArrival.mockResolvedValue('advanced');
   workers.lookupLineage.mockResolvedValue({ circle_id: CIRCLE, channel: 'email' });
   storage.readArtifactBytes.mockResolvedValue(PDF);

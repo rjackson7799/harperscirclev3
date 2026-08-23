@@ -216,7 +216,7 @@ describe('B3 · the operator channel and delimited data (§6.7)', () => {
 describe('B3 · §6.6 — the record-context prefix sits behind a cache breakpoint', () => {
   it('interpretation puts the record FIRST, with cache_control on that block', async () => {
     await interpretArrival({
-      recordContext: { facts: { rows: [] }, timeline: { rows: [] } },
+      recordContext: { profile_facts: { rows: [] }, timeline: { rows: [] } },
       facts: [],
       documentText: 'Dose: 500 mg',
       operatorNotes: [],
@@ -242,7 +242,7 @@ describe('B3 · §6.6 — the record-context prefix sits behind a cache breakpoi
 
   it('cache telemetry is CARRIED BACK — whether it cached is measured, not assumed', async () => {
     const result = await interpretArrival({
-      recordContext: { facts: { rows: [] } },
+      recordContext: { profile_facts: { rows: [] } },
       facts: [],
       documentText: 'x',
       operatorNotes: [],

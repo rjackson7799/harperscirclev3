@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ============================================================================
@@ -71,7 +73,7 @@ const LEASE = 'lease-interpret-1';
 const FACT_ID = '99999999-0000-4000-8000-000000000009';
 
 const RECORD = {
-  facts: {
+  profile_facts: {
     rows: [
       { id: FACT_ID, field: 'medication_dose', value: '250 mg', risk_class: 'high' },
       { id: 'aaaa0000-0000-4000-8000-00000000000a', field: 'document_date', value: '2020-01-01', risk_class: 'standard' },
@@ -433,5 +435,45 @@ describe('B5 · the exits', () => {
     await route.POST(req(), ctx);
     expect(workers.finalizeInterpretation).not.toHaveBeenCalled();
     expect(workers.advanceArrival).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// Round-16 R4/F-1 — the record-context KEY, pinned against the shipped SQL.
+//
+// The consumers read this shape out of a definer's jsonb. A mocked fixture can
+// assert any shape it likes and stay green forever, which is exactly what
+// happened: the definer returns `profile_facts` and both consumers read
+// `facts`, so the Map and the Set were empty on every call and §4.8's conflict
+// arm was inert in production while 69/69 passed.
+//
+// The durable guard is not another fixture — it is reading the MIGRATION. A
+// mock cannot drift from a shape that is asserted against the source of truth.
+// ============================================================================
+describe('R4/F-1 · the record-context key is pinned to hc.record_context_for', () => {
+  const migration = readFileSync(
+    join(process.cwd(), 'supabase/migrations/20260821120002_record_context.sql'),
+    'utf8',
+  );
+
+  it('the definer returns the facts section under `profile_facts`, and nothing reads `facts`', () => {
+    // The definer's own return shape, from the shipped migration.
+    expect(migration).toContain("'profile_facts', v_facts");
+    expect(migration).not.toContain("'facts', v_facts");
+
+    // Both consumers must name the key the definer actually returns.
+    const worker = readFileSync(join(process.cwd(), 'app/api/worker/[stage]/route.ts'), 'utf8');
+    const adapter = readFileSync(join(process.cwd(), 'lib/ai/interpret.ts'), 'utf8');
+    for (const [name, src] of [['route', worker], ['interpret', adapter]] as const) {
+      expect(src, `${name} must read profile_facts`).toContain('profile_facts?:');
+      expect(src, `${name} must not read the non-existent facts key`).not.toMatch(
+        /\?\.facts\?\.rows/,
+      );
+    }
+  });
+
+  it('the fixture RECORD uses the definer key, so the mock cannot drift from the SQL', () => {
+    expect(Object.keys(RECORD)).toContain('profile_facts');
+    expect(Object.keys(RECORD)).not.toContain('facts');
   });
 });
