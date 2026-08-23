@@ -71,8 +71,23 @@ function lastBody(): Record<string, unknown> {
 }
 
 describe('B3 · the model allowlist is §6.1’s table, and Fable 5 is refused', () => {
-  it('the allowlist is exactly the two §6.1 models', () => {
-    expect([...MODEL_ALLOWLIST].sort()).toEqual(['claude-opus-5', 'claude-sonnet-5']);
+  // AMENDED at round 16 (R2/F-7), and argued rather than quietly edited —
+  // this was a green assertion, which is the category packet Q-I says must
+  // never change without a reason on the record.
+  //
+  // §6.1's TABLE still names two models. The ALLOWLIST is a narrower thing:
+  // the set this adapter can dispatch to without a capability branch. The
+  // adapter sends §6.7's `{role:'system'}` operator channel unconditionally,
+  // and Claude Sonnet 5 does not support mid-conversation system messages —
+  // it returns 400 `role 'system' is not supported on this model`, which
+  // `callProvider` maps to `unavailable`, which burns all three durable
+  // attempts over ~15 minutes and terminalises the arrival. Its minimum
+  // cacheable prefix is also 1024 rather than the 512 §6.6 relies on.
+  //
+  // So the allowlist narrows to one. Widening it again is not a config
+  // change: it requires the adapter to branch on capability first.
+  it('the allowlist is exactly the models the adapter can dispatch to', () => {
+    expect([...MODEL_ALLOWLIST].sort()).toEqual(['claude-opus-5']);
   });
 
   it('claude-fable-5 is structurally refused, not merely unused', () => {
@@ -320,7 +335,7 @@ describe('B3 · the run identity is configuration, and it is recorded', () => {
 describe('R2/F-1 · the configuration hash is pinned to a LITERAL', () => {
   // Regenerate deliberately, in the same commit as the ADR that records the
   // re-run: node -e "console.log(require('./lib/ai/config').configurationHash())"
-  const PINNED = 'REPLACE_ME';
+  const PINNED = 'd6512861eefa1fc4';
 
   it('the running configuration hash equals the pinned value', () => {
     expect(configurationHash()).toBe(PINNED);

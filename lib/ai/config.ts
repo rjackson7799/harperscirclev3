@@ -27,7 +27,7 @@ import { EXTRACT_SYSTEM_PROMPT, INTERPRET_SYSTEM_PROMPT } from '@/lib/ai/prompt'
  */
 
 /** §6.1's table, exactly. */
-export const MODEL_ALLOWLIST = ['claude-opus-5', 'claude-sonnet-5'] as const;
+export const MODEL_ALLOWLIST = ['claude-opus-5'] as const;
 
 /** Recorded, not merely omitted (§6.1's `claude-fable-5` note). */
 export const DISQUALIFIED_MODELS = ['claude-fable-5'] as const;

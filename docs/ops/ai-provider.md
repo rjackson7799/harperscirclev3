@@ -38,8 +38,10 @@ as a blanket property of the account. ☐
 30-day retention and is unavailable in a ZDR workspace; a request from one
 returns `400 invalid_request_error` on every call (§6.1). It is refused
 structurally in `lib/extraction/../ai/config.ts` and pinned in
-`tests/ai/adapter.test.ts`. Confirm the shipped model is `claude-opus-5` (or
-`claude-sonnet-5`), and that whatever ships is the one the terms name. ☐
+`tests/ai/adapter.test.ts`. Confirm the shipped model is `claude-opus-5` — the ONLY allowlisted
+model, because the adapter sends §6.7's `{role:'system'}` operator
+channel unconditionally and Claude Sonnet 5 does not support it —
+and that whatever ships is the one the terms name. ☐
 
 ---
 
