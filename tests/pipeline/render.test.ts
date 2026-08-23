@@ -13,7 +13,7 @@ import {
   promotedPageKey,
   promotedPageTextKey,
   renderStagingKey,
-} from '@/lib/storage/artifacts';
+} from '@/lib/pipeline/page-keys';
 
 // ============================================================================
 // B2 · §6.3 rendering, as rules-as-code (slice-5 plan B2; RND-01).

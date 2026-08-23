@@ -1,6 +1,7 @@
 import 'server-only';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { asStoragePlane, serviceCredential } from '@/lib/db/service-role';
+import { promotedPagePrefix, renderStagingPrefix } from '@/lib/pipeline/page-keys';
 
 /**
  * The storage-plane module (TSD §2.12, §3.11; ADR-0018 F2's A2-discipline
@@ -19,6 +20,11 @@ import { asStoragePlane, serviceCredential } from '@/lib/db/service-role';
  *   circle/<circle>/arrival/<arrival>/<sha256>      — the §2.12
  *     content-addressed final key; hc.finalize_store verifies this exact
  *     shape, so a worker cannot park bytes under a foreign address.
+ *   render/attempt/<circle>/<arrival>/<lease>/pNNN  — 5B B2: one attempt's
+ *     rendered pages, GC'd when the lease closes as anything but advanced.
+ *   render/circle/<circle>/arrival/<arrival>/pNNN   — 5B B2: the PROMOTED,
+ *     write-once per-arrival rendering slice 6's review screen crops from;
+ *     §6.9's machine-read text lands beside it as pNNN.txt.
  */
 
 const ARTIFACTS = 'artifacts';
@@ -221,6 +227,102 @@ export async function writeArtifactObject(
     upsert: true,
   });
   if (error) throw new Error(`writeArtifactObject: ${error.message}`);
+}
+
+// ----------------------------------------------------------------------------
+// The rendered-page lifecycle (5B B2; TSD §6.3, §6.4, §4.5).
+//
+// During an attempt, pages live under ATTEMPT-SCOPED staging keys carrying
+// the lease id: unreachable from any user path, and unmistakably the work of
+// one attempt, so a superseded worker's output can never be confused with the
+// winner's. A lease that closes as anything but `advanced` GCs them (§4.5).
+//
+// On `advanced` they PROMOTE to durable, write-once, PER-ARRIVAL keys — the
+// §6.4 rendering source slice 6's review screen shows and crops from, served
+// only through the artifact route's discipline (clean-gated, evidence before
+// bytes), and deleted with the arrival by the DEL-01 cascade (named, not
+// built here).
+//
+// THE SLICE-5 EXIT ASSERTION (so Q6's OCR deferral cannot force rework):
+// citation coordinates are normalised against the page, not against a
+// rendering, and §6.9's machine-read text lands as a SIBLING of the promoted
+// page — `p003.png` gains `p003.txt`. Neither the stored coordinates nor the
+// promoted artifact changes when slice 6 arrives.
+// ----------------------------------------------------------------------------
+
+
+/** Write one rendered page into the attempt's staging area. */
+export async function writeRenderStaging(
+  key: string,
+  bytes: Uint8Array,
+  contentType: string,
+): Promise<void> {
+  const { error } = await asStoragePlane().from(ARTIFACTS).upload(key, bytes, {
+    contentType,
+    upsert: true,
+  });
+  if (error) throw new Error(`writeRenderStaging: ${error.message}`);
+}
+
+async function listStaging(prefix: string): Promise<string[]> {
+  const { data, error } = await asStoragePlane()
+    .from(ARTIFACTS)
+    .list(prefix, { limit: 1000, sortBy: { column: 'name', order: 'asc' } });
+  if (error) throw new Error(`listStaging: ${error.message}`);
+  return (data ?? []).filter((e) => e.id !== null).map((e) => `${prefix}/${e.name}`);
+}
+
+/**
+ * §4.5: a lease that closed as anything but `advanced` leaves nothing behind.
+ * Best-effort by design — a GC that throws must not turn a clean terminal
+ * outcome into a failure, and the next attempt's staging is a different
+ * prefix either way.
+ */
+export async function gcRenderStaging(
+  circleId: string,
+  arrivalId: string,
+  leaseId: string,
+): Promise<{ removed: number }> {
+  const prefix = renderStagingPrefix(circleId, arrivalId, leaseId);
+  let keys: string[];
+  try {
+    keys = await listStaging(prefix);
+  } catch {
+    return { removed: 0 };
+  }
+  if (keys.length === 0) return { removed: 0 };
+  const { error } = await asStoragePlane().from(ARTIFACTS).remove(keys);
+  if (error) return { removed: 0 };
+  return { removed: keys.length };
+}
+
+/**
+ * Promotion on `advanced`: the attempt's pages become the arrival's pages.
+ * Write-once — an object already at the promoted key is left alone, because
+ * the only way one exists is that this arrival already rendered these pages
+ * and the bytes are the same page of the same document. The staging copies
+ * are removed afterwards, so exactly one lifetime survives the transition.
+ */
+export async function promoteRenderedPages(
+  circleId: string,
+  arrivalId: string,
+  leaseId: string,
+): Promise<{ promoted: number }> {
+  const prefix = renderStagingPrefix(circleId, arrivalId, leaseId);
+  const store = asStoragePlane();
+  const keys = await listStaging(prefix);
+  let promoted = 0;
+  for (const key of keys) {
+    const name = key.slice(prefix.length + 1);
+    const target = `${promotedPagePrefix(circleId, arrivalId)}/${name}`;
+    const { error } = await store.from(ARTIFACTS).copy(key, target);
+    if (error && !/exists|duplicate/i.test(error.message)) {
+      throw new Error(`promoteRenderedPages: ${error.message}`);
+    }
+    promoted++;
+  }
+  if (keys.length > 0) await store.from(ARTIFACTS).remove(keys);
+  return { promoted };
 }
 
 /** Remove staged intake bytes once the store stage has finalized. */
