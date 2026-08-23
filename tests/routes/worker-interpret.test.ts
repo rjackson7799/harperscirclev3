@@ -477,3 +477,62 @@ describe('R4/F-1 · the record-context key is pinned to hc.record_context_for', 
     expect(Object.keys(RECORD)).not.toContain('facts');
   });
 });
+
+// ============================================================================
+// Round-16 R1/F-1 and R1/F-2 — the one path that reads the catalogue raw.
+//
+// F-1: the EXTRACT arm stamps risk through the band mode
+// (`effectiveRiskClass(field, value, bands)`), so in all-high mode every fact
+// publishes `high`. The INTERPRET arm called `riskClassFor` directly, so a
+// drafted `profile_fact` could land `standard` while the product claims to be
+// running all-high — and `hc.approve_proposal` gates the §6.4 confirmation on
+// exactly that value, so such a proposal is one-tap approvable in a mode that
+// says nothing is.
+//
+// F-2: the same call is also the only live consumer of the §6.5 keyword rule,
+// whose matcher looks for `'do not'` WITH A SPACE — so "do-not-resuscitate",
+// the string `fields.ts` names as the case it catches, returns `standard`.
+// The two compound: the one unmediated path has the keyword hole in it.
+// ============================================================================
+describe('R1/F-1 · the interpret arm publishes through the band mode', () => {
+  it('a standard-catalogue field is drafted `high` in all-high mode (§6.5)', async () => {
+    workers.claimStage.mockResolvedValueOnce({ outcome: 'claimed', leaseId: LEASE });
+    ai.interpretArrival.mockResolvedValueOnce(
+      answer([
+        {
+          kind: 'profile_fact',
+          domain: 'memories',
+          field: 'patient_name',
+          value: 'Nell Harper',
+          title: 'Name on the document',
+          summary: 'The patient name as printed.',
+          anomalyFlags: [],
+        },
+      ]),
+    );
+    await route.POST(req(), ctx);
+    const [, drafted] = workers.finalizeInterpretation.mock.calls[0];
+    // `patient_name` is `standard` in the catalogue. In all-high mode the
+    // worker must publish `high` anyway — that IS the mode, per §6.5.
+    expect(drafted[0].payload.risk_class).toBe('high');
+  });
+});
+
+describe('R1/F-2 · the §6.5 keyword rule catches the hyphenated form', () => {
+  it('"do-not-resuscitate" is an instruction', async () => {
+    const { riskClassFor } = await import('@/lib/extraction/fields');
+    expect(riskClassFor('document_summary', 'do-not-resuscitate order on file')).toBe('high');
+    expect(riskClassFor('document_summary', 'DO NOT file this')).toBe('high');
+  });
+
+  it('and the inflections do too, without reviving the false positives', async () => {
+    const { riskClassFor } = await import('@/lib/extraction/fields');
+    for (const v of ['Stopping lisinopril', 'Discontinued as of 3/14', 'Holding warfarin']) {
+      expect(riskClassFor('document_summary', v), v).toBe('high');
+    }
+    // The two the narrowing exists to exclude must STILL be excluded.
+    for (const v of ['restarted the machine', 'household contact']) {
+      expect(riskClassFor('document_summary', v), v).toBe('standard');
+    }
+  });
+});
