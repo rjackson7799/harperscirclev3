@@ -537,3 +537,78 @@ describe('R1/F-2 · the §6.5 keyword rule catches the hyphenated form', () => {
     }
   });
 });
+
+// ============================================================================
+// Round-16 R4/F-3 — a converted conflict must be APPROVABLE.
+//
+// `hc.approve_proposal`'s conflict branch refuses at approval time unless the
+// payload carries what each outcome needs (20260821120004):
+//
+//   use_new    → `field`, `value`, `domain`  … and INSERTS `risk_class`,
+//                which is NOT NULL on public.profile_facts
+//   keep_both  → a `task` object with a 1..500 title, and due_on/due_zone
+//                paired or both absent
+//   keep       → writes nothing, so it always worked
+//
+// `draftPayloads` wrote `domain` and `risk_class` only inside the
+// `profile_fact` branch, which the conversion skips — so every conflict the
+// pipeline could produce was drafted without them, and TWO of §4.8's three
+// outcomes raised `approval_refused` at the moment a coordinator clicked.
+//
+// This was unreachable until round-16 D1 fixed the record-context key, since
+// before that no conflict was ever drafted at all. Fixing D1 made it live,
+// which is why it is closed in the same round rather than queued.
+// ============================================================================
+describe('R4/F-3 · a converted conflict carries what every §4.8 outcome needs', () => {
+  async function conflictPayload() {
+    interpretMod.interpretArrival.mockResolvedValueOnce(
+      okInterpret([
+        {
+          kind: 'profile_fact',
+          title: 'medication_dose',
+          summary: 'The document says 500 mg.',
+          ...BLANK,
+          domain: 'health',
+          field: 'medication_dose',
+          value: '500 mg',
+        },
+      ]),
+    );
+    workers.readPipelineWork.mockResolvedValueOnce([msg()]);
+    await route.POST(req(), ctx);
+    const proposals = workers.finalizeInterpretation.mock.calls[0][2];
+    expect(proposals[0].kind).toBe('conflict');
+    return proposals[0].payload as Record<string, unknown>;
+  }
+
+  it('use_new: field, value and domain — the three approve_proposal checks', async () => {
+    const payload = await conflictPayload();
+    expect(payload.field).toBe('medication_dose');
+    expect(payload.value).toBe('500 mg');
+    expect(payload.domain).toBe('health');
+  });
+
+  it('use_new: risk_class, which profile_facts declares NOT NULL', async () => {
+    const payload = await conflictPayload();
+    // `medication_dose` is high in the catalogue, and all-high mode would
+    // force it anyway — but the point is that the key is PRESENT, because
+    // the DB gate is a string test that a NULL would silently pass.
+    expect(payload.risk_class).toBe('high');
+  });
+
+  it('keep_both: a task object with a title, and no half-set due pair', async () => {
+    const payload = await conflictPayload();
+    const task = payload.task as Record<string, unknown> | undefined;
+    expect(task, 'keep_both is unreachable without a task block').toBeDefined();
+    expect(typeof task!.title).toBe('string');
+    expect((task!.title as string).length).toBeGreaterThan(0);
+    expect((task!.title as string).length).toBeLessThanOrEqual(500);
+    // due_on and due_zone must be both set or both absent (the DB pairs them).
+    expect(task!.due_on == null).toBe(task!.due_zone == null);
+  });
+
+  it('still quotes the parent it conflicts with', async () => {
+    const payload = await conflictPayload();
+    expect(payload.parents).toEqual([{ type: 'profile_fact', id: FACT_ID }]);
+  });
+});
