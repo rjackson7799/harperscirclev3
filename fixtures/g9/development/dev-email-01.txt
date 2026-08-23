@@ -1,0 +1,10 @@
+From: scheduling@northgate.example
+Subject: Your appointment
+
+Hello,
+
+Provider: Northgate Medical Group
+Appointment date: 2026-07-09
+Appointment time: 9:00 AM
+
+Please arrive fifteen minutes early.
