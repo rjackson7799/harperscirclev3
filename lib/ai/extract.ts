@@ -54,7 +54,7 @@ function isFiniteIn(n: unknown, lo: number, hi: number): n is number {
  * the document is exactly the hallucination the crop-on-screen rule exists to
  * catch, and catching it here means it never reaches a person at all.
  */
-function validateFacts(
+export function validateFacts(
   raw: unknown,
   pageCount: number,
 ): { facts: ExtractedFact[]; dropped: number } {

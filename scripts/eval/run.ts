@@ -35,6 +35,7 @@ import { blindCorpus } from '@/lib/eval/blind';
 import { readCorpusFile, corpusMime, type CorpusItem } from '@/lib/eval/corpus';
 import { scoreRun, type Prediction } from '@/lib/eval/score';
 import { normalizeArrival } from '@/lib/pipeline/render';
+import { predictionFor } from '@/scripts/eval/predict';
 import {
   EXTRACT_EFFORT,
   EXTRACT_MODEL,
@@ -196,6 +197,12 @@ async function main(): Promise<void> {
 
   const predictions: Prediction[] = [];
   const failures: Array<{ id: string; reason: string }> = [];
+  // Round-16 R6/F-6: what validateFacts refused, per item. Counted and
+  // PRINTED — a fact the model cited onto a page that does not exist is a
+  // §10.4 signal, and at the gate it separates "cannot read this" from
+  // "reads it and cites it somewhere it isn't".
+  const dropped = new Map<string, number>();
+  const byId = new Map(items.map((i) => [i.id, i]));
   for await (const result of await client.messages.batches.results(batchId)) {
     // Results arrive in ANY order — keyed by custom_id, never by position.
     if (result.result.type !== 'succeeded') {
@@ -216,11 +223,22 @@ async function main(): Promise<void> {
       .map((b) => b.text)
       .join('');
     try {
-      const parsed = JSON.parse(text) as { facts?: Array<{ field: string; value: string }> };
-      predictions.push({
-        itemId: result.custom_id,
-        facts: (parsed.facts ?? []).map((f) => ({ field: f.field, value: f.value })),
-      });
+      // Score what the PIPELINE publishes, not what the model returned
+      // (round-16 R6/F-6). The render is deterministic over the same bytes,
+      // so re-normalising here recovers the page count validateFacts needs to
+      // reject a citation pointing at a page that does not exist.
+      const item = byId.get(result.custom_id);
+      if (!item) {
+        failures.push({ id: result.custom_id, reason: 'unknown_item' });
+        continue;
+      }
+      const normalized = normalizeArrival(readCorpusFile(item), corpusMime(item));
+      const pageCount = normalized.outcome === 'rendered' ? normalized.pages.length : 0;
+      const prediction = predictionFor(result.custom_id, text, pageCount);
+      if (prediction.dropped > 0) {
+        dropped.set(result.custom_id, prediction.dropped);
+      }
+      predictions.push({ itemId: prediction.itemId, facts: prediction.facts });
     } catch {
       failures.push({ id: result.custom_id, reason: 'invalid_output' });
     }
@@ -260,6 +278,15 @@ async function main(): Promise<void> {
     const p = f.precision === null ? '    —' : f.precision.toFixed(3);
     const r = f.recall === null ? '    —' : f.recall.toFixed(3);
     console.log(`${f.field.padEnd(24)}  ${p.padStart(8)}  ${r.padStart(6)}  ${String(f.support).padStart(7)}`);
+  }
+  const totalDropped = [...dropped.values()].reduce((a, b) => a + b, 0);
+  if (totalDropped > 0) {
+    console.log('');
+    console.log(
+      `${totalDropped} fact(s) across ${dropped.size} item(s) were REFUSED by validateFacts ` +
+        'and are not scored — the pipeline would not have published them either:',
+    );
+    for (const [id, n] of dropped) console.log(`  ${id}: ${n}`);
   }
   if (failures.length > 0) {
     console.log('');
