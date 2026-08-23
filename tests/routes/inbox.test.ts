@@ -47,6 +47,7 @@ type Row = Record<string, unknown>;
 let parents: Row[] = [];
 let children: Row[] = [];
 let subjects: Row[] = [];
+let documents: Row[] = [];
 
 function chain(result: Row[]) {
   const p = Promise.resolve({ data: result, error: null });
@@ -66,8 +67,10 @@ beforeEach(() => {
   parents = [];
   children = [];
   subjects = [];
+  documents = [];
   from.mockImplementation((table: string) => {
     if (table === 'subjects') return chain(subjects);
+    if (table === 'documents') return chain(documents);
     if (table === 'arrivals') {
       // first arrivals call = parents, second = children
       const call = from.mock.calls.filter((c) => c[0] === 'arrivals').length;
@@ -344,5 +347,133 @@ describe('B6 · the submit routes ride the wrappers with relative PRG redirects'
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain('/sign-in');
     expect(inbox.cancelArrival).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// 5B B6 · The §4.7 point-2 (stage-2) duplicate surface, on the EXISTING inbox
+// machinery (slice-5 plan B6; DUP-02's app half; UXA-02; PRD §8.9).
+//
+// Stage 1 asks "we have these exact bytes already" from a sha256 match. Stage
+// 2 asks a different question — "this looks like the document you filed in
+// July" — from M5's normalised key-field predicate over EXTRACTED values, and
+// the copy has to carry that difference honestly, because the two resolutions
+// do different things: `different` resumes to INTERPRET (the facts are
+// already published), and `same_thing` attaches this arrival to the matched
+// document as an ADDITIONAL SOURCE and files nothing new.
+//
+// ROUND-15 OBSERVATION 3, honoured here as a test: arrivals.
+// duplicate_of_document_id is RETAINED after resolution by design (ADR-0020
+// D6) — it is the trace of the question that was asked. The POINTER is not
+// evidence the arrival is still unresolved; THE STATE IS. A consumer that
+// keyed the affordance on the pointer would offer a resolved arrival its
+// resolution again, forever.
+// ============================================================================
+
+const FILED_DOC = {
+  id: 'doc-77',
+  title: 'Discharge summary',
+  category: 'medical',
+  filed_at: '2026-07-12T15:04:00Z',
+};
+
+function stage2Parent(overrides: Row = {}): Row {
+  return {
+    id: 'a-dup2',
+    state: 'duplicate_suspected_stage2',
+    channel: 'email',
+    sender_address: 'records@riverbend.example',
+    sender_display_name: 'Riverbend Records',
+    auth_result: 'authenticated',
+    scan_verdict: 'clean',
+    received_at: new Date(Date.now() - HOURS).toISOString(),
+    duplicate_of_document_id: FILED_DOC.id,
+    ...overrides,
+  };
+}
+
+describe('5B B6 · the stage-2 duplicate cites the document it matched', () => {
+  it('the copy names the FILED document and when it was filed', async () => {
+    parents = [stage2Parent()];
+    documents = [FILED_DOC];
+    inbox.productStates.mockResolvedValueOnce(new Map([['a-dup2', 'Looks like a duplicate']]));
+    const html = await renderInbox();
+    expect(html).toContain('Looks like a duplicate');
+    expect(html).toContain('Discharge summary');
+    expect(html).toContain('July 12');
+  });
+
+  it('the citation renders through ProvenanceLine (Q6: first consumer, decided red-first)', async () => {
+    parents = [stage2Parent()];
+    documents = [FILED_DOC];
+    const html = await renderInbox();
+    expect(html).toContain('class="provenance"');
+  });
+
+  it('both resolutions are offered, and the stage-2 copy says what each DOES', async () => {
+    parents = [stage2Parent()];
+    documents = [FILED_DOC];
+    const html = await renderInbox();
+    expect(html).toContain('/inbox/resolve/submit');
+    expect(html).toContain('value="different"');
+    expect(html).toContain('value="same_thing"');
+    // `same_thing` at stage 2 attaches an additional source rather than
+    // discarding — the copy must not promise the stage-1 outcome.
+    expect(html).toMatch(/another source|additional source/i);
+  });
+
+  it('a CHILD arrival suspected at stage 2 gets its own resolution, bound to the child', async () => {
+    parents = [
+      {
+        id: 'a-parent',
+        state: 'extracting',
+        channel: 'email',
+        sender_address: 'records@riverbend.example',
+        sender_display_name: null,
+        auth_result: 'authenticated',
+        scan_verdict: 'clean',
+        received_at: new Date(Date.now() - HOURS).toISOString(),
+        duplicate_of_document_id: null,
+      },
+    ];
+    children = [
+      {
+        id: 'a-child-dup2',
+        parent_arrival_id: 'a-parent',
+        state: 'duplicate_suspected_stage2',
+        duplicate_of_document_id: FILED_DOC.id,
+      },
+    ];
+    documents = [FILED_DOC];
+    const html = await renderInbox();
+    expect(html).toContain('value="a-child-dup2"');
+  });
+
+  it('a RESOLVED arrival that still carries the pointer offers NOTHING (round-15 obs. 3)', async () => {
+    parents = [stage2Parent({ state: 'nothing_filed' })];
+    documents = [FILED_DOC];
+    inbox.productStates.mockResolvedValueOnce(new Map([['a-dup2', 'Nothing filed']]));
+    const html = await renderInbox();
+    expect(html).not.toContain('value="same_thing"');
+    expect(html).not.toContain('value="different"');
+  });
+
+  it('a stage-2 suspect whose matched document is not visible still resolves', async () => {
+    // The document read is RLS-scoped like everything else. A caller who
+    // cannot see the match must still be able to answer the question — the
+    // copy degrades, the affordance does not.
+    parents = [stage2Parent()];
+    documents = [];
+    const html = await renderInbox();
+    expect(html).toContain('value="same_thing"');
+    expect(html).toContain('value="different"');
+  });
+
+  it('stage 1 keeps its own copy — the two questions are not the same question', async () => {
+    parents = [stage2Parent({ id: 'a-dup1', state: 'duplicate_suspected', duplicate_of_document_id: null })];
+    inbox.productStates.mockResolvedValueOnce(new Map([['a-dup1', 'Looks like a duplicate']]));
+    const html = await renderInbox();
+    expect(html).toContain('Same thing');
+    expect(html).not.toMatch(/another source/i);
   });
 });
