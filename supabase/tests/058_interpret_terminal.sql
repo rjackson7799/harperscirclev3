@@ -172,7 +172,7 @@ select is(
 -- ----------------------------------------------------------------------------
 select is(
   pg_temp.tq(format($sql$
-    select (l.closed_at is not null)::text from hc.pipeline_leases l
+    select (l.closed_at is not null)::text from public.pipeline_leases l
      where l.id = %L::uuid $sql$, current_setting('t.lease_r'))),
   'true',
   'the lease closes with the transition — no open lease outlives the terminal, so nothing re-queues');

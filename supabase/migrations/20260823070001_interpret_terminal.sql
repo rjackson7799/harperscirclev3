@@ -1,0 +1,51 @@
+-- ============================================================================
+-- 5B · M8 — the interpret stage's failure edge. THE OWNER GRANTED A FOURTH
+-- AMENDMENT ITEM on 2026-08-23, on the round-16 session's recommendation
+-- (ADR-0023 D21), moving Q2's migration bound ≤ 7 → ≤ 8. Bound closes SPENT
+-- at 8 of ≤ 8. Finding verbatim in docs/review/round-16-findings.md (R4/F-2);
+-- pinned in pgTAP 058, which went red before this existed.
+--
+-- NO SHIPPED MIGRATION IS EDITED. One row, additive.
+--
+-- THE DEFECT. `hc.advance_arrival` binds the fenced lease's stage and requires
+-- the edge to exist in `hc.arrival_transitions`, else it returns
+-- `invalid_state` before touching the row. `interpret` had exactly one edge —
+-- `interpreting → proposals_ready` — so there was NO failure target from
+-- `interpreting` at all. On a provider refusal or an unparseable answer the
+-- worker called
+--
+--     advance_arrival(arrival, 'interpreting', 'extract_failed', lease, reason)
+--
+-- and got `invalid_state`: the state never moved, the lease never closed, and
+-- the stage terminalized nothing. The lease then ran to its 300 s deadline,
+-- the sweeper re-queued the arrival, and attempts 2 and 3 RE-CALLED THE
+-- PROVIDER — three paid Opus 5 interpret passes over roughly fifteen minutes,
+-- for a document that refused deterministically the first time — before
+-- exhaustion finally landed `extract_failed` with `interpret_budget_exhausted`,
+-- which is the wrong reason for what actually happened.
+--
+-- The route's unit test could not see it because `advanceArrival` is mocked;
+-- this is the same shape as round-16's other invisible defects, and the same
+-- answer: the pin reads the SHIPPED SCHEMA, not a fixture.
+--
+-- WHY `extract_failed`, AND WHY NOTHING ELSE MOVES. `hc.stage_budgets` already
+-- gives interpret `exhaust_state = 'extract_failed'` — the database has always
+-- treated that state as this stage's terminal, and the exhaustion path lands
+-- there today. This migration does not invent a terminal; it lets the
+-- DELIBERATE path reach the one the involuntary path already uses. So:
+--
+--   · no `hc.arrival_state` enum value is added — `interpret_failed` would
+--     have needed one, plus a product-state label, plus every exact-set pin
+--     over the enum, to say something the reason code already says;
+--   · no family-facing label changes — `extract_failed` reads "Couldn't read
+--     it", which is the honest thing to say about a refusal too;
+--   · no reason code is added — `provider_refusal` and `provider_error` were
+--     seeded at 4A and are exactly what the worker already passes.
+--
+-- The app needs no change either: `processInterpret` has always made this
+-- call. It was the graph that refused it.
+-- ============================================================================
+
+insert into hc.arrival_transitions (stage, from_state, to_state) values
+  ('interpret', 'interpreting'::hc.arrival_state, 'extract_failed'::hc.arrival_state)
+on conflict do nothing;

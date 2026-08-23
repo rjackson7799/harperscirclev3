@@ -253,7 +253,7 @@ select enum_has_labels('hc', 'arrival_state',
   'hc.arrival_state gains duplicate_suspected_stage2 — Q8''s DISTINCT internal state, appended last (append-only-safe)');
 
 select is(pg_temp.tq($sql$
-  select ((select count(*) from hc.arrival_transitions) = 21
+  select ((select count(*) from hc.arrival_transitions) = 22
     and exists (select 1 from hc.arrival_transitions
                 where stage = 'extract' and from_state = 'extracting'
                   and to_state = 'duplicate_suspected_stage2')
@@ -263,7 +263,13 @@ select is(pg_temp.tq($sql$
     and exists (select 1 from hc.arrival_transitions
                 where stage = 'gate' and from_state = 'duplicate_suspected_stage2'
                   and to_state = 'nothing_filed'))::text $sql$), 'true',
-  'the closed graph grows by EXACTLY the three Q8 edges: extracting → <state> and <state> → interpreting | nothing_filed (21 rows)');
+  -- AMENDED at round 16 (5B M8): 21 -> 22. This leg pins that M5 added
+  -- EXACTLY its three Q8 edges, and it still does — all three are asserted
+  -- by name below and none is touched. The COUNT moved because M8 later
+  -- added interpret's failure edge (R4/F-2, ADR-0023 D21), which is a
+  -- different migration answering a different finding. Pinned by name in
+  -- 058; the count here keeps the graph closed against anything unnamed.
+  'the closed graph grows by EXACTLY the three Q8 edges: extracting → <state> and <state> → interpreting | nothing_filed (22 rows after 5B M8)');
 
 select ok((
   select count(*) = 22 and count(distinct hc.state_rank(x)) = 22
