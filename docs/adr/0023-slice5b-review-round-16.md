@@ -779,8 +779,8 @@ says so in the argument.
 | F-7 | MAJOR | **FIXED** | D6. |
 | F-8 | MAJOR | **OWED** | `maxRenderedBytes` is 64 MB; the API limit is **32 MB per request** and inline base64 inflates by 4/3, so renders between ~24 MB and 64 MB are accepted by our ceiling and rejected by the provider — then mislabelled "budget exhausted" per F-5. The Files API decision is defensible; the size budget it requires was never set. |
 | F-9 | MAJOR | **OWED** | `model_context_window_exceeded` is in the SDK's `StopReason` union and unhandled, so it falls through to "no text content" → `provider_error`. At 200 pages × ~4784 tokens the request is near the window, so the state is reachable by a document PRD §13.3 permits. |
-| F-10 | MAJOR | **OWED** | `ANTHROPIC_LOG=debug` writes the full request body — document text and every page as base64 — to the platform log store. The SDK redacts credentials but not `body`. One line (`logLevel`) closes a §6.2 retention hole that sits entirely outside G3's four terms. |
-| F-11 | MAJOR | **OWED** | Nothing asserts `ANTHROPIC_BASE_URL` is unset when a real key is configured. The lever that points the gate at 127.0.0.1 points production anywhere, and G3's premise is one cleared endpoint. Three lines. |
+| F-10 | MAJOR | **FIXED** | The client pins `logLevel: 'warn'`, so the environment cannot raise it. `b4bfe65` RED → `dd86a39` GREEN. |
+| F-11 | MAJOR | **FIXED** | `assertProviderEgress()` runs before every dispatch and refuses a real credential aimed at an overridden base URL. Keyed on whether the key IS a credential (`sk-ant-`), not on a fixture allowlist — the first draft used the gate literal and broke 21 tests that use a different one, which is the argument. Same commits. |
 | F-12 | MINOR | **OWED** | Of four "absence" assertions, one (`server-side-fallback`) is vacuous — it is a *header* value and the fixture records no headers — and all four run only against the extract path. |
 | F-13 | MINOR | **ACCEPTED-NOTE** | The fixture server validates nothing, so the wire tests prove absence-by-substring and never acceptance. `ai-provider.md` SMOKE-3 already defers schema acceptance to a live smoke test, so the gap is acknowledged; D4's "the wire is the contract" framing overstates what the gate can show. |
 | F-14 | MINOR | **OWED** | `overloaded_error` is HTTP **529**, not the 503 the fixture returns. Cosmetic today only because F-5 collapses all statuses; load-bearing the moment F-5 is fixed, so fix them together. |
@@ -814,10 +814,10 @@ says so in the argument.
 | # | Sev | Verdict | Argument |
 |---|---|---|---|
 | F-1 | **BLOCKER** | **FIXED** | D1. |
-| F-2 | MAJOR | **OWED** | `interpreting → extract_failed` is not an edge in `hc.arrival_transitions`, so the interpret failure exit returns `invalid_state` and terminalises nothing: the lease runs to its deadline, the sweeper re-queues, and attempts 2 and 3 **re-call the provider** before landing the wrong reason code. The test misses it because `advanceArrival` is mocked. Needs either the edge (DDL — D8's amendment) or an app-layer remap; recommended with D10's mapping work. |
-| F-3 | MAJOR | **OWED** | A converted conflict carries no `domain`/`risk_class`/`task`, so `use_new` and `keep_both` both raise `approval_refused` at slice 6 and only `keep` works. Latent until D1's fix made conflicts reachable at all — which is precisely why it must be fixed before slice 6, not after. |
+| F-2 | MAJOR | **OWED — BLOCKED ON DDL** | Enumerated live during the fix pass: `interpret` has exactly ONE edge, `interpreting → proposals_ready`. There is no failure edge from `interpreting` **at all**, so no app-layer remap exists — every failure target returns `invalid_state`. Closing it needs a new `hc.arrival_transitions` row, which is outside the three things the owner granted for M7. Raised in D21 as a fourth amendment item. |
+| F-3 | MAJOR | **FIXED** | The conversion writes `domain`, `risk_class` (through the band mode) and a `task` block, so all three §4.8 outcomes are reachable. A conflict with no domain is DROPPED rather than drafted un-approvable — M2's context carries no domain, so the parent cannot supply it. `bafa5af` RED → `df45fca` GREEN. |
 | F-4 | MAJOR | **OWED** | Same leak as R3/F-3; fix once. |
-| F-5 | MAJOR | **OWED** | Extracted values — `ssn`, `member_id`, `date_of_birth`, doses — ride the pgmq message, the ack is `archive`, and **nothing prunes `pgmq.a_pipeline_work`**. After an arrival that filed nothing is purged at 30 days, a verbatim copy survives in the queue archive, outside the deletion ledger. PRD §4.2's "deletes cleanly" is broken silently. Must close before DEL-01 ships, not after. |
+| F-5 | MAJOR | **FIXED** | `archivePipelineWork` strips `facts` before archiving — one choke point, so no ack path can forget it. `lookupLineage` reads only `channel`/`circle_id`, both retained and asserted. `hc_pipeline` already held UPDATE on the pgmq tables, so no DDL. `3fcb871` RED → `f6cbc1f` GREEN. |
 | F-6 | MAJOR | **OWED** | `promoteRenderedPages` runs *after* `finalizeExtraction` returned `advanced` and is non-atomic with no repair path: a partial promotion leaves an `extracted` arrival whose citations reference pages that have no artifact, permanently. |
 | F-7 | MAJOR | **OWED** | The read visibility timeout (120 s) is shorter than the extract stage (up to 300 s), so mid-flight redelivery is the *normal* case — and the second reader archives the in-flight message unconditionally, destroying pgmq's redelivery guarantee for that work. Claim-before-work means no double dispatch; the cost is the queue silently doing no work. |
 | F-8 | MINOR | **ACCEPTED-NOTE** | `PER_MESSAGE_RESERVE_MS` (20 s) is sized for a finalize where the worst-case message is 300 s, so the budget cannot keep an invocation inside `maxDuration`. Recovery is correct; the comment overstates the arithmetic. |
@@ -836,8 +836,8 @@ says so in the argument.
 | F-1 | **BLOCKER** | **FIXED** | D4. |
 | F-2 | MAJOR | **OWED** | Three `{ data }` destructures still drop `error`. B6's fix removed one *input* to D15 and left the amplifier: a refused query is still indistinguishable from an empty one. Reachable today with no code change — a non-UUID circle segment returns 200 with a blank Care Inbox; a DB blip shows a forty-item family its first-run empty state. |
 | F-3 | MAJOR | **ACCEPTED-NOTE** | D15's "the grant is deliberate" names three withheld columns and two are wrong. Corrected in D8, because that list is what an owner would reason from when deciding the amendment. |
-| F-4 | MAJOR | **OWED** | The regression guard is a one-literal denylist over `.select()` strings, and Postgres refuses on `where`/`order` references too — proven live. The guard's form is right, its predicate is the instance. D8's pgTAP invariant closes the class from the DB side; the app side needs the guard to become an allowlist derived from the grant. |
-| F-5 | MAJOR | **OWED** | The stage-2 line says "type, date **and provider**" when the predicate requires ≥1 of provider/amount/policy_number. Two EOBs matched on *amount* from different providers read as same-provider — and the copy is load-bearing precisely because D15 stops it naming the document. Copy fix; no DDL. |
+| F-4 | MAJOR | **FIXED** | The guard is now an ALLOWLIST over every clause — select, eq, is, in, order — checked against the same exact set pgTAP 057 pins from the DB side, so the two cannot drift without one going red. `7e83761` RED → `7c86c38` GREEN. |
+| F-5 | MAJOR | **FIXED** | The line now states the contract M5 implements: "the document type and date, and at least one detail read from this document". Fixed alongside Q-A's completion, because a title beside an over-claim is worse than an over-claim alone. `7e83761` RED → `7c86c38` GREEN. |
 | F-6 | MINOR | **OWED** | `/[circle]/senders` has **no browser coverage at all**, which is why D4's render throw shipped. D11's a11y argument for keeping it out of nav protects a surface never measured. Add both routes to the audit list and pin the list. |
 | F-7 | MINOR | **OWED** | Every `?e=` marker these submit routes emit is written and never read — no page declares `searchParams`. A revoke refused for *authorization* renders as an emptied list. Authorization itself verified sound in-definer. |
 | F-8 | MINOR | **OWED** | The only link to `/senders` sits inside the non-empty branch, so whatever empties `parents` also removes the path to the surface governing who may write. Move it to the shared branch. |
@@ -855,7 +855,7 @@ says so in the argument.
 | F-2 | **BLOCKER** | **FIXED** | D7. |
 | F-3 | MAJOR | **FIXED** | D7. |
 | F-4 | MAJOR | **OWED** | The harness emits `{precision, recall, support, tp, fp, fn}`; the loader requires `high`/`medium` per field. The signed digest would fail closed as `artifact_partial` **forever**, indistinguishable from the shipping default at the call site — and no one has written down how a measured number becomes a threshold. Must be settled with D11 before any real run. |
-| F-5 | MAJOR | **OWED** | `g9-build.mjs --check` exists, passes, takes seconds, and is not in CI — so "true by construction" is "true if someone remembers". A contributor could swap in a real prescription label and update the manifest hash, and all 16 corpus assertions would pass. One CI step. |
+| F-5 | MAJOR | **FIXED** | `node scripts/fixtures/g9-build.mjs --check` is a CI step. `7e83761`. |
 | F-6 | MAJOR | **OWED** | The eval scores raw model output; production applies `validateFacts`, which drops hallucinated-page citations and over-cap values. The bias is one-directional and **upward** — a hallucinated citation is a true positive to the scorer and an invisible non-event to the family. |
 | F-7 | MAJOR | **FIXED** | D7. |
 | F-8 | MINOR | **ACCEPTED-NOTE** | Exact string equality after `lower(btrim())`. Defensible given the prompt's verbatim instruction, and the concrete failure set (dates in prose, a dropped currency symbol, `coverage_determination` free text) is real. Worth stating in the spec so a low number is not misread as a reading failure — and so no one "fixes" it by loosening the matcher after seeing the result. |
@@ -941,6 +941,125 @@ G12 and the deploy-level rows are untouched.**
 
 ---
 
+
+## D20 — the owner's rulings, and the closing increment they authorised
+
+**On 2026-08-23 the owner ruled on three of the five items in D18:**
+
+1. **The migration bound: AMENDED, ≤ 6 → ≤ 7**, for exactly three things —
+   Q-A's grant, the `column_privileges` exact-set invariant, and Q-B's
+   `render_bounds_exceeded`. Landed as **M7**
+   (`20260823060001_round16_fixes.sql`) with pgTAP **057**. Bound closes
+   **SPENT at 7 of ≤ 7**.
+2. **Scope before the gate: the closing increment.**
+3. **The PR: the owner opens it.**
+
+**5B is therefore NO LONGER APP-ONLY.** `supabase/` has moved, so the
+ADR-0015 F12 per-directory binding no longer transfers the DB legs from
+CI — they were re-run here and are recorded in D22. The packet's claim
+that "the migration bound stays SPENT at 6 of ≤ 6 and was never
+approached" was true when written and is superseded by the amendment.
+
+**What the increment closed, red→green, every red carrying its failure
+signature:**
+
+| Finding | Commits |
+|---|---|
+| M7 — the grant, the invariant, the reason code | `287f544` → `08f7b7a` |
+| R4/F-3 — a converted conflict was un-approvable on two of three outcomes | `bafa5af` → `df45fca` |
+| R2/F-10, R2/F-11 — the log level and the egress assertion | `b4bfe65` → `dd86a39` |
+| Q-B, Q-D — each render ceiling lands its own reason | `f05d101` → `f62305c` |
+| Q-A completion, R5/F-4, R5/F-5, R6/F-5 | `7e83761` → `7c86c38` |
+| R4/F-5 — the ack keeps lineage and drops the values | `3fcb871` → `f6cbc1f` |
+| R6/F-6 — the eval scores the published prediction | `7677c0b` → `da68887` |
+
+**Q-A is complete.** The §4.7 p2 copy now reads *"This looks like the
+discharge summary you filed on July 12."* — what the plan's B6 row asked
+for, and what DUP-02/UXA-02 have been carrying as partially met.
+
+**Q-D closed with NO DDL**, which was the whole point of declining the
+packet's recommendation in D10: `extract_timeout` was already a legal
+edge and `provider_timeout` an already-seeded code, and nothing had ever
+called either.
+
+**Three amendments to already-green assertions** were required, and each
+carries its argument at the site rather than only in a commit message —
+the model allowlist, the D15 select guard, and the bounds-refusal
+mapping. In every case the property the leg existed for is preserved and
+only the claim changes. Packet Q-I is precisely about this move; making
+it silently while dispositioning Q-I would have been indefensible.
+
+**Two of this session's own assertions were wrong and were corrected
+rather than the code bent to fit them:** the stage-2 title reads
+lowercase mid-sentence (the plan's own example does too), and the date
+renders "July 12" because `formatShortDate` is the house authority — the
+plan's "Jul 12" was illustrative.
+
+---
+
+## D21 — a FOURTH amendment item, discovered by fixing the third
+
+**R4/F-2 cannot be fixed in the app layer, and the review did not know
+that when it was dispositioned.** D17 recorded it as OWED with "needs
+either the edge or an app-layer remap". Enumerated live against
+`hc.arrival_transitions` while building the Q-B/Q-D mapping:
+
+```
+extract     extracting  -> extract_timeout | extract_failed | extracted
+                           needs_password  | unsupported_type
+                           duplicate_suspected_stage2
+interpret   interpreting -> proposals_ready
+```
+
+`interpret` has **exactly one edge**. There is no failure target from
+`interpreting` at all, so every remap this session could write returns
+`invalid_state` — which is what the finding describes. The stage cannot
+terminalize a provider refusal, the lease runs to its deadline, the
+sweeper re-queues, and **attempts 2 and 3 re-call the provider** before
+the arrival lands `extract_failed` with `interpret_budget_exhausted` —
+the wrong reason for what happened, at three times the cost.
+
+**Recommended: a fourth item on the amendment** — one
+`hc.arrival_transitions` row, `interpret / interpreting →
+interpret_failed` (or `extract_failed`, if the owner prefers not to add
+a state), plus the pgTAP pin. It is the same shape and the same evidence
+leg as M7's three, and it is the last thing standing between the
+interpret stage and an honest terminal.
+
+**Not taken.** The amendment named three things and this session does not
+extend it on its own authority, which is the whole point of the bound.
+
+---
+
+## D22 — evidence at the closing head
+
+Every leg re-run, because `supabase/` moved and nothing transfers by F12
+this round.
+
+| Leg | Result |
+|---|---|
+| Clean-leg reset | `migration state exact: 61 applied == supabase/migrations` |
+| pgTAP | **Files=58, Tests=1506, Result: PASS** (1497 baseline; 057 adds 9) |
+| Concurrency | **70/70 assertions passed** (teed) |
+| `db:verify` | **No schema errors found** (`--fail-on warning`) |
+| Upgrade leg | base `a9d9f43` reset → exact 60 → `migration up` → exact 61 → pgTAP **1506 PASS** → concurrency **70/70** |
+| vitest | **64 files, 685 passed (685)** — the true baseline is **632**, not the packet's 631 (D16) |
+| typecheck · lint | clean |
+| G9 harness dry-run | **12/12 requests build; NOTHING was sent** |
+| `g9-build.mjs --check` | `corpus matches the spec` — now a CI step (R6/F-5) |
+
+**The local gate has NOT been re-run at this head, and that is stated
+rather than glossed.** Port 8787 is held by a `node` process started
+2026-08-22 18:51 — a leftover fixture server from the build session's
+gate run, predating this round's R7/F-2 partition filter. Playwright
+starts the fixture server as a second `webServer`, so the gate would
+either fail at startup or, worse, run against a stale server that still
+answers from the BLIND partition. Killing another session's process is
+not this session's call. **The gate is owed at the closing head**, and it
+matters here more than usual: the inbox and senders surfaces both
+changed, and the gate is what caught D15.
+
+---
 ## Consequences
 
 - **Seven BLOCKERs and three further MAJOR/MINOR findings are fixed on the branch**, red→green, each with its
@@ -956,9 +1075,11 @@ G12 and the deploy-level rows are untouched.**
   single most important sentence in this document.
 - **A 300-dpi scan now renders at the tier §6.3 promises.** Before D2 it
   rendered at 617×824 and said `rendered`.
-- **The migration bound is UNTOUCHED and still SPENT at 6 of ≤ 6.**
-  `supabase/` is byte-identical to main. Every fix in this round is
-  app-layer, by construction.
+- **The migration bound was AMENDED by the owner to ≤ 7 and closes SPENT
+  at 7 of ≤ 7** (D20). `supabase/` is no longer byte-identical to main, so
+  5B is no longer app-only and the DB legs are re-run rather than
+  inherited — D22. A **fourth** amendment item is recommended and NOT
+  taken (D21).
 - **The dependency bound is UNTOUCHED**: still exactly the two
   Q3-approved runtime packages. **The dev-dependency reserve remains
   UNSPENT** — nothing in these dispositions needed it, which is the
