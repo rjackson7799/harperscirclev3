@@ -128,15 +128,57 @@ A reviewer with limited time should read, in this order:
 4. **`app/api/worker/[stage]/route.ts`**, `processExtract` and
    `processInterpret` — the §4.3 sequence, the exits, the GC/promote
    lifecycle.
-5. **ADR-0022 D6 and D7** — the two gaps the app layer cannot close, and
-   the reason code that does not exist. Both are pointed questions
-   below.
+5. **ADR-0022 D15** — the column-grant finding, the fix, and what it
+   costs B6's copy. Then D6 and D7, the two other gaps the app layer
+   cannot close. All are pointed questions below.
 
 ---
 
 ## The pointed questions (recommended answers attached)
 
-### Q-A — `render_bounds_exceeded`: a reason code that does not exist
+### Q-A — the headline: one column grant, and an empty Care Inbox
+
+**Found by the local gate; nothing else could have found it.**
+`authenticated` holds a COLUMN-LEVEL select grant on `public.arrivals`
+— 25 of its 28 columns — and 5A M5 added `duplicate_of_document_id`
+without extending it. B6's first draft named that column in the inbox's
+select; Postgres refused per-column, supabase-js returned an ERROR
+rather than rows, and the page's own empty branch took over: **the whole
+Care Inbox rendered its first-run empty state, for every caller, on
+every arrival.** A 4B leg going red was the tell. Full detail in
+ADR-0022 D15.
+
+The tree is FIXED and green — the page no longer selects the column,
+suspects come from the STATE alone, both resolutions still render — and
+a regression guard asserts on the SELECT STRING, because a render
+assertion cannot tell "no arrivals" from "the query was refused", which
+is exactly how this passed a green unit suite.
+
+**What is still owed is one line of DDL:**
+
+```sql
+grant select (duplicate_of_document_id) on public.arrivals to authenticated;
+```
+
+Until it lands, the stage-2 copy says WHY the match happened rather than
+WHICH document it matched — so B6's plan row ("copy cites the matched
+FILED document") is **partially met, and recorded as such**, not quietly
+declared done.
+
+**Recommended: TAKE IT as a bound amendment at the round-16
+dispositions** — the M6-shaped precedent, one migration, no new
+surface. It is one grant on a column the member surface demonstrably
+needs, the column-level grant is deliberate and should be EXTENDED
+rather than replaced by a table grant, and deferring it leaves a
+shipped feature half-built for a slice.
+
+**And a second question inside it:** the class of defect — a migration
+adds a column, a member surface reads it, the grant is never re-pinned —
+has no test at the DB layer today. A pgTAP invariant asserting that
+every column a member surface selects is granted would close it. Worth
+the reviewer's opinion on whether that belongs in the same disposition.
+
+### Q-B — `render_bounds_exceeded`: a reason code that does not exist
 
 A page bomb or a pixel bomb lands `extract_failed` +
 `archive_bounds_exceeded`. The state and the family-facing label
@@ -152,7 +194,7 @@ wrong today, and no state is wrong. The alternative (amend to ≤ 7 and
 add the code now) buys a more accurate operational label for a full
 migration evidence leg.
 
-### Q-B — `hc.extractions_for(p_arrival)`: the interpret read path
+### Q-C — `hc.extractions_for(p_arrival)`: the interpret read path
 
 `hc_pipeline` has no `SELECT` on `extractions`, so the interpret worker
 cannot read what the extract attempt published. 5B carries the facts on
@@ -165,7 +207,7 @@ merely more expensive for image-only sources. A one-function definer at
 the next DB-opening slice makes both paths identical. Nothing here needs
 fixing before merge.
 
-### Q-C — `extract_timeout` is currently unreachable
+### Q-D — `extract_timeout` is currently unreachable
 
 A provider timeout is a RETRY (the scanner precedent: an outage is never
 finalized early), and exhaustion lands `extract_failed` with
@@ -179,7 +221,7 @@ teaching exhaustion which failure was last — DDL on
 distinction the family never sees (both labels read "Couldn't read
 it"). Prefer the honest note over the mechanism.
 
-### Q-D — proposals carry no `source_extraction_ids`
+### Q-E — proposals carry no `source_extraction_ids`
 
 `hc.write_proposals` passes them through verbatim, and the worker cannot
 learn the ids the same transaction is about to mint. So a proposal
@@ -190,7 +232,7 @@ consumer is the review screen, which does not exist yet. Whoever builds
 it will know what shape it needs, and guessing now risks a column that
 gets rebuilt.
 
-### Q-E — the fixture server cannot prove vision, and says so
+### Q-F — the fixture server cannot prove vision, and says so
 
 For an image-only source the fixture server returns NO facts, on
 purpose. The gate leg therefore uses born-digital material for the happy
@@ -203,7 +245,7 @@ server "recognise" images would require it to render and hash the
 corpus, which is a second source of truth about what a document says —
 Q5's rejected second fixture world in a new costume.
 
-### Q-F — the corpus measures the contract, not the vision
+### Q-G — the corpus measures the contract, not the vision
 
 `docs/eval/g9-corpus-spec.md` §1 and §7 state it plainly: these
 synthetic fixtures measure our extraction contract end to end on
@@ -217,7 +259,7 @@ G9-gate decision, not a build one.** §7 prices the three options
 annotator). The owner should choose with the first eval run's numbers in
 hand.
 
-### Q-G — the TypeScript runner instead of a dev-dependency
+### Q-H — the TypeScript runner instead of a dev-dependency
 
 `scripts/ts-run.mjs` is ~40 lines over Node 22's own type stripping. The
 alternative was spending the dev-dep reserve on a TS runner.

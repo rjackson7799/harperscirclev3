@@ -262,28 +262,32 @@ ready for both, but a `timeline_event`'s own-domain needs a `kind`
 nothing here produces. Asking for proposals the worker would silently
 drop wastes tokens and hides the drop.
 
-## D9 — B6: Q6 decided — ProvenanceLine takes its first consumer, and stays
+## D9 — B6: Q6 decided on its FIRST branch, on narrower evidence than expected
 
-**Q6's first branch.** The stage-2 line cites a filed document as the
-source of a claim the product is making about this arrival, and that
-claim is downstream of AI-extracted values — `document_date`, `provider`
-and `amount` are exactly what M5 matched on — so it is provenance in
-§8.6's sense. **The design-conformance citation therefore stays in slice
-5**; it does not move to slice 6. Decided red-first, as ruled.
+**ProvenanceLine takes its first consumer at B6.** The stage-2 line
+shows where the suspicion came from, and the suspicion is downstream of
+AI-extracted values — `document_date`, `provider` and `amount` are
+exactly what M5 matched on — so it is provenance in §8.6's sense.
+**The design-conformance citation stays in slice 5**; it does not move to
+slice 6. Decided red-first, as ruled.
+
+**What it cannot say is WHICH document, and that is D15's finding, not a
+design choice.** The plan's B6 row says the copy cites the matched FILED
+document. A member has no read path to `arrivals.duplicate_of_document_id`
+— see D15 — so the copy says *why* the match happened rather than *what*
+it matched. That is the provenance a person actually needs in order to
+decide, and it is honest about what we know; the naming half is one line
+of DDL away and is a round-16 pointed question.
 
 Stage 2 is a different question from stage 1 and the copy says so:
 `same_thing` reads "add it as another source", because that is what it
 does. A test refuses stage-1 copy on a stage-2 row.
 
-**Round-15 observation 3 is honoured structurally.** Every read of
-`arrivals.duplicate_of_document_id` is gated on the STATE, and a test
-drives a `nothing_filed` arrival that still carries its pointer and
-asserts no affordance renders. Keying on the pointer would hand a
-settled question back to a person forever.
-
-The matched document is read under RLS like everything else, so a caller
-who cannot see it still gets the question: the copy degrades, the
-affordance does not.
+**Round-15 observation 3 is honoured structurally**, and the finding
+strengthens it: the affordance is gated on the STATE, which is also the
+only thing a member can read. A test drives a `nothing_filed` arrival and
+asserts no affordance renders. Keying on a pointer members cannot even
+read was never going to work.
 
 ## D10 — B7: the seam is consumed, and D13's backlog is RELEASED
 
@@ -411,6 +415,59 @@ deployment fact rather than a promise.
    ships, cost is watched by a person — stated on `ai-provider.md`.
 6. **SND-02's live-actor family audit** rides with the account-deletion
    path (ADR-0021 S2), NOT with 5B.
+7. **`grant select (duplicate_of_document_id)`** — D15. Until it lands,
+   the stage-2 copy says why rather than what.
+
+## D15 — THE FINDING: a column-level grant, and an empty Care Inbox
+
+**The local gate caught this, and nothing else could have.**
+
+`authenticated` holds a **COLUMN-LEVEL** select grant on
+`public.arrivals` — 25 of its 28 columns, enumerated — and 5A M5 added
+`duplicate_of_document_id` without extending it. B6's first draft named
+that column in the inbox's select. Postgres refused per-column,
+supabase-js returned an ERROR rather than rows, and the page's own
+`parents.length === 0` branch took over: **the entire Care Inbox
+rendered its first-run empty state, for every caller, on every
+arrival** — not merely for stage-2 rows.
+
+The tell was a 4B leg going red: `e2e/ingestion.spec.ts`'s TUS upload
+test expected "Uploaded document" and got the forwarding-address empty
+state, while the arrival existed in the database with a null parent, a
+null `deleted_at`, and the founder a live coordinator.
+
+**Why the unit suite could not see it.** The route tests mock the
+supabase client, so a refused query and an empty circle are the same two
+lines of fixture. The regression guard added with the fix therefore
+asserts on the SELECT STRING — a render assertion cannot distinguish "no
+arrivals" from "the query was refused", which is precisely how this
+passed a green suite.
+
+**The fix, inside the bound:** the page stops selecting the column;
+suspects come from the STATE alone. The affordance is untouched.
+
+**The fix that is NOT taken here** is one line of DDL:
+
+```sql
+grant select (duplicate_of_document_id) on public.arrivals to authenticated;
+```
+
+The migration bound is spent at 6 of ≤ 6, so this is an owner
+bound-amendment, not a session decision. It is the round-16 headline
+pointed question.
+
+**Two things worth the reviewer's attention beyond the fix:**
+
+1. **The column-level grant is deliberate** (a member reads 25 of 28
+   columns; `duplicate_of_arrival_id`, the lease pointer and the
+   idempotency key are withheld), so the answer is to extend it by one
+   column, not to replace it with a table grant.
+2. **Nothing else in 5B selects an ungranted column**, verified against
+   `information_schema.column_privileges`. But the class of defect —
+   a migration adds a column, a member surface reads it, the grant is
+   never re-pinned — has no test today at the DB layer. A pgTAP
+   invariant asserting that every column a member surface selects is
+   granted would close it, and is worth the reviewer's opinion.
 
 ## Consequences
 

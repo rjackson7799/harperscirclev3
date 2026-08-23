@@ -65,6 +65,23 @@ async function query(text: string, params: unknown[] = []) {
   }
 }
 
+/**
+ * A fixture write that must step around §4.9's deferred claim trigger, on ONE
+ * connection so the session setting actually applies. See its call site for
+ * why a gate fixture needs this and why it is never a product path.
+ */
+async function fixtureInsert(text: string, params: unknown[] = []) {
+  const client = new pg.Client({ connectionString: DB_URL });
+  await client.connect();
+  try {
+    await client.query('set session_replication_role = replica');
+    await client.query(text, params);
+  } finally {
+    await client.query('set session_replication_role = default').catch(() => {});
+    await client.end();
+  }
+}
+
 /** Drive the workers until the arrival reaches one of `wanted`. The relay does
  *  this on a timer in production; here it is explicit so the leg is fast. */
 async function driveTo(arrivalId: string, wanted: string[], timeoutMs = 120_000): Promise<string> {
@@ -244,7 +261,17 @@ test.describe.serial('the 5B extraction leg', () => {
     expect(await driveTo(first, ['proposals_ready'])).toBe('proposals_ready');
 
     // File the first one, so there is a FILED document to match against.
-    await query(
+    //
+    // Under `session_replication_role = replica`, deliberately, and the
+    // refusal it steps around is the POINT: a raw insert into a record table
+    // answers `record_write_unclaimed`, because §4.9's deferred trigger
+    // demands the write be claimed through `proposal_commits`. There is no
+    // approval SURFACE until slice 6, so a gate fixture cannot file a
+    // document the honest way yet. This is the same technique the PRF-06
+    // bench and the live suites use for fixture rows, and it is a FIXTURE
+    // concession, never a product path — the guard it suspends is exactly
+    // what makes "nothing is filed without a person approving it" true.
+    await fixtureInsert(
       `insert into public.documents
          (circle_id, subject_id, title, category, summary_text, artifact_arrival_id, filed_at,
           approved_by, approved_at, approver_display_name, taint)
