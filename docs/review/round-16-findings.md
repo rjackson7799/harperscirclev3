@@ -46,6 +46,15 @@ R2 was additionally required to load the `claude-api` skill before
 judging anything provider-shaped, per the standing rule for every
 session touching `lib/ai/`.
 
+**One transcription, disclosed.** R2/F-19 and R7/F-7 quote a source line
+containing a raw NUL byte. Reproduced literally, that byte made *this
+document* binary to git too — so the findings file would have been
+undiffable in exactly the way the finding is about. The two occurrences
+are therefore written as the escape `\u0000` rather than the raw byte.
+Nothing else in this file is altered, and the finding's substance is
+unchanged: the byte in `lib/ai/client.ts` was raw, which is why the
+adapter had no diff.
+
 **Findings are addressed as `R<n>/F-<m>`** — each reviewer's own
 numbering is preserved rather than renumbered into one sequence, so that
 "verbatim" means what it says.
@@ -1698,7 +1707,7 @@ $ git diff --stat a9d9f43..dd8a895 -- lib/ai/client.ts
 ```
 The cause is one literal NUL used as a cache-key separator:
 ```js
-const key = `${baseURL} ${apiKey}`;   // written as a raw 0x00, not an escape
+const key = `${baseURL}\u0000${apiKey}`;   // written as a raw 0x00, not an escape
 ```
 ```
 $ tr -d -c '\000' < lib/ai/client.ts | wc -c
@@ -1707,7 +1716,7 @@ $ git check-attr -a lib/ai/client.ts
 lib/ai/client.ts: text: auto
 ```
 Two consequences. (a) The single most G3-relevant file in the slice — the one that constructs the provider client, reads `ANTHROPIC_API_KEY`, sets `maxRetries: 0`, and decides what is and is not on the wire — **does not appear in any `git diff` or PR review surface**. (b) CI runs `gitleaks detect -s /repo`, i.e. git-history mode over `git log -p` patches; binary files produce "Binary files differ" with no content lines, so this file's contents are not scanned. The packet's gitleaks leg therefore does not cover the file that handles the API key.
-**Failure scenario:** A reviewer following the kickoff's instructions cannot see the code they are told to interrogate. A secret pasted into this file at any future point passes CI's secret scan silently. The fix is one character (`\0` or ` ` as an escape), which restores both diffability and scanning.
+**Failure scenario:** A reviewer following the kickoff's instructions cannot see the code they are told to interrogate. A secret pasted into this file at any future point passes CI's secret scan silently. The fix is one character (`\0` or `\u0000` as an escape), which restores both diffability and scanning.
 **Confidence:** High on the NUL, the binary classification, and the diff invisibility. Medium-high on the gitleaks consequence — confirmed by running `gitleaks detect` vs `gitleaks detect --no-git` and comparing findings on a seeded secret in this file.
 
 ---
