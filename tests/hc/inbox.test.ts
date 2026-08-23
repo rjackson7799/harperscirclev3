@@ -270,7 +270,16 @@ describe('5B B8 · known senders: an authorized list, and revoke through it', ()
     expect(mine).toBeDefined();
     expect(mine!.accepted_by).toBe(FOUNDER);
     expect(mine!.accepted_by_name).toBeTruthy();
-    expect(mine!.accepted_at).toBeTruthy();
+
+    // Round-16 R5/F-1: `toBeTruthy()` was the whole assertion, and a Date is
+    // truthy. KnownSender declares accepted_at as `string`, the page calls
+    // .slice(0, 10) on it, and node-pg hands back a Date for timestamptz —
+    // so every non-empty senders list threw at render. The type must be TRUE
+    // at the boundary, not merely declared.
+    expect(typeof mine!.accepted_at).toBe('string');
+    expect(mine!.accepted_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // Exactly what the page does with it.
+    expect(mine!.accepted_at.slice(0, 10)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it('revoking removes it from the list — the pair closes D15', async () => {
