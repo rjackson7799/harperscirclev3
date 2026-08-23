@@ -188,16 +188,15 @@ describe('B7 · evidence before bytes (§1.3 step 6; §10.5)', () => {
     });
     await route.GET(get(), ctx);
     expect(order).toEqual(['log', 'fetch']);
+    // 5B B8: the call SHRANK. hc.log_artifact_read resolves the circle, the
+    // subject and the actor's display name itself, in-function, under its own
+    // authorization — so passing them from the route would be passing values
+    // the definer ignores, which reads like a contract and is decoration.
     const [logged] = artifacts.logArtifactRead.mock.calls[0];
-    expect(logged).toMatchObject({
-      claims: CLAIMS,
-      circleId: ROW.circle_id,
-      subjectId: ROW.subject_id,
-      arrivalId: ARRIVAL,
-    });
+    expect(logged).toEqual({ claims: CLAIMS, arrivalId: ARRIVAL });
   });
 
-  it('a failed evidentiary write refuses the read — no bytes without a trail', async () => {
+  it('a failed access-log write refuses the read — no bytes without a trail', async () => {
     artifacts.logArtifactRead.mockRejectedValueOnce(new Error('log unavailable'));
     const res = await route.GET(get(), ctx);
     expect(res.status).toBe(500);

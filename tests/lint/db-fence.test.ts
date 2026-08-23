@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 // ============================================================================
@@ -274,5 +275,39 @@ describe('5B B1 · the BLIND partition is fenced to the scored readers', () => {
       "import { developmentCorpus } from '@/lib/eval/corpus';\nexport const x = developmentCorpus;\n",
     );
     expect(restricted(msgs)).toBe(false);
+  });
+});
+
+// ============================================================================
+// 5B B8 · The D7 interim is RETIRED (slice-5 plan B8; ADR-0019 D7/Q-iii;
+// EVD-01).
+//
+// 4B shipped lib/db/evidentiary.ts because hc.log is hc_internal-only and 4A
+// M5 landed the 'artifact_read' event type with NO definer: the write path was
+// the maintenance identity assuming hc_internal for exactly one statement. It
+// was recorded as an interim and as a standing candidate for a definer at the
+// next DB-opening slice. 5A M1 shipped hc.log_artifact_read; the interim goes.
+//
+// The fence must SHRINK with it. A fence that still names a deleted module
+// looks like protection and is nothing at all.
+// ============================================================================
+
+describe('5B B8 · the evidentiary boundary is gone, and so is its fence entry', () => {
+  it('lib/db/evidentiary.ts does not exist', () => {
+    expect(existsSync(path.join(repo, 'lib/db/evidentiary.ts'))).toBe(false);
+  });
+
+  it('the surviving channels are still fenced to lib/hc', async () => {
+    const msgs = await messagesFor(
+      'app/(app)/[circle]/senders/page.tsx',
+      "import { withRequestRole } from '@/lib/db/request-role';\nexport const x = withRequestRole;\n",
+    );
+    expect(restricted(msgs)).toBe(true);
+  });
+
+  it('the maintenance boundary keeps exactly its two auth ops — BAT-02 untouched', () => {
+    const source = readFileSync(path.join(repo, 'lib/db/maintenance.ts'), 'utf8');
+    const exported = [...source.matchAll(/export async function (\w+)/g)].map((m) => m[1]);
+    expect(exported.sort()).toEqual(['revokeAuthSessions', 'unconfirmEmail']);
   });
 });
