@@ -26,7 +26,12 @@ async function messagesFor(filePath: string, code: string): Promise<string[]> {
 }
 
 function restricted(messages: string[]): boolean {
-  return messages.some((m) => m.startsWith('no-restricted-imports:'));
+  // Round-16 R6/F-3 added a second rule: the dynamic-import form is caught by
+  // `no-restricted-syntax` because ESLint's core import rule has no
+  // ImportExpression handler. A fence is a fence whichever rule reports it.
+  return messages.some(
+    (m) => m.startsWith('no-restricted-imports:') || m.startsWith('no-restricted-syntax:'),
+  );
 }
 
 describe('A2 · service-role stays fenced to its allowlist', () => {
@@ -387,13 +392,15 @@ describe('R7/F-2 · the fixture server answers only from the development partiti
 
   it('and it cannot match a blind item, driven through the real matcher', async () => {
     const mod = await import('@/scripts/ai-fixture-server.mjs');
-    const corpus = mod.loadCorpus();
-    const blind = corpus.items.filter((i) => i.partition === 'blind' && i.labels?.length);
+    const corpus = mod.loadCorpus(process.cwd());
+    const blind = (corpus.items as Array<{ id: string; partition: string; labels?: Array<{ value: string }> }>).filter(
+      (i) => i.partition === 'blind' && i.labels?.length,
+    );
     expect(blind.length).toBeGreaterThan(0);
     for (const item of blind) {
       // Feed the matcher the item's own label values — the strongest possible
       // signal. It must still refuse, because the partition is checked first.
-      const text = item.labels.map((l) => l.value).join(' ');
+      const text = (item.labels ?? []).map((l) => l.value).join(' ');
       expect(mod.matchItem(corpus, text), `${item.id} must not match`).toBeNull();
     }
   });

@@ -64,6 +64,29 @@ const fenceProvider = {
 // runs read it; prompt and schema iteration must not, so the bands are never
 // measured on their own development set. The fence is what makes "blind" a
 // property of the tree instead of a property of someone's discipline.
+// Round-16 R6/F-2: the manifest module is the blind partition's real door.
+// `corpusManifest()` / `itemsIn('blind')` used to live in the unfenced
+// lib/eval/corpus, so the fence below guarded a two-line wrapper while the
+// thing it wrapped was reachable from anywhere. Fenced to the same readers
+// plus lib/eval/** itself, which is where the split is applied.
+const fenceCorpusManifest = {
+  group: ["**/eval/manifest", "**/lib/eval/manifest"],
+  message:
+    "The full G9 manifest (both partitions) is fenced to scripts/eval/**, tests/eval/** and lib/eval/**. Development code reads lib/eval/corpus, which cannot name a partition — see docs/eval/g9-corpus-spec.md.",
+};
+
+// Round-16 R6/F-3: ESLint's core `no-restricted-imports` registers only
+// ImportDeclaration, ExportNamedDeclaration and ExportAllDeclaration — it
+// has NO ImportExpression handler, so `await import('@/lib/eval/blind')`
+// walked straight past every fence. The selector below matches the dynamic
+// form only; the `.` stands in for the path separator so the selector needs
+// no escaping.
+const noDynamicEvalImport = {
+  selector: "ImportExpression > Literal[value=/eval.(blind|manifest)$/]",
+  message:
+    "Dynamic import of the G9 blind partition or the full manifest is fenced exactly as the static import is (round-16 R6/F-3). Read lib/eval/corpus instead.",
+};
+
 const fenceBlindPartition = {
   group: ["**/eval/blind", "**/lib/eval/blind"],
   message:
@@ -136,9 +159,11 @@ const eslintConfig = defineConfig([
             fenceStoragePlane,
             fenceProvider,
             fenceBlindPartition,
+            fenceCorpusManifest,
           ],
         },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   {
@@ -147,8 +172,9 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [fenceServiceRole, fenceStoragePlane, fenceProvider, fenceBlindPartition] },
+        { patterns: [fenceServiceRole, fenceStoragePlane, fenceProvider, fenceBlindPartition, fenceCorpusManifest] },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   // The storage-plane consumers: bytes may move here, the channels and
@@ -159,8 +185,9 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [fenceServiceRole, fenceChannels, fenceProvider, fenceBlindPartition] },
+        { patterns: [fenceServiceRole, fenceChannels, fenceProvider, fenceBlindPartition, fenceCorpusManifest] },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   // The worker routes: bytes AND the provider adapter — they are the two
@@ -172,8 +199,9 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [fenceServiceRole, fenceChannels, fenceBlindPartition] },
+        { patterns: [fenceServiceRole, fenceChannels, fenceBlindPartition, fenceCorpusManifest] },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   // The adapter family itself: it is the thing being fenced, so it may
@@ -184,8 +212,9 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane, fenceBlindPartition] },
+        { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane, fenceBlindPartition, fenceCorpusManifest] },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   // The corpus loader family: lib/eval/corpus is the shared reader the
@@ -198,6 +227,7 @@ const eslintConfig = defineConfig([
         "error",
         { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane, fenceProvider] },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   // The eval harness: the SOLE real-key path, and the only scored reader of
@@ -210,6 +240,7 @@ const eslintConfig = defineConfig([
         "error",
         { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane] },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   // Tests prove the adapter contract, so they may import lib/ai. The BLIND
@@ -220,8 +251,9 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane, fenceBlindPartition] },
+        { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane, fenceBlindPartition, fenceCorpusManifest] },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   {
@@ -232,6 +264,7 @@ const eslintConfig = defineConfig([
         "error",
         { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane] },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   // The storage module itself: the service credential's storage plane is
@@ -242,8 +275,9 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [fenceChannels, fenceProvider, fenceBlindPartition] },
+        { patterns: [fenceChannels, fenceProvider, fenceBlindPartition, fenceCorpusManifest] },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   // The artifact route (§1.3): service credential + storage plane; the
@@ -254,8 +288,9 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [fenceChannels, fenceProvider, fenceBlindPartition] },
+        { patterns: [fenceChannels, fenceProvider, fenceBlindPartition, fenceCorpusManifest] },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   {
@@ -264,8 +299,9 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [fenceChannels, fenceStoragePlane, fenceProvider, fenceBlindPartition] },
+        { patterns: [fenceChannels, fenceStoragePlane, fenceProvider, fenceBlindPartition, fenceCorpusManifest] },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   {

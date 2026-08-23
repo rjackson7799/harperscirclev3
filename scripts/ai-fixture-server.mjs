@@ -40,7 +40,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-function loadCorpus(root) {
+export function loadCorpus(root) {
   const file = path.join(root, 'fixtures', 'g9', 'corpus.json');
   return JSON.parse(readFileSync(file, 'utf8'));
 }
@@ -81,10 +81,17 @@ function between(text, tag) {
  * go to the item with more matches; zero matches means "nothing recognised",
  * which is an answer in its own right.
  */
-function matchItem(corpus, text) {
+export function matchItem(corpus, text) {
   let best = null;
   let bestScore = 0;
   for (const item of corpus.items) {
+    // The DEVELOPMENT partition only (round-16 R7/F-2). This server answers
+    // from corpus LABELS, so without this line the gate-stack fixture server
+    // could hand back a scored item's facts, complete with its citation
+    // geometry — and the "happy path" the gate demonstrates would be
+    // self-fulfilling on the set the G9 bands are measured against. The
+    // ESLint fence cannot reach here: this reads the manifest as DATA.
+    if (item.partition !== 'development') continue;
     if (item.expected_outcome !== 'extracted' || item.labels.length === 0) continue;
     let score = 0;
     for (const label of item.labels) {

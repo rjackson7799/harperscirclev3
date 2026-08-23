@@ -2,13 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
-import {
-  CORPUS_ROOT,
-  corpusManifest,
-  developmentCorpus,
-  readCorpusFile,
-  type CorpusItem,
-} from '@/lib/eval/corpus';
+import { CORPUS_ROOT, corpusManifest } from '@/lib/eval/manifest';
+import { developmentCorpus, readCorpusFile, type CorpusItem } from '@/lib/eval/corpus';
 import { blindCorpus } from '@/lib/eval/blind';
 import { isKnownField, riskClassFor } from '@/lib/extraction/fields';
 

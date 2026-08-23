@@ -1,5 +1,6 @@
 import 'server-only';
-import { itemsIn, type CorpusItem } from '@/lib/eval/corpus';
+import { itemsIn } from '@/lib/eval/manifest';
+import { type CorpusItem } from '@/lib/eval/corpus';
 
 /**
  * The G9 corpus's BLIND partition (slice-5 plan B1; TSD §6.10).

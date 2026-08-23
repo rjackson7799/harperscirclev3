@@ -1,8 +1,9 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { type RiskClass } from '@/lib/extraction/fields';
+import { CORPUS_ROOT, itemsIn } from '@/lib/eval/manifest';
 
 /**
  * The G9 corpus loader — the DEVELOPMENT half (slice-5 plan B1; Q5 SETTLED;
@@ -89,39 +90,6 @@ export type CorpusManifest = {
   items: CorpusItem[];
 };
 
-function locateCorpus(): string {
-  // Every consumer (vitest, the harness scripts, the fixture server) runs
-  // from the repo root; the walk up is belt-and-braces for a consumer that
-  // does not, and it fails loudly rather than silently finding nothing.
-  let dir = process.cwd();
-  for (let i = 0; i < 6; i++) {
-    const candidate = path.join(dir, 'fixtures', 'g9');
-    if (existsSync(path.join(candidate, 'corpus.json'))) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error('g9 corpus: fixtures/g9/corpus.json not found from ' + process.cwd());
-}
-
-export const CORPUS_ROOT: string = locateCorpus();
-
-let cached: CorpusManifest | undefined;
-
-export function corpusManifest(): CorpusManifest {
-  if (!cached) {
-    cached = JSON.parse(
-      readFileSync(path.join(CORPUS_ROOT, 'corpus.json'), 'utf8'),
-    ) as CorpusManifest;
-  }
-  return cached;
-}
-
-/** Items in the partition named — the one place the split is applied, so
- *  neither accessor can drift from the other. */
-export function itemsIn(partition: CorpusPartition): CorpusItem[] {
-  return corpusManifest().items.filter((i) => i.partition === partition);
-}
 
 /**
  * The development partition: worker/adapter tests, the fixture server,
@@ -131,9 +99,17 @@ export function developmentCorpus(): CorpusItem[] {
   return itemsIn('development');
 }
 
+/**
+ * One DEVELOPMENT item by id.
+ *
+ * Deliberately scoped to the development partition (round-16 R6/F-2): the
+ * old form searched the whole manifest, so `corpusItem('blind-eob-01')` was
+ * a supported way to hold a scored item from anywhere in the tree. A blind
+ * item is reached through `lib/eval/blind.ts` or not at all.
+ */
 export function corpusItem(id: string): CorpusItem {
-  const item = corpusManifest().items.find((i) => i.id === id);
-  if (!item) throw new Error(`g9 corpus: no item ${id}`);
+  const item = developmentCorpus().find((i) => i.id === id);
+  if (!item) throw new Error(`g9 corpus: no development item ${id}`);
   return item;
 }
 
