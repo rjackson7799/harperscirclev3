@@ -330,7 +330,22 @@ describe('B4 · the §4.3 normalize exits land honest states', () => {
     expect(ai.extractFromArrival).not.toHaveBeenCalled();
   });
 
+  // AMENDED at round 16 (Q-B/Q-D, ADR-0023 D9/D10), argued in place. This leg
+  // pinned all four ceilings onto `archive_bounds_exceeded`, which described
+  // none of them and actively misdescribed the wall-clock case. M7 adds
+  // `render_bounds_exceeded` and 4A already shipped `extract_timeout` /
+  // `provider_timeout`, so each ceiling now lands its own reason.
+  //
+  // THE PROPERTY THIS LEG EXISTS FOR IS UNCHANGED and still asserted for
+  // every reason: the family-facing terminal is "Couldn't read it" either
+  // way, and the provider is NEVER dispatched on a bounds refusal.
   it('a bounds refusal terminalizes as Couldn’t read it — and NEVER dispatches', async () => {
+    const expected: Record<string, [string, string]> = {
+      page_bound: ['extract_failed', 'render_bounds_exceeded'],
+      page_dimensions: ['extract_failed', 'render_bounds_exceeded'],
+      output_size: ['extract_failed', 'render_bounds_exceeded'],
+      wall_clock: ['extract_timeout', 'provider_timeout'],
+    };
     for (const reason of ['page_bound', 'page_dimensions', 'wall_clock', 'output_size']) {
       vi.clearAllMocks();
       workers.claimStage.mockResolvedValue({
@@ -347,9 +362,9 @@ describe('B4 · the §4.3 normalize exits land honest states', () => {
       expect(workers.advanceArrival, reason).toHaveBeenCalledWith(
         ARRIVAL,
         'extracting',
-        'extract_failed',
+        expected[reason][0],
         LEASE,
-        'archive_bounds_exceeded',
+        expected[reason][1],
       );
       expect(ai.extractFromArrival, reason).not.toHaveBeenCalled();
     }

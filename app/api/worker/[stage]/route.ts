@@ -257,12 +257,14 @@ async function processGate(msg: PipelineMessage): Promise<string> {
  * own. `archive_bounds_exceeded` is the closest that exists — "Archive
  * depth/entries/expansion over PRD §13.3 bounds" — and a 250-page PDF IS a
  * §13.3 bound, but that code's description says "Archive" and this is not
- * one. The family-facing label is right either way (`extract_failed` reads
+ * one. The family-facing label is right in every case (`extract_failed` reads
  * "Couldn\u2019t read it", which is the honest thing to say); the alternative,
  * `unsupported_type`, reads "Unsupported file" and would tell them something
  * false about their document. The migration bound is spent, so a
- * `render_bounds_exceeded` code is OFFERED to the owner for the next
- * DB-opening slice rather than taken as a session decision.
+ * ROUND-16 CLOSED THIS: the owner granted M7, which adds
+ * `render_bounds_exceeded`, and the four named ceilings now map distinctly —
+ * a wall-clock overrun to `extract_timeout`/`provider_timeout` (states 4A
+ * shipped and nothing had ever called), the other three to the new code.
  */
 export function normalizeExit(result: NormalizeResult): { state: string; reason: string } | null {
   if (result.outcome === 'needs_password') {
@@ -272,7 +274,21 @@ export function normalizeExit(result: NormalizeResult): { state: string; reason:
     return { state: 'unsupported_type', reason: 'unsupported_mime' };
   }
   if (result.outcome === 'refused') {
-    return { state: 'extract_failed', reason: 'archive_bounds_exceeded' };
+    // §6.3's four ceilings are four different events, and until round-16 they
+    // shared one reason code that described none of them (Q-B, Q-D; ADR-0023
+    // D9/D10). A wall-clock overrun is a TIMEOUT — 4A shipped
+    // `extract_timeout` and `provider_timeout` for it, both already legal and
+    // never called. The other three are genuine bounds and land M7's
+    // `render_bounds_exceeded`.
+    //
+    // Nothing family-facing moves: `extract_failed` and `extract_timeout`
+    // both read "Couldn't read it", which is the honest thing to say either
+    // way. What moves is that the operational tier can finally tell a page
+    // bomb from a pixel bomb from a timeout.
+    if (result.reason === 'wall_clock') {
+      return { state: 'extract_timeout', reason: 'provider_timeout' };
+    }
+    return { state: 'extract_failed', reason: 'render_bounds_exceeded' };
   }
   return null;
 }
