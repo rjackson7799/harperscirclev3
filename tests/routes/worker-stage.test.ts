@@ -340,13 +340,40 @@ describe('B4 · gate — the SND-01 machinery; uploads pass, strangers hold', ()
 });
 
 describe('B4 · the queue is shared; the seam and mixed batches stay honest', () => {
-  it('extract/interpret messages are DEFERRED, not consumed and not lost (the Q7 seam)', async () => {
-    workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+  // 5B B4 amends this row. The Q7 seam was "extract/interpret are DEFERRED,
+  // never consumed and never lost"; extract is now CONSUMED, so the assertion
+  // moves to interpret — which B5 consumes in turn, at which point the defer
+  // branch goes entirely (B7). Amending the assertion as each half lands is
+  // the honest shape: the seam closes in two steps and the suite says so.
+  it('interpret messages are still DEFERRED at B4 — not consumed, not lost', async () => {
+    workers.readPipelineWork.mockResolvedValueOnce([
+      { msg_id: 7, message: { circle_id: CIRCLE, arrival_id: ARRIVAL, stage: 'interpret', channel: 'email' } },
+    ]);
     const res = await route.POST(req('store'), ctx('store'));
     expect(res.status).toBe(200);
     expect(workers.deferPipelineWork).toHaveBeenCalledWith(7);
     expect(workers.archivePipelineWork).not.toHaveBeenCalled();
     expect(workers.claimStage).not.toHaveBeenCalled();
+  });
+
+  it('extract messages are CONSUMED now — the first half of the seam is open', async () => {
+    workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+    workers.claimStage.mockResolvedValueOnce({
+      result: 'already_advanced',
+      leaseId: null,
+      attemptNo: null,
+      deadline: null,
+    });
+    const res = await route.POST(req('store'), ctx('store'));
+    expect(res.status).toBe(200);
+    expect(workers.deferPipelineWork).not.toHaveBeenCalled();
+    expect(workers.claimStage).toHaveBeenCalledWith(
+      ARRIVAL,
+      'extract',
+      expect.any(String),
+      expect.any(String),
+    );
+    expect(workers.archivePipelineWork).toHaveBeenCalledWith(7);
   });
 
   it('each message dispatches by ITS stage; the response reports outcomes', async () => {

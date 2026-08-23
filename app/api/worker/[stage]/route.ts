@@ -4,6 +4,7 @@ import {
   archivePipelineWork,
   claimStage,
   deferPipelineWork,
+  finalizeExtraction,
   finalizeScan,
   finalizeStore,
   lookupChannel,
@@ -12,18 +13,28 @@ import {
   scanCacheLookup,
   senderRecognised,
   sendPipelineWork,
+  type CarriedFact,
   type PipelineMessage,
   type QueuedWork,
 } from '@/lib/hc/workers';
 import {
   artifactKey,
+  gcRenderStaging,
   moveToQuarantine,
+  promoteRenderedPages,
+  readArtifactBytes,
   readStagedObject,
   removeStagedObject,
   writeArtifactObject,
+  writeRenderStaging,
 } from '@/lib/storage/artifacts';
 import { scanBytes } from '@/lib/scan/scanner';
 import { sniffMime } from '@/lib/pipeline/mime';
+import { normalizeArrival, type NormalizeResult } from '@/lib/pipeline/render';
+import { extFor, renderStagingKey } from '@/lib/pipeline/page-keys';
+import { extractFromArrival } from '@/lib/ai/extract';
+import { EXTRACT_MODEL, PROMPT_VERSION, configurationHash } from '@/lib/ai/config';
+import { effectiveRiskClass, loadBands } from '@/lib/extraction/bands';
 
 /**
  * POST /api/worker/[stage] — the pipeline workers (TSD §1.4, §4.3;
@@ -45,12 +56,37 @@ import { sniffMime } from '@/lib/pipeline/mime';
  * the honest terminal state with its stated reason. The worker never
  * invents a verdict and never finalizes 'unavailable' early.
  *
- * The Q7 seam: extract/interpret messages are DEFERRED (pgmq.set_vt),
- * not consumed and not lost — slice 5's workers will read them.
+ * 5B: the Q7 seam CLOSES. `extract` joins the dispatch table; the defer
+ * branch goes with B7.
  */
 
+/**
+ * §1.9's platform check, discharged as code. The recorded platform default is
+ * 300 s — exactly §4.3's extract wall clock, i.e. ZERO headroom for claim,
+ * render and finalize around the provider call. This route therefore declares
+ * its own ceiling ABOVE the stage clock; the hosted ceiling is verified as a
+ * deploy-checklist row on docs/ops/ai-provider.md, because no code half can
+ * pin a platform limit.
+ *
+ * Correctness never depends on either number: a hard kill is an expired
+ * lease, the attempt is already burned durably (claim-before-work), and the
+ * sweeper re-queues or terminalizes on budget. The ceiling risks a wasted
+ * attempt, never a wrong state.
+ */
+export const maxDuration = 360;
+
+/**
+ * One route invocation's own budget, inside maxDuration. A batch of ten
+ * 5-minute extract stages would otherwise outlive any platform ceiling, so
+ * the loop stops taking NEW work when the budget is spent and leaves the rest
+ * unacked — they redeliver on the visibility timeout and the next relay tick
+ * picks them up. Shedding work is §4.11's posture; shedding ACCEPTANCE is not.
+ */
+const ROUTE_BUDGET_MS = 300_000;
+const PER_MESSAGE_RESERVE_MS = 20_000;
+
 const BATCH = 10;
-const STAGES = new Set(['store', 'scan', 'gate']);
+const STAGES = new Set(['store', 'scan', 'gate', 'extract']);
 
 function secretMatches(supplied: string | null, expected: string): boolean {
   if (!supplied) return false;
@@ -205,6 +241,161 @@ async function processGate(msg: PipelineMessage): Promise<string> {
   return `${to}:${r}`;
 }
 
+/**
+ * The §4.3 normalize exits, mapped to the states and reasons 5A shipped.
+ *
+ * ONE gap is recorded rather than papered over: a RENDER BOUNDS refusal (page
+ * count, page dimensions, wall clock, output size) has no reason code of its
+ * own. `archive_bounds_exceeded` is the closest that exists — "Archive
+ * depth/entries/expansion over PRD §13.3 bounds" — and a 250-page PDF IS a
+ * §13.3 bound, but that code's description says "Archive" and this is not
+ * one. The family-facing label is right either way (`extract_failed` reads
+ * "Couldn\u2019t read it", which is the honest thing to say); the alternative,
+ * `unsupported_type`, reads "Unsupported file" and would tell them something
+ * false about their document. The migration bound is spent, so a
+ * `render_bounds_exceeded` code is OFFERED to the owner for the next
+ * DB-opening slice rather than taken as a session decision.
+ */
+function normalizeExit(result: NormalizeResult): { state: string; reason: string } | null {
+  if (result.outcome === 'needs_password') {
+    return { state: 'needs_password', reason: 'encrypted_pdf' };
+  }
+  if (result.outcome === 'unsupported_type') {
+    return { state: 'unsupported_type', reason: 'unsupported_mime' };
+  }
+  if (result.outcome === 'refused') {
+    return { state: 'extract_failed', reason: 'archive_bounds_exceeded' };
+  }
+  return null;
+}
+
+async function processExtract(
+  msg: PipelineMessage,
+  origin: string,
+  key: string,
+): Promise<string> {
+  // M3: the run identity is REQUIRED at the claim, so the run row is born
+  // with its lease. A crash after this commit has burned the attempt AND
+  // recorded it — there is no lease without its run.
+  const claim = await claimStage(msg.arrival_id, 'extract', EXTRACT_MODEL, PROMPT_VERSION);
+  if (claim.result !== 'claimed') return claim.result;
+
+  const circleId = await resolveCircle(msg);
+  const bytes = circleId ? await readArtifactBytes(circleId, msg.arrival_id) : null;
+  if (!circleId || !bytes) {
+    // Nothing to read and nothing to invent: the lease expires, the machinery
+    // retries, exhaustion says extract_failed honestly.
+    return 'extract_bytes_missing';
+  }
+  const lease = claim.leaseId!;
+
+  // §4.6: content, never declaration. The store stage recorded a sniffed
+  // type; sniffing again here needs no read privilege and cannot be stale.
+  const normalized = normalizeArrival(bytes, sniffMime(bytes));
+  const exit = normalizeExit(normalized);
+  if (exit) {
+    // Refused BEFORE any provider dispatch — the whole point of §6.3's bounds
+    // being decided on the header rather than after rendering.
+    const r = await advanceArrival(msg.arrival_id, 'extracting', exit.state, lease, exit.reason);
+    await gcRenderStaging(circleId, msg.arrival_id, lease);
+    return exit.state + ':' + r;
+  }
+  if (normalized.outcome !== 'rendered') return 'extract_normalize_unknown';
+
+  // The attempt's pages live under a lease-scoped staging prefix: unreachable
+  // from any user path, and unmistakably THIS attempt's work.
+  for (const page of normalized.pages) {
+    await writeRenderStaging(
+      renderStagingKey(circleId, msg.arrival_id, lease, page.page, extFor(page.mime)),
+      page.bytes,
+      page.mime,
+    );
+  }
+
+  const answer = await extractFromArrival({
+    pages: normalized.pages,
+    text: normalized.text,
+    sourceClass: normalized.sourceClass,
+    operatorNotes: [],
+    deadlineIso: claim.deadline,
+  });
+
+  if (answer.outcome !== 'ok') {
+    await gcRenderStaging(circleId, msg.arrival_id, lease);
+    if (answer.outcome === 'unavailable') {
+      // §6.8 / §4.3: an outage is retried BY THE MACHINERY, never finalized
+      // early. The lease expires, the sweeper re-lists, and exhaustion lands
+      // the terminal state with extract_budget_exhausted.
+      return 'extract_unavailable_retry';
+    }
+    const reason = answer.outcome === 'refusal' ? 'provider_refusal' : 'provider_error';
+    const r = await advanceArrival(msg.arrival_id, 'extracting', 'extract_failed', lease, reason);
+    return answer.outcome + ':' + r;
+  }
+
+  // §6.5: risk_class is the WORKER's, by field, before the model was called —
+  // and with no signed band artifact it is `high` for every field, which is
+  // the shipping default rather than a degraded state.
+  const bands = loadBands({
+    running: {
+      modelId: EXTRACT_MODEL,
+      promptVersion: PROMPT_VERSION,
+      configurationHash: configurationHash(),
+    },
+  });
+  const facts = answer.data.facts.map((fact) => ({
+    field: fact.field,
+    value: fact.value,
+    confidence: fact.confidence,
+    risk_class: effectiveRiskClass(fact.field, fact.value, bands),
+    citation: fact.citation,
+    model_id: answer.modelId,
+    prompt_version: answer.promptVersion,
+  }));
+
+  // The filing proposal rides the SAME transaction as the facts (§4.5): the
+  // transition gates both, so a lost CAS leaves neither behind.
+  const proposals = [
+    {
+      kind: 'document',
+      payload: {
+        category: answer.data.document.category,
+        title: answer.data.document.title,
+        summary_text: answer.data.document.summary,
+      },
+    },
+  ];
+
+  const r = await finalizeExtraction(msg.arrival_id, lease, facts, proposals);
+  if (r !== 'advanced') {
+    await gcRenderStaging(circleId, msg.arrival_id, lease);
+    return r;
+  }
+
+  // Won: the attempt's pages become the arrival's pages (write-once), and the
+  // hand-off carries the facts this attempt published.
+  await promoteRenderedPages(circleId, msg.arrival_id, lease);
+  const carried: CarriedFact[] = answer.data.facts.map((f) => ({
+    field: f.field,
+    value: f.value,
+    confidence: f.confidence,
+    citation: f.citation,
+  }));
+  // finalize_extraction may have exited to duplicate_suspected_stage2 instead
+  // (M5 detects inside the transaction) and returns 'advanced' either way. The
+  // interpret claim absorbs a speculative message quietly — the same
+  // absorption the clean-duplicate gate enqueue already relies on.
+  await sendPipelineWork({
+    circle_id: circleId,
+    arrival_id: msg.arrival_id,
+    stage: 'interpret',
+    channel: msg.channel ?? null,
+    facts: carried,
+  });
+  fireWorker(origin, 'interpret', key);
+  return r + ':' + facts.length + 'f' + (answer.dropped ? '/' + answer.dropped + 'dropped' : '');
+}
+
 export async function POST(
   req: Request,
   ctx: { params: Promise<{ stage: string }> },
@@ -219,14 +410,22 @@ export async function POST(
   if (!STAGES.has(stage)) return new Response('unknown stage', { status: 404 });
 
   const origin = new URL(req.url).origin;
+  const startedAt = Date.now();
   const batch: QueuedWork[] = await readPipelineWork(BATCH);
   const processed: Array<{ arrival_id: string; stage: string; outcome: string }> = [];
 
   for (const work of batch) {
     const msg = work.message;
+    if (Date.now() - startedAt > ROUTE_BUDGET_MS - PER_MESSAGE_RESERVE_MS) {
+      // Out of budget: the rest of the batch is left UNACKED, so it
+      // redelivers on the visibility timeout and the next tick takes it.
+      // Nothing is lost; only this invocation stops.
+      processed.push({ arrival_id: msg.arrival_id, stage: msg.stage, outcome: 'budget_deferred' });
+      continue;
+    }
     try {
       if (!STAGES.has(msg.stage)) {
-        // Slice 5's work: deferred, never consumed, never lost (Q7).
+        // Slice 5's remaining work: deferred, never consumed, never lost.
         await deferPipelineWork(work.msg_id);
         processed.push({ arrival_id: msg.arrival_id, stage: msg.stage, outcome: 'deferred' });
         continue;
@@ -234,6 +433,7 @@ export async function POST(
       let outcome: string;
       if (msg.stage === 'store') outcome = await processStore(msg, origin, key);
       else if (msg.stage === 'scan') outcome = await processScan(msg, origin, key);
+      else if (msg.stage === 'extract') outcome = await processExtract(msg, origin, key);
       else outcome = await processGate(msg);
       await archivePipelineWork(work.msg_id);
       processed.push({ arrival_id: msg.arrival_id, stage: msg.stage, outcome });

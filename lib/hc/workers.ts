@@ -29,6 +29,27 @@ export type StageClaim = {
 
 export type PipelineStage = 'store' | 'scan' | 'gate' | 'extract' | 'interpret';
 
+/**
+ * A fact carried from the extract attempt to the interpret attempt (5B B4).
+ *
+ * hc_pipeline holds NO select on `extractions` (§3.10 — deliberately), so the
+ * interpret worker has no read path to what the extract attempt published.
+ * The direct hand-off carries them, which makes the conflict comparison
+ * sharper AND cheaper: interpretation does not have to re-send page images.
+ *
+ * Their ABSENCE is not a different quality of answer. A re-queued interpret
+ * (a resolved stage-2 duplicate, a sweeper rescue) carries no facts, and the
+ * worker re-normalises the artifact and sends the document itself — the same
+ * source material extraction saw. Recorded as a 5B delta, with a definer
+ * (`hc.extractions_for`) offered to the owner for the next DB-opening slice.
+ */
+export type CarriedFact = {
+  field: string;
+  value: string;
+  confidence: number;
+  citation: { page: number; bbox: [number, number, number, number] };
+};
+
 export type PipelineMessage = {
   /** Null on relay/sweeper-originated messages whose lineage is gone;
    *  store/scan then fail closed to their bytes-missing outcome. */
@@ -36,13 +57,33 @@ export type PipelineMessage = {
   arrival_id: string;
   stage: PipelineStage;
   channel: 'email' | 'upload' | null;
+  /** Present only on the direct extract → interpret hand-off (above). */
+  facts?: CarriedFact[];
 };
 
 export type QueuedWork = { msg_id: number; message: PipelineMessage };
 
-/** hc.claim_stage — the only way into a stage; commits standalone. */
-export async function claimStage(arrivalId: string, stage: string): Promise<StageClaim> {
-  const r = await asPipeline().query('select * from hc.claim_stage($1, $2)', [arrivalId, stage]);
+/**
+ * hc.claim_stage — the only way into a stage; commits standalone.
+ *
+ * M3: `extract` REQUIRES the run identity, because the run row is born in the
+ * claim transaction — no lease exists without its run, so a timeout, kill,
+ * render failure or provider error can never consume a lease unrecorded.
+ * Every other stage REFUSES the pair: no stage borrows an identity it does
+ * not record.
+ */
+export async function claimStage(
+  arrivalId: string,
+  stage: string,
+  modelId: string | null = null,
+  promptVersion: string | null = null,
+): Promise<StageClaim> {
+  const r = await asPipeline().query('select * from hc.claim_stage($1, $2, $3, $4)', [
+    arrivalId,
+    stage,
+    modelId,
+    promptVersion,
+  ]);
   const row = r.rows[0];
   return {
     result: row.result as AdvanceResult,
@@ -91,6 +132,50 @@ export async function finalizeScan(
     JSON.stringify(detail ?? {}),
   ]);
   return r.rows[0].r as AdvanceResult;
+}
+
+/**
+ * hc.finalize_extraction — §4.5's one transaction: the conditional transition
+ * runs FIRST and gates everything below it, so a lost CAS publishes nothing.
+ * M5's stage-2 detection runs inside it, which is why 'advanced' can mean
+ * either `extracted` or `duplicate_suspected_stage2`.
+ */
+export async function finalizeExtraction(
+  arrivalId: string,
+  leaseId: string,
+  facts: unknown[],
+  proposals: unknown[],
+): Promise<AdvanceResult> {
+  const r = await asPipeline().query(
+    'select hc.finalize_extraction($1, $2, $3::jsonb, $4::jsonb) as r',
+    [arrivalId, leaseId, JSON.stringify(facts), JSON.stringify(proposals)],
+  );
+  return r.rows[0].r as AdvanceResult;
+}
+
+/** hc.finalize_interpretation — the same gate, one stage later. */
+export async function finalizeInterpretation(
+  arrivalId: string,
+  leaseId: string,
+  proposals: unknown[],
+): Promise<AdvanceResult> {
+  const r = await asPipeline().query(
+    'select hc.finalize_interpretation($1, $2, $3::jsonb) as r',
+    [arrivalId, leaseId, JSON.stringify(proposals)],
+  );
+  return r.rows[0].r as AdvanceResult;
+}
+
+/**
+ * hc.record_context_for — §3.10's one narrow window onto the record. It
+ * returns ONLY the arrival's own subject's record in the arrival's own
+ * circle; cross-subject and cross-circle reads are not expressible in the
+ * signature, which is why interpretation's boundary is structural rather
+ * than prompted.
+ */
+export async function recordContextFor(arrivalId: string): Promise<unknown> {
+  const r = await asPipeline().query('select hc.record_context_for($1) as r', [arrivalId]);
+  return r.rows[0].r as unknown;
 }
 
 export type CachedScan = {

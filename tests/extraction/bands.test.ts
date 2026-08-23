@@ -63,9 +63,8 @@ afterEach(() => {
 
 describe('B4 · the shipping default is all-high, and it is the CODE fallback', () => {
   it('with no signed artifact in the allowlist, bands are all-high', () => {
-    const result = loadBands({ running: RUNNING, allowlist: [], artifactPath: 'nowhere.json' });
-    expect(result.mode).toBe('all_high');
-    expect(result.reason).toBe('no_signed_artifact');
+    const result = loadBands({ running: RUNNING, allowlist: [], artifactPath: '/nowhere.json' });
+    expect(result).toEqual({ mode: 'all_high', reason: 'no_signed_artifact' });
   });
 
   it('the shipped allowlist is EMPTY — G9 has not signed anything yet', () => {
@@ -76,6 +75,17 @@ describe('B4 · the shipping default is all-high, and it is the CODE fallback', 
 
   it('the default load, with no arguments beyond the running identity, is all-high', () => {
     expect(loadBands({ running: RUNNING }).mode).toBe('all_high');
+  });
+
+  it('a RELATIVE artifact path is refused — the bundler must not trace the repo', () => {
+    // A project-relative path resolved through process.cwd() makes Turbopack
+    // trace the whole repository into the server output, fixtures and all.
+    const result = loadBands({
+      running: RUNNING,
+      allowlist: ['0'.repeat(64)],
+      artifactPath: 'eval/bands/current.json',
+    });
+    expect(result).toEqual({ mode: 'all_high', reason: 'artifact_missing' });
   });
 });
 

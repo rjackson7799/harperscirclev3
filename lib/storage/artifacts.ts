@@ -325,6 +325,36 @@ export async function promoteRenderedPages(
   return { promoted };
 }
 
+/**
+ * The stored artifact's bytes, found by its PREFIX (5B B4).
+ *
+ * hc_pipeline holds no select on `arrivals` (§3.10), so the extract worker
+ * cannot read back the `storage_key` the store stage wrote. It does not need
+ * to: the §2.12 key is CONTENT-ADDRESSED under a per-arrival prefix, so
+ * listing that prefix finds the one object, and §4.6's rule — content, never
+ * declaration — means re-sniffing the bytes is a better answer than a stored
+ * column anyway.
+ *
+ * More than one object under the prefix means the store stage wrote two
+ * different shas for one arrival, which is a defect rather than a choice:
+ * null, so the worker retries and exhaustion says so honestly, instead of
+ * picking one at random.
+ */
+export async function readArtifactBytes(
+  circleId: string,
+  arrivalId: string,
+): Promise<Uint8Array | null> {
+  const prefix = `circle/${circleId}/arrival/${arrivalId}`;
+  const { data, error } = await asStoragePlane()
+    .from(ARTIFACTS)
+    .list(prefix, { limit: 4, sortBy: { column: 'name', order: 'asc' } });
+  if (error) return null;
+  const objects = (data ?? []).filter((e) => e.id !== null);
+  if (objects.length !== 1) return null;
+  const found = await downloadObject(`${prefix}/${objects[0].name}`);
+  return found ? found.bytes : null;
+}
+
 /** Remove staged intake bytes once the store stage has finalized. */
 export async function removeStagedObject(circleId: string, arrivalId: string): Promise<void> {
   const { error } = await asStoragePlane()
