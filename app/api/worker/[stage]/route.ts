@@ -36,9 +36,13 @@ import { normalizeArrival, type NormalizeResult } from '@/lib/pipeline/render';
 import { extFor, renderStagingKey } from '@/lib/pipeline/page-keys';
 import { extractFromArrival } from '@/lib/ai/extract';
 import { interpretArrival, type DraftProposal } from '@/lib/ai/interpret';
-import { EXTRACT_MODEL, PROMPT_VERSION, configurationHash } from '@/lib/ai/config';
-import { effectiveRiskClass, loadBands } from '@/lib/extraction/bands';
-import { riskClassFor } from '@/lib/extraction/fields';
+import {
+  EXTRACT_MODEL,
+  INTERPRET_MODEL,
+  PROMPT_VERSION,
+  configurationHash,
+} from '@/lib/ai/config';
+import { effectiveRiskClass, loadBands, type BandMode } from '@/lib/extraction/bands';
 
 /**
  * POST /api/worker/[stage] — the pipeline workers (TSD §1.4, §4.3;
@@ -447,6 +451,7 @@ function draftPayloads(
   proposals: DraftProposal[],
   context: unknown,
   callAnomalies: string[],
+  bands: BandMode,
 ): Array<{ kind: string; payload: Record<string, unknown> }> {
   const current = currentFacts(context);
   const drafted: Array<{ kind: string; payload: Record<string, unknown> }> = [];
@@ -487,8 +492,13 @@ function draftPayloads(
     if (p.occurredOn) payload.occurred_on = p.occurredOn;
     if (kind === 'profile_fact') {
       payload.domain = p.domain;
-      // §6.4: a high-risk field is high-risk however confident anyone is.
-      payload.risk_class = riskClassFor(p.field ?? '', p.value);
+      // §6.4: a high-risk field is high-risk however confident anyone is —
+      // AND §6.5's all-high mode applies here exactly as it does on the
+      // extract arm (round-16 R1/F-1). This arm used to call the catalogue
+      // directly, so a standard-catalogue field could be drafted `standard`
+      // while the product was running all-high, and `hc.approve_proposal`
+      // gates the §6.4 confirmation on precisely this string.
+      payload.risk_class = effectiveRiskClass(p.field ?? '', p.value, bands);
     }
     if (kind === 'document') payload.category = p.category;
     if (kind === 'conflict' && parentId) {
@@ -554,7 +564,15 @@ async function processInterpret(msg: PipelineMessage): Promise<string> {
     return answer.outcome + ':' + r;
   }
 
-  const drafted = draftPayloads(answer.data.proposals, context, answer.data.anomalies);
+  // The same band mode the extract arm publishes through (§6.5).
+  const bands = loadBands({
+    running: {
+      modelId: INTERPRET_MODEL,
+      promptVersion: PROMPT_VERSION,
+      configurationHash: configurationHash(),
+    },
+  });
+  const drafted = draftPayloads(answer.data.proposals, context, answer.data.anomalies, bands);
   const r = await finalizeInterpretation(msg.arrival_id, lease, drafted);
   // The exit seam (Q7): proposals REST at `pending`. Nothing is enqueued —
   // the review screen, item-level approval and the receipt are slice 6's, so

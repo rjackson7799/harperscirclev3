@@ -137,16 +137,26 @@ export function fieldSpec(field: string): FieldSpec | undefined {
  * "do-not-resuscitate" is an instruction by anyone's reading.
  */
 function containsInstruction(text: string): boolean {
-  const haystack = text.toLowerCase();
+  // Any run of non-alphanumerics is a single separator, so a phrase keyword
+  // matches however it is written: "do not", "do-not", "do  not", or the
+  // same phrase split across a line break.
+  // Round-16 R1/F-2: the old form searched for the literal `'do not'` with a
+  // space, so "do-not-resuscitate" — the example this comment names — did NOT
+  // match, and the file asserted the opposite of its own behaviour.
+  const haystack = text.toLowerCase().replace(/[^a-z0-9]+/g, ' ');
   for (const keyword of INSTRUCTION_KEYWORDS) {
     let from = 0;
     for (;;) {
       const at = haystack.indexOf(keyword, from);
       if (at < 0) break;
       const before = at === 0 ? '' : haystack[at - 1];
-      const after = haystack[at + keyword.length] ?? '';
+      // A TRAILING inflection is still the instruction: "stopping",
+      // "discontinued", "holding". The leading boundary alone already
+      // excludes the two false positives the narrowing exists for
+      // ("restarted", "household"), so the trailing test cost five real
+      // matches and bought nothing (round-16 R1/F-3).
       const isLetter = (c: string) => c !== '' && /[a-z0-9]/.test(c);
-      if (!isLetter(before) && !isLetter(after)) return true;
+      if (!isLetter(before)) return true;
       from = at + 1;
     }
   }

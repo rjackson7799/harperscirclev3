@@ -496,22 +496,23 @@ describe('R4/F-1 · the record-context key is pinned to hc.record_context_for', 
 // ============================================================================
 describe('R1/F-1 · the interpret arm publishes through the band mode', () => {
   it('a standard-catalogue field is drafted `high` in all-high mode (§6.5)', async () => {
-    workers.claimStage.mockResolvedValueOnce({ outcome: 'claimed', leaseId: LEASE });
-    ai.interpretArrival.mockResolvedValueOnce(
-      answer([
+    interpretMod.interpretArrival.mockResolvedValueOnce(
+      okInterpret([
         {
           kind: 'profile_fact',
+          title: 'Name on the document',
+          summary: 'The patient name as printed.',
+          ...BLANK,
           domain: 'memories',
           field: 'patient_name',
           value: 'Nell Harper',
-          title: 'Name on the document',
-          summary: 'The patient name as printed.',
           anomalyFlags: [],
         },
       ]),
     );
+    workers.readPipelineWork.mockResolvedValueOnce([msg()]);
     await route.POST(req(), ctx);
-    const [, drafted] = workers.finalizeInterpretation.mock.calls[0];
+    const drafted = workers.finalizeInterpretation.mock.calls[0][2];
     // `patient_name` is `standard` in the catalogue. In all-high mode the
     // worker must publish `high` anyway — that IS the mode, per §6.5.
     expect(drafted[0].payload.risk_class).toBe('high');
