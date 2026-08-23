@@ -264,7 +264,7 @@ async function processGate(msg: PipelineMessage): Promise<string> {
  * `render_bounds_exceeded` code is OFFERED to the owner for the next
  * DB-opening slice rather than taken as a session decision.
  */
-function normalizeExit(result: NormalizeResult): { state: string; reason: string } | null {
+export function normalizeExit(result: NormalizeResult): { state: string; reason: string } | null {
   if (result.outcome === 'needs_password') {
     return { state: 'needs_password', reason: 'encrypted_pdf' };
   }

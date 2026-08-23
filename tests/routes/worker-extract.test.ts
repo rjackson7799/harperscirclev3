@@ -101,6 +101,13 @@ function ctx(stage: string) {
 type RouteModule = {
   POST: (r: Request, c: { params: Promise<{ stage: string }> }) => Promise<Response>;
   maxDuration?: number;
+  // The pure §6.3 refusal→(state, reason) mapping. Exported so the contract
+  // can be asserted directly rather than inferred from a route round-trip
+  // (round-16 Q-B/Q-D).
+  normalizeExit?: (result: { outcome: string; reason?: string }) => {
+    state: string;
+    reason: string;
+  } | null;
 };
 let route: RouteModule;
 
@@ -428,5 +435,62 @@ describe('B4 · a lost CAS publishes nothing and keeps nothing', () => {
     expect(storage.gcRenderStaging).toHaveBeenCalledWith(CIRCLE, ARRIVAL, LEASE);
     const sent = workers.sendPipelineWork.mock.calls.map((c) => c[0]);
     expect(sent.some((m) => m.stage === 'interpret')).toBe(false);
+  });
+});
+
+// ============================================================================
+// Round-16 Q-B and Q-D (ADR-0023 D9, D10) — the four render ceilings stop
+// sharing one wrong reason code.
+//
+// `render.ts` refuses with four NAMED reasons — page_bound, page_dimensions,
+// wall_clock, output_size — and normalizeExit collapsed all four onto
+// `archive_bounds_exceeded`, whose description reads "Archive
+// depth/entries/expansion". For a 250-page PDF that is imprecise. For a
+// WALL-CLOCK overrun it records a different event than the one that happened,
+// and 4A shipped `extract_timeout` + `provider_timeout` for exactly it —
+// already legal edges, already seeded, and never called (R7/F-6).
+//
+// M7 adds `render_bounds_exceeded` for the three genuine bounds. The
+// family-facing label is unchanged in every case: extract_failed and
+// extract_timeout both read "Couldn't read it", which is the honest thing to
+// say. What changes is that the operational tier can now tell a page bomb
+// from a pixel bomb from a timeout — which is precisely the question that
+// would have surfaced this round's DPI finding (R3/F-1).
+// ============================================================================
+describe('Q-B/Q-D · each render ceiling lands its own reason', () => {
+  it('a wall-clock overrun is a TIMEOUT, not an archive breach', () => {
+    expect(route.normalizeExit!({ outcome: 'refused', reason: 'wall_clock' })).toEqual({
+      state: 'extract_timeout',
+      reason: 'provider_timeout',
+    });
+  });
+
+  it.each(['page_bound', 'page_dimensions', 'output_size'] as const)(
+    'a %s refusal lands render_bounds_exceeded',
+    (reason) => {
+      expect(route.normalizeExit!({ outcome: 'refused', reason })).toEqual({
+        state: 'extract_failed',
+        reason: 'render_bounds_exceeded',
+      });
+    },
+  );
+
+  it('nothing maps to archive_bounds_exceeded any more — it names the archive case', () => {
+    for (const reason of ['page_bound', 'page_dimensions', 'wall_clock', 'output_size'] as const) {
+      expect(route.normalizeExit!({ outcome: 'refused', reason })?.reason).not.toBe(
+        'archive_bounds_exceeded',
+      );
+    }
+  });
+
+  it('the non-refusal exits are untouched', () => {
+    expect(route.normalizeExit!({ outcome: 'needs_password' })).toEqual({
+      state: 'needs_password',
+      reason: 'encrypted_pdf',
+    });
+    expect(route.normalizeExit!({ outcome: 'unsupported_type' })).toEqual({
+      state: 'unsupported_type',
+      reason: 'unsupported_mime',
+    });
   });
 });
