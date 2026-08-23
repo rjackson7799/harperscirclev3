@@ -41,7 +41,7 @@ STATE — settled, do not redo or re-verify:
 THE TASK — the round-16 review leg, the ADR-0006/round-8 cadence:
   1. Read `docs/review/round-16-packet.md` WHOLE (head ledger first,
      the F12 per-directory tree binding, the one-SHA evidence block,
-     the eight pointed questions Q-A–Q-H with recommended answers).
+     the nine pointed questions Q-A–Q-I with recommended answers).
      Then **ADR-0022** (Proposed — this round ratifies or amends),
      against `docs/review/slice-5-plan.md`'s B1–B9 rows AS AMENDED by
      the post-gate integration, TSD §6 whole + §4.3–§4.10, §3.10,
@@ -78,6 +78,11 @@ WHERE A REVIEWER SHOULD PUSH HARDEST (the build session's own view):
   · **ADR-0022 D6, D7, D15** — three things the app layer could not
     close inside the bound. Each is a pointed question; each has a
     recommended answer that may well be wrong.
+  · **Q-I — the three amendments to existing tests.** The build session
+    changed three green assertions and believes all three, which is
+    precisely why an outside view is owed. (2), the cancel leg, is the
+    one where an expired assumption and a real product finding look
+    identical from inside.
   · **`docs/eval/g9-corpus-spec.md` §1 and §7** — the corpus states its
     own limits. A reviewer should decide whether those limits are
     acceptable for a G9 gate, because the owner will be asked to sign

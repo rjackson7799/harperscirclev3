@@ -272,6 +272,88 @@ disposition this round can make — and the reserve is still there for it.
 
 ---
 
+### Q-I — THREE AMENDMENTS TO EXISTING TESTS, named together on purpose
+
+**The build session changed three assertions that were already green, and
+that is the pattern most worth an outside eye.** Each has an argument in
+its commit message and the build session believes all three — which is
+exactly the problem: the person who amended a failing test is the last
+one who can tell "the assumption expired" from "I talked myself out of
+it." They are gathered here so the review is obliged to form a view,
+rather than noticing them incidentally in the diff.
+
+**(1) The Q7 seam rows — `tests/routes/worker-stage.test.ts` and
+`tests/routes/relay.test.ts`** (B4, B5, B7).
+
+4B asserted "extract/interpret messages are DEFERRED, not consumed and
+not lost" and "the 4B stages present in a pass are eager-fired once
+each; the extract seam is not". Both claims INVERTED across three
+commits as each half of the seam closed. The rows were amended rather
+than deleted, in two steps, keeping each claim where the seam was
+originally recorded.
+
+*The argument:* closing the seam is B7's whole purpose, so an assertion
+that the seam is open must change or the suite is asserting the absence
+of the feature. Amending in two steps keeps the flip legible.
+
+*What to be suspicious of:* an amended assertion no longer guards what
+it guarded. The reviewer should check that the NEW claims are as strong
+as the old ones — in particular that "an UNKNOWN stage is still
+deferred, never consumed and never lost" genuinely preserves D13's
+never-lost guarantee for the one case the branch can still see, and
+that nothing about redelivery or ack-as-archive was quietly weakened.
+
+**(2) The ingestion cancel leg — `e2e/ingestion.spec.ts`** (the B9 gate
+run).
+
+Was: go to the inbox, click the FIRST `/inbox/cancel/submit` form, assert
+one arrival cancelled. Now: upload a fixture, drive it to `extracting`,
+and cancel THAT arrival by binding the click to its own form.
+
+*The argument:* §4.5's window is `extracting | extracted | interpreting`,
+and until 5B nothing consumed those states — every arrival the spec had
+driven simply RESTED at `extracting`, so "the first cancel form" was
+always there. The pipeline now continues to `proposals_ready`, where
+cancel is correctly not offered. The product is right; the leg was
+relying on the seam.
+
+*What to be suspicious of:* whether the amendment MASKS a real
+behavioural change a family would feel. The cancel window is now much
+narrower in wall-clock terms — an arrival can pass through it in
+seconds. §4.5 calls cancellation "available to any member who can
+approve"; if it is available only to a member watching the inbox at the
+right moment, that is a product finding this amendment would hide. The
+reviewer should decide whether §4.5's promise survives 5B, and say so
+even though no test currently fails.
+
+**(3) The stage-2 fixture document — `e2e/extraction.spec.ts`** (the B9
+gate run).
+
+A raw `insert into public.documents` answered `record_write_unclaimed`;
+the insert now runs under `session_replication_role = replica` on one
+connection, via a `fixtureInsert` helper.
+
+*The argument:* §4.9's deferred claim trigger refuses record writes that
+are not claimed through `proposal_commits`. That refusal is what makes
+"nothing is filed without a person approving it" true. There is no
+approval SURFACE until slice 6, so a gate fixture cannot file a document
+the honest way yet. The technique is the PRF-06 bench's and the live
+suites'.
+
+*What to be suspicious of:* a gate leg that suspends a guard proves less
+than it appears to. The DUP-02 leg's filed document did not come through
+the approval boundary, so what the leg demonstrates is M5's matching and
+the surface — NOT that a real filed document reaches the stage-2
+predicate the same way. The reviewer should decide whether that is an
+acceptable limit for a gate leg or whether DUP-02's app half should stay
+`review` until slice 6 can file a document honestly.
+
+**Recommended: RATIFY (1) and (3); form an independent view on (2).**
+(1) and (3) are argued and their limits are stated where they happen.
+(2) is the one where the amendment and a possible product finding look
+identical from inside the build session, and it is the one the review
+should reach its own conclusion about.
+
 ## What this round does NOT cover (named, per the plan)
 
 - **The review screen, item-level approval, the receipt, A11Y-07** —
