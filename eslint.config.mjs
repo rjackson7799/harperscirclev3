@@ -23,10 +23,15 @@ const fenceServiceRole = {
   message:
     "The service credential is fenced to the §1.7 allowlist (artifact route, lib/auth/gotrue-admin, lib/storage — ADR-0018 F2). See lib/db/service-role.ts.",
 };
+// 5B B8: `**/db/evidentiary` is GONE from this list because the module is
+// gone — ADR-0019's D7 interim retired onto 5A M1's hc.log_artifact_read. A
+// fence entry naming a deleted module looks like protection and is nothing at
+// all; tests/lint/db-fence.test.ts asserts the file's absence so the two
+// cannot drift apart.
 const fenceChannels = {
-  group: ["**/db/request-role", "**/db/maintenance", "**/db/role-pool", "**/db/evidentiary"],
+  group: ["**/db/request-role", "**/db/maintenance", "**/db/role-pool"],
   message:
-    "The request-role channel and the maintenance/evidentiary boundaries are reachable only through lib/hc/** (typed wrappers).",
+    "The request-role channel and the maintenance boundary are reachable only through lib/hc/** (typed wrappers).",
 };
 // 4B (ADR-0018 F2): the storage plane — every byte in the artifacts and
 // quarantine buckets moves through lib/storage/** on the service

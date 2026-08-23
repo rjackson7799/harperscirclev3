@@ -477,3 +477,11 @@ describe('5B B6 · the stage-2 duplicate cites the document it matched', () => {
     expect(html).not.toMatch(/another source/i);
   });
 });
+
+describe('5B B8 · the inbox links to the senders it accepts from', () => {
+  it('a link to /senders, not a sixth nav item', async () => {
+    parents = [stage2Parent({ state: 'extracting', duplicate_of_document_id: null })];
+    const html = await renderInbox();
+    expect(html).toContain(`/${CIRCLE}/senders`);
+  });
+});

@@ -232,6 +232,12 @@ export default async function InboxPage({
   return (
     <>
       <PageHeader title="Care Inbox" context="Every item shows exactly where it is." />
+      <p className="meta">
+        {/* 5B B8: the senders surface lives beside the thing it manages — a
+            sender is accepted from this screen, so the list of accepted
+            senders is one link away rather than a sixth item in the nav. */}
+        <a href={`/${circle}/senders`}>Known senders</a>
+      </p>
       {delayed ? (
         <p className="field-help" role="status">
           Reading is delayed right now — new items are safe and will be read; they are taking

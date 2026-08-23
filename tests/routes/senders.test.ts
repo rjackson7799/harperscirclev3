@@ -81,10 +81,12 @@ describe('5B B8 · the list says who accepted each sender, and when', () => {
   it('the empty state says what the list IS, and never that the world is empty', async () => {
     inbox.listKnownSenders.mockResolvedValueOnce([]);
     const html = await renderSenders();
-    expect(html).toMatch(/no senders|nobody/i);
-    // §8.6's rule and the Q6 fail-closed posture: this caller's view, not a
-    // claim about everyone's.
-    expect(html).not.toMatch(/there are no senders in this circle/i);
+    expect(html).toContain('empty-state');
+    // §8.6's rule and the Q6 fail-closed posture: the sentence is about what
+    // THIS caller has done, never a claim about what exists. A refusal and an
+    // genuinely empty list must read the same from outside.
+    expect(html).toMatch(/you have not accepted any senders/i);
+    expect(html).not.toMatch(/there are no senders|this circle has no senders/i);
   });
 
   it('a refusal renders as an honest empty view, never a stack trace', async () => {

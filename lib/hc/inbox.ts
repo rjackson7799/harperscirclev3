@@ -80,3 +80,46 @@ export async function productStates(
     return labels;
   });
 }
+
+/**
+ * The known-senders member surface (5B B8; ADR-0019 D15's named gap; SND-03).
+ *
+ * `hc.revoke_sender` shipped at 4A with no way for a member to reach it: the
+ * list it operates on had no read at all, so the revoke existed and could not
+ * be used. 5A M1's `hc.list_known_senders` is that read — coordinator-gated in
+ * the SND-02 shape, with the accepting member and the moment named, because
+ * "who let this address in, and when" is the question a person actually has.
+ *
+ * Both ride the request-role channel: the caller's own authority decides, and
+ * a refusal is one shape (`sender_refused`) for a foreign circle, a
+ * nonexistent one, and a member below coordinator alike.
+ */
+export type KnownSender = {
+  id: string;
+  address: string | null;
+  domain: string | null;
+  accepted_by: string;
+  accepted_by_name: string;
+  accepted_at: string;
+};
+
+export async function listKnownSenders(
+  claims: RequestClaims,
+  circleId: string,
+): Promise<KnownSender[]> {
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query('select * from hc.list_known_senders($1)', [circleId]);
+    return r.rows as KnownSender[];
+  });
+}
+
+/** hc.revoke_sender — the 4A definer, finally reachable from a surface. */
+export async function revokeSender(
+  claims: RequestClaims,
+  senderId: string,
+): Promise<Record<string, unknown>> {
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query('select hc.revoke_sender($1) as r', [senderId]);
+    return r.rows[0].r as Record<string, unknown>;
+  });
+}

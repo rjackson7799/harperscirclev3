@@ -1,6 +1,5 @@
 import 'server-only';
 import { withRequestRole, type RequestClaims } from '@/lib/db/request-role';
-import { appendArtifactReadEntry } from '@/lib/db/evidentiary';
 
 /**
  * The artifact route's data half (slice-4 plan B7; TSD §1.3; RLS-10).
@@ -55,19 +54,29 @@ export async function readableArtifact(
 
 export type ArtifactReadLog = {
   claims: RequestClaims;
-  circleId: string;
-  subjectId: string;
   arrivalId: string;
 };
 
-/** §1.3 step 6 — evidence before bytes: the artifact_read entry on the
- *  evidentiary boundary (the hash chain stays intact). */
+/**
+ * §1.3 step 6 — evidence before bytes: the `artifact_read` entry, through
+ * **hc.log_artifact_read** (5A M1) on the request-role channel.
+ *
+ * 5B B8 retires ADR-0019's D7 interim. 4B had to append as `hc_internal` over
+ * the maintenance connection, because `hc.log` is deliberately
+ * hc_internal-only and 4A M5 shipped the event type with no definer. That
+ * boundary is DELETED; this is the definer it was recorded as a candidate for.
+ *
+ * The call shrank on purpose. The definer resolves the circle, the subject
+ * and the actor's display name itself, and — the part the interim could not
+ * do — **re-proves RLS-10's letter in-function**: the arrival must be live and
+ * the caller must clear VIEW on it, with zero rows the one shape for
+ * nonexistent, foreign, deleted, revoked and below-cliff alike. The route's
+ * own checks are no longer the only gate; a caller who reached this wrapper
+ * around them writes nothing, rather than a real entry naming themselves.
+ */
 export async function logArtifactRead(log: ArtifactReadLog): Promise<void> {
   if (!log.claims.sub) throw new Error('logArtifactRead: no actor');
-  await appendArtifactReadEntry({
-    circleId: log.circleId,
-    subjectId: log.subjectId,
-    arrivalId: log.arrivalId,
-    actorAccountId: log.claims.sub,
+  await withRequestRole('authenticated', log.claims, async (q) => {
+    await q.query('select hc.log_artifact_read($1)', [log.arrivalId]);
   });
 }
