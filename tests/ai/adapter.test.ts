@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   DISQUALIFIED_MODELS,
@@ -292,5 +294,61 @@ describe('B3 · the run identity is configuration, and it is recorded', () => {
     // the §6.3 render rules. That is exactly the change §6.10 says is not
     // shippable without a re-run: bump PROMPT_VERSION and re-record.
     expect(configurationHash()).toBe(PROMPT_VERSION.split('+')[1]);
+  });
+});
+
+// ============================================================================
+// Round-16 R2/F-1 and R2/F-7 — two claims in D4 that the wire does not carry.
+//
+// F-1: `PROMPT_VERSION` is DERIVED as `<name>+<configurationHash()>`, and the
+// test that claimed to pin it asserted `configurationHash()` equals
+// `PROMPT_VERSION.split('+')[1]` — a value compared to itself. It cannot fail
+// for any edit to any covered input, so §6.10's "a model or prompt change is
+// not shippable without a re-run" had no mechanism behind it. A pinned LITERAL
+// is what makes the change visible: edit a schema, a parameter, a prompt or a
+// §6.3 render rule and this reds, which is the whole point.
+//
+// F-7: the allowlist admitted `claude-sonnet-5`. `operatorMessages()` emits
+// `{role:'system'}` UNCONDITIONALLY and `processInterpret` uses it on the
+// no-facts re-queue path — but mid-conversation system messages are not
+// available on Sonnet 5 (the claude-api skill: "Not available on Claude
+// Sonnet 5 … Treat it as unsupported and catch the 400"). Its minimum
+// cacheable prefix is also 1024, not the 512 `interpret.ts` asserts. An
+// allowlist must only admit models that support everything the adapter
+// unconditionally sends.
+// ============================================================================
+describe('R2/F-1 · the configuration hash is pinned to a LITERAL', () => {
+  // Regenerate deliberately, in the same commit as the ADR that records the
+  // re-run: node -e "console.log(require('./lib/ai/config').configurationHash())"
+  const PINNED = 'REPLACE_ME';
+
+  it('the running configuration hash equals the pinned value', () => {
+    expect(configurationHash()).toBe(PINNED);
+  });
+
+  it('and PROMPT_VERSION still carries it, so the pair cannot drift', () => {
+    expect(PROMPT_VERSION).toBe(`hc-5b-1+${PINNED}`);
+  });
+});
+
+describe('R2/F-7 · the allowlist admits only models the adapter can actually use', () => {
+  it('every allowlisted model supports the mid-conversation operator channel', () => {
+    // §6.7's operator channel is sent on every interpret call that carries
+    // notes, with no capability branch. The claude-api skill names the models
+    // that support it: Opus 5, Opus 4.8, Fable 5, Mythos 5 — not Sonnet 5.
+    const OPERATOR_CHANNEL_MODELS = new Set([
+      'claude-opus-5',
+      'claude-opus-4-8',
+      'claude-fable-5',
+      'claude-mythos-5',
+    ]);
+    for (const model of MODEL_ALLOWLIST) {
+      expect(OPERATOR_CHANNEL_MODELS.has(model), `${model} cannot take {role:'system'}`).toBe(true);
+    }
+  });
+
+  it('the ops doc does not invite an operator to ship an unsupported model', () => {
+    const ops = readFileSync(join(process.cwd(), 'docs/ops/ai-provider.md'), 'utf8');
+    expect(ops).not.toContain('claude-sonnet-5');
   });
 });
