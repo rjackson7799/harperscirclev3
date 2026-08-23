@@ -409,7 +409,7 @@ type CurrentFact = { id: string; value: string; risk: string };
 
 function currentFacts(context: unknown): Map<string, CurrentFact> {
   const byField = new Map<string, CurrentFact>();
-  const rows = (context as { facts?: { rows?: unknown } } | null)?.facts?.rows;
+  const rows = (context as { profile_facts?: { rows?: unknown } } | null)?.profile_facts?.rows;
   if (!Array.isArray(rows)) return byField;
   for (const row of rows) {
     const r = row as { id?: unknown; field?: unknown; value?: unknown; risk_class?: unknown };

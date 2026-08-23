@@ -77,7 +77,8 @@ const FLAGS = new Set<string>(ANOMALY_FLAGS);
  *  narrow the allowlist, never widen it. */
 function knownFactIds(recordContext: unknown): Set<string> {
   const ids = new Set<string>();
-  const facts = (recordContext as { facts?: { rows?: unknown } } | null)?.facts?.rows;
+  const facts = (recordContext as { profile_facts?: { rows?: unknown } } | null)?.profile_facts
+    ?.rows;
   if (Array.isArray(facts)) {
     for (const row of facts) {
       const id = (row as { id?: unknown }).id;
