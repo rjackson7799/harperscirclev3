@@ -367,3 +367,82 @@ describe('R2/F-7 · the allowlist admits only models the adapter can actually us
     expect(ops).not.toContain('claude-sonnet-5');
   });
 });
+
+// ============================================================================
+// Round-16 R2/F-10 and R2/F-11 — two G3 holes in the client factory.
+//
+// F-10: the SDK redacts CREDENTIALS from its own logs but not the request
+// BODY. `formatRequestDetails` deletes `options['headers']` and keeps
+// `options.body`, `logLevel` comes from `ANTHROPIC_LOG`, and `logger`
+// defaults to `console`. So one environment variable on the worker turns
+// every extract request — the delimited document text plus every rendered
+// page as base64 — into the platform's log store, with whatever retention it
+// has, entirely outside G3's four terms and outside §6.2's "artifacts go
+// inline, so retention has ONE question".
+//
+// F-11: `ANTHROPIC_BASE_URL` is read unconditionally in every environment.
+// The lever that points the gate at 127.0.0.1:8787 points production
+// anywhere, and G3's whole premise is that a family's document reaches
+// exactly one cleared endpoint. The adapter "never branches on environment"
+// — which is the right design, and is precisely why the guard has to be an
+// assertion rather than a branch.
+// ============================================================================
+describe('R2/F-10 · the SDK cannot be told to log request bodies', () => {
+  it('the client pins its own logLevel rather than inheriting ANTHROPIC_LOG', async () => {
+    const src = readFileSync(join(process.cwd(), 'lib/ai/client.ts'), 'utf8');
+    expect(src).toMatch(/logLevel:/);
+  });
+
+  it('ANTHROPIC_LOG=debug does not change what the client is constructed with', async () => {
+    const prev = process.env.ANTHROPIC_LOG;
+    try {
+      process.env.ANTHROPIC_LOG = 'debug';
+      const { assertProviderEgress } = await import('@/lib/ai/client');
+      // The egress assertion is what runs before any dispatch; it must not
+      // throw merely because someone turned logging up.
+      expect(() => assertProviderEgress()).not.toThrow();
+    } finally {
+      if (prev === undefined) delete process.env.ANTHROPIC_LOG;
+      else process.env.ANTHROPIC_LOG = prev;
+    }
+  });
+});
+
+describe('R2/F-11 · a real credential may not be pointed at an arbitrary host', () => {
+  const FIXTURE_KEY = 'local-gate-fixture-not-a-credential';
+
+  async function egress(baseURL: string | undefined, apiKey: string | undefined) {
+    const prevBase = process.env.ANTHROPIC_BASE_URL;
+    const prevKey = process.env.ANTHROPIC_API_KEY;
+    try {
+      if (baseURL === undefined) delete process.env.ANTHROPIC_BASE_URL;
+      else process.env.ANTHROPIC_BASE_URL = baseURL;
+      if (apiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = apiKey;
+      const { assertProviderEgress } = await import('@/lib/ai/client');
+      return () => assertProviderEgress();
+    } finally {
+      if (prevBase === undefined) delete process.env.ANTHROPIC_BASE_URL;
+      else process.env.ANTHROPIC_BASE_URL = prevBase;
+      if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = prevKey;
+    }
+  }
+
+  it('REFUSES a real-looking key aimed at a non-Anthropic base URL', async () => {
+    const call = await egress('http://127.0.0.1:8787', 'sk-ant-a-real-looking-key');
+    // Named specifically: a `not a function` TypeError would also contain
+    // 'egress', and a RED leg that passes for the wrong reason is worthless.
+    expect(call).toThrow(/ANTHROPIC_BASE_URL/);
+  });
+
+  it('allows the gate: the fixture literal may be aimed at the fixture server', async () => {
+    const call = await egress('http://127.0.0.1:8787', FIXTURE_KEY);
+    expect(call).not.toThrow();
+  });
+
+  it('allows production: a real key with NO base URL override', async () => {
+    const call = await egress(undefined, 'sk-ant-a-real-looking-key');
+    expect(call).not.toThrow();
+  });
+});
