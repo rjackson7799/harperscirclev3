@@ -504,3 +504,92 @@ describe('5B B8 · the inbox links to the senders it accepts from', () => {
     expect(html).toContain(`/${CIRCLE}/senders`);
   });
 });
+
+// ============================================================================
+// Round-16 Q-A completion (ADR-0023 D8) and R5/F-5 — the stage-2 copy.
+//
+// M7 grants `duplicate_of_document_id`, so the §4.7 p2 copy can finally do
+// what the plan's B6 row asked for: cite the matched FILED document by title
+// and filed date. Until now it could only say WHY the match happened.
+//
+// R5/F-5 lands in the same sentence. The old provenance line read "type, date
+// and provider", a three-way conjunction — but `hc.detect_stage2_duplicate`
+// requires category + document_date + **≥1 of** provider / amount /
+// policy_number. Two EOBs matched on AMOUNT alone, from different providers,
+// would have told a family the providers matched. With the document now
+// nameable that copy is load-bearing for a real decision, so it must state
+// the contract it actually implements.
+//
+// The affordance itself stays gated on the STATE (round-15 observation 3):
+// the pointer decorates the question, it must never decide whether to ask it.
+// ============================================================================
+describe('Q-A/R5-F5 · the stage-2 copy names the matched document', () => {
+  const PARENT_ID = 'p-dup';
+  const CHILD_ID = 'c-dup';
+  const DOC_ID = '99999999-0000-4000-8000-00000000000d';
+
+  function stage2Parent(): Row {
+    return {
+      id: PARENT_ID,
+      state: 'proposals_ready',
+      channel: 'email',
+      sender_address: 'billing@insurer.example',
+      sender_display_name: 'Billing',
+      auth_result: 'authenticated',
+      scan_verdict: 'clean',
+      received_at: new Date(Date.now() - 2 * HOURS).toISOString(),
+    };
+  }
+
+  it('reads the document the arrival was matched against', async () => {
+    parents = [stage2Parent()];
+    children = [
+      {
+        id: CHILD_ID,
+        parent_arrival_id: PARENT_ID,
+        state: 'duplicate_suspected_stage2',
+        duplicate_of_document_id: DOC_ID,
+      },
+    ];
+    documents = [{ id: DOC_ID, title: 'Discharge summary', filed_at: '2026-07-12T10:00:00Z' }];
+    const html = await renderInbox();
+    expect(html).toContain('Discharge summary');
+    expect(html).toMatch(/Jul 12/);
+  });
+
+  it('falls back to the honest generic line when no document can be read', async () => {
+    parents = [stage2Parent()];
+    children = [
+      {
+        id: CHILD_ID,
+        parent_arrival_id: PARENT_ID,
+        state: 'duplicate_suspected_stage2',
+        duplicate_of_document_id: null,
+      },
+    ];
+    documents = [];
+    const html = await renderInbox();
+    expect(html).toContain('already filed for this person');
+    expect(html).not.toContain('undefined');
+  });
+
+  it('R5/F-5: the provenance line does not claim the provider matched', async () => {
+    parents = [stage2Parent()];
+    children = [
+      {
+        id: CHILD_ID,
+        parent_arrival_id: PARENT_ID,
+        state: 'duplicate_suspected_stage2',
+        duplicate_of_document_id: DOC_ID,
+      },
+    ];
+    documents = [
+      { id: DOC_ID, title: 'Explanation of benefits', filed_at: '2026-07-12T10:00:00Z' },
+    ];
+    const html = await renderInbox();
+    // hc.detect_stage2_duplicate requires category + document_date + >=1 of
+    // provider / amount / policy_number. Naming `provider` as a conjunct is a
+    // claim the detector does not make.
+    expect(html).not.toMatch(/type, date and provider/);
+  });
+});
