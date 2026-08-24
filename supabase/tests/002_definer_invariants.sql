@@ -79,7 +79,11 @@ select is((
     -- middle region, gated on the ARRIVAL at the same view×5 approval
     -- now uses, and never wider than extractions_select
     'extractions_for(p_arrival uuid)',
-    'finalize_extraction(p_arrival uuid, p_lease uuid, p_facts jsonb, p_proposals jsonb)',
+    -- 6A M4 (Q5): the fifth parameter is the rendition manifest. The
+    -- 4-argument function was DROPPED rather than overloaded — two
+    -- functions differing only by a defaulted trailing parameter make
+    -- every 4-argument call ambiguous, and workers.ts:150 still makes one
+    'finalize_extraction(p_arrival uuid, p_lease uuid, p_facts jsonb, p_proposals jsonb, p_rendition jsonb)',
     'finalize_interpretation(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
     'finalize_scan(p_arrival uuid, p_lease uuid, p_verdict text, p_detail jsonb)',
     'finalize_store(p_arrival uuid, p_lease uuid, p_storage_key text, p_sha256 bytea, p_mime_detected text, p_byte_size bigint)',
@@ -150,7 +154,10 @@ select is((
     'uid()',
     'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)',
     'write_extractions(p_arrival uuid, p_lease uuid, p_facts jsonb)',
-    'write_proposals(p_arrival uuid, p_lease uuid, p_proposals jsonb)'
+    'write_proposals(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
+    -- 6A M4: the manifest's §4.5 write half — owner-only, reachable
+    -- through the finalizer alone, running AS the calling definer
+    'write_rendition(p_arrival uuid, p_lease uuid, p_rendition jsonb)'
   ],
   'the hc function inventory is exactly the enumerated set — no stray overloads');
 
@@ -503,6 +510,12 @@ insert into snapshot_expected values
   ('hc_internal',   'extraction_runs', 'SELECT'),
   ('hc_internal',   'extraction_runs', 'INSERT'),
   ('hc_internal',   'extraction_runs', 'UPDATE'),
+  -- 6A M4 (Q5): the rendition manifest. `authenticated` READS it at the
+  -- same view-on-all-five the pages are served at, and holds nothing
+  -- else; only hc_internal writes, through hc.write_rendition
+  ('authenticated', 'arrival_renditions', 'SELECT'),
+  ('hc_internal',   'arrival_renditions', 'SELECT'),
+  ('hc_internal',   'arrival_renditions', 'INSERT'),
   ('hc_internal',   'known_senders',   'SELECT'),
   ('hc_internal',   'pipeline_outbox', 'SELECT'),
   ('hc_internal',   'pipeline_outbox', 'INSERT'),
@@ -578,6 +591,8 @@ select is((
         'approval_attempts_internal','approval_attempts_internal_update',
         'approval_attempts_internal_write',
         'arrival_events_internal','arrival_events_internal_append',
+        -- 6A M4: the rendition manifest's internal pair
+        'arrival_renditions_internal','arrival_renditions_internal_write',
         'arrivals_internal','arrivals_internal_advance','arrivals_internal_intake',
         'auth_attempts_internal','auth_attempts_internal_append',
         'auth_attempts_internal_prune',
@@ -626,7 +641,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated one hundred one');
+  'the hc_internal policy list is exactly the enumerated one hundred three');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:
