@@ -5,8 +5,11 @@ AS AMENDED by the owner on 2026-08-23 and merged in the same session
 (the ADR-0015 / ADR-0013 sign-off-with-merge pattern). **D24 carries the
 sign-off**: four rulings, the two D17 verdicts the sign-off corrected,
 the three arithmetic defects it found in this document, and the slice-6
-queue. The merge is a MERGE COMMIT, never a squash (ADR-0006), and its
-SHA is stamped in D24 with CI green on `main` at it.
+queue. **Merged at `c63bcae`** — a MERGE COMMIT, never a squash
+(ADR-0006), parents `a9d9f43` + `318e2ad`, merged tree verified
+IDENTICAL to `318e2ad`'s (`d6aea1ac`). **CI green on `main` at the merge
+commit**, run `32694917229`. PR #10 closed as merged. The merge record
+is D24's last section.
 
 **Deciders:** the round-16 review session (owner ratifies at sign-off).
 
@@ -1333,6 +1336,38 @@ should carry first:
    (`model_context_window_exceeded` unhandled) · **R3/F-6 + R3/F-7** (no
    multi-page fixture, and nothing anywhere scores whether a bbox lands
    on its value).
+
+---
+
+### The merge — stamped after the fact, per the 4A `95dab27` pattern
+
+**PR #10 merged as a MERGE COMMIT, never a squash** (ADR-0006):
+**`c63bcae`**, parents `a9d9f43` (main, unmoved through the whole round)
++ `318e2ad` (the branch head). The merged tree is verified **IDENTICAL**
+to `318e2ad`'s — both `d6aea1ac` — and **all 31 red→green commits the
+dispositions cite remain reachable from `main`**, checked one by one with
+`git merge-base --is-ancestor`, so every failure signature these ADRs
+quote survives in the history rather than only in prose. 69 commits, 111
+files, +19,025 / −206.
+
+**CI green on `main` at the merge commit: run `32694917229`, 23 steps,
+the only non-success the on-failure database-log capture, skipped as
+designed.**
+
+**One honest note about that run, because this round penalised exactly
+this kind of imprecision (R7/F-8).** On a push to `main` the upgrade leg
+is a DELIBERATE no-op — `git merge-base HEAD origin/main` equals `HEAD`,
+so it prints "HEAD is the base — no increment to rehearse" and exits 0
+(`.github/workflows/ci.yml:86`, which says so in its own comment). The
+rehearsal that matters therefore comes from the **branch head**, run
+`32694256623`, where it ran for 38 s: base reset → exact 60 →
+`migration up` → exact 62 → pgTAP → concurrency. Both runs are cited
+because neither alone covers the claim.
+
+**Round 16 closes. Slice 5B is on `main`.** Nothing is
+production-activated: proposals rest at `pending`, the review screen is
+slice 6's, the G9 gate is OPEN, `BAND_ARTIFACT_ALLOWLIST` is EMPTY, and
+G3/G9/G4/G7 all still block.
 
 ---
 

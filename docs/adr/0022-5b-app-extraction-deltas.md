@@ -1,7 +1,9 @@
 # ADR-0022 — 5B as-built: the app half of extraction + interpretation (B1–B9)
 
-**Status:** **AMENDED, and accepted as amended** — the as-built record
-for slice 5B, corrected at the round-16 owner sign-off on 2026-08-23.
+**Status:** **AMENDED, and accepted as amended — MERGED at `c63bcae`**
+(merge commit, parents `a9d9f43` + `318e2ad`; PR #10; CI green on `main`
+at the merge commit, run `32694917229`). The as-built record for slice
+5B, corrected at the round-16 owner sign-off on 2026-08-23.
 Round 16 falsified or superseded **ten** of its claims; each is
 corrected by a numbered disposition in **ADR-0023**, indexed immediately
 below and marked again at the site. **The original prose is preserved
