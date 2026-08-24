@@ -15,7 +15,7 @@ rather than at a run three commits behind it (R7/F-8).
 | Green build head | `dd350ad` | **11 commits from base** — five red→green pairs plus the concurrency additions | covered by the pushed-head run recorded in the addendum |
 | Evidence head | `dd350ad` | **the last commit that moved a non-docs tree** — every number below was produced at this tree | idem |
 | Docs head | `e0186ce` | ADR-0024, the coverage section, and the ADR-0023 D17 correction — **docs-only** | idem |
-| Round-17 packet head | *(this commit)* | this file and the round-17 kickoff — **docs-only** | run id recorded in the addendum after push |
+| Round-17 packet head | `6c280ec` | this file and the round-17 kickoff — **docs-only** | **green**, run `32770470394` (23 steps, 22 success, 1 skipped) |
 
 The docs head `e0186ce` moves three files, all under `docs/`. The TREE
 RELATIONSHIP is what binds a leg, and it is docs-only.
@@ -388,4 +388,12 @@ running.
 - **A standing transient to expect in CI:** a "Start local Postgres"
   `toomanyrequests` failure is the ECR Public anonymous quota on the
   runners, never a repo defect — re-run later.
-- **CI at the pushed head:** run id recorded here after push.
+- **CI at the pushed head:** push run **32770470394** @ `6c280ec` —
+  conclusion **success**, 23 steps, 22 success, the single `skipped`
+  being the on-failure log capture (the same shape as the base run at
+  `31a7977`). Secret scanning, service-role containment, the schema pin,
+  the clean reset, the exact-state verifier, pgTAP, concurrency,
+  db:verify under --fail-on warning, vitest, the G9 generator check, the
+  FULL upgrade rehearsal, lint and typecheck all green on the runner.
+  The **pull_request** run fires when the owner opens the PR; its id is
+  confirmable via the public API then.
