@@ -273,7 +273,7 @@ select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
   $$ select hc.approve_proposal(%L::uuid, 1, 'k-task-notitle')::text $$,
   current_setting('t.p_task_notitle'))),
   'ERROR:P0001:approval_refused',
-  'tasks.title is NOT NULL — the same defect, one kind over; guarding profile_fact alone would have shipped five siblings');
+  'tasks.title is NOT NULL — the same defect, one kind over; guarding the finding''s own column alone would have left SIX sibling columns unguarded');
 
 select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
   $$ select hc.approve_proposal(%L::uuid, 1, 'k-doc-notitle')::text $$,
