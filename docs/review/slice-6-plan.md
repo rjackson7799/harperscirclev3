@@ -1,9 +1,13 @@
 # Slice 6 — The Care Inbox: the slice plan
 
-**Status:** **PLANNED — AWAITING RULINGS.** Ten pointed questions
-(Q1–Q10) are put to the owner below, each with a recommendation. **An
-unanswered question defaults to NOT PLANNED and the build does not
-start.** Written 2026-08-23 in the planning session against `main` @
+**Status:** **PLANNED — RULED. Q1–Q10 SETTLED 2026-08-24 at the plan
+gate** (rulings recorded verbatim below; **every recommendation
+accepted** — the slice-5 `561a105` pattern). The 6A build (M1
+`inherited_obligations` FIRST) runs in its own fresh session on
+`slice/6-care-inbox`; 6B follows at its own kickoff on
+`slice/6b-care-inbox-app`, with B1 — the rasterizer swap — first. **An
+unanswered question would have defaulted to NOT PLANNED; none was left
+unanswered.** Written 2026-08-23 in the planning session against `main` @
 `692c182` (the slice-6 plan-gate kickoff, checked in docs-only), whose
 parent `b80ab32` carries CI green at run `32696072672` — all 23 steps,
 the single `skipped` being the on-failure log capture. Slice 5B is
@@ -1139,11 +1143,129 @@ a home.
 
 ---
 
-## Owner decisions needed — the batched questions (Q1–Q10)
+## Owner decisions — SETTLED 2026-08-24 (the plan-gate rulings)
 
-**An unanswered question defaults to NOT PLANNED, and the build does not
-start.** Each carries a recommendation the build executes on if it is
-accepted; each names the alternative and why it was not recommended.
+The owner ruled on the ten batched questions at the plan gate,
+2026-08-24, in session. **Every recommendation was accepted as written.**
+Recorded verbatim; the build executes on these. The questions as put,
+with the alternatives that were rejected, are preserved below for the
+record (the slice-5 `561a105` pattern).
+
+- **Q1 — SETTLED:** **The 6A/6B split, as argued** — 6A (M1–M7 DB,
+  the inherited-obligations batch FIRST) → round-17 review → merge; then
+  6B (app B1–B10, the rasterizer swap FIRST) → round 18. Taken on the
+  four tree facts, not on the 2A/4A/5A precedent: the graph carries no
+  row out of `proposals_ready` and none into `filed`; no proposal can be
+  rejected; the receipt has no read path; approval is wider than
+  evidence.
+- **Q2 — SETTLED:** **Migration bound ≤ 7 as mapped** — M1
+  `inherited_obligations` · M2 `review_boundary` · M3 `decide_proposal` ·
+  M4 `renditions` · M5 `receipt` · M6 reserved for round-17 dispositions
+  · M7 reserved and NAMED for Q8's DB half. **Because Q8 ruled as
+  recommended, M7 is expected to close UNCONSUMED at 6 of ≤ 7** — and
+  the over-provisioned slot is deliberate, not an invitation to spend it.
+  Anything past the bound is a recorded owner amendment before a line is
+  written; shipped migrations are never edited.
+- **Q3 — SETTLED:** **All three dependency slots approved as argued,
+  with the licence column** — `mupdf` 1.28.0 (AGPL-3.0-or-later) **OUT**;
+  `pdfjs-dist` 6.2.108 (Apache-2.0) + `@napi-rs/canvas` 1.0.8 (MIT) **IN**
+  as §6.3's rasterizer; `tesseract.js` 7.0.0 (Apache-2.0) **IN** for
+  §6.9's OCR. **The argued runtime set goes from TWO to FOUR and the
+  bound is three ADDITIONS, not a total.** Every licence is re-verified
+  from the installed manifest before any import, with the command's
+  output pasted into the red commit that adds the package; a manifest
+  licence differing from the argued one is a fresh owner ruling, not a
+  build decision. The dev-dependency reserve stays UNSPENT.
+- **Q4 — SETTLED:** **`confidenceBand` returns three states, and no band
+  is ever stored on a fact** — `all_high` · `banded` · `uncalibrated`,
+  computed at render time from the run's `(model_id, prompt_version)`
+  pair. A band is a property of the calibration, not of the fact.
+- **Q5 — SETTLED:** **`promotedPageKey`'s default is deleted AND the
+  pages get a manifest (M4)** — `ext` required, the rendition row written
+  in `finalize_extraction`'s transaction. R3/F-8 and R4/F-6 close
+  together, and partial promotion becomes detectable and therefore
+  repairable.
+- **Q6 — SETTLED:** **RENDER the message as a second source**, honouring
+  §6.3 as written rather than amending the row down. The rendition is
+  sanitised and resource-free; **a network call attempted during an email
+  render is a test failure.** A12 is owed either way, and RND-01's cell
+  stops reading "the table row by row" until it lands.
+- **Q7 — SETTLED:** **Approval narrows in the DATABASE** — one added
+  predicate in `hc.approve_proposal` requiring `view` on the arrival over
+  all five domains, the same one the artifact route and
+  `hc.log_artifact_read` already enforce, refusing in the existing
+  `approval_refused` shape. §3.7's write-time rule is the reason; an
+  interface-only rule is one a second client does not have. The gate on
+  `extractions` is correct and is not widened.
+
+- **Q8 — SETTLED:** **The Care Inbox revalidates — the signal, THEN the
+  eager fire**, in that order, never the reverse (D24 ruling 3's order,
+  now with its shape). No DDL, so **M7 closes unconsumed**; slice 11's
+  notification set is not pre-empted. **The ordering is enforced by
+  tests, not intention:** the fire's own test asserts the signal is
+  present, so a later refactor that removes the signal fails the fire's
+  test. PRF-08 reports the resulting median rather than the plan
+  asserting it.
+- **Q9 — SETTLED:** **All three as stated** — branches
+  `slice/6-care-inbox` (6A) and `slice/6b-care-inbox-app` (6B); **the
+  exit seam accepted as a PARTIAL exit, said plainly** (the loop closes
+  for the record; AC-INBOX-9 is only partly satisfiable until Documents
+  and People & roles land in slice 7, so the receipt names every
+  destination, links the two that exist, and says so — **RCP-02 stays
+  `pending` tagged 7, never green on a criterion half met**, the SIG-01
+  precedent for the third slice running); **the coverage-row set as
+  tabled** — fourteen rows, twelve opening, A11Y-07 and A11Y-08 flipping
+  green, SIG-01 still explicitly NOT absorbed.
+- **Q10 — SETTLED:** **Buy §7 row 1 — blind 12 → 40, INCLUDING an email
+  item** (which Q6's ruling makes possible), at unit B10. **§7 row 2
+  stays OUT** (owner time and a physical loop). **R6/F-16 and R6/F-17
+  come with the purchase**, being defects in the act of growing the
+  corpus — F-16 breaks the one command that costs money to produce.
+  **R2/F-3 and R2/F-4 stand as named PRE-CONDITIONS of any signed band**,
+  not as slice-6 units: a band signed from a third construction site,
+  behind a hash that does not cover the pixels the model sees, is a band
+  signed against something other than what shipped. **Slice 6 does not
+  close G9** — it closes at owner sign-off of bands against a completed
+  BLIND run, never as a side effect of a green row.
+
+**Three consequences of the rulings, recorded so nothing is inferred
+later:**
+
+1. **The migration bound is expected to close at 6 of ≤ 7.** Q8 needs no
+   DDL, so M7 is not consumed. A build session that finds it needs M7
+   anyway is finding something this gate did not foresee, and that is an
+   owner amendment with its reason stated — not a slot that was always
+   going to be spent.
+2. **Q7's narrowing is the load-bearing ruling of the set**, because it
+   is the one that makes PRD §4.2.3's own sentence true as written and
+   PRD §6.4's crop rule satisfiable in the mode this slice actually
+   ships in. It is also the ruling most worth a reviewer's attack at
+   round 17: it was found in the planning session rather than inherited
+   from a review, and it narrows a function that seven slices depend on.
+   **The 013/054 approval cases are re-pinned in the same commit** so the
+   narrowing cannot silently break what already passes.
+3. **Nothing here activates anything.** Proposals still rest at
+   `pending` until 6B ships the surface; the G9 gate stays OPEN and
+   `BAND_ARTIFACT_ALLOWLIST` stays EMPTY; G3/G4/G7 all still block; no
+   credential exists in CI or the gate. All-high-risk remains the
+   shipping mode, which is why the screen is designed for it rather than
+   degraded into it.
+
+## The questions as put to the owner — preserved for the record
+
+**All ten were SETTLED on 2026-08-24 and every recommendation was
+accepted; the rulings are above.** This section is kept unchanged from
+the pre-gate draft — the recommendations as they were argued, and the
+alternatives as they were rejected — so a future reader can see what the
+owner was choosing between rather than only what was chosen (the slice-5
+precedent, where the questions were preserved beneath the rulings for
+exactly this reason).
+
+**The standing rule, which did not have to be exercised here:** an
+unanswered question defaults to NOT PLANNED, and the build does not
+start. Each question below carries the recommendation the build now
+executes on, and each names the alternative and why it was not
+recommended.
 
 **Q1 — The increment split.** **Recommended: 6A (M1–M7 DB) → round 17 →
 merge; then 6B (B1–B10 app) → round 18.** Not on precedent — on four
