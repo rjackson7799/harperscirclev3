@@ -5,9 +5,8 @@ complete). Working directory:
 `c:\Users\HCI\Desktop\Projects\HarpersCirclev3`.
 
 STATE — settled, do not redo or re-verify:
-  Round 16 is DONE. Branch `slice/5b-app-extraction` @ **`d3095b6`**,
-  pushed, **CI green at that exact SHA — run `32664656929`, all 23
-  steps** (the only `skipped` is the on-failure log capture, which is
+  Round 16 is DONE. Branch `slice/5b-app-extraction` @ **`5447ab6`**,
+  pushed, **CI green — all 23 steps** (the only `skipped` is the on-failure log capture, which is
   correct). `main` @ `a9d9f43` has NOT moved, so the merge-base is still
   the branch base: no divergence, no conflict surface.
   · **113 findings** from eight independent adversarial lenses, landed
@@ -46,16 +45,13 @@ STATE — settled, do not redo or re-verify:
     in a clean worktree and corrected in ADR-0023 D16.
 
 THE TASK — the sign-off leg:
-  1. **THE PR IS STILL NOT OPEN.** `gh` is UNAUTHENTICATED, there is no
-     `GH_TOKEN`, and reading the stored Git credential is blocked by the
-     permission classifier — so an agent cannot open it. The body is
-     written and current at the session scratchpad's `pr-body.md` (ask
-     for it if the path is gone; it can be regenerated from ADR-0023).
-     Open it at
-     `https://github.com/rjackson7799/harperscirclev3/compare/main...slice/5b-app-extraction?expand=1`
-     — or grant `gh auth login` / a permission rule and have the agent
-     do it. Confirm CI green at the PR head first, anonymous public API,
-     never device-flow; **pending never counts**.
+  1. **THE PR IS OPEN: #10**
+     (`https://github.com/rjackson7799/harperscirclev3/pull/10`), head
+     `5447ab6`, base `main` @ `a9d9f43`, **checks success, mergeable
+     state `clean`** — 63 commits, 110 files, +18,242 / −202. Its body
+     is checked in at `docs/review/round-16-pr-body.md`. Re-confirm green
+     at the head before acting — anonymous public API, `gh` is
+     UNAUTHENTICATED, never device-flow; **pending never counts**.
   2. **THREE OWNER DECISIONS ARE OPEN AND BLOCK NOTHING ELSE IN THIS
      SESSION, BUT SHOULD BE RULED ON** (ADR-0023 D18, D11, D13, D14):
      · **`mupdf` is AGPL-3.0-or-later** and the word "licence" appears
