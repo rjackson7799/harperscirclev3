@@ -4,7 +4,7 @@
 
 ### What this branch delivers
 
-Nine units B1–B9 plus two fix commits the local gate forced, branched from `main` @ `a9d9f43` (CI run `32609469623`, success — the regress terminates there). Twenty-two commits, red→green throughout, the failure signature in every red commit message.
+Nine units B1–B9 branched from `main` @ `a9d9f43` (CI run `32609469623`, success — the regress terminates there), then the round-16 review and its fixes. Red→green throughout, with the failure signature in every red commit message.
 
 - **B1 — one governed corpus.** `fixtures/g9`, 28 items (16 development / 12 BLIND), **every byte generated** by `scripts/fixtures/g9-build.mjs` from a spec table inside that script. The partitions are a property of the TREE: `lib/eval/blind` is §1.7-fenced to `scripts/eval/**` and `tests/eval/**`. Plus `docs/eval/g9-corpus-spec.md`, which states its own limits.
 - **B2 — the rasterizer.** The `mupdf` verification spike **8/8 legs PASS**, so the spike-contingent runtime reserve is not consumed. `lib/pipeline/render.ts` as §6.3 rules-as-code, the four named ceilings answering **from the header** before any decode, and the lease-scoped → promoted page lifecycle.
@@ -34,8 +34,9 @@ dispositions **every one** with an argument, and two of the packet's own
 recommendations are **declined** on the record (Q-B and Q-D — Q-D's
 premise turned out to be false against the shipped schema).
 
-**Twenty-six findings are fixed red→green on this branch**, including all
-seven BLOCKERs that were fixable. Highlights:
+**Twenty-five findings are fixed red→green on this branch** (plus one
+partial), including **all eight BLOCKERs that were fixable** — the other
+two are owner decisions, below. Highlights:
 
 - **§4.8's conflict arm was inert in production** — `hc.record_context_for`
   returns `profile_facts`; both consumers read `.facts`, so no conflict
@@ -62,7 +63,9 @@ arrival email firing as it closes.
 
 **ADR-0022 D15 — one column grant, and an empty Care Inbox.** `authenticated` holds a COLUMN-LEVEL select grant on `public.arrivals` (25 of 28 columns); 5A M5 added `duplicate_of_document_id` without extending it. B6's first draft named it in the inbox select, Postgres refused per-column, supabase-js returned an ERROR rather than rows, and the page's own empty branch took over — **the entire Care Inbox rendered its first-run empty state, for every caller, on every arrival.** A 4B gate leg going red was the tell; nothing else in the stack could have found it.
 
-The tree is **fixed and green**, with a regression guard that asserts on the **SELECT STRING**, because a render assertion cannot tell "no arrivals" from "the query was refused" — which is exactly how this passed a green unit suite. What is still owed is one line of DDL, and **the migration bound is spent**, so it is an owner bound-amendment, not a session decision. Until it lands, B6's plan row is recorded **partially met** and coverage's DUP-02/UXA-02 say so rather than reading green.
+The tree was fixed on the branch with a guard asserting on the **SELECT STRING**, because a render assertion cannot tell "no arrivals" from "the query was refused" — which is exactly how this passed a green unit suite.
+
+**The review closed it properly.** The owner granted the bound amendment, so **M7** lands the grant, the §4.7 p2 copy now reads *"This looks like the discharge summary you filed on July 12."* — the plan's B6 text — and **DUP-02 and UXA-02 both read green**. M7 also carries an `information_schema.column_privileges` **exact-set invariant**, so any future column added to `public.arrivals` reds pgTAP until someone rules on whether members may read it: the class is closed, not just the instance. The app-side guard became an allowlist over every clause, since Postgres refuses on `where`/`order by` references too.
 
 ### Evidence at the closing head — every leg re-run, nothing inherited by F12
 
@@ -85,11 +88,11 @@ The tree is **fixed and green**, with a regression guard that asserts on the **S
 
 **On "24/24 UNCHANGED":** this branch does not claim it. Two gate legs were deliberately amended, each argued in place — ingestion's cancel leg (the build session's, ratified at packet Q-I(2)) and extraction's DUP-02 leg (the review's, once Q-A made the citation possible). The honest statement is **29/29 with two argued amendments**.
 
-Three gate runs were needed and **each found something real**: a Windows-only `file://` comparison in the fixture server's CLI guard, the column-grant finding above, and two fixture assumptions (the cancel leg's seam, and §4.9's deferred claim trigger doing its job). **No failed leg was re-run to green.**
+During the build, three gate runs were needed and **each found something real**: a Windows-only `file://` comparison in the fixture server's CLI guard, the column-grant finding above, and two fixture assumptions (the cancel leg's seam, and §4.9's deferred claim trigger doing its job). **No failed leg was re-run to green.**
 
 ### The review
 
-`docs/review/round-16-packet.md` carries the head ledger, the F12 per-directory binding, the one-SHA evidence block and **eight pointed questions Q-A–Q-H with recommended answers**. `docs/adr/0022-5b-app-extraction-deltas.md` is the as-built record, **PROPOSED** — this round ratifies or amends it.
+`docs/review/round-16-packet.md` carries the head ledger, the F12 per-directory binding and **nine pointed questions Q-A–Q-I with recommended answers**. All nine are answered in `ADR-0023`: Q-A, Q-C, Q-E, Q-F, Q-G, Q-H and Q-I ratified (several with amendments named), **Q-B and Q-D declined** with the argument.
 
 **Read in this order:** `docs/review/round-16-findings.md` (the 113 findings, verbatim, unargued) → `docs/adr/0023-slice5b-review-round-16.md` (every disposition, with the argument) → `docs/adr/0022-5b-app-extraction-deltas.md`, which is **AMENDED rather than ratified**: five of its claims were falsified and each is corrected by a numbered disposition.
 
