@@ -16,6 +16,7 @@ rather than at a run three commits behind it (R7/F-8).
 | Evidence head | `dd350ad` | **the last commit that moved a non-docs tree** — every number below was produced at this tree | idem |
 | Docs head | `e0186ce` | ADR-0024, the coverage section, and the ADR-0023 D17 correction — **docs-only** | idem |
 | Round-17 packet head | `6c280ec` | this file and the round-17 kickoff — **docs-only** | **green**, run `32770470394` (23 steps, 22 success, 1 skipped) |
+| CI-record head | `2f4c4a6` | this file again, adding the run id above — **docs-only**, and the last commit on the branch | its own docs-only run; the evidence run is the one named on the row above |
 
 The docs head `e0186ce` moves three files, all under `docs/`. The TREE
 RELATIONSHIP is what binds a leg, and it is docs-only.
@@ -27,7 +28,8 @@ packet head:** `supabase/` **unchanged** · `app/` **unchanged** ·
 binds, and the local gate is not re-owed by the docs commits.
 
 **Documents that moved AFTER the evidence head** (R7/F-9 — named, not
-implied): `docs/adr/0024-6a-care-inbox-db-deltas.md` (new),
+implied; a packet cannot name its own SHA, so the CI-record commit above
+is how that is closed rather than left implicit): `docs/adr/0024-6a-care-inbox-db-deltas.md` (new),
 `docs/adr/0023-slice5b-review-round-16.md` (the D17 R8/F-1 verdict
 correction), `docs/coverage.md` (the `## 6` section),
 `docs/review/round-17-packet.md` (this file),
