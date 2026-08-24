@@ -146,6 +146,14 @@ describe('B5 · the outbox leg: drain → enqueue → ack, at-least-once', () =>
   // so the assertion inverts: every stage present in a pass is fired once,
   // extract and interpret included. Amending it rather than deleting it keeps
   // the flip legible where the seam was recorded.
+  //
+  // ONE HONEST LIMIT, recorded at round-16 sign-off (R8/F-5, D14/D24): this
+  // asserts what the relay does with the rows it drains. An `extract` row
+  // reaches it from no in-branch producer — nothing writes a pipeline_outbox
+  // row on `scanned -> extracting`, which is exactly why extraction waits for
+  // the once-a-minute queue tick and why §4.5's cancel window is ~35 s. The
+  // extract case here is forward-compat: it pins what the relay WILL do when
+  // the eager fire lands behind its arrival-received signal.
   it('EVERY stage present in the pass is eager-fired once each — the seam is consumed', async () => {
     workers.outboxDrain.mockResolvedValueOnce([
       { outboxId: 'ob-6', arrivalId: 'a-6', stage: 'gate' },

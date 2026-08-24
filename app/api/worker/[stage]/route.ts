@@ -237,8 +237,14 @@ async function processGate(msg: PipelineMessage): Promise<string> {
 
   const r = await advanceArrival(msg.arrival_id, 'scanned', to, claim.leaseId!, reason);
   if (r === 'advanced' && to === 'extracting') {
-    // The Q7 seam: enqueued for slice 5's extract worker; no fire —
-    // nothing consumes it yet, and the arrival RESTS at its honest label.
+    // The Q7 seam: enqueued for the extract worker, and DELIBERATELY NOT
+    // fired. `gate → extract` is the one hand-off in the pipeline with no
+    // eager fire, and at round-16 sign-off that became a RULING rather than
+    // an oversight: firing it collapses §4.5's cancel window — median ~35 s,
+    // most of it relay dead time — to seconds, while nothing yet tells a
+    // family that Reading has begun. The arrival-received signal lands
+    // FIRST; the eager fire follows it. Owner ruling 2026-08-23; the
+    // finding is ADR-0023 D14 (R8/F-2), the ruling is D24.
     await sendPipelineWork({
       circle_id: msg.circle_id,
       arrival_id: msg.arrival_id,
@@ -252,16 +258,18 @@ async function processGate(msg: PipelineMessage): Promise<string> {
 /**
  * The §4.3 normalize exits, mapped to the states and reasons 5A shipped.
  *
- * ONE gap is recorded rather than papered over: a RENDER BOUNDS refusal (page
- * count, page dimensions, wall clock, output size) has no reason code of its
+ * ONE gap WAS recorded rather than papered over: a RENDER BOUNDS refusal (page
+ * count, page dimensions, wall clock, output size) had no reason code of its
  * own. `archive_bounds_exceeded` is the closest that exists — "Archive
  * depth/entries/expansion over PRD §13.3 bounds" — and a 250-page PDF IS a
  * §13.3 bound, but that code's description says "Archive" and this is not
  * one. The family-facing label is right in every case (`extract_failed` reads
  * "Couldn\u2019t read it", which is the honest thing to say); the alternative,
  * `unsupported_type`, reads "Unsupported file" and would tell them something
- * false about their document. The migration bound is spent, so a
- * ROUND-16 CLOSED THIS: the owner granted M7, which adds
+ * false about their document. The app could not fix it alone, so B4 raised it
+ * as a pointed question rather than absorbing it.
+ *
+ * ROUND 16 CLOSED IT (ADR-0023 D9/D10, D20): the owner granted M7, which adds
  * `render_bounds_exceeded`, and the four named ceilings now map distinctly —
  * a wall-clock overrun to `extract_timeout`/`provider_timeout` (states 4A
  * shipped and nothing had ever called), the other three to the new code.

@@ -281,7 +281,7 @@ describe('B4 · scan — cache first, four exits, quarantine moves bytes', () =>
 });
 
 describe('B4 · gate — the SND-01 machinery; uploads pass, strangers hold', () => {
-  it('recognised email advances to extracting and enqueues the extract seam (Q7: enqueued, nothing consumes yet)', async () => {
+  it('recognised email advances to extracting and enqueues the extract seam — the extract fire is HELD (ADR-0023 D24)', async () => {
     workers.readPipelineWork.mockResolvedValueOnce([msg('gate')]);
     workers.senderRecognised.mockResolvedValueOnce(true);
     await route.POST(req('gate'), ctx('gate'));
@@ -294,7 +294,15 @@ describe('B4 · gate — the SND-01 machinery; uploads pass, strangers hold', ()
     );
     const [sent] = workers.sendPipelineWork.mock.calls[0];
     expect(sent).toMatchObject({ stage: 'extract' });
-    expect(fetchMock).not.toHaveBeenCalled(); // no consumer to fire (Q7)
+    // AMENDED at round-16 sign-off (R8/F-1). The old title said "nothing
+    // consumes yet" and the old comment said "no consumer to fire"; both were
+    // false at HEAD — scan, gate and interpret all fire eagerly. Extract is
+    // the one hand-off that does not, and it is HELD BY OWNER RULING rather
+    // than missing: the eager fire would collapse §4.5's ~35 s cancel window
+    // to seconds while nothing yet tells a family Reading has begun
+    // (ADR-0023 D14 for the finding, D24 for the ruling). The assertion is
+    // UNCHANGED — what changed is that it now pins a decision, not a gap.
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('an unknown sender holds — AC-INBOX-7: the gate precedes extracting', async () => {
