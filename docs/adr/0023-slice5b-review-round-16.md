@@ -4,7 +4,7 @@
 AS AMENDED by the owner on 2026-08-23 and merged in the same session
 (the ADR-0015 / ADR-0013 sign-off-with-merge pattern). **D24 carries the
 sign-off**: four rulings, the two D17 verdicts the sign-off corrected,
-the three arithmetic defects it found in this document, and the slice-6
+the four defects it found in this document, and the slice-6
 queue. **Merged at `c63bcae`** — a MERGE COMMIT, never a squash
 (ADR-0006), parents `a9d9f43` + `318e2ad`, merged tree verified
 IDENTICAL to `318e2ad`'s (`d6aea1ac`). **CI green on `main` at the merge
@@ -152,8 +152,14 @@ deliberately:
   docstring now says it is the *no-resolution fallback*, which is the
   sentence that was missing.
 
-The mupdf spike was re-run at the fixed head: 8/8, and leg 8 still
-measures 36.3 vs 220.4.
+The mupdf spike was re-run at the fixed head: the script reports 8/8, and
+leg 8 still measures 36.3 vs 220.4. **Read that as 7/8** — R7/F-3 is
+ACCEPTED below and re-scores leg 5 FALSIFIED, because it contains no
+assertion and passes unconditionally while the criterion it claims
+("malformed input refuses cleanly") is not met: mupdf repairs. The
+honest hostile-input posture is "malformed input is repaired and
+processed". Corrected here at sign-off rather than left to contradict
+its own disposition eleven sections later (D24).
 
 ---
 
@@ -1231,10 +1237,11 @@ the disposition D14 was waiting for:
 **4. ADR-0023 is RATIFIED as amended, ADR-0022 is AMENDED, and the merge
 is taken in session** as a **MERGE COMMIT, never a squash** (ADR-0006).
 
-### What the sign-off itself corrected — three arithmetic defects here
+### What the sign-off itself corrected — four defects in this document
 
 The sign-off tested D17's ARGUMENTS, per this document's own instruction
-about where to push hardest, and three of its numbers did not survive:
+about where to push hardest, and four of its own statements did not
+survive:
 
 1. **R3/F-9 read OWED and is FIXED.** The row was written before the
    owner's ruling and was never revisited when Q-B rode with Q-A.
@@ -1248,6 +1255,10 @@ about where to push hardest, and three of its numbers did not survive:
    bound, which is an amendment item and not a finding, and the owner
    GRANTED it during the round — so it is not escalated at all any more.
    The PR body had this right; this ADR did not.
+4. **D2 reported the mupdf spike as 8/8** while R7/F-3, four hundred
+   lines below, ACCEPTED the re-score to 7/8 with leg 5 falsified. A
+   document that contradicts its own disposition teaches a reader to
+   trust neither half. Corrected at the site, with the argument.
 
 **The honest counts at sign-off, tallied mechanically from D17: 27 FIXED
 · 39 OWED · 3 OWNER · 19 ACCEPTED-NOTE · 21 NOTED · 2 ACCEPTED · 1
