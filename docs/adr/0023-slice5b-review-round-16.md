@@ -1,8 +1,12 @@
 # ADR-0023 — round-16 dispositions: slice 5B, the app half of extraction + interpretation
 
-**Status:** PROPOSED — the dispositions record for round 16. The owner's
-sign-off and the merge are their own sessions (ADR-0006). **An
-unanswered item defaults to NOT MERGED.**
+**Status:** **ACCEPTED** — the dispositions record for round 16, ratified
+AS AMENDED by the owner on 2026-08-23 and merged in the same session
+(the ADR-0015 / ADR-0013 sign-off-with-merge pattern). **D24 carries the
+sign-off**: four rulings, the two D17 verdicts the sign-off corrected,
+the three arithmetic defects it found in this document, and the slice-6
+queue. The merge is a MERGE COMMIT, never a squash (ADR-0006), and its
+SHA is stamped in D24 with CI green on `main` at it.
 
 **Deciders:** the round-16 review session (owner ratifies at sign-off).
 
@@ -803,7 +807,7 @@ says so in the argument.
 | F-6 | MAJOR | **OWED** | **Every corpus item is single-page**, the text layer is concatenated with no page markers, and image blocks go on the wire unlabelled — so `citation.page` is always 1, the range check is trivially satisfied, and the image-order↔page-number correspondence is exercised by nothing. One coordinate over from the orientation door that *was* closed. Composes with D11. |
 | F-7 | MAJOR | **OWED** | The harness discards the citation before scoring — `Prediction` is `{field, value}` only — so **nothing anywhere measures whether a bbox lands on its value**. A model with perfect values and uniformly wrong boxes scores 1.00. Composes with D11: the bands would be signed on a run in which citation correctness was never measured. |
 | F-8 | MINOR | **OWED** | `promotedPageKey`'s default ext is `png` while every photo/scan/pill-bottle promotes as `.jpg`, and the contract test calls exactly that default. The exported builder encodes the wrong answer for the majority of arrivals; slice 6 would hit it. |
-| F-9 | MINOR | **OWED** | Four named refusal reasons collapse to one persisted code — see D9, where this rides with Q-B. |
+| F-9 | MINOR | **FIXED** | Corrected at sign-off: this row was written before the owner's ruling and still read OWED. Q-B rode with Q-A as D9 recommended, so `normalizeExit` now maps each ceiling to its own outcome — `wall_clock` to `extract_timeout`/`provider_timeout`, the other three to M7's `render_bounds_exceeded`, and `archive_bounds_exceeded` goes back to naming the archive case 4A seeded it for. `f05d101` RED → `f62305c` GREEN (D20). |
 | F-10 | OBS | **NOTED** | **Verified positive.** The orientation door is exclusive in production code; `new mupdf.Image` appears only in the spike; 8/8 legs pass at HEAD and leg 8 reproduces 36.3 vs 220.4. Two honest limits named (the control proves mupdf, not `render.ts`; leg 6's ceiling check shares `PT_PER_PX`) — the second is exactly what hid D2. |
 | F-11 | OBS | **NOTED** | **Verified positive.** `serverExternalPackages` is correct, the pin would red if removed, and no other dependency needs it. |
 | F-12 | MINOR | **OWED** | The harness normalises with the *declared* mime while the worker sniffs. Agrees on today's 28 fixtures; latent. With F-4 and R6/F-6. |
@@ -856,7 +860,7 @@ says so in the argument.
 | F-3 | MAJOR | **FIXED** | D7. |
 | F-4 | MAJOR | **OWED** | The harness emits `{precision, recall, support, tp, fp, fn}`; the loader requires `high`/`medium` per field. The signed digest would fail closed as `artifact_partial` **forever**, indistinguishable from the shipping default at the call site — and no one has written down how a measured number becomes a threshold. Must be settled with D11 before any real run. |
 | F-5 | MAJOR | **FIXED** | `node scripts/fixtures/g9-build.mjs --check` is a CI step. `7e83761`. |
-| F-6 | MAJOR | **OWED** | The eval scores raw model output; production applies `validateFacts`, which drops hallucinated-page citations and over-cap values. The bias is one-directional and **upward** — a hallucinated citation is a true positive to the scorer and an invisible non-event to the family. |
+| F-6 | MAJOR | **FIXED** | Corrected at sign-off: this row was written before the closing increment and still read OWED. `scripts/eval/predict.ts` calls the WORKER's own `validateFacts` rather than reimplementing it, `--collect` re-normalises each item to recover the page count it needs, and the refusals are COUNTED AND PRINTED rather than swallowed — a fact cited onto a page the rendering does not have is a §10.4 signal, not a rounding error. The bias this removes ran ONE way and it was the unsafe one: an owner would have signed bands better than the product they describe. `7677c0b` RED → `da68887` GREEN (D20). |
 | F-7 | MAJOR | **FIXED** | D7. |
 | F-8 | MINOR | **ACCEPTED-NOTE** | Exact string equality after `lower(btrim())`. Defensible given the prompt's verbatim instruction, and the concrete failure set (dates in prose, a dropped currency symbol, `coverage_determination` free text) is real. Worth stating in the spec so a low number is not misread as a reading failure — and so no one "fixes" it by loosening the matcher after seeing the result. |
 | F-9 | MINOR | **ACCEPTED-NOTE** | The no-global-number property is real in the emitted object and one line of arithmetic away in the artifact. D12's claim should read "reports no global number". |
@@ -1140,15 +1144,213 @@ in this round's dispositions needed it.
 
 ---
 
+## D24 — THE OWNER SIGN-OFF: four rulings, and what they moved
+
+**The owner signed off on 2026-08-23 in session, the ADR-0015 /
+ADR-0013 sign-off-with-merge pattern.** CI was re-confirmed green at the
+PR head first, through the anonymous public API: run `32688855803`,
+**23 steps, every one `success`**, the single `skipped` being the
+on-failure log capture. PR #10 `open`, `mergeable_state: clean`, base
+`main` @ `a9d9f43` — unmoved, so no divergence and no conflict surface.
+
+### The four rulings
+
+**1. `mupdf` is AGPL-3.0-or-later — RECORD NOW, SWAP IN SLICE 6** (D13).
+The obligation is recorded where the dependency was argued:
+`docs/review/slice-5-plan.md`'s Q3 bound now carries a **licence
+column** — `@anthropic-ai/sdk` MIT, `mupdf` AGPL-3.0-or-later, both
+verified from their installed manifests — and **no dependency is argued
+anywhere in this project again without its licence in the same
+argument.** Migrating `lib/pipeline/render.ts` to a permissive rasterizer
+is a **NAMED SLICE-6 GATE ITEM**, taken before slice 6 builds further on
+it: the alternatives the plan already priced are `pdfjs-dist` + canvas
+(Apache-2.0) and `pdfium` bindings (BSD-3). Compliance by offering
+Corresponding Source, and a commercial licence from Artifex, both remain
+available and would each be a fresh ruling. Nothing in the tree changes
+today — the swap is slice 6's, and it gets more expensive every slice it
+waits.
+
+**2. The G9 corpus — RESTATE §4/§6 AGAINST THE READABLE SET** (D11), which
+is this session's own recommendation taken as written.
+`docs/eval/g9-corpus-spec.md` is amended, and its numbers are now
+MEASURED rather than declared:
+
+| blind items | | extractable characters | distinct gray levels |
+|---|---|---|---|
+| born-digital PDF | 4 | 204–253 | 235–242 — antialiased glyphs |
+| scanned PDF | 1 | **0** | 40 |
+| photo JPEG | 7 | **0** | **7–8** — flat 8×8 blocks |
+
+§1 now states the real limit: the photo-class encoder never renders a
+glyph, so for eight of twelve blind items the labelled value lives in
+`corpus.json` and in **no byte the model is given**. §4 gains **§4.1**
+(labelled support — the old table, KEPT, because it is what a grown
+corpus must reach), **§4.2** (readable support, which governs) and
+**§4.3**, which states plainly that the minimums are NOT met: two fields
+of twelve clear ≥ 3 items, **nothing** clears ≥ 2 source types, and
+effective source-type coverage is **1** for every banded field. §6 keeps
+every floor — they are what the product requires — and now carries the
+**ceiling this corpus can demonstrate** beside each, with a `Signable?`
+column reading **NO** twelve times of twelve, because max recall
+(0.25–0.50) sits below the lowest floor (0.85).
+
+`tests/eval/corpus.test.ts` makes it mechanical, driving the pipeline's
+own `normalizeArrival` rather than trusting a label: the readable blind
+set is pinned as an exact four-item set, per-field readable support as an
+exact table, and **the shortfall itself is asserted** — 22
+minimum-misses, which is the fact that keeps the G9 gate closed. The old
+"the corpus spec is MET" block is retitled "is MEASURED" and its legs
+renamed to say LABELLED, with the argument at the site (D0's rule for
+amending a green assertion). **That leg is written to go RED when the
+corpus grows** — §7 row 1 or row 2 — and the red is the signal to re-pin
+the numbers in the same commit as the ADR recording the change, never to
+loosen them. A floor is not lowered to meet an apparatus.
+
+**3. §4.5's cancel window — SIGNAL FIRST, THEN THE EAGER FIRE** (D14). The
+`gate → extract` eager fire stays **FORBIDDEN** until an arrival-received
+signal exists — a Care Inbox that revalidates, or a "we're reading it"
+notice at Reading — so PRD §4.2.2's promise is true at the moment it is
+made. The two are a **PAIR** and slice 6 takes them in that order: the
+signal, then the fire. Because the behaviour is settled, R8/F-1's held
+comments are corrected rather than left describing a gap — this ruling is
+the disposition D14 was waiting for:
+
+- `app/api/worker/[stage]/route.ts` no longer says "nothing consumes it
+  yet". It says the fire is deliberately withheld, and why.
+- `tests/routes/worker-stage.test.ts`'s title no longer claims "nothing
+  consumes yet", which was false at HEAD — scan, gate and interpret all
+  fire. **The assertion is unchanged**; what changed is that it now pins
+  a decision instead of a gap.
+- `tests/routes/relay.test.ts` gains the honest limit R8/F-5 asked for:
+  an `extract` outbox row reaches the relay from no in-branch producer,
+  so that case is forward-compat, not live.
+
+**4. ADR-0023 is RATIFIED as amended, ADR-0022 is AMENDED, and the merge
+is taken in session** as a **MERGE COMMIT, never a squash** (ADR-0006).
+
+### What the sign-off itself corrected — three arithmetic defects here
+
+The sign-off tested D17's ARGUMENTS, per this document's own instruction
+about where to push hardest, and three of its numbers did not survive:
+
+1. **R3/F-9 read OWED and is FIXED.** The row was written before the
+   owner's ruling and was never revisited when Q-B rode with Q-A.
+   Verified in the tree at `f62305c`.
+2. **R6/F-6 read OWED and is FIXED.** Same cause — D20's closing
+   increment lists it and the D17 row did not follow. Verified:
+   `scripts/eval/predict.ts` imports the worker's own `validateFacts`.
+3. **"Seven BLOCKERs … are fixed" and "Three BLOCKERs are escalated" are
+   both wrong.** Counted from the table: **10 BLOCKERs — 8 FIXED, 2
+   OWNER** (R6/F-1, R7/F-1). The third escalation was the migration
+   bound, which is an amendment item and not a finding, and the owner
+   GRANTED it during the round — so it is not escalated at all any more.
+   The PR body had this right; this ADR did not.
+
+**The honest counts at sign-off, tallied mechanically from D17: 27 FIXED
+· 39 OWED · 3 OWNER · 19 ACCEPTED-NOTE · 21 NOTED · 2 ACCEPTED · 1
+DECLINED-and-ACCEPTED · 1 OWED/OWNER = 113.** The kickoff's "25 FIXED,
+41 OWED" is superseded by exactly those two rows. Two fewer owed items is
+a small thing; a slice-6 kickoff carrying two queue entries that are
+already done is not.
+
+### ADR-0022's amendment list was SHORT BY FOUR
+
+The "Status of ADR-0022" paragraph named five falsified claims. The
+sign-off found **ten**, and folded all of them into ADR-0022 as a head
+index plus a marker at every site, with **the original prose preserved
+everywhere** — the D3 precedent: a record that is quietly rewritten stops
+being an as-built record. The four it did not name:
+
+- **D2's "all eight PASS"** — 7/8, leg 5 falsified (R7/F-3). That is the
+  count the Q3 reserve-not-consumed conclusion rests on.
+- **D7's "no reason code of its own"** — closed by M7, and worse than
+  recorded while it was open: a wall-clock overrun was persisted as an
+  archive breach.
+- **D10's "the seam is consumed"** — the one that matters most, because
+  it reads as permission to add the very eager fire ruling 3 forbids.
+- **D12's three figures** — 126 lines not ~40, *reports* rather than
+  *emits* no global number, and "the SOLE real-key path" as a literal
+  claim.
+
+Plus the **Context** paragraph and its matching Consequences bullet —
+"5B is APP-ONLY … 60 migrations / 57 pgTAP files … the bound stays SPENT
+at 6 of ≤ 6" — superseded by the owner's own two amendments.
+
+### One source defect the sign-off found and fixed
+
+`normalizeExit`'s docstring in `app/api/worker/[stage]/route.ts` carried
+a sentence truncated mid-clause — "The migration bound is spent, so a" —
+where the round-16 note had been spliced in over the original. Comment
+only, no behaviour; but it is the mapping site D9/D10 argue about, and
+the record there has to read cleanly. Repaired, with the tense corrected
+to match a gap that has since closed.
+
+### Evidence at the sign-off head
+
+This leg is **documentation, two comment repairs and one new test
+block**. Nothing under `supabase/` or `fixtures/` moved — verified,
+`git diff --stat 98843af -- supabase/ fixtures/` is empty — so the DB
+legs are INHERITED from D23's head under the ADR-0015 F12 per-directory
+binding. That is stated rather than glossed:
+
+| Leg | Result |
+|---|---|
+| vitest | **64 files, 689 passed (689)** — D23's 685 plus this leg's four new §4.2 legs, which land in an existing file |
+| typecheck · lint | clean (`next typegen && tsc --noEmit`; `eslint`) |
+| Clean-leg reset · pgTAP · concurrency · `db:verify` · upgrade leg | **INHERITED from D23** — exact 62 · 1513 PASS across 59 files · 70/70 · clean · base→60→62. `supabase/` is byte-identical to that head |
+| Local gate | **INHERITED from D23** (29/29). NOT re-run, and why: a peer session holds a `next dev` server and a fixture server on port 8787, and `test:e2e` is one of the four GLOBAL commands that destroys a peer's in-flight run with no error on either side |
+| G9 harness dry-run | **INHERITED from D23** (12/12 build, nothing sent). No harness code moved |
+
+**The migration bound stays SPENT at 8 of ≤ 8** — this leg authored no
+DDL and needed none. **The dependency bound is untouched**, and the
+**dev-dependency reserve is still UNSPENT**.
+
+### The slice-6 queue, as it stands after sign-off
+
+**39 findings remain OWED**, each argued in D17, none of them
+production-facing because nothing is production-activated. The
+ruling-driven items now join them, and these are what a slice-6 kickoff
+should carry first:
+
+1. **The arrival-received signal, THEN the `gate → extract` eager fire**
+   — in that order (ruling 3). Everything else about §4.5 waits on it.
+2. **Migrate the rasterizer off `mupdf`** (ruling 1), before slice 6
+   builds further on `render.ts`.
+3. **§6.3's email row and the corpus's email gap** (D12): email facts
+   cite a rendering that is never produced, and the blind partition has
+   no email item at all — on the channel the forwarding address exists to
+   serve.
+4. **§7 row 1 or row 2 of the corpus spec**, bought deliberately. That is
+   what makes any band signable.
+5. **R6/F-4**: the harness writes a manifest `loadBands` rejects as
+   `artifact_partial` FOREVER, and nobody has written down how a measured
+   number becomes a threshold. Settle it with the corpus.
+6. **R3/F-3 + R4/F-4** (attempt staging leaks; nothing sweeps
+   `render/attempt/**`) · **R4/F-6** (partial promotion is permanent) ·
+   **R4/F-7** (the 120 s read VT is shorter than the 300 s stage) ·
+   **R2/F-5** (no 429/`retry-after` handling) · **R2/F-8** (the 64 MB
+   render ceiling exceeds the API's 32 MB request limit) · **R2/F-9**
+   (`model_context_window_exceeded` unhandled) · **R3/F-6 + R3/F-7** (no
+   multi-page fixture, and nothing anywhere scores whether a bbox lands
+   on its value).
+
+---
+
 ## Consequences
 
-- **Seven BLOCKERs and three further MAJOR/MINOR findings are fixed on the branch**, red→green, each with its
+- **EIGHT of the ten BLOCKERs are fixed on the branch** — corrected at
+  sign-off from "seven", counted from the D17 table (D24) — **and
+  nineteen further MAJOR/MINOR findings with them, 27 in all** —
+  red→green, each with its
   failure signature in the red commit message: the record-context key
   (D1), the DPI geometry and the pixel ceiling (D2), the binary adapter
   (D3), the senders crash (D4), the tautological hash pin (D5), the
   model allowlist (D6), and the three fence bypasses (D7) — plus R1/F-1/F-2/F-3, the interpret arm's risk-class bypass and the §6.5 keyword rule, at `0ae61f3`/`681e839`.
-- **Three BLOCKERs are escalated** and cannot be closed here: the AGPL
-  question, the corpus, and — jointly with Q-A — the migration bound.
+- **TWO BLOCKERs were escalated** and could not be closed by a review
+  session: the AGPL question (R7/F-1) and the corpus (R6/F-1). **The
+  owner ruled on both at sign-off — D24.** The third item this bullet
+  used to name — the migration bound, jointly with Q-A — is an amendment
+  rather than a finding, and the owner granted it twice during the round.
 - **§4.8's conflict arm now runs.** It did not before D1, which means
   the interpretation half of this slice was, in production, incapable of
   producing the proposal kind §4.8 exists to guarantee. That is the
@@ -1174,10 +1376,22 @@ in this round's dispositions needed it.
 
 ## Status of ADR-0022
 
-**AMENDED, not ratified as written.** The as-built record is accurate in
-most of its detail and wrong in five specific claims, each now corrected
-by a disposition above: D8's conflict mechanism (D1), D2/D3's geometry
-(D2), D4's hash enforcement (D5) and cache "measurement" (R2/F-6), D1's
-"property of the tree" (D7), and D15's list of withheld columns (D8).
-The amendments belong in ADR-0022 itself at sign-off so a future reader
-of the as-built record is not misled by it.
+**AMENDED, and accepted as amended — the amendments are now IN it.** The
+as-built record is accurate in most of its detail and wrong in **ten**
+specific claims, not the five this paragraph originally named.
+
+The five: D8's conflict mechanism (D1), D2/D3's geometry (D2), D4's hash
+enforcement (D5) and cache "measurement" (R2/F-6), D1's "property of the
+tree" (D7), and D15's list of withheld columns (D8). **The five the
+sign-off added:** D2's "all eight PASS" (R7/F-3), D7's "no reason code of
+its own" (closed by M7), **D10's "the seam is consumed"** (D14 — the most
+actionable of them, because it reads as permission to add the eager fire
+the owner has just forbidden), D12's three figures (R7/F-12, R6/F-9,
+R6/F-12), and the Context paragraph's APP-ONLY claim with its matching
+Consequences bullet.
+
+All ten are folded into ADR-0022 at sign-off — a head index keyed by
+section plus a marker at every site, **the original prose preserved
+everywhere** — so a future reader of the as-built record is not misled by
+it, and is not misled about what was corrected either. D24 records the
+fold.

@@ -36,7 +36,15 @@ premise turned out to be false against the shipped schema).
 
 **Twenty-five findings are fixed red→green on this branch** (plus one
 partial), including **all eight BLOCKERs that were fixable** — the other
-two are owner decisions, below. Highlights:
+two are owner decisions, below.
+
+> **Sign-off note (2026-08-23).** This body is the text posted to PR #10
+> and is left as posted. The sign-off found two D17 rows still reading
+> OWED for fixes that had landed (R3/F-9 at `f62305c`, R6/F-6 at
+> `da68887`), so the correct figures are **27 fixed / 39 owed**, and this
+> paragraph's "eight BLOCKERs fixable, two owner decisions" was right
+> where ADR-0023's own Consequences bullet said seven and three. See
+> ADR-0023 D24. Highlights:
 
 - **§4.8's conflict arm was inert in production** — `hc.record_context_for`
   returns `profile_facts`; both consumers read `.facts`, so no conflict

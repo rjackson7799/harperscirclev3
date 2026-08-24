@@ -115,6 +115,37 @@ bound for a fresh slice (the slice-4 Q3 precedent).
 
 ## Dependency bound (Q3): **TWO argued runtime dependencies**
 
+**AMENDED AT THE ROUND-16 SIGN-OFF — the bound now carries a LICENCE
+column, and no future dependency is argued without one** (owner ruling
+2026-08-23; the finding is ADR-0023 D13/R7-F-1, the ruling is D24).
+Round 16 found that across this plan, ADR-0022, the round-16 packet and
+`docs/ops/ai-provider.md` there were 20 mentions of `mupdf` and **zero**
+mentions of its licence — while both alternatives this section priced are
+permissive. The licence was a differentiator between the options
+compared, and it was priced out of the comparison silently.
+
+| Package | Version | Licence | Posture |
+|---|---|---|---|
+| `@anthropic-ai/sdk` | 0.120.0 | **MIT** | permissive; no obligation |
+| `mupdf` | 1.28.0 | **AGPL-3.0-or-later** | §13's network clause applies to a hosted service; Artifex dual-licenses MuPDF for exactly this reason |
+
+**The ruling: RECORD NOW, SWAP IN SLICE 6.** The obligation is recorded
+here rather than left implicit, and **migrating `lib/pipeline/render.ts`
+to a permissive rasterizer is a NAMED SLICE-6 GATE ITEM** — the
+alternatives already priced in this section are `pdfjs-dist` +
+a canvas backend (Apache-2.0) and `pdfium` bindings (BSD-3). It is taken
+before slice 6 builds further on `render.ts`, because the swap gets
+harder with every slice that does, and because the §1.9 one-adapter
+argument that makes a provider swap cheap was never extended to the
+rasterizer. Neither compliance by offering Corresponding Source nor a
+commercial licence from Artifex was chosen; both remain available if the
+migration turns out to cost more than expected, and either would be a
+fresh owner ruling.
+
+**No dependency is added anywhere in this project without its licence
+stated in the same argument that proposes it.** That is a plan-format
+rule from this point forward, not a slice-5 note.
+
 - **`@anthropic-ai/sdk`** — the provider client. Argued, not assumed:
   the claude-api skill (read in this planning session, its trigger
   honoured) defaults TypeScript projects to the official SDK, and the
