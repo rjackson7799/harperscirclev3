@@ -111,6 +111,9 @@ select is((
     'record_auth_success(p_kind text)',
     'record_context_for(p_arrival uuid)',
     'record_tombstone(p_circle_id uuid, p_object_type text, p_object_id uuid, p_storage_keys text[], p_scope text, p_requested_by uuid, p_reason text)',
+    -- 6A M3: approve's mirror. The loop could not close without it —
+    -- proposals.reject_reason has waited since 1B with nothing to write it
+    'reject_proposal(p_proposal_id uuid, p_expected_version integer, p_idempotency_key text, p_reason text)',
     'remove_member(p_member_id uuid, p_keep_share_ids uuid[])',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
     'resolve_duplicate(p_arrival uuid, p_resolution text)',
@@ -135,6 +138,10 @@ select is((
     'taint_union(a hc.domain[], b hc.domain[])',
     'taint_union_2(a hc.domain[], b hc.domain[])',
     'taint_union_agg(hc.domain[])',
+    -- 6A M3: the §4.9 terminal arm as a WRITE HALF — owner-only, called
+    -- from the two deciding definers, running AS the calling definer, so
+    -- it joins this inventory and NOT the SECURITY DEFINER set below
+    'terminalize_decided_arrival(p_arrival uuid)',
     'tier_defaults(p_tier hc.tier)',
     'tombstone_guard()',
     'tsv_documents()',
@@ -173,7 +180,7 @@ select is((
         'product_state',
         'propagate_taint_growth','reclassify_taint','record_auth_failure',
         'record_auth_success','record_context_for','record_tombstone',
-        'remove_member',
+        'reject_proposal','remove_member',
         'request_freeze','resolve_duplicate','resolve_forwarding',
         'revise_object','revoke_invite',
         'revoke_sender',
@@ -181,7 +188,7 @@ select is((
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the seventy boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the seventy-one boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -328,6 +335,10 @@ with actual as (
   -- needs. authenticated only — the pipeline has hc_internal's own path
   -- and never reads a person's view of an arrival
   union all select 'extractions_for', 'authenticated'
+  -- 6A M3: the decision a person makes when the answer is no. Same reach
+  -- as approve; terminalize_decided_arrival is a write half and appears in
+  -- no grant row by design
+  union all select 'reject_proposal', 'authenticated'
   -- 5A M3: close_extraction_run is a trigger function — hc_internal-owned,
   -- granted to nobody; it appears in no grant row by design
 )
