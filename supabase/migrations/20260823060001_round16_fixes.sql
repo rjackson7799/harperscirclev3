@@ -1,0 +1,87 @@
+-- ============================================================================
+-- 5B · M7 — the round-16 dispositions. THE OWNER GRANTED A BOUND AMENDMENT
+-- on 2026-08-23, moving Q2's migration bound from ≤ 6 to ≤ 7 for exactly the
+-- three things below. Findings verbatim in docs/review/round-16-findings.md;
+-- the argument for each is ADR-0023 (D8 for the grant and the invariant,
+-- D9 for the reason code). Bound closes SPENT at 7 of ≤ 7.
+--
+-- NO SHIPPED MIGRATION IS EDITED. The grant is EXTENDED — the additive form
+-- Postgres gives us for column privileges — never replaced.
+--
+--   1 · Q-A (ADR-0022 D15). `authenticated` holds a COLUMN-LEVEL select
+--       grant on public.arrivals, enumerated at 20260816010007. 5A M5 added
+--       `duplicate_of_document_id` and did not extend it. B6's first draft
+--       named that column in the Care Inbox's select; Postgres refused
+--       per-column, supabase-js returned an ERROR rather than rows, and the
+--       page's own `parents.length === 0` branch took over — so the ENTIRE
+--       Care Inbox rendered its first-run empty state, for every caller, on
+--       every arrival, not merely for stage-2 rows. A 4B browser leg going
+--       red was the only tell; a green unit suite could not see it, because
+--       a refused query and an empty circle are the same two lines of mock.
+--
+--       With the column granted, the §4.7 p2 copy can name the matched
+--       FILED document, which is what the plan's B6 row asked for and what
+--       coverage has been carrying as PARTIALLY MET.
+--
+--   2 · THE CLASS (round-16 R5/F-4, R5/F-12, R7's Q-A position). The defect
+--       shape is: a migration adds a column, a member surface reads it, the
+--       grant is never re-pinned. Nothing at the DB layer could catch that,
+--       and the app-side guard B6 added is a denylist of ONE literal over
+--       `.select()` strings — while Postgres refuses on `where` and
+--       `order by` column references too, which that guard never reads.
+--
+--       The invariant lives in pgTAP 057, not here: the grant SET on
+--       public.arrivals is pinned to an exact set, so ANY future column
+--       reds until someone rules on whether members may read it. This
+--       migration's job is only to make that set correct.
+--
+--   3 · Q-B (ADR-0022 D7). A page bomb, a pixel bomb, a wall-clock overrun
+--       and an oversized render all landed `archive_bounds_exceeded`, whose
+--       description reads "Archive depth/entries/expansion over PRD §13.3
+--       bounds". For a 250-page PDF that is imprecise; for a WALL-CLOCK
+--       timeout it records a different event than the one that happened.
+--       The packet recommended queueing this; ADR-0023 D9 takes it here
+--       instead, because the evidence leg is being paid for anyway and
+--       because "how often does page_dimensions fire, and on what?" is
+--       exactly the question that would have surfaced round-16's DPI
+--       finding (R3/F-1) — and it is unanswerable from the record while
+--       four causes share one code.
+--
+--       `archive_bounds_exceeded` is UNTOUCHED and keeps naming the archive
+--       case it was seeded for.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1 · Q-A — one column joins the authenticated column grant.
+--
+-- Additive by construction: this grants exactly one column and leaves the
+-- other 27 as they are. `auth_detail` and `current_lease_id` remain WITHHELD
+-- — auth_detail is served at view by hc.arrival_auth_detail under a DEF-10
+-- refusal shape, and current_lease_id is the pipeline fence — which is why
+-- the answer here is to extend the column grant by one rather than to
+-- replace it with a table grant. (ADR-0022 D15's own list of withheld
+-- columns was wrong in two of three entries; ADR-0023 D8 corrects it against
+-- information_schema, and pgTAP 057 test 2 measures the correction.)
+--
+-- RLS is unchanged: `arrivals_select` already governs WHICH rows a member
+-- sees. A column grant governs WHICH COLUMNS, and the two compose — this
+-- widens no row's visibility to anyone.
+-- ----------------------------------------------------------------------------
+grant select (duplicate_of_document_id) on public.arrivals to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 2 · Q-B — the render-bounds reason code.
+--
+-- hc.reason_codes is the fixed enumeration reason_code is FK-bound to (§2.4,
+-- AC-ADMIN-6), so a raw provider string can never be stored. Adding a row is
+-- additive: nothing referencing an existing code is affected.
+--
+-- The app mapping that will use it is an app-layer change and is NOT in this
+-- migration — the code exists here so the mapping has somewhere honest to
+-- land, exactly as `extract_timeout` and `provider_timeout` have existed
+-- since 4A with nothing calling them (ADR-0023 D10).
+-- ----------------------------------------------------------------------------
+insert into hc.reason_codes (code, description) values
+  ('render_bounds_exceeded',
+   'Rendering refused under a §6.3 ceiling — page count, page dimensions, wall clock or output size (never an archive)')
+on conflict (code) do nothing;

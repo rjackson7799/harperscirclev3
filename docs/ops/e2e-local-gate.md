@@ -32,6 +32,27 @@ relay finishing the job (DUP-01 + RLY-01), cancel, and the Q6 cliff
 probed from a family-tier member's live session. The walkthrough's 11
 steps and the a11y leg stay the regression instrument, unchanged.
 
+**Slice 5 (5B B9) adds the extraction leg** — `e2e/extraction.spec.ts` — to
+the same gate run: upload → store → scan → gate → extract → interpret →
+`Needs you` on screen (WRK-02), with the run row published and every
+field high-risk because no bands are signed; a REFUSAL fixture →
+`Couldn't read it` with the artifact **still viewable** and the word
+"unsafe" nowhere on the page (§6.8); an encrypted fixture → `Needs a
+password`; and the stage-2 pair — same provider, same date, different
+bytes — suspected, citing the FILED document through `ProvenanceLine`,
+with both resolutions live (DUP-02). The walkthrough's 11 steps, the
+a11y leg and the ingestion leg stay the regression instrument,
+unchanged.
+
+**The gate stack gains a third container-shaped prerequisite: the
+Anthropic FIXTURE SERVER.** `playwright.config.ts` starts it as a second
+`webServer` on 8787 and points the dev server's `ANTHROPIC_BASE_URL` at
+it, so the extraction leg exercises the real adapter against a local
+Messages-API shape and **no credential is involved anywhere in the
+gate** — G9/G3's standing constraint as a deployment fact rather than a
+promise. If port 8787 is taken, the gate fails at startup rather than
+silently reaching for a provider.
+
 ## Prerequisites (hermetic startup)
 
 ```
@@ -43,7 +64,16 @@ docker run -d --name hc_clamd -p 3310:3310 clamav/clamav:stable
                             # for "socket found, clamd started" in
                             # `docker logs hc_clamd` (~1–3 min first
                             # run) or the EICAR leg reads unavailable
+                            # 5B: the Anthropic fixture server needs no
+                            # command here — playwright starts it as a
+                            # second webServer on 8787. Confirm the port
+                            # is free; `node scripts/ai-fixture-server.mjs`
+                            # runs it by hand if you want to watch it.
 ```
+
+- **`npm run db:reset` expects exact 60 migrations at 5B** (the 5A
+  increment merged; 5B is app-only and touches nothing under
+  `supabase/`).
 
 - Node 22.15.0 / npm 10.9.2 (`.nvmrc`); browsers via
   `npx playwright install chromium` once.

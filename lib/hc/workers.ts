@@ -29,6 +29,27 @@ export type StageClaim = {
 
 export type PipelineStage = 'store' | 'scan' | 'gate' | 'extract' | 'interpret';
 
+/**
+ * A fact carried from the extract attempt to the interpret attempt (5B B4).
+ *
+ * hc_pipeline holds NO select on `extractions` (§3.10 — deliberately), so the
+ * interpret worker has no read path to what the extract attempt published.
+ * The direct hand-off carries them, which makes the conflict comparison
+ * sharper AND cheaper: interpretation does not have to re-send page images.
+ *
+ * Their ABSENCE is not a different quality of answer. A re-queued interpret
+ * (a resolved stage-2 duplicate, a sweeper rescue) carries no facts, and the
+ * worker re-normalises the artifact and sends the document itself — the same
+ * source material extraction saw. Recorded as a 5B delta, with a definer
+ * (`hc.extractions_for`) offered to the owner for the next DB-opening slice.
+ */
+export type CarriedFact = {
+  field: string;
+  value: string;
+  confidence: number;
+  citation: { page: number; bbox: [number, number, number, number] };
+};
+
 export type PipelineMessage = {
   /** Null on relay/sweeper-originated messages whose lineage is gone;
    *  store/scan then fail closed to their bytes-missing outcome. */
@@ -36,13 +57,33 @@ export type PipelineMessage = {
   arrival_id: string;
   stage: PipelineStage;
   channel: 'email' | 'upload' | null;
+  /** Present only on the direct extract → interpret hand-off (above). */
+  facts?: CarriedFact[];
 };
 
 export type QueuedWork = { msg_id: number; message: PipelineMessage };
 
-/** hc.claim_stage — the only way into a stage; commits standalone. */
-export async function claimStage(arrivalId: string, stage: string): Promise<StageClaim> {
-  const r = await asPipeline().query('select * from hc.claim_stage($1, $2)', [arrivalId, stage]);
+/**
+ * hc.claim_stage — the only way into a stage; commits standalone.
+ *
+ * M3: `extract` REQUIRES the run identity, because the run row is born in the
+ * claim transaction — no lease exists without its run, so a timeout, kill,
+ * render failure or provider error can never consume a lease unrecorded.
+ * Every other stage REFUSES the pair: no stage borrows an identity it does
+ * not record.
+ */
+export async function claimStage(
+  arrivalId: string,
+  stage: string,
+  modelId: string | null = null,
+  promptVersion: string | null = null,
+): Promise<StageClaim> {
+  const r = await asPipeline().query('select * from hc.claim_stage($1, $2, $3, $4)', [
+    arrivalId,
+    stage,
+    modelId,
+    promptVersion,
+  ]);
   const row = r.rows[0];
   return {
     result: row.result as AdvanceResult,
@@ -91,6 +132,50 @@ export async function finalizeScan(
     JSON.stringify(detail ?? {}),
   ]);
   return r.rows[0].r as AdvanceResult;
+}
+
+/**
+ * hc.finalize_extraction — §4.5's one transaction: the conditional transition
+ * runs FIRST and gates everything below it, so a lost CAS publishes nothing.
+ * M5's stage-2 detection runs inside it, which is why 'advanced' can mean
+ * either `extracted` or `duplicate_suspected_stage2`.
+ */
+export async function finalizeExtraction(
+  arrivalId: string,
+  leaseId: string,
+  facts: unknown[],
+  proposals: unknown[],
+): Promise<AdvanceResult> {
+  const r = await asPipeline().query(
+    'select hc.finalize_extraction($1, $2, $3::jsonb, $4::jsonb) as r',
+    [arrivalId, leaseId, JSON.stringify(facts), JSON.stringify(proposals)],
+  );
+  return r.rows[0].r as AdvanceResult;
+}
+
+/** hc.finalize_interpretation — the same gate, one stage later. */
+export async function finalizeInterpretation(
+  arrivalId: string,
+  leaseId: string,
+  proposals: unknown[],
+): Promise<AdvanceResult> {
+  const r = await asPipeline().query(
+    'select hc.finalize_interpretation($1, $2, $3::jsonb) as r',
+    [arrivalId, leaseId, JSON.stringify(proposals)],
+  );
+  return r.rows[0].r as AdvanceResult;
+}
+
+/**
+ * hc.record_context_for — §3.10's one narrow window onto the record. It
+ * returns ONLY the arrival's own subject's record in the arrival's own
+ * circle; cross-subject and cross-circle reads are not expressible in the
+ * signature, which is why interpretation's boundary is structural rather
+ * than prompted.
+ */
+export async function recordContextFor(arrivalId: string): Promise<unknown> {
+  const r = await asPipeline().query('select hc.record_context_for($1) as r', [arrivalId]);
+  return r.rows[0].r as unknown;
 }
 
 export type CachedScan = {
@@ -147,17 +232,80 @@ export async function readPipelineWork(qty: number): Promise<QueuedWork[]> {
   }));
 }
 
-/** Ack = ARCHIVE, deliberately: the archive is the message lineage the
- *  gate's channel lookup reads (a_pipeline_work SELECT is granted for
- *  exactly this). */
+/**
+ * Ack = ARCHIVE, deliberately: the archive is the message lineage the gate's
+ * channel lookup reads (a_pipeline_work SELECT is granted for exactly this).
+ *
+ * The values are STRIPPED first (round-16 R4/F-5). The extract → interpret
+ * hand-off carries `facts` — {field, value, …} over the §6.4 high-risk
+ * classes, `ssn` and `date_of_birth` among them — and nothing prunes
+ * `a_pipeline_work`. Without this, an arrival that filed NOTHING could be
+ * soft-deleted and purged at 30 days exactly as PRD §4.2 promises, while a
+ * verbatim copy of the same values sat in the queue archive forever, outside
+ * the §2.9 deletion ledger and outside any tombstone replay.
+ *
+ * `lookupLineage` reads only `channel` and `circle_id`, so the facts are dead
+ * weight the moment the message is acked. Dropping them at the ack keeps the
+ * lineage the gate needs and retains nothing the deletion path cannot reach.
+ * One statement, in the same call, so no ack path can forget it.
+ */
 export async function archivePipelineWork(msgId: number): Promise<void> {
-  await asPipeline().query(`select pgmq.archive($1, $2::bigint)`, [QUEUE, msgId]);
+  const q = asPipeline();
+  await q.query(`update pgmq.q_pipeline_work set message = message - 'facts' where msg_id = $1`, [
+    msgId,
+  ]);
+  await q.query(`select pgmq.archive($1, $2::bigint)`, [QUEUE, msgId]);
 }
 
-/** Push a message out of the visible window without consuming it —
- *  the Q7 seam: extract/interpret work waits for slice 5's workers. */
+/** Push a message out of the visible window without consuming it. 5B: the
+ *  Q7 seam is closed, so the only caller left is the unknown-stage branch —
+ *  a message this build does not recognise is still never lost. */
 export async function deferPipelineWork(msgId: number, seconds = 3600): Promise<void> {
   await asPipeline().query(`select pgmq.set_vt($1, $2::bigint, $3)`, [QUEUE, msgId, seconds]);
+}
+
+/**
+ * 5B B7: release work that D13 deferred, instead of waiting out its vt.
+ *
+ * The seam pushed extract/interpret messages an hour into the future while
+ * nothing consumed them. Those workers exist now, so a message still sitting
+ * in the future is a delay with no reason left behind it. This pulls the
+ * visibility timeout back to zero for any INVISIBLE message whose stage this
+ * build actually handles — bounded per pass, and idempotent once the backlog
+ * is empty (the steady state selects nothing).
+ *
+ * Deliberately narrow on two axes.
+ *
+ * Only stages this build dispatches — a message it does not understand is
+ * still never resurrected.
+ *
+ * And only messages hidden FAR into the future. pgmq gives an in-flight read
+ * and a deliberate deferral exactly the same shape: a `vt` in the future. The
+ * two are separated by HOW far — a read hides for READ_VT_SECONDS (120 s),
+ * D13 deferred for an hour — so the threshold sits well above the read window
+ * and comfortably below the deferral. Without it, a release could hand a
+ * message another worker is holding to a second reader.
+ *
+ * Even then nothing could go wrong twice: claim-before-work means a second
+ * reader's hc.claim_stage answers `stale_lease` before any external call. The
+ * threshold buys the wasted claim, not the correctness.
+ */
+const DEFERRAL_THRESHOLD_SECONDS = READ_VT_SECONDS + 180;
+
+export async function releaseDeferredWork(limit = 200): Promise<number> {
+  const r = await asPipeline().query(
+    `with deferred as (
+       select msg_id from pgmq.q_pipeline_work
+        where vt > now() + make_interval(secs => $4)
+          and (message ->> 'stage') = any ($1::text[])
+        order by msg_id
+        limit $2
+     )
+     select count(*)::int as n
+       from deferred, lateral pgmq.set_vt($3, deferred.msg_id, 0)`,
+    [['extract', 'interpret'], limit, QUEUE, DEFERRAL_THRESHOLD_SECONDS],
+  );
+  return Number(r.rows[0]?.n ?? 0);
 }
 
 /** Enqueue one work item. */

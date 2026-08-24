@@ -167,18 +167,13 @@ describe('B7 · readableArtifact — steps 1+2 in one RLS-true query', () => {
   });
 });
 
-describe('B7 · the artifact_read entry rides the evidentiary boundary', () => {
+describe('B7 · the artifact_read entry (5B B8: now hc.log_artifact_read)', () => {
   it('appends to the hash chain with the actor and the arrival named', async () => {
     const before = await raw.query(
       `select coalesce(max(seq), 0)::int as seq from public.access_log where circle_id = $1`,
       [circleId],
     );
-    await artifacts.logArtifactRead({
-      claims: founderClaims,
-      circleId,
-      subjectId,
-      arrivalId: cleanArrival,
-    });
+    await artifacts.logArtifactRead({ claims: founderClaims, arrivalId: cleanArrival });
     const entry = await raw.query(
       `select seq, event_type, actor_account_id, subject_id, object_type, object_id,
               prev_hash is not null as chained, entry_hash is not null as hashed
@@ -198,5 +193,42 @@ describe('B7 · the artifact_read entry rides the evidentiary boundary', () => {
       hashed: true,
     });
     expect(Number(entry.rows[0].seq)).toBe(Number(before.rows[0].seq) + 1);
+  });
+});
+
+// ============================================================================
+// 5B B8 · What the definer buys that the interim did not (EVD-01).
+//
+// The 4B boundary appended AS hc_internal on the maintenance connection, with
+// the route's own authorization the only gate — the write itself asked
+// nothing. hc.log_artifact_read re-proves RLS-10's letter IN-FUNCTION: the
+// arrival must be live and the caller must clear VIEW on it. So a caller who
+// could somehow reach the wrapper without the route's checks now writes
+// NOTHING, where before they would have written a real entry naming
+// themselves.
+// ============================================================================
+
+describe('5B B8 · the definer re-proves authorization in-function', () => {
+  it('an unauthorized caller writes no entry at all', async () => {
+    const before = await raw.query(
+      `select count(*)::int as n from public.access_log
+        where circle_id = $1 and event_type = 'artifact_read'`,
+      [circleId],
+    );
+    await expect(
+      artifacts.logArtifactRead({ claims: outsiderClaims, arrivalId: cleanArrival }),
+    ).rejects.toThrow();
+    const after = await raw.query(
+      `select count(*)::int as n from public.access_log
+        where circle_id = $1 and event_type = 'artifact_read'`,
+      [circleId],
+    );
+    expect(after.rows[0].n).toBe(before.rows[0].n);
+  });
+
+  it('a nonexistent arrival refuses in the same shape as a foreign one (DEF-10)', async () => {
+    await expect(
+      artifacts.logArtifactRead({ claims: founderClaims, arrivalId: randomUUID() }),
+    ).rejects.toThrow(/artifact_refused/);
   });
 });

@@ -228,12 +228,20 @@ select is(pg_temp.scalar($$
   -- 5A M5: the Q8 stage-2 resolution exits — interpret resume or nothing
   || 'gate:duplicate_suspected_stage2>interpreting,'
   || 'gate:duplicate_suspected_stage2>nothing_filed,'
+  -- 5B M8 (round-16 R4/F-2, ADR-0023 D21): the interpret stage's FAILURE
+  -- edge. It had exactly one target, so a provider refusal returned
+  -- `invalid_state` and terminalized nothing — the lease ran to its deadline
+  -- and the sweeper re-queued, re-calling the provider twice more. It lands
+  -- on `extract_failed` because hc.stage_budgets ALREADY names that as
+  -- interpret's exhaust_state: the deliberate path now reaches the terminal
+  -- the involuntary path always used, so no enum value and no label moved.
+  || 'interpret:interpreting>extract_failed,'
   || 'interpret:interpreting>proposals_ready,'
   || 'scan:stored>quarantined,scan:stored>scan_unavailable,'
   || 'scan:stored>scan_inconclusive,scan:stored>scanned,'
   || 'scan:stored>duplicate_suspected,'       -- 4A M6: the post-scan suspect entry
   || 'store:received>store_failed,store:received>stored',
-  'the seeded allowlist is exactly the §4.3 stage-exit graph as appended by 2A M6, 4A M6 and 5A M5 — closed');
+  'the seeded allowlist is exactly the §4.3 stage-exit graph as appended by 2A M6, 4A M6, 5A M5 and 5B M8 — closed');
 
 -- ----------------------------------------------------------------------------
 -- 3–7 · Graph violations: each holds a VALID current lease, so pre-fix the

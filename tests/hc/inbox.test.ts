@@ -249,3 +249,58 @@ describe('B6 · productStates — the family vocabulary, refusals omitted', () =
     expect(outsiderView.size).toBe(0);
   });
 });
+
+// ============================================================================
+// 5B B8 · The known-senders member surface, LIVE (slice-5 plan B8; ADR-0019
+// D15's named gap; SND-03).
+//
+// hc.revoke_sender shipped at 4A with no way for a member to reach it: the
+// list it operates on had no read. 5A M1's hc.list_known_senders is that read,
+// coordinator-gated in the SND-02 shape, and this is the pair working
+// end-to-end through the request-role channel.
+// ============================================================================
+
+describe('5B B8 · known senders: an authorized list, and revoke through it', () => {
+  it('a coordinator lists live senders with who accepted them and when', async () => {
+    const address = `records.b8.${randomUUID().slice(0, 8)}@clinic.example`;
+    await inbox.acceptSender(founderClaims, circleId, { address });
+
+    const senders = await inbox.listKnownSenders(founderClaims, circleId);
+    const mine = senders.find((s) => s.address === address);
+    expect(mine).toBeDefined();
+    expect(mine!.accepted_by).toBe(FOUNDER);
+    expect(mine!.accepted_by_name).toBeTruthy();
+
+    // Round-16 R5/F-1: `toBeTruthy()` was the whole assertion, and a Date is
+    // truthy. KnownSender declares accepted_at as `string`, the page calls
+    // .slice(0, 10) on it, and node-pg hands back a Date for timestamptz —
+    // so every non-empty senders list threw at render. The type must be TRUE
+    // at the boundary, not merely declared.
+    expect(typeof mine!.accepted_at).toBe('string');
+    expect(mine!.accepted_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // Exactly what the page does with it.
+    expect(mine!.accepted_at.slice(0, 10)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('revoking removes it from the list — the pair closes D15', async () => {
+    const address = `revoke.b8.${randomUUID().slice(0, 8)}@clinic.example`;
+    await inbox.acceptSender(founderClaims, circleId, { address });
+    const before = await inbox.listKnownSenders(founderClaims, circleId);
+    const target = before.find((s) => s.address === address);
+    expect(target).toBeDefined();
+
+    await inbox.revokeSender(founderClaims, target!.id);
+
+    const after = await inbox.listKnownSenders(founderClaims, circleId);
+    expect(after.find((s) => s.address === address)).toBeUndefined();
+  });
+
+  it('an outsider is refused — one shape, no existence leak (DEF-10)', async () => {
+    await expect(inbox.listKnownSenders(outsiderClaims, circleId)).rejects.toThrow();
+  });
+
+  it('a nonexistent circle refuses in the SAME shape as a foreign one', async () => {
+    const foreign = inbox.listKnownSenders(founderClaims, randomUUID());
+    await expect(foreign).rejects.toThrow(/sender_refused/);
+  });
+});

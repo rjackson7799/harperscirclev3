@@ -23,10 +23,15 @@ const fenceServiceRole = {
   message:
     "The service credential is fenced to the §1.7 allowlist (artifact route, lib/auth/gotrue-admin, lib/storage — ADR-0018 F2). See lib/db/service-role.ts.",
 };
+// 5B B8: `**/db/evidentiary` is GONE from this list because the module is
+// gone — ADR-0019's D7 interim retired onto 5A M1's hc.log_artifact_read. A
+// fence entry naming a deleted module looks like protection and is nothing at
+// all; tests/lint/db-fence.test.ts asserts the file's absence so the two
+// cannot drift apart.
 const fenceChannels = {
-  group: ["**/db/request-role", "**/db/maintenance", "**/db/role-pool", "**/db/evidentiary"],
+  group: ["**/db/request-role", "**/db/maintenance", "**/db/role-pool"],
   message:
-    "The request-role channel and the maintenance/evidentiary boundaries are reachable only through lib/hc/** (typed wrappers).",
+    "The request-role channel and the maintenance boundary are reachable only through lib/hc/** (typed wrappers).",
 };
 // 4B (ADR-0018 F2): the storage plane — every byte in the artifacts and
 // quarantine buckets moves through lib/storage/** on the service
@@ -37,6 +42,55 @@ const fenceStoragePlane = {
   group: ["**/storage/artifacts", "**/lib/storage/**"],
   message:
     "The storage plane (lib/storage) is fenced to the pipeline surfaces: app/api/{inbound,worker,upload,artifact}/**.",
+};
+
+// 5B (slice-5 plan B3): the provider adapter family. ONE fenced module
+// family reaches an AI provider — the §1.9 one-adapter G3 posture, so
+// disqualifying a provider stays a swap rather than a rebuild, and no
+// member-facing surface can ever dispatch a family's document by accident.
+// Importable by the worker routes (which do the dispatching), the eval
+// harness (the SOLE real-key path), lib/ai itself, and the tests that prove
+// the contract — tests are not shipped code, and the adapter holds no
+// privilege to leak.
+const fenceProvider = {
+  // Suffix patterns, matching the fences above: `**/ai/*` catches
+  // `@/lib/ai/client` AND the relative `../ai/client` a refactor produces.
+  group: ["**/ai/*", "**/lib/ai/**"],
+  message:
+    "The AI provider adapter (lib/ai) is fenced to app/api/worker/**, scripts/eval/** and the tests. Nothing member-facing may reach a provider (TSD §1.9, §6.2).",
+};
+
+// 5B (slice-5 plan B1, Q5): the G9 corpus's BLIND partition. Scored eval
+// runs read it; prompt and schema iteration must not, so the bands are never
+// measured on their own development set. The fence is what makes "blind" a
+// property of the tree instead of a property of someone's discipline.
+// Round-16 R6/F-2: the manifest module is the blind partition's real door.
+// `corpusManifest()` / `itemsIn('blind')` used to live in the unfenced
+// lib/eval/corpus, so the fence below guarded a two-line wrapper while the
+// thing it wrapped was reachable from anywhere. Fenced to the same readers
+// plus lib/eval/** itself, which is where the split is applied.
+const fenceCorpusManifest = {
+  group: ["**/eval/manifest", "**/lib/eval/manifest"],
+  message:
+    "The full G9 manifest (both partitions) is fenced to scripts/eval/**, tests/eval/** and lib/eval/**. Development code reads lib/eval/corpus, which cannot name a partition — see docs/eval/g9-corpus-spec.md.",
+};
+
+// Round-16 R6/F-3: ESLint's core `no-restricted-imports` registers only
+// ImportDeclaration, ExportNamedDeclaration and ExportAllDeclaration — it
+// has NO ImportExpression handler, so `await import('@/lib/eval/blind')`
+// walked straight past every fence. The selector below matches the dynamic
+// form only; the `.` stands in for the path separator so the selector needs
+// no escaping.
+const noDynamicEvalImport = {
+  selector: "ImportExpression > Literal[value=/eval.(blind|manifest)$/]",
+  message:
+    "Dynamic import of the G9 blind partition or the full manifest is fenced exactly as the static import is (round-16 R6/F-3). Read lib/eval/corpus instead.",
+};
+
+const fenceBlindPartition = {
+  group: ["**/eval/blind", "**/lib/eval/blind"],
+  message:
+    "The BLIND evaluation partition is fenced to scripts/eval/** and tests/eval/**. Prompt and worker code read lib/eval/corpus (the development partition) instead — see docs/eval/g9-corpus-spec.md.",
 };
 
 const eslintConfig = defineConfig([
@@ -98,24 +152,119 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane] },
+        {
+          patterns: [
+            fenceServiceRole,
+            fenceChannels,
+            fenceStoragePlane,
+            fenceProvider,
+            fenceBlindPartition,
+            fenceCorpusManifest,
+          ],
+        },
       ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   {
     name: "hc/db-fences-lib-hc",
     files: ["lib/hc/**"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [fenceServiceRole, fenceStoragePlane] }],
+      "no-restricted-imports": [
+        "error",
+        { patterns: [fenceServiceRole, fenceStoragePlane, fenceProvider, fenceBlindPartition, fenceCorpusManifest] },
+      ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   // The storage-plane consumers: bytes may move here, the channels and
   // the raw service credential still may not.
   {
     name: "hc/db-fences-storage-consumers",
-    files: ["app/api/inbound/**", "app/api/worker/**", "app/api/upload/**"],
+    files: ["app/api/inbound/**", "app/api/upload/**"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [fenceServiceRole, fenceChannels] }],
+      "no-restricted-imports": [
+        "error",
+        { patterns: [fenceServiceRole, fenceChannels, fenceProvider, fenceBlindPartition, fenceCorpusManifest] },
+      ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
+    },
+  },
+  // The worker routes: bytes AND the provider adapter — they are the two
+  // surfaces that dispatch. The channels, the raw credential and the BLIND
+  // partition all stay out.
+  {
+    name: "hc/db-fences-worker-routes",
+    files: ["app/api/worker/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [fenceServiceRole, fenceChannels, fenceBlindPartition, fenceCorpusManifest] },
+      ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
+    },
+  },
+  // The adapter family itself: it is the thing being fenced, so it may
+  // reach its own modules. Everything else still applies to it.
+  {
+    name: "hc/db-fences-provider-adapter",
+    files: ["lib/ai/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane, fenceBlindPartition, fenceCorpusManifest] },
+      ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
+    },
+  },
+  // The corpus loader family: lib/eval/corpus is the shared reader the
+  // BLIND accessor is built on, so it may import it.
+  {
+    name: "hc/db-fences-corpus",
+    files: ["lib/eval/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane, fenceProvider] },
+      ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
+    },
+  },
+  // The eval harness: the SOLE real-key path, and the only scored reader of
+  // the BLIND partition. Both fences lift here and nowhere else in scripts.
+  {
+    name: "hc/db-fences-eval-harness",
+    files: ["scripts/eval/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane] },
+      ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
+    },
+  },
+  // Tests prove the adapter contract, so they may import lib/ai. The BLIND
+  // partition stays fenced everywhere except the corpus-governance suite.
+  {
+    name: "hc/db-fences-tests",
+    files: ["tests/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane, fenceBlindPartition, fenceCorpusManifest] },
+      ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
+    },
+  },
+  {
+    name: "hc/db-fences-tests-eval",
+    files: ["tests/eval/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [fenceServiceRole, fenceChannels, fenceStoragePlane] },
+      ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   // The storage module itself: the service credential's storage plane is
@@ -124,7 +273,11 @@ const eslintConfig = defineConfig([
     name: "hc/db-fences-storage-module",
     files: ["lib/storage/**"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [fenceChannels] }],
+      "no-restricted-imports": [
+        "error",
+        { patterns: [fenceChannels, fenceProvider, fenceBlindPartition, fenceCorpusManifest] },
+      ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   // The artifact route (§1.3): service credential + storage plane; the
@@ -133,14 +286,22 @@ const eslintConfig = defineConfig([
     name: "hc/db-fences-artifact-route",
     files: ["app/api/artifact/**"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [fenceChannels] }],
+      "no-restricted-imports": [
+        "error",
+        { patterns: [fenceChannels, fenceProvider, fenceBlindPartition, fenceCorpusManifest] },
+      ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   {
     name: "hc/db-fences-gotrue-admin",
     files: ["lib/auth/gotrue-admin.ts"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [fenceChannels, fenceStoragePlane] }],
+      "no-restricted-imports": [
+        "error",
+        { patterns: [fenceChannels, fenceStoragePlane, fenceProvider, fenceBlindPartition, fenceCorpusManifest] },
+      ],
+      "no-restricted-syntax": ["error", noDynamicEvalImport],
     },
   },
   {

@@ -225,3 +225,72 @@ describe('B4 · the pgmq data plane round trip', () => {
     expect(await workers.lookupChannel(randomUUID())).toBeNull();
   }, 30_000);
 });
+
+// ============================================================================
+// Round-16 R4/F-5 — extracted values must not outlive the arrival in the
+// queue archive.
+//
+// The extract → interpret hand-off carries CarriedFact[] on the pgmq message
+// — {field, value, confidence, citation} — and those fields include the §6.4
+// high-risk classes the catalogue names: ssn, member_id, date_of_birth,
+// account_number, routing_number, medication_dose. The ack is `pgmq.archive`,
+// deliberately, because `lookupLineage` reads the archive for the channel.
+// Nothing prunes `a_pipeline_work`.
+//
+// So after an arrival that filed NOTHING is soft-deleted and purged at 30
+// days — PRD §4.2's "deletes cleanly: artifact, extractions, proposals, gone
+// at purge" — a verbatim copy of the same values remained in the queue
+// archive indefinitely, unreachable by the deletion ledger (§2.9) and by any
+// tombstone replay.
+//
+// `lookupLineage` reads only `channel` and `circle_id`. The values are dead
+// weight the moment the message is acked, so the ack drops them.
+// ============================================================================
+describe('R4/F-5 · the archive keeps lineage, never the extracted values', () => {
+  it('acking strips facts from the archived message and keeps the lineage', async () => {
+    const arrival = await mkArrival();
+    await workers.sendPipelineWork({
+      circle_id: circleId,
+      arrival_id: arrival,
+      stage: 'interpret',
+      channel: 'email',
+      facts: [
+        {
+          field: 'ssn',
+          value: '123-45-6789',
+          confidence: 0.99,
+          citation: { page: 1, bbox: [0.1, 0.1, 0.2, 0.05] },
+        },
+      ],
+    });
+    let mine: { msg_id: number } | undefined;
+    for (let i = 0; i < 10 && !mine; i++) {
+      const batch = await workers.readPipelineWork(10);
+      mine = batch.find(
+        (m) => m.message.arrival_id === arrival && m.message.stage === 'interpret',
+      ) as { msg_id: number } | undefined;
+      for (const other of batch) {
+        if (other !== mine) await workers.deferPipelineWork(other.msg_id);
+      }
+    }
+    expect(mine).toBeDefined();
+    await workers.archivePipelineWork(mine!.msg_id);
+
+    const archived = await raw.query(
+      `select message from pgmq.a_pipeline_work where (message ->> 'arrival_id') = $1`,
+      [arrival],
+    );
+    expect(archived.rows).toHaveLength(1);
+    const message = archived.rows[0].message as Record<string, unknown>;
+
+    // The values are GONE — not merely absent from a projection.
+    expect(message.facts).toBeUndefined();
+    expect(JSON.stringify(message)).not.toContain('123-45-6789');
+    expect(JSON.stringify(message)).not.toContain('ssn');
+
+    // And the lineage the gate depends on still reads.
+    expect(message.channel).toBe('email');
+    expect(message.circle_id).toBe(circleId);
+    expect(await workers.lookupChannel(arrival)).toBe('email');
+  });
+});

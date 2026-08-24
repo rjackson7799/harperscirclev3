@@ -26,7 +26,10 @@ import { asServiceRole } from '@/lib/db/service-role';
  *   5. Cache-Control: private, no-store. Range passes through.
  *   6. The artifact_read access-log entry — EVIDENCE BEFORE BYTES: the
  *      entry lands before the stream starts, and a failed entry
- *      refuses the read (§10.5's evidentiary posture).
+ *      refuses the read (§10.5's evidentiary posture). 5B B8: it rides
+ *      5A M1's hc.log_artifact_read, which re-proves steps 1–2
+ *      IN-FUNCTION, so the trail's authorization no longer depends on
+ *      this route remembering to check first.
  */
 
 function notFound(): Response {
@@ -54,14 +57,9 @@ export async function GET(
 
   // Step 6 runs BEFORE bytes move: no trail, no read.
   try {
-    await logArtifactRead({
-      claims,
-      circleId: artifact.circle_id,
-      subjectId: artifact.subject_id,
-      arrivalId: id,
-    });
+    await logArtifactRead({ claims, arrivalId: id });
   } catch (err) {
-    console.error(`artifact: evidentiary write failed: ${(err as Error).message}`);
+    console.error(`artifact: access-log write failed: ${(err as Error).message}`);
     return new Response('unavailable', { status: 500 });
   }
 

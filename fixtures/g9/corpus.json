@@ -1,0 +1,2236 @@
+{
+  "version": 1,
+  "built_by": "scripts/fixtures/g9-build.mjs",
+  "spec": "docs/eval/g9-corpus-spec.md",
+  "band_fields": [
+    "document_date",
+    "provider",
+    "amount",
+    "policy_number",
+    "member_id",
+    "coverage_determination",
+    "medication_name",
+    "medication_dose",
+    "medication_frequency",
+    "allergy_substance",
+    "appointment_date",
+    "appointment_time"
+  ],
+  "minimums": {
+    "blind_support_per_field": 3,
+    "source_types_per_field": 2,
+    "blind_negatives_per_field": 1,
+    "ambiguous_per_partition": 1
+  },
+  "items": [
+    {
+      "id": "dev-discharge-01",
+      "partition": "development",
+      "document_class": "discharge_summary",
+      "source_type": "born_digital_pdf",
+      "category": "medical",
+      "expected_outcome": "extracted",
+      "file": "development/dev-discharge-01.pdf",
+      "bytes": 1375,
+      "sha256": "b64d07e955ff49019323249efaba2b76788f71a356bb1ea56cd4a17e49ef698a",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Riverbend Community Hospital",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1073,
+            0.3415,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-03-14",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1376,
+            0.2606,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "patient_name",
+          "value": "Pat Sample",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1679,
+            0.1708,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "medication_name",
+          "value": "Amoxicillin",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2588,
+            0.2067,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_dose",
+          "value": "500 mg",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2891,
+            0.1078,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_frequency",
+          "value": "three times daily",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3194,
+            0.2516,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_route",
+          "value": "by mouth",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3497,
+            0.1348,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "allergy_substance",
+          "value": "Penicillin",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.4407,
+            0.1708,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_date",
+          "value": "2026-03-28",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.5316,
+            0.2516,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_time",
+          "value": "10:15 AM",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.5619,
+            0.2337,
+            0.0174
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination"
+      ],
+      "notes": "The worker/adapter workhorse: every medication field, an allergy, and a follow-up appointment, with an adjudicated ambiguous dose.",
+      "ambiguous": [
+        {
+          "field": "medication_dose",
+          "candidates": [
+            "500 mg",
+            "500 mg per tablet"
+          ],
+          "adjudicated": "500 mg",
+          "rationale": "The label states the strength; \"per tablet\" is the packaging unit, which belongs to the value only when the document gives no plain strength."
+        }
+      ]
+    },
+    {
+      "id": "dev-discharge-02",
+      "partition": "development",
+      "document_class": "discharge_summary",
+      "source_type": "born_digital_pdf",
+      "category": "medical",
+      "expected_outcome": "extracted",
+      "file": "development/dev-discharge-02.pdf",
+      "bytes": 1002,
+      "sha256": "7329154df1aac6802abd383dbd8c93ce748cefc5b2f0f5f8079f90f84fb0340b",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Riverbend Community Hospital",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1073,
+            0.3415,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-03-14",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1376,
+            0.1977,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "medication_name",
+          "value": "Amoxicillin",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1982,
+            0.2067,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_dose",
+          "value": "500 mg",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2285,
+            0.1078,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_frequency",
+          "value": "three times daily",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2588,
+            0.2516,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "allergy_substance",
+          "value": "Penicillin",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2891,
+            0.1708,
+            0.0174
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "The stage-2 duplicate partner of dev-discharge-01: SAME provider and SAME document_date, different layout and different bytes — the M5 predicate must catch it, and the stage-1 sha match must not."
+    },
+    {
+      "id": "dev-eob-01",
+      "partition": "development",
+      "document_class": "eob",
+      "source_type": "born_digital_pdf",
+      "category": "insurance",
+      "expected_outcome": "extracted",
+      "file": "development/dev-eob-01.pdf",
+      "bytes": 1097,
+      "sha256": "a6c6a2c8cd285ea43a2894f531e69a3ae6fcb4b2db7fd72f6aa4ae245841641b",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Northgate Medical Group",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1376,
+            0.2966,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-02-02",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1679,
+            0.2337,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "policy_number",
+          "value": "PN-4471-22",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1982,
+            0.2247,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "member_id",
+          "value": "MB-99183",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2285,
+            0.1708,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "claim_number",
+          "value": "CLM-2026-000914",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2588,
+            0.2606,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "coverage_determination",
+          "value": "Covered in network",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3194,
+            0.3775,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "amount",
+          "value": "$127.40",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3497,
+            0.2426,
+            0.0174
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "medication_name",
+        "medication_dose",
+        "medication_frequency",
+        "allergy_substance",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "The insurance workhorse — all four M5 key fields present."
+    },
+    {
+      "id": "dev-eob-02",
+      "partition": "development",
+      "document_class": "eob",
+      "source_type": "photo_jpeg",
+      "category": "insurance",
+      "expected_outcome": "extracted",
+      "file": "development/dev-eob-02.jpg",
+      "bytes": 58562,
+      "sha256": "3617b3a2dcba1928ec920e28a8f9df0d14882f413b841a48c13866560a1de0ad",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Lakeside Imaging",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0217,
+            0.0539,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-01-19",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0342,
+            0.0539,
+            0.0062
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "policy_number",
+          "value": "PN-8820-05",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0466,
+            0.0498,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "member_id",
+          "value": "MB-40277",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.059,
+            0.0373,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "coverage_determination",
+          "value": "Applied to deductible",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0714,
+            0.0747,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "amount",
+          "value": "$310.00",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0839,
+            0.0539,
+            0.0062
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "medication_name",
+        "medication_dose",
+        "medication_frequency",
+        "allergy_substance",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "A phone photo of an EOB at the §6.3 high tier exactly (2576 px long edge)."
+    },
+    {
+      "id": "dev-pill-01",
+      "partition": "development",
+      "document_class": "pill_bottle",
+      "source_type": "photo_jpeg",
+      "category": "medications",
+      "expected_outcome": "extracted",
+      "file": "development/dev-pill-01.jpg",
+      "bytes": 58556,
+      "sha256": "5d924c3f21744cd28b9547c56bbc2b58179087045548188cc7a5285a961b3e54",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Corner Pharmacy",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0217,
+            0.0581,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-04-02",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0342,
+            0.0373,
+            0.0062
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "medication_name",
+          "value": "Metformin",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0466,
+            0.029,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_dose",
+          "value": "850 mg",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.059,
+            0.0332,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_frequency",
+          "value": "twice daily with food",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0714,
+            0.0539,
+            0.0062
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination",
+        "allergy_substance",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "Pill bottle: high resolution, never downsampled (§6.3 row 3)."
+    },
+    {
+      "id": "dev-note-01",
+      "partition": "development",
+      "document_class": "handwritten_note",
+      "source_type": "photo_jpeg",
+      "category": "medical",
+      "expected_outcome": "extracted",
+      "file": "development/dev-note-01.jpg",
+      "bytes": 58556,
+      "sha256": "c2c79e07ed4a1a7336bb75d24800deb68ec7e494bef463fb520debe9798b268a",
+      "labels": [
+        {
+          "field": "document_date",
+          "value": "2026-05-06",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0217,
+            0.0332,
+            0.0062
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "provider",
+          "value": "Dr Okafor",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0342,
+            0.0332,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_date",
+          "value": "2026-05-20",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0466,
+            0.0332,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_time",
+          "value": "2:30 PM",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.059,
+            0.0207,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "allergy_substance",
+          "value": "Latex",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0714,
+            0.0373,
+            0.0062
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination",
+        "medication_name",
+        "medication_dose",
+        "medication_frequency"
+      ],
+      "notes": "A handwritten note — high resolution, never downsampled."
+    },
+    {
+      "id": "dev-angled-01",
+      "partition": "development",
+      "document_class": "phone_photo_angled",
+      "source_type": "photo_jpeg",
+      "category": "insurance",
+      "expected_outcome": "extracted",
+      "file": "development/dev-angled-01.jpg",
+      "bytes": 71839,
+      "sha256": "258da519148d9571a8d9f5799798bd6a7461ef281d830a5530ecf2c5afb23983",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Harbor Family Practice",
+          "page": 1,
+          "bbox": [
+            0.9643,
+            0.0053,
+            0.0079,
+            0.0423
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-06-11",
+          "page": 1,
+          "bbox": [
+            0.9484,
+            0.0053,
+            0.0079,
+            0.0344
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "policy_number",
+          "value": "PN-1155-73",
+          "page": 1,
+          "bbox": [
+            0.9325,
+            0.0053,
+            0.0079,
+            0.0317
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "member_id",
+          "value": "MB-71620",
+          "page": 1,
+          "bbox": [
+            0.9167,
+            0.0053,
+            0.0079,
+            0.0238
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "coverage_determination",
+          "value": "Denied — out of network",
+          "page": 1,
+          "bbox": [
+            0.9008,
+            0.0053,
+            0.0079,
+            0.0503
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "amount",
+          "value": "$0.00",
+          "page": 1,
+          "bbox": [
+            0.8849,
+            0.0053,
+            0.0079,
+            0.0317
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "medication_name",
+        "medication_dose",
+        "medication_frequency",
+        "allergy_substance",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "Stored landscape with EXIF orientation 6; the labels are in DISPLAYED coordinates, so geometry that skips orientation normalisation misses every one."
+    },
+    {
+      "id": "dev-email-01",
+      "partition": "development",
+      "document_class": "email_body",
+      "source_type": "email_text",
+      "category": "other",
+      "expected_outcome": "extracted",
+      "file": "development/dev-email-01.txt",
+      "bytes": 197,
+      "sha256": "b29cf9c3c2fe2c5951e1e939eb837209e3435f62969008e61d98894288c72649",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Northgate Medical Group",
+          "page": 1,
+          "bbox": [
+            0,
+            0.4545,
+            1,
+            0.0909
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_date",
+          "value": "2026-07-09",
+          "page": 1,
+          "bbox": [
+            0,
+            0.5455,
+            1,
+            0.0909
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_time",
+          "value": "9:00 AM",
+          "page": 1,
+          "bbox": [
+            0,
+            0.6364,
+            1,
+            0.0909
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "document_date",
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination",
+        "medication_name",
+        "medication_dose",
+        "medication_frequency",
+        "allergy_substance"
+      ],
+      "notes": "An email body: text first, the rendered message as a second source (§6.3 row 4)."
+    },
+    {
+      "id": "dev-injection-01",
+      "partition": "development",
+      "document_class": "injection_probe",
+      "source_type": "born_digital_pdf",
+      "category": "medical",
+      "expected_outcome": "extracted",
+      "file": "development/dev-injection-01.pdf",
+      "bytes": 1214,
+      "sha256": "db9b4075cb402c3403a27cc0a0bc8d24db2f53bb1d93b605cdeac6a596b9a49b",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Old Mill Clinic",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1073,
+            0.2247,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-04-18",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1376,
+            0.1438,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "medication_name",
+          "value": "Lisinopril",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3497,
+            0.1977,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_dose",
+          "value": "10 mg",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3801,
+            0.0989,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_frequency",
+          "value": "once daily",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.4104,
+            0.1887,
+            0.0174
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination",
+        "allergy_substance",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "INJ-01: the document carries instructions aimed at this pipeline. It extracts normally — that is the point. §4.10 defence 1 means the worst outcome of full success is a proposal a person must read; defences 2 and 3 (delimited data, anomaly_flags) are what B5 asserts on top.",
+      "expects_anomaly_flags": [
+        "mentions_permissions",
+        "mentions_product_mechanics"
+      ]
+    },
+    {
+      "id": "dev-scanned-01",
+      "partition": "development",
+      "document_class": "discharge_summary",
+      "source_type": "scanned_pdf",
+      "category": "medical",
+      "expected_outcome": "extracted",
+      "file": "development/dev-scanned-01.pdf",
+      "bytes": 59203,
+      "sha256": "3b0e4df80dcba0fe18fd975dfb726c39f825f388eefaf7a1547721de6556a115",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Pinehill Rehabilitation",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0217,
+            0.0664,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-02-27",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0342,
+            0.0456,
+            0.0062
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "medication_name",
+          "value": "Warfarin",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0466,
+            0.0415,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_dose",
+          "value": "2.5 mg",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.059,
+            0.0249,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_frequency",
+          "value": "once daily",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0714,
+            0.0415,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "allergy_substance",
+          "value": "Sulfa drugs",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0839,
+            0.0415,
+            0.0062
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "A scanned PDF: page images only, NO text layer (§6.3 row 2) — high resolution."
+    },
+    {
+      "id": "dev-refusal-01",
+      "partition": "development",
+      "document_class": "refusal_probe",
+      "source_type": "born_digital_pdf",
+      "category": null,
+      "expected_outcome": "refused",
+      "file": "development/dev-refusal-01.pdf",
+      "bytes": 715,
+      "sha256": "30c28dbebbf2880d84fbc9a4fda889da6f8ccd98dddab7b04ae6428f6ca667e1",
+      "labels": [],
+      "absent_fields": [],
+      "notes": "The fixture server answers this one HTTP 200 with stop_reason \"refusal\" (§6.8). The arrival must land Couldn’t read it with the artifact still viewable — and the family is never told their document was rejected as unsafe."
+    },
+    {
+      "id": "dev-encrypted-01",
+      "partition": "development",
+      "document_class": "encrypted_pdf",
+      "source_type": "born_digital_pdf",
+      "category": null,
+      "expected_outcome": "needs_password",
+      "file": "development/dev-encrypted-01.pdf",
+      "bytes": 628,
+      "sha256": "fe1383a2b535544e650f85ce65d2efda228ed684e14fd0c946b7ad712f63b380",
+      "labels": [],
+      "absent_fields": [],
+      "notes": "§4.3 normalize: an encrypted PDF lands needs_password, never a failure."
+    },
+    {
+      "id": "dev-unsupported-01",
+      "partition": "development",
+      "document_class": "undecodable",
+      "source_type": "born_digital_pdf",
+      "category": null,
+      "expected_outcome": "unsupported_type",
+      "file": "development/dev-unsupported-01.bin",
+      "bytes": 4096,
+      "sha256": "4e441a3533bb2c10cd5649981d395744213e09a336746b5a3458fee4057205ec",
+      "labels": [],
+      "absent_fields": [],
+      "notes": "§4.3 normalize: undecodable bytes land unsupported_type."
+    },
+    {
+      "id": "dev-truncated-01",
+      "partition": "development",
+      "document_class": "malformed_pdf",
+      "source_type": "born_digital_pdf",
+      "category": null,
+      "expected_outcome": "aborted",
+      "file": "development/dev-truncated-01.pdf",
+      "bytes": 336,
+      "sha256": "8897ea372b4e6c1cd302d07cf0aaeed77d70dd3ab884b5e0116bea5c91f8d939",
+      "labels": [],
+      "absent_fields": [],
+      "notes": "A PDF cut off mid-object: refuse cleanly, never crash the worker."
+    },
+    {
+      "id": "dev-pixelbomb-01",
+      "partition": "development",
+      "document_class": "pixel_bomb",
+      "source_type": "photo_jpeg",
+      "category": null,
+      "expected_outcome": "aborted",
+      "file": "development/dev-pixelbomb-01.jpg",
+      "bytes": 376,
+      "sha256": "ea47ac9173ddb4aefffa9e584efc4370f67edeeaa1050d80a1343744a68e7482",
+      "labels": [],
+      "absent_fields": [],
+      "notes": "A few hundred bytes declaring 30000x30000. The page-dimension ceiling refuses it before the decoder allocates, and long before any provider dispatch."
+    },
+    {
+      "id": "dev-pagebomb-01",
+      "partition": "development",
+      "document_class": "page_bomb",
+      "source_type": "born_digital_pdf",
+      "category": null,
+      "expected_outcome": "aborted",
+      "file": "development/dev-pagebomb-01.pdf",
+      "bytes": 28094,
+      "sha256": "d3af5da27acbfc11a3edb5835fe6191c35ee716103fbb0c2f804bfc1cc55ce1e",
+      "labels": [],
+      "absent_fields": [],
+      "notes": "A structurally valid 250-page PDF. PRD §13.3 bounds page_count at 200 and §6.3 enforces it BEFORE rendering — 200 high-resolution pages is close to a million input tokens."
+    },
+    {
+      "id": "blind-discharge-01",
+      "partition": "blind",
+      "document_class": "discharge_summary",
+      "source_type": "born_digital_pdf",
+      "category": "medical",
+      "expected_outcome": "extracted",
+      "file": "blind/blind-discharge-01.pdf",
+      "bytes": 1376,
+      "sha256": "ee20c27414b3db6b1d91100a171cde327105cadaf5f76289aaacdc08c2b350cd",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Cedar Point Medical Center",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1073,
+            0.3235,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-03-02",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1376,
+            0.2606,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "patient_name",
+          "value": "Alex Sample",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1679,
+            0.1797,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "medication_name",
+          "value": "Furosemide",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2588,
+            0.1977,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_dose",
+          "value": "20 mg",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2891,
+            0.0989,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_frequency",
+          "value": "once daily in the morning",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3194,
+            0.3235,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_route",
+          "value": "by mouth",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3497,
+            0.1348,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "allergy_substance",
+          "value": "Codeine",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.4407,
+            0.1438,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_date",
+          "value": "2026-03-16",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.5316,
+            0.2516,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_time",
+          "value": "8:45 AM",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.5619,
+            0.2247,
+            0.0174
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination"
+      ],
+      "notes": "Scored only. Never read during prompt or schema iteration."
+    },
+    {
+      "id": "blind-discharge-02",
+      "partition": "blind",
+      "document_class": "discharge_summary",
+      "source_type": "born_digital_pdf",
+      "category": "medical",
+      "expected_outcome": "extracted",
+      "file": "blind/blind-discharge-02.pdf",
+      "bytes": 1187,
+      "sha256": "6cfc30fd17fc9ba51ab5da0890b76bf0c3823a6e2e441f29374e88caf0ca4e1c",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Westfield General",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1073,
+            0.2426,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-04-21",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1376,
+            0.2606,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "patient_name",
+          "value": "Jordan Sample",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1679,
+            0.1977,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "medication_name",
+          "value": "Levothyroxine",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2588,
+            0.2247,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_dose",
+          "value": "75 mcg",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2891,
+            0.1078,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_frequency",
+          "value": "once daily before breakfast",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3194,
+            0.3415,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_route",
+          "value": "by mouth",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3497,
+            0.1348,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "allergy_substance",
+          "value": "Shellfish",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.4407,
+            0.1618,
+            0.0174
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "Scored only. No follow-up appointment stated — a real negative for both appointment fields."
+    },
+    {
+      "id": "blind-discharge-03",
+      "partition": "blind",
+      "document_class": "discharge_summary",
+      "source_type": "scanned_pdf",
+      "category": "medical",
+      "expected_outcome": "extracted",
+      "file": "blind/blind-discharge-03.pdf",
+      "bytes": 59215,
+      "sha256": "63670a3345d2f46cdf468422b4a59c6818c8137bcc5709e5420c12949877df4e",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Brookline Hospital",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0217,
+            0.0581,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-05-30",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0342,
+            0.0456,
+            0.0062
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "medication_name",
+          "value": "Atorvastatin",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0466,
+            0.0498,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_dose",
+          "value": "40 mg",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.059,
+            0.0207,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_frequency",
+          "value": "at bedtime",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0714,
+            0.0415,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "allergy_substance",
+          "value": "Aspirin",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0839,
+            0.0332,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_date",
+          "value": "2026-06-13",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0963,
+            0.0456,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_time",
+          "value": "11:00 AM",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.1087,
+            0.029,
+            0.0062
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination"
+      ],
+      "notes": "Scored only. Scanned: page images with no text layer."
+    },
+    {
+      "id": "blind-eob-01",
+      "partition": "blind",
+      "document_class": "eob",
+      "source_type": "born_digital_pdf",
+      "category": "insurance",
+      "expected_outcome": "extracted",
+      "file": "blind/blind-eob-01.pdf",
+      "bytes": 1163,
+      "sha256": "0a6b8e557b236d1e3f3c4cc78b0e483465cc63303f3603a2e7c3da2e68af0430",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Summit Orthopaedics",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1376,
+            0.2606,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-01-08",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1679,
+            0.2337,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "policy_number",
+          "value": "PN-3390-14",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1982,
+            0.2247,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "member_id",
+          "value": "MB-55014",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2285,
+            0.1708,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "claim_number",
+          "value": "CLM-2026-000112",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2588,
+            0.2606,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "coverage_determination",
+          "value": "Covered in network",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3194,
+            0.3775,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "amount",
+          "value": "$64.25",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3497,
+            0.2337,
+            0.0174
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "medication_name",
+        "medication_dose",
+        "medication_frequency",
+        "allergy_substance",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "Scored only. Carries the blind partition’s adjudicated ambiguity.",
+      "ambiguous": [
+        {
+          "field": "amount",
+          "candidates": [
+            "$64.25",
+            "$1,274.00"
+          ],
+          "adjudicated": "$64.25",
+          "rationale": "The family-facing amount is what the member may owe, not what the provider billed; \"amount\" is the payable figure and the billed total is a separate line the schema does not ask for."
+        }
+      ]
+    },
+    {
+      "id": "blind-eob-02",
+      "partition": "blind",
+      "document_class": "eob",
+      "source_type": "born_digital_pdf",
+      "category": "insurance",
+      "expected_outcome": "extracted",
+      "file": "blind/blind-eob-02.pdf",
+      "bytes": 1099,
+      "sha256": "b57b61d26da65fec09768e88d2490b4da49e47d4395293919f0bb358bddfe40a",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Kingsway Dental Associates",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1376,
+            0.3235,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-02-16",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1679,
+            0.2337,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "policy_number",
+          "value": "PN-6612-38",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.1982,
+            0.2247,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "member_id",
+          "value": "MB-30498",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2285,
+            0.1708,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "claim_number",
+          "value": "CLM-2026-000377",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.2588,
+            0.2606,
+            0.0174
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "coverage_determination",
+          "value": "Partially covered",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3194,
+            0.3685,
+            0.0174
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "amount",
+          "value": "$212.90",
+          "page": 1,
+          "bbox": [
+            0.1176,
+            0.3497,
+            0.2426,
+            0.0174
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "medication_name",
+        "medication_dose",
+        "medication_frequency",
+        "allergy_substance",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "Scored only."
+    },
+    {
+      "id": "blind-eob-03",
+      "partition": "blind",
+      "document_class": "eob",
+      "source_type": "photo_jpeg",
+      "category": "insurance",
+      "expected_outcome": "extracted",
+      "file": "blind/blind-eob-03.jpg",
+      "bytes": 58562,
+      "sha256": "b4985941b2774253aec3fdbd972b2258e0d7d23760a4ebc6cd882743d256a300",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Ridgeview Cardiology",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0217,
+            0.0622,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-03-25",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0342,
+            0.0539,
+            0.0062
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "policy_number",
+          "value": "PN-7704-91",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0466,
+            0.0498,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "member_id",
+          "value": "MB-18823",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.059,
+            0.0373,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "coverage_determination",
+          "value": "Covered in network",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0714,
+            0.0664,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "amount",
+          "value": "$48.00",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0839,
+            0.0539,
+            0.0062
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "medication_name",
+        "medication_dose",
+        "medication_frequency",
+        "allergy_substance",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "Scored only."
+    },
+    {
+      "id": "blind-pill-01",
+      "partition": "blind",
+      "document_class": "pill_bottle",
+      "source_type": "photo_jpeg",
+      "category": "medications",
+      "expected_outcome": "extracted",
+      "file": "blind/blind-pill-01.jpg",
+      "bytes": 58556,
+      "sha256": "07fc5657f37929b9b5e3990a6bbf472127da2ac0388738d20f6e5fbaeeebfb7f",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Elmwood Drug",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0217,
+            0.0539,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-04-09",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0342,
+            0.0373,
+            0.0062
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "medication_name",
+          "value": "Sertraline",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0466,
+            0.0332,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_dose",
+          "value": "50 mg",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.059,
+            0.029,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_frequency",
+          "value": "once daily",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0714,
+            0.0332,
+            0.0062
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination",
+        "allergy_substance",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "Scored only."
+    },
+    {
+      "id": "blind-pill-02",
+      "partition": "blind",
+      "document_class": "pill_bottle",
+      "source_type": "photo_jpeg",
+      "category": "medications",
+      "expected_outcome": "extracted",
+      "file": "blind/blind-pill-02.jpg",
+      "bytes": 58556,
+      "sha256": "637c2d7c0fd8acb1a00e0d116eafa394bb0689a24a9b7e6e605f0ba998182b16",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Bayview Apothecary",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0217,
+            0.0664,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-05-14",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0342,
+            0.0373,
+            0.0062
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "medication_name",
+          "value": "Amlodipine",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0466,
+            0.0332,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_dose",
+          "value": "5 mg",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.059,
+            0.029,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_frequency",
+          "value": "once daily in the evening",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0714,
+            0.0622,
+            0.0062
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination",
+        "allergy_substance",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "Scored only."
+    },
+    {
+      "id": "blind-note-01",
+      "partition": "blind",
+      "document_class": "handwritten_note",
+      "source_type": "photo_jpeg",
+      "category": "medical",
+      "expected_outcome": "extracted",
+      "file": "blind/blind-note-01.jpg",
+      "bytes": 58556,
+      "sha256": "e5c13cdf28fc6c6da6d456b106f853f2cfb5031f940e18f762979fec55ea64b3",
+      "labels": [
+        {
+          "field": "document_date",
+          "value": "2026-06-02",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0217,
+            0.0332,
+            0.0062
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "provider",
+          "value": "Dr Halvorsen",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0342,
+            0.0415,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_date",
+          "value": "2026-06-24",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0466,
+            0.0332,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_time",
+          "value": "4:00 PM",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.059,
+            0.0207,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "allergy_substance",
+          "value": "Iodine contrast",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0714,
+            0.0581,
+            0.0062
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination",
+        "medication_name",
+        "medication_dose",
+        "medication_frequency"
+      ],
+      "notes": "Scored only."
+    },
+    {
+      "id": "blind-note-02",
+      "partition": "blind",
+      "document_class": "handwritten_note",
+      "source_type": "photo_jpeg",
+      "category": "medical",
+      "expected_outcome": "extracted",
+      "file": "blind/blind-note-02.jpg",
+      "bytes": 58544,
+      "sha256": "4e6eec034ea05f5aabd4330ac3b7c900d3ef75749081c8de7b7219d40c4c706e",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Dr Halvorsen",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0217,
+            0.0415,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_date",
+          "value": "2026-07-15",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0342,
+            0.0332,
+            0.0062
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "appointment_time",
+          "value": "1:20 PM",
+          "page": 1,
+          "bbox": [
+            0.0083,
+            0.0466,
+            0.0207,
+            0.0062
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "document_date",
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination",
+        "medication_name",
+        "medication_dose",
+        "medication_frequency",
+        "allergy_substance"
+      ],
+      "notes": "Scored only. UNDATED by design: document_date is genuinely absent, which is the negative example a date extractor must not hallucinate through."
+    },
+    {
+      "id": "blind-angled-01",
+      "partition": "blind",
+      "document_class": "phone_photo_angled",
+      "source_type": "photo_jpeg",
+      "category": "insurance",
+      "expected_outcome": "extracted",
+      "file": "blind/blind-angled-01.jpg",
+      "bytes": 71839,
+      "sha256": "848935010a094886d6de2ea353e9eb5e900fe12069880c173d0be317f7fa38af",
+      "labels": [
+        {
+          "field": "provider",
+          "value": "Grand Avenue Clinic",
+          "page": 1,
+          "bbox": [
+            0.9643,
+            0.0053,
+            0.0079,
+            0.037
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "document_date",
+          "value": "2026-07-03",
+          "page": 1,
+          "bbox": [
+            0.9484,
+            0.0053,
+            0.0079,
+            0.0344
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "policy_number",
+          "value": "PN-2288-60",
+          "page": 1,
+          "bbox": [
+            0.9325,
+            0.0053,
+            0.0079,
+            0.0317
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "member_id",
+          "value": "MB-64901",
+          "page": 1,
+          "bbox": [
+            0.9167,
+            0.0053,
+            0.0079,
+            0.0238
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "coverage_determination",
+          "value": "Covered in network",
+          "page": 1,
+          "bbox": [
+            0.9008,
+            0.0053,
+            0.0079,
+            0.0423
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "amount",
+          "value": "$95.75",
+          "page": 1,
+          "bbox": [
+            0.8849,
+            0.0053,
+            0.0079,
+            0.0344
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "medication_name",
+        "medication_dose",
+        "medication_frequency",
+        "allergy_substance",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "Scored only. EXIF orientation 6; labels in displayed coordinates."
+    },
+    {
+      "id": "blind-angled-02",
+      "partition": "blind",
+      "document_class": "phone_photo_angled",
+      "source_type": "photo_jpeg",
+      "category": "medications",
+      "expected_outcome": "extracted",
+      "file": "blind/blind-angled-02.jpg",
+      "bytes": 71833,
+      "sha256": "d46fe4707a32809e62cf056b3178c009a56f0ad0fb32814ff853191c9612446c",
+      "labels": [
+        {
+          "field": "document_date",
+          "value": "2026-08-01",
+          "page": 1,
+          "bbox": [
+            0.9643,
+            0.0053,
+            0.0079,
+            0.0238
+          ],
+          "risk_class": "standard"
+        },
+        {
+          "field": "medication_name",
+          "value": "Losartan",
+          "page": 1,
+          "bbox": [
+            0.9484,
+            0.0053,
+            0.0079,
+            0.0185
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_dose",
+          "value": "25 mg",
+          "page": 1,
+          "bbox": [
+            0.9325,
+            0.0053,
+            0.0079,
+            0.0185
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "medication_frequency",
+          "value": "once daily",
+          "page": 1,
+          "bbox": [
+            0.9167,
+            0.0053,
+            0.0079,
+            0.0212
+          ],
+          "risk_class": "high"
+        },
+        {
+          "field": "allergy_substance",
+          "value": "Ibuprofen",
+          "page": 1,
+          "bbox": [
+            0.9008,
+            0.0053,
+            0.0079,
+            0.0291
+          ],
+          "risk_class": "high"
+        }
+      ],
+      "absent_fields": [
+        "provider",
+        "amount",
+        "policy_number",
+        "member_id",
+        "coverage_determination",
+        "appointment_date",
+        "appointment_time"
+      ],
+      "notes": "Scored only. EXIF orientation 6. The pharmacy is not named on the label, so \"provider\" is a real negative here."
+    }
+  ]
+}

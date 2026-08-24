@@ -1,3 +1,13 @@
 * text=auto
 *.png binary
 *.jpg binary
+
+# The G9 corpus (slice-5 B1) is BYTE-governed: fixtures/g9/corpus.json
+# records a sha256 per item, lib/eval/corpus.ts re-hashes on every read, and
+# `node scripts/fixtures/g9-build.mjs --check` compares exact bytes. Git's
+# text=auto would CRLF-convert the PDFs, the email body and the undecodable
+# fixture on a Windows checkout and every digest would miss. No conversion,
+# ever — the manifest stays diffable, the material does not.
+fixtures/g9/** -text
+fixtures/g9/**/*.pdf binary
+fixtures/g9/**/*.bin binary

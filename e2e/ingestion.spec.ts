@@ -346,21 +346,55 @@ test.describe.serial('the 4B ingestion leg', () => {
     await pollState(dupChildId, ['extracting']);
   });
 
+  // 5B AMENDS this leg, and the reason is the slice: §4.5's cancel window is
+  // `extracting | extracted | interpreting`, and until 5B NOTHING consumed
+  // those states — every arrival this spec had driven simply RESTED at
+  // `extracting`, so "click the first cancel form on the inbox" always found
+  // one. Now the pipeline continues to `proposals_ready`, where cancel is
+  // correctly no longer offered: the work is done and proposals are waiting
+  // for a person. The product is right; the leg's assumption was the seam.
+  //
+  // So the leg now MAKES its own in-window arrival instead of borrowing a
+  // leftover. The gate stage enqueues extract without firing it, so an
+  // arrival driven to `extracting` stays there until something drains the
+  // queue — which makes this deterministic rather than a race.
   test('cancel closes the member window honestly (§4.5 live)', async () => {
     const page = founderPage;
+    const CANCEL_PDF = Buffer.from(`%PDF-1.4\n% cancel-leg ${stamp}\n%%EOF\n`);
+    await page.goto(`/${circleId}/upload`);
+    await page.setInputFiles('input[type="file"]', {
+      name: `cancel-${stamp}.pdf`,
+      mimeType: 'application/pdf',
+      buffer: CANCEL_PDF,
+    });
+    await page.click('button:has-text("Upload")');
+    await expect(page.locator('[role="status"]')).toContainText('is in', { timeout: 60_000 });
+
+    const made = await query(
+      `select id from public.arrivals
+        where circle_id = $1 and channel = 'upload'
+        order by received_at desc limit 1`,
+      [circleId],
+    );
+    const target = made.rows[0].id as string;
+    for (const stage of ['store', 'scan', 'gate']) {
+      await page.request.post(`/api/worker/${stage}`, {
+        headers: { 'x-worker-key': WORKER_KEY },
+      });
+    }
+    expect(await pollState(target, ['extracting'])).toBe('extracting');
+
     await page.goto(`/${circleId}/inbox`);
     await page
-      .locator('form[action$="/inbox/cancel/submit"]')
-      .first()
+      .locator(`form[action$="/inbox/cancel/submit"]:has(input[value="${target}"])`)
       .locator('button')
       .click();
     await page.waitForURL('**/inbox?cancelled=1');
     const cancelled = await query(
-      `select count(*)::int as n from public.arrivals
-        where circle_id = $1 and state = 'cancelled'`,
-      [circleId],
+      `select state::text as s from public.arrivals where id = $1`,
+      [target],
     );
-    expect(cancelled.rows[0].n).toBe(1);
+    expect(cancelled.rows[0].s).toBe('cancelled');
   });
 
   test('below the cliff: a family-tier member sees NOTHING (Q6 probed live)', async ({

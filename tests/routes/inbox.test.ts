@@ -47,6 +47,7 @@ type Row = Record<string, unknown>;
 let parents: Row[] = [];
 let children: Row[] = [];
 let subjects: Row[] = [];
+let documents: Row[] = [];
 
 function chain(result: Row[]) {
   const p = Promise.resolve({ data: result, error: null });
@@ -66,8 +67,10 @@ beforeEach(() => {
   parents = [];
   children = [];
   subjects = [];
+  documents = [];
   from.mockImplementation((table: string) => {
     if (table === 'subjects') return chain(subjects);
+    if (table === 'documents') return chain(documents);
     if (table === 'arrivals') {
       // first arrivals call = parents, second = children
       const call = from.mock.calls.filter((c) => c[0] === 'arrivals').length;
@@ -344,5 +347,283 @@ describe('B6 · the submit routes ride the wrappers with relative PRG redirects'
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain('/sign-in');
     expect(inbox.cancelArrival).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// 5B B6 · The §4.7 point-2 (stage-2) duplicate surface, on the EXISTING inbox
+// machinery (slice-5 plan B6; DUP-02's app half; UXA-02; PRD §8.9).
+//
+// Stage 1 asks "we have these exact bytes already" from a sha256 match. Stage
+// 2 asks a different question — "this looks like the document you filed in
+// July" — from M5's normalised key-field predicate over EXTRACTED values, and
+// the copy has to carry that difference honestly, because the two resolutions
+// do different things: `different` resumes to INTERPRET (the facts are
+// already published), and `same_thing` attaches this arrival to the matched
+// document as an ADDITIONAL SOURCE and files nothing new.
+//
+// ROUND-15 OBSERVATION 3, honoured here as a test: arrivals.
+// duplicate_of_document_id is RETAINED after resolution by design (ADR-0020
+// D6) — it is the trace of the question that was asked. The POINTER is not
+// evidence the arrival is still unresolved; THE STATE IS. A consumer that
+// keyed the affordance on the pointer would offer a resolved arrival its
+// resolution again, forever.
+//
+// AND THE POINTER IS UNREADABLE FROM HERE, which the local gate found the
+// hard way. `authenticated` holds a COLUMN-LEVEL select grant on `arrivals` —
+// 25 of 28 columns — and 5A M5 added duplicate_of_document_id without
+// extending it. Selecting it is refused per-column, supabase-js returns an
+// error rather than rows, and the ENTIRE inbox falls back to its empty state
+// for every caller. So the surface says WHY the match happened — the
+// provenance a person actually needs — and cannot yet say WHICH document.
+// ADR-0022 D15 carries the one-line grant as a round-16 pointed question.
+// ============================================================================
+
+function stage2Parent(overrides: Row = {}): Row {
+  return {
+    id: 'a-dup2',
+    state: 'duplicate_suspected_stage2',
+    channel: 'email',
+    sender_address: 'records@riverbend.example',
+    sender_display_name: 'Riverbend Records',
+    auth_result: 'authenticated',
+    scan_verdict: 'clean',
+    received_at: new Date(Date.now() - HOURS).toISOString(),
+    ...overrides,
+  };
+}
+
+describe('5B B6 · the stage-2 duplicate cites the document it matched', () => {
+  it('the copy says the arrival looks like something already filed', async () => {
+    parents = [stage2Parent()];
+    inbox.productStates.mockResolvedValueOnce(new Map([['a-dup2', 'Looks like a duplicate']]));
+    const html = await renderInbox();
+    expect(html).toContain('Looks like a duplicate');
+    expect(html).toMatch(/already filed for this person/i);
+  });
+
+  // AMENDED at round 16 (Q-A, R5/F-4), argued in place.
+  //
+  // This guard forbade the literal `duplicate_of_document_id` in a `.select()`
+  // string, because the column was NOT granted and naming it emptied the whole
+  // Care Inbox. M7 grants it, so the premise is gone — and R5/F-4 showed the
+  // guard was the wrong SHAPE regardless: it was a denylist of one literal
+  // over `.select()` arguments, while Postgres refuses on `where` and
+  // `order by` references too, which it never read.
+  //
+  // It becomes an ALLOWLIST derived from the grant. Every column this page
+  // names, in any clause, must be one `authenticated` actually holds — the
+  // same exact set pgTAP 057 pins from the DB side, so the two cannot drift
+  // apart without one of them going red.
+  it('every column the arrivals query names is one authenticated holds', async () => {
+    const GRANTED = new Set([
+      'id', 'circle_id', 'subject_id', 'parent_arrival_id', 'channel', 'state',
+      'received_at', 'storage_key', 'content_sha256', 'mime_declared',
+      'mime_detected', 'byte_size', 'page_count', 'sender_address',
+      'sender_display_name', 'message_id', 'auth_result', 'scan_verdict',
+      'scan_at', 'cancelled_by', 'cancelled_at', 'ingest_idempotency_key',
+      'deleted_at', 'purge_at', 'expires_at', 'duplicate_of_document_id',
+    ]);
+    parents = [stage2Parent()];
+    await renderInbox();
+    const named = new Set<string>();
+    type Mocked = Record<string, { mock?: { calls: unknown[][] } } | undefined>;
+    for (const r of from.mock.results) {
+      const proxy = r.value as Mocked;
+      for (const call of proxy?.select?.mock?.calls ?? []) {
+        for (const col of String(call[0] ?? '').split(',')) named.add(col.trim());
+      }
+      // Postgres refuses on WHERE and ORDER BY references too — the half the
+      // old denylist never read (round-16 R5/F-4, proven live against the DB).
+      for (const m of ['eq', 'is', 'in', 'order']) {
+        for (const call of proxy?.[m]?.mock?.calls ?? []) {
+          const col = String(call[0] ?? '').trim();
+          if (col) named.add(col);
+        }
+      }
+    }
+    named.delete('');
+    const ungranted = [...named].filter((c) => !GRANTED.has(c));
+    expect(ungranted, `these are refused per-column: ${ungranted.join(', ')}`).toEqual([]);
+  });
+
+  it('the WHY renders through ProvenanceLine (Q6: first consumer, decided red-first)', async () => {
+    // The suspicion is downstream of AI-extracted values, so showing where it
+    // came from is §8.6 provenance.
+    //
+    // AMENDED at round 16 (R5/F-5), argued in place. The old wording named
+    // "type, date AND provider" — a three-way conjunction — while
+    // hc.detect_stage2_duplicate requires category + document_date + **≥1 of**
+    // provider / amount / policy_number. Two EOBs matched on AMOUNT alone,
+    // from different providers, were told the providers matched. The property
+    // this leg exists for — that the WHY renders through ProvenanceLine — is
+    // unchanged; only the claim is corrected to the contract M5 implements.
+    parents = [stage2Parent()];
+    const html = await renderInbox();
+    expect(html).toContain('class="provenance"');
+    expect(html).toMatch(/type and date, and at least one detail read from this document/i);
+  });
+
+  it('both resolutions are offered, and the stage-2 copy says what each DOES', async () => {
+    parents = [stage2Parent()];
+    const html = await renderInbox();
+    expect(html).toContain('/inbox/resolve/submit');
+    expect(html).toContain('value="different"');
+    expect(html).toContain('value="same_thing"');
+    // `same_thing` at stage 2 attaches an additional source rather than
+    // discarding — the copy must not promise the stage-1 outcome.
+    expect(html).toMatch(/another source|additional source/i);
+  });
+
+  it('a CHILD arrival suspected at stage 2 gets its own resolution, bound to the child', async () => {
+    parents = [
+      {
+        id: 'a-parent',
+        state: 'extracting',
+        channel: 'email',
+        sender_address: 'records@riverbend.example',
+        sender_display_name: null,
+        auth_result: 'authenticated',
+        scan_verdict: 'clean',
+        received_at: new Date(Date.now() - HOURS).toISOString(),
+        duplicate_of_document_id: null,
+      },
+    ];
+    children = [
+      {
+        id: 'a-child-dup2',
+        parent_arrival_id: 'a-parent',
+        state: 'duplicate_suspected_stage2',
+      },
+    ];
+    const html = await renderInbox();
+    expect(html).toContain('value="a-child-dup2"');
+  });
+
+  it('a RESOLVED arrival offers NOTHING - the STATE decides (round-15 obs. 3)', async () => {
+    parents = [stage2Parent({ state: 'nothing_filed' })];
+    inbox.productStates.mockResolvedValueOnce(new Map([['a-dup2', 'Nothing filed']]));
+    const html = await renderInbox();
+    expect(html).not.toContain('value="same_thing"');
+    expect(html).not.toContain('value="different"');
+  });
+
+  it('the affordance never depends on naming the match', async () => {
+    // The contract, not a fixture case: whatever a caller can or cannot see
+    // of the matched document, the QUESTION is always answerable. The copy
+    // degrades; the affordance does not.
+    parents = [stage2Parent()];
+    const html = await renderInbox();
+    expect(html).toContain('value="same_thing"');
+    expect(html).toContain('value="different"');
+  });
+
+  it('stage 1 keeps its own copy — the two questions are not the same question', async () => {
+    parents = [stage2Parent({ id: 'a-dup1', state: 'duplicate_suspected' })];
+    inbox.productStates.mockResolvedValueOnce(new Map([['a-dup1', 'Looks like a duplicate']]));
+    const html = await renderInbox();
+    expect(html).toContain('Same thing');
+    expect(html).not.toMatch(/another source/i);
+  });
+});
+
+describe('5B B8 · the inbox links to the senders it accepts from', () => {
+  it('a link to /senders, not a sixth nav item', async () => {
+    parents = [stage2Parent({ state: 'extracting' })];
+    const html = await renderInbox();
+    expect(html).toContain(`/${CIRCLE}/senders`);
+  });
+});
+
+// ============================================================================
+// Round-16 Q-A completion (ADR-0023 D8) and R5/F-5 — the stage-2 copy.
+//
+// M7 grants `duplicate_of_document_id`, so the §4.7 p2 copy can finally do
+// what the plan's B6 row asked for: cite the matched FILED document by title
+// and filed date. Until now it could only say WHY the match happened.
+//
+// R5/F-5 lands in the same sentence. The old provenance line read "type, date
+// and provider", a three-way conjunction — but `hc.detect_stage2_duplicate`
+// requires category + document_date + **≥1 of** provider / amount /
+// policy_number. Two EOBs matched on AMOUNT alone, from different providers,
+// would have told a family the providers matched. With the document now
+// nameable that copy is load-bearing for a real decision, so it must state
+// the contract it actually implements.
+//
+// The affordance itself stays gated on the STATE (round-15 observation 3):
+// the pointer decorates the question, it must never decide whether to ask it.
+// ============================================================================
+describe('Q-A/R5-F5 · the stage-2 copy names the matched document', () => {
+  const PARENT_ID = 'p-dup';
+  const CHILD_ID = 'c-dup';
+  const DOC_ID = '99999999-0000-4000-8000-00000000000d';
+
+  function stage2Parent(): Row {
+    return {
+      id: PARENT_ID,
+      state: 'proposals_ready',
+      channel: 'email',
+      sender_address: 'billing@insurer.example',
+      sender_display_name: 'Billing',
+      auth_result: 'authenticated',
+      scan_verdict: 'clean',
+      received_at: new Date(Date.now() - 2 * HOURS).toISOString(),
+    };
+  }
+
+  it('reads the document the arrival was matched against', async () => {
+    parents = [stage2Parent()];
+    children = [
+      {
+        id: CHILD_ID,
+        parent_arrival_id: PARENT_ID,
+        state: 'duplicate_suspected_stage2',
+        duplicate_of_document_id: DOC_ID,
+      },
+    ];
+    documents = [{ id: DOC_ID, title: 'Discharge summary', filed_at: '2026-07-12T10:00:00Z' }];
+    const html = await renderInbox();
+    // The plan's B6 example is "This looks like the discharge summary you
+    // filed on Jul 12" — the title reads lowercase mid-sentence. The date is
+    // whatever the house formatter produces ("July 12"), not the plan's
+    // illustrative abbreviation: formatShortDate is the authority, and the
+    // rest of the app reads the same way.
+    expect(html).toContain('This looks like the discharge summary you filed on July 12');
+  });
+
+  it('falls back to the honest generic line when no document can be read', async () => {
+    parents = [stage2Parent()];
+    children = [
+      {
+        id: CHILD_ID,
+        parent_arrival_id: PARENT_ID,
+        state: 'duplicate_suspected_stage2',
+        duplicate_of_document_id: null,
+      },
+    ];
+    documents = [];
+    const html = await renderInbox();
+    expect(html).toContain('already filed for this person');
+    expect(html).not.toContain('undefined');
+  });
+
+  it('R5/F-5: the provenance line does not claim the provider matched', async () => {
+    parents = [stage2Parent()];
+    children = [
+      {
+        id: CHILD_ID,
+        parent_arrival_id: PARENT_ID,
+        state: 'duplicate_suspected_stage2',
+        duplicate_of_document_id: DOC_ID,
+      },
+    ];
+    documents = [
+      { id: DOC_ID, title: 'Explanation of benefits', filed_at: '2026-07-12T10:00:00Z' },
+    ];
+    const html = await renderInbox();
+    // hc.detect_stage2_duplicate requires category + document_date + >=1 of
+    // provider / amount / policy_number. Naming `provider` as a conjunct is a
+    // claim the detector does not make.
+    expect(html).not.toMatch(/type, date and provider/);
   });
 });

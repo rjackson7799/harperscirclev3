@@ -199,3 +199,88 @@ describe('B5 · outbox-loss recovery: claim/ack at-least-once, end-to-end', () =
     expect(after.find((d) => d.arrivalId === arrival)).toBeUndefined();
   }, 30_000);
 });
+
+// ============================================================================
+// 5B B7 · D13's deferred backlog, LIVE (slice-5 plan B7; ADR-0019 D13).
+//
+// The seam pushed extract/interpret messages an hour into the future with
+// pgmq.set_vt while nothing consumed them. Those workers exist now, so the
+// relay pulls the visibility timeout back rather than letting a message wait
+// out an hour for a reason that no longer exists.
+//
+// The narrow part is the point: only messages whose vt is still in the
+// FUTURE, and only stages this build dispatches. A message in flight with a
+// live visibility window belongs to whoever read it, and yanking it back
+// would hand the same work to two workers at once.
+// ============================================================================
+
+describe('5B B7 · releaseDeferredWork drains the seam’s backlog', () => {
+  it('a deferred extract message becomes visible again; a fresh read does not', async () => {
+    const arrival = await mkArrival();
+    await workers.sendPipelineWork({
+      circle_id: circleId,
+      arrival_id: arrival,
+      stage: 'extract',
+      channel: 'email',
+    });
+
+    // Find it, and defer it the way D13 did.
+    const mine = await raw.query(
+      `select msg_id from pgmq.q_pipeline_work
+        where (message ->> 'arrival_id') = $1 and (message ->> 'stage') = 'extract'`,
+      [arrival],
+    );
+    expect(mine.rowCount).toBe(1);
+    const msgId = Number(mine.rows[0].msg_id);
+    await workers.deferPipelineWork(msgId, 3600);
+
+    const deferred = await raw.query('select vt > now() as hidden from pgmq.q_pipeline_work where msg_id = $1', [msgId]);
+    expect(deferred.rows[0].hidden).toBe(true);
+
+    const released = await workers.releaseDeferredWork();
+    expect(released).toBeGreaterThanOrEqual(1);
+
+    const now = await raw.query('select vt > now() as hidden from pgmq.q_pipeline_work where msg_id = $1', [msgId]);
+    expect(now.rows[0].hidden).toBe(false);
+
+    // Idempotent: with nothing hidden, the steady state releases nothing.
+    expect(await workers.releaseDeferredWork()).toBe(0);
+  }, 30_000);
+
+  it('a message IN FLIGHT is left alone — its window belongs to its reader', async () => {
+    const arrival = await mkArrival();
+    await workers.sendPipelineWork({
+      circle_id: circleId,
+      arrival_id: arrival,
+      stage: 'interpret',
+      channel: 'email',
+    });
+    // pgmq.read hides it for the visibility window: that is a LIVE claim,
+    // not a deferral, and releasing it would hand one item to two workers.
+    const read = await raw.query(
+      `select msg_id from pgmq.read('pipeline_work', 120, 20)`,
+    );
+    expect(read.rowCount).toBeGreaterThan(0);
+    const mine = await raw.query(
+      `select msg_id, vt > now() as hidden from pgmq.q_pipeline_work
+        where (message ->> 'arrival_id') = $1`,
+      [arrival],
+    );
+    expect(mine.rows[0].hidden).toBe(true);
+
+    await workers.releaseDeferredWork();
+
+    const after = await raw.query(
+      `select vt > now() as hidden from pgmq.q_pipeline_work where msg_id = $1`,
+      [Number(mine.rows[0].msg_id)],
+    );
+    // STILL HIDDEN. pgmq gives an in-flight read and a deliberate deferral
+    // the same shape — a future vt — and they are separated by HOW FAR: a
+    // read hides for 120 s, D13 deferred for an hour. The release threshold
+    // sits between them, so a message another worker is holding is left
+    // alone. (Even without it nothing could publish twice — claim-before-work
+    // means a second reader gets stale_lease before any external call — but
+    // handing one item to two readers is waste worth not doing.)
+    expect(after.rows[0].hidden).toBe(true);
+  }, 30_000);
+});

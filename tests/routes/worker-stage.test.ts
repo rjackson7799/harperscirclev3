@@ -281,7 +281,7 @@ describe('B4 · scan — cache first, four exits, quarantine moves bytes', () =>
 });
 
 describe('B4 · gate — the SND-01 machinery; uploads pass, strangers hold', () => {
-  it('recognised email advances to extracting and enqueues the extract seam (Q7: enqueued, nothing consumes yet)', async () => {
+  it('recognised email advances to extracting and enqueues the extract seam — the extract fire is HELD (ADR-0023 D24)', async () => {
     workers.readPipelineWork.mockResolvedValueOnce([msg('gate')]);
     workers.senderRecognised.mockResolvedValueOnce(true);
     await route.POST(req('gate'), ctx('gate'));
@@ -294,7 +294,15 @@ describe('B4 · gate — the SND-01 machinery; uploads pass, strangers hold', ()
     );
     const [sent] = workers.sendPipelineWork.mock.calls[0];
     expect(sent).toMatchObject({ stage: 'extract' });
-    expect(fetchMock).not.toHaveBeenCalled(); // no consumer to fire (Q7)
+    // AMENDED at round-16 sign-off (R8/F-1). The old title said "nothing
+    // consumes yet" and the old comment said "no consumer to fire"; both were
+    // false at HEAD — scan, gate and interpret all fire eagerly. Extract is
+    // the one hand-off that does not, and it is HELD BY OWNER RULING rather
+    // than missing: the eager fire would collapse §4.5's ~35 s cancel window
+    // to seconds while nothing yet tells a family Reading has begun
+    // (ADR-0023 D14 for the finding, D24 for the ruling). The assertion is
+    // UNCHANGED — what changed is that it now pins a decision, not a gap.
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('an unknown sender holds — AC-INBOX-7: the gate precedes extracting', async () => {
@@ -340,13 +348,58 @@ describe('B4 · gate — the SND-01 machinery; uploads pass, strangers hold', ()
 });
 
 describe('B4 · the queue is shared; the seam and mixed batches stay honest', () => {
-  it('extract/interpret messages are DEFERRED, not consumed and not lost (the Q7 seam)', async () => {
-    workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+  // 5B B4/B5 amend this row. The Q7 seam was "extract/interpret are DEFERRED,
+  // never consumed and never lost". Both are CONSUMED now, so the assertion
+  // inverts: NOTHING in the pipeline vocabulary defers any more, and an
+  // unknown stage — the only thing the branch can still see — is the one case
+  // left. Amending the assertion as each half landed, rather than deleting
+  // it, is what keeps the seam's closure legible in the suite.
+  it('no pipeline stage defers any more — the Q7 seam is CLOSED', async () => {
+    workers.readPipelineWork.mockResolvedValueOnce([
+      { msg_id: 7, message: { circle_id: CIRCLE, arrival_id: ARRIVAL, stage: 'interpret', channel: 'email' } },
+    ]);
+    workers.claimStage.mockResolvedValueOnce({
+      result: 'already_advanced',
+      leaseId: null,
+      attemptNo: null,
+      deadline: null,
+    });
     const res = await route.POST(req('store'), ctx('store'));
     expect(res.status).toBe(200);
-    expect(workers.deferPipelineWork).toHaveBeenCalledWith(7);
+    expect(workers.deferPipelineWork).not.toHaveBeenCalled();
+    expect(workers.claimStage).toHaveBeenCalledWith(ARRIVAL, 'interpret');
+    expect(workers.archivePipelineWork).toHaveBeenCalledWith(7);
+  });
+
+  it('an UNKNOWN stage is still deferred, never consumed and never lost', async () => {
+    workers.readPipelineWork.mockResolvedValueOnce([
+      { msg_id: 9, message: { circle_id: CIRCLE, arrival_id: ARRIVAL, stage: 'transcribe', channel: 'email' } },
+    ]);
+    const res = await route.POST(req('store'), ctx('store'));
+    expect(res.status).toBe(200);
+    expect(workers.deferPipelineWork).toHaveBeenCalledWith(9);
     expect(workers.archivePipelineWork).not.toHaveBeenCalled();
     expect(workers.claimStage).not.toHaveBeenCalled();
+  });
+
+  it('extract messages are CONSUMED now — the first half of the seam is open', async () => {
+    workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+    workers.claimStage.mockResolvedValueOnce({
+      result: 'already_advanced',
+      leaseId: null,
+      attemptNo: null,
+      deadline: null,
+    });
+    const res = await route.POST(req('store'), ctx('store'));
+    expect(res.status).toBe(200);
+    expect(workers.deferPipelineWork).not.toHaveBeenCalled();
+    expect(workers.claimStage).toHaveBeenCalledWith(
+      ARRIVAL,
+      'extract',
+      expect.any(String),
+      expect.any(String),
+    );
+    expect(workers.archivePipelineWork).toHaveBeenCalledWith(7);
   });
 
   it('each message dispatches by ITS stage; the response reports outcomes', async () => {
