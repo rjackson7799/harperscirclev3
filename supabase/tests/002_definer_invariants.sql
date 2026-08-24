@@ -75,6 +75,10 @@ select is((
     'execute_wasnt_me(p_token text)',
     'expire_held_mail()',
     'expire_scan_results()',
+    -- 6A M2 (ADR-0019 Q-C): the review screen's fact read — §4.2.3's
+    -- middle region, gated on the ARRIVAL at the same view×5 approval
+    -- now uses, and never wider than extractions_select
+    'extractions_for(p_arrival uuid)',
     'finalize_extraction(p_arrival uuid, p_lease uuid, p_facts jsonb, p_proposals jsonb)',
     'finalize_interpretation(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
     'finalize_scan(p_arrival uuid, p_lease uuid, p_verdict text, p_detail jsonb)',
@@ -158,7 +162,7 @@ select is((
         'create_arrival',
         'create_circle','create_invite','create_manual_proposal',
         'ctx','ctx_for','describe_invite','execute_wasnt_me','expire_held_mail',
-        'expire_scan_results',
+        'expire_scan_results','extractions_for',
         'finalize_extraction','finalize_interpretation','finalize_scan',
         'finalize_store',
         'grant_vectors','link_provenance','list_known_senders',
@@ -177,7 +181,7 @@ select is((
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the sixty-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the seventy boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -320,6 +324,10 @@ with actual as (
   union all select 'list_known_senders', 'authenticated'
   -- 5A M2 (§3.10's letter): the one pipeline read of the record
   union all select 'record_context_for', 'hc_pipeline'
+  -- 6A M2 (Q7 + ADR-0019 Q-C): the fact read §4.2.3's middle region
+  -- needs. authenticated only — the pipeline has hc_internal's own path
+  -- and never reads a person's view of an arrival
+  union all select 'extractions_for', 'authenticated'
   -- 5A M3: close_extraction_run is a trigger function — hc_internal-owned,
   -- granted to nobody; it appears in no grant row by design
 )
