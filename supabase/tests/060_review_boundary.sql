@@ -49,7 +49,20 @@
 -- explicit re-pins the plan asks for at the narrowing's own site.
 --
 -- ---------------------------------------------------------------------------
--- ONE CONSEQUENCE IS RECORDED RATHER THAN DESIGNED AROUND (case 15).
+-- AMENDED AT ROUND 17 (F-2, ADR-0025 D5): the narrowing has TWO consequences,
+-- not one. The second is that the added predicate hardcodes
+-- (hc.all_domains(), true), which makes visible_at rung 3 — "unresolved or
+-- empty lineage: manage on all five, or nothing" — unreachable for it, while
+-- the manage check above still passes v_prop.taint_resolved and can take rung
+-- 3. So on an UNRESOLVED-lineage proposal a care_circle-tier actor holding
+-- manage×5 was allowed by the old check and is refused by the new one, for
+-- the CEILING's reason rather than the ladder's. Latent — nothing in the tree
+-- writes proposals.taint_resolved false — and pinned as pure hc.visible_at
+-- calls at 064:17-19. Q7 itself is RATIFIED UNCHANGED: the predicate asks for
+-- exactly what Q7 says must be required, and only the record needed amending.
+--
+-- THE FIRST CONSEQUENCE, RECORDED RATHER THAN DESIGNED AROUND (case 15) —
+-- and CLOSED at round 17 by Q-B, so case 15's assertion is inverted below.
 -- hc.create_manual_proposal authorizes on manage-over-drafted-taint ALONE
 -- (20260816010006:113) — it does not ask for view×5. So after this
 -- narrowing a member below view×5 can CREATE a manual entry and can no
@@ -280,7 +293,16 @@ select is(pg_temp.call_as(current_setting('t.u_care')::uuid, format(
   $$ select hc.approve_proposal(%L::uuid, 1, 'k-care-1')::text $$,
   current_setting('t.p_care'))),
   'ERROR:P0001:approval_refused',
-  '013:307 re-pinned: care_circle holds manage grants and still cannot approve — the §3.3 ceiling binds the writer, and the new predicate did not disturb which refusal fires');
+  -- MESSAGE AMENDED AT ROUND 17 (F-2, ADR-0025 D5). It read "…and the new
+  -- predicate did not disturb which refusal fires", which is true of THIS
+  -- fixture — whose proposal has RESOLVED lineage, where this actor was
+  -- already refused before 6A — and is not true in general. On an
+  -- UNRESOLVED-lineage proposal the old manage check takes visible_at rung 3
+  -- and returns `manage`, while the added predicate hardcodes
+  -- (all_domains, true), skips rung 3 and falls to rung 4's care_circle
+  -- ceiling. Same word, DIFFERENT REASON. 064 cases 17-19 drive that
+  -- divergence directly; this case now claims only what it proves.
+  '013:307 re-pinned: care_circle holds manage grants and still cannot approve — the §3.3 ceiling binds the writer, and on THIS fixture''s resolved-lineage proposal the same refusal fires for the same reason it fired before 6A (the general claim is 064:17-19''s, not this fixture''s)');
 
 -- ----------------------------------------------------------------------------
 -- 7 · DEF-10: the new refusal is the SAME shape as every other one, so the
@@ -369,11 +391,18 @@ select is(pg_temp.call_as(current_setting('t.u_coord')::uuid, format(
   'the definer is never WIDER than the RLS it stands in for: for a caller who can read the rows through extractions_select, it returns exactly those rows and no others');
 
 -- ----------------------------------------------------------------------------
--- 15 · THE RECORDED CONSEQUENCE. hc.create_manual_proposal asks for
---      manage-over-taint and NOT for view×5, so a member below view×5 can
---      still create a manual entry they can no longer approve. Pinned so it
---      is visible, and carried to round 17 with a recommendation rather than
---      exempted here on a build's own authority.
+-- 15 · THE RECORDED CONSEQUENCE, NOW CLOSED. hc.create_manual_proposal asked
+--      for manage-over-taint and NOT for view×5, so a member below view×5
+--      could still create a manual entry they could no longer approve. It was
+--      pinned OPEN here on purpose and carried to round 17 rather than
+--      exempted on a build's own authority.
+--
+--      ROUND 17 TOOK IT (packet Q-B, ADR-0025 D3): M6 adds view×5 to
+--      hc.create_manual_proposal in the LADDER form, so the refusal now fires
+--      one function EARLIER and carries `draft_refused` — creation's word —
+--      rather than `approval_refused`. THE ASSERTION IS AMENDED IN THE SAME
+--      COMMIT AS THE CHANGE THAT FORCED IT, and the amendment is the point of
+--      the pin: it was written to be inverted by a round, and it was.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_partial')::uuid, format(
   $$ select hc.approve_proposal(
@@ -382,8 +411,8 @@ select is(pg_temp.call_as(current_setting('t.u_partial')::uuid, format(
                              'risk_class', 'standard', 'domain', 'health'))) ->> 'proposal_id')::uuid,
        1, 'k-manual-1')::text $$,
   current_setting('t.c1'), current_setting('t.s1'))),
-  'ERROR:P0001:approval_refused',
-  'RECORDED, NOT DESIGNED AROUND: a member below view×5 can still CREATE a manual entry (create_manual_proposal asks only for manage over the drafted taint) and can no longer APPROVE it — the ruling says ONE predicate and says nothing about manual entry, so the seam is pinned here and put to round 17');
+  'ERROR:P0001:draft_refused',
+  'CLOSED AT ROUND 17 (Q-B): the seam this case pinned OPEN is gone — a member below view×5 no longer CREATES a manual entry they could not approve, and the refusal now fires at creation with creation''s own word. The recorded consequence became a disposition, which is what recording it was for');
 
 select * from finish();
 

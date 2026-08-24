@@ -21,7 +21,7 @@
 -- finding's letter. The plan states the property as a class — "so 23502 can
 -- never surface as a raw Postgres error at the moment a person clicks
 -- approve" — and the class is not one column of one kind. Enumerated live
--- against information_schema, SIX payload-derived columns are NOT NULL with
+-- against information_schema, SEVEN payload-derived columns are NOT NULL with
 -- no default and no guard between the payload and the insert:
 --
 --     profile_facts.field · profile_facts.value · profile_facts.risk_class
@@ -30,8 +30,22 @@
 --
 -- (`documents.category` and `timeline_events.kind` are already guarded —
 -- `hc.own_domain` is fail-closed on both and raises `own_domain_undeclared`
--- before any write.) Guarding one and shipping five is the half-fix this
+-- before any write.) Guarding one and shipping SIX is the half-fix this
 -- project's rounds exist to catch, so M1 guards the class.
+--
+-- AMENDED AT ROUND 17 (ADR-0025 D1), twice, and both amendments belong here
+-- because this file is where the property is stated:
+--   · The count above read SIX while the list under it named SEVEN and the
+--     sentence after it said "shipping five". ADR-0024 and the packet both
+--     say seven, which is right; only this header was wrong.
+--   · The seven columns are the ORDINARY arm's. M1's guard block sits inside
+--     hc.approve_proposal's `else` branch, and the CONFLICT arm's own guard
+--     (20260824120003:492-497) checks `field`, `value` and `domain` and NOT
+--     `risk_class` — which use_new writes into the same NOT NULL column at
+--     :673. So the 23502 class this file pins as closed was open ONE ARM
+--     OVER, in the same function, with no edit required. Closed at M6 and
+--     driven at 064 case 5. The cases below are unchanged and still pass:
+--     what was wrong was the SCOPE of the claim, not any assertion in it.
 --
 -- THE GUARD IS NON-BREAKING BY CONSTRUCTION, which is the argument for
 -- taking the wider scope inside a MINOR finding's slot: every payload it
