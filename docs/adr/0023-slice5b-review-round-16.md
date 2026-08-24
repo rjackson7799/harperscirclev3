@@ -158,8 +158,8 @@ ACCEPTED below and re-scores leg 5 FALSIFIED, because it contains no
 assertion and passes unconditionally while the criterion it claims
 ("malformed input refuses cleanly") is not met: mupdf repairs. The
 honest hostile-input posture is "malformed input is repaired and
-processed". Corrected here at sign-off rather than left to contradict
-its own disposition eleven sections later (D24).
+processed". Corrected here at sign-off rather than left to contradict its
+own disposition in D17's R7 table, four hundred lines below (D24).
 
 ---
 
@@ -1355,10 +1355,12 @@ should carry first:
 **PR #10 merged as a MERGE COMMIT, never a squash** (ADR-0006):
 **`c63bcae`**, parents `a9d9f43` (main, unmoved through the whole round)
 + `318e2ad` (the branch head). The merged tree is verified **IDENTICAL**
-to `318e2ad`'s — both `d6aea1ac` — and **all 31 red→green commits the
-dispositions cite remain reachable from `main`**, checked one by one with
-`git merge-base --is-ancestor`, so every failure signature these ADRs
-quote survives in the history rather than only in prose. 69 commits, 111
+to `318e2ad`'s — both `d6aea1ac` — and **every one of the 39 commit SHAs
+this ADR cites is reachable from `main`**, every red→green pair among them
+included: extracted from the document and checked one by one with
+`git merge-base --is-ancestor`, all 39 resolvable and all 39 ancestors.
+So every failure signature these ADRs quote survives in the history
+rather than only in prose. 69 commits, 111
 files, +19,025 / −206.
 
 **CI green on `main` at the merge commit: run `32694917229`, 23 steps,
