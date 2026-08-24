@@ -422,7 +422,7 @@ The tree moves **62 → 67 migrations / 59 → 64 pgTAP files**.
 | vitest | 689 across 64 files | **689 across 64 files** (6A adds no app unit) |
 | lint · typecheck · production build | clean | **clean** |
 | gitleaks | clean | **clean** (373 commits scanned) |
-| local gate (browser, LOCAL-only) | 29/29 | **RED at this SHA — 27 of 29 passed, 1 failed, 1 did not run** (see below) |
+| local gate (browser, LOCAL-only) | 29/29 | **RED at this SHA — three runs, three disjoint failure sets, none with a code channel from 6A** (see below) |
 
 **One unreproduced transient, recorded as such.** A first full `vitest`
 run failed one test — `tests/lint/db-fence.test.ts:38`, *"Test timed out
@@ -437,52 +437,91 @@ captured before it dropped. The engine was restarted, the stack came back
 healthy, `hc_clamd` needed the recorded `docker start` revive, and the
 legs that remained (gitleaks, the upgrade leg, the local gate) ran after.
 
-**THE LOCAL GATE IS RED AT THIS SHA, AND IT IS REPORTED AS RED.**
-`supabase/` moved, so F12 binds the full gate. It was run twice and
-`e2e-local-gate.md`'s own rule is unambiguous: *"Two consecutive failed
-gate runs at one SHA = the gate is RED at that SHA, whatever a third run
-says."* **No third run was attempted.**
+**THE LOCAL GATE IS RED AT THIS SHA. THREE RUNS, THREE DISJOINT FAILURE
+SETS, AND NO FOURTH RUN.**
 
-- **Run 1 — 18 passed, 2 failed.** Both failures were the upload-driven
-  legs, both reporting `Uploading is not available for this person.`
-  (`upload-form.tsx:63`, reached when `POST /api/upload/token` returns
-  not-ok). Classified INFRASTRUCTURE from the failure string: playwright
-  reused a peer session's dev server started ~10 hours earlier
-  (`reuseExistingServer: true`), which carried none of the `webServer`
-  env block the config supplies when it starts the server itself — the
-  trap `e2e-local-gate.md` names in as many words. The stale server was
-  killed and the gate re-run ONCE, per the flake policy.
-- **Run 2 — 27 passed, 1 failed, 1 did not run.** Both run-1 failures
-  passed (step 12 in 9.1 s against its earlier 1.0 m timeout), which
-  confirms that classification. A DIFFERENT leg failed:
-  `ingestion.spec.ts:361 — cancel closes the member window honestly
-  (§4.5 live)`, with `pollState(...): wanted extracting, still
-  unsupported_type`.
+`supabase/` moved, so F12 binds the full gate (29 tests). It was run three
+times and it is reported RED. Each failure was classified from evidence —
+the failure string, the database, or Playwright's own page snapshot — and
+never from the fact that a later run went differently.
 
-**The run-2 failure is evidenced as a SUITE-ORDERING RACE, not a 6A
-regression — and the evidence is the arrival's own trail, not an
-assertion.** `public.arrival_events` for that arrival reads:
+**Run 1 — 18 passed, 2 failed** (`extraction.spec.ts:166`,
+`ingestion.spec.ts:161`). Both upload-driven legs, both reporting
+`Uploading is not available for this person.` — `upload-form.tsx:63`, the
+branch taken when `POST /api/upload/token` returns non-OK. **NOT
+HERMETIC, and therefore not a measurement of this tree.**
+`playwright.config.ts` carries the full `webServer` env — the demo keys,
+the service-role key, `HC_DB_URL` — but only when IT starts the server;
+`reuseExistingServer: true` adopted a dev server a PEER SESSION had
+started at 09:20:33 for a design review, which carried none of it, so the
+route had no service-role key with which to mint a storage grant.
+**Independently corroborated by the peer session that owns that server**,
+from evidence this session could not see: their `.env.local` lacks
+`SUPABASE_SERVICE_ROLE_KEY`, `POSTMARK_INBOUND_SECRET`,
+`ANTHROPIC_BASE_URL`, `HC_AUTHSERV_ID` and `HC_TRUSTED_HOP`, and their
+server's own request log shows it served the onboarding-spec traffic.
+`e2e-local-gate.md` titles that section **"Prerequisites (hermetic
+startup)"** and says to confirm the port is free — this run did not meet
+it.
+
+**Run 2 — 27 passed, 1 failed, 1 did not run.** The stale server was
+killed and Playwright spawned its own. **Both run-1 legs passed**
+(`ingestion.spec.ts:161` in **9.1 s** against its earlier 1.0 m timeout),
+which is what confirms run 1's classification rather than merely
+asserting it. A DIFFERENT leg failed — `ingestion.spec.ts:361`, the §4.5
+cancel window: `wanted extracting, still unsupported_type`. Evidenced
+from the arrival's own `public.arrival_events`:
 
 ```
-scanned    -> extracting        (attempt 1)  19:42:56.219993+00
+scanned    -> extracting                          19:42:56.219993+00
 extracting -> unsupported_type  unsupported_mime  19:42:56.327759+00
 ```
 
-The state the leg polls for existed for **108 milliseconds**, and the
-leg polls every 1500 ms; the verdict is `unsupported_mime` on the leg's
-own deliberately-malformed three-line PDF fixture. **This branch changes
-ZERO files under `app/`, `lib/`, `e2e/` or any path the extract worker
-or the e2e suite executes** — `git diff --name-only 31a7977..dd350ad`
-is 12 files in `supabase/tests`, 5 in `supabase/migrations` and 1 in
-`scripts/concurrency` — so 6A has no code channel to this leg, and the
-DDL path it does touch is not on the `extracting -> unsupported_type`
-edge.
+The state that leg polls for existed for **108 milliseconds**; it polls
+every **1500 ms**. The verdict is `normalizeArrival`'s judgement of the
+leg's OWN deliberately-malformed three-line PDF fixture.
 
-**It is left as a FINDING for round 17 rather than fixed here.** The
-build session does not repair e2e legs, M6 is reserved for dispositions,
-and a product failure is never re-run to green. What the increment can
-honestly claim is the DB evidence, which is complete and green; the
-browser gate is not, and this ADR says so rather than rounding it up.
+**Run 3 — 21 passed, 1 failed, 7 did not run.** Fully hermetic: **zero**
+project node processes before starting (the peer stood down entirely),
+stack and `hc_clamd` healthy, clean `db:reset`, verifier exact **67**,
+both servers spawned by Playwright. **Every extraction leg passed,
+including both that failed in run 1.** A THIRD, different leg failed —
+`ingestion.spec.ts:102` (FWD-01), with `forwarding_active_at` still null.
+Evidenced from **Playwright's own page snapshot at the moment of
+failure**, which shows the browser signed in as
+
+```
+extract.founder.1787603230839@example.com
+```
+
+while the leg asserts on `ingest.founder.<stamp>`'s subject. **That is a
+cross-spec session leak**: the extraction spec's founder was still
+authenticated when the ingestion spec navigated to its verification link,
+so the confirm route ran for the wrong account and the ingestion
+founder's subject was never activated.
+
+**What the three runs say together.** Three runs, three DISJOINT failure
+sets, every one of them inside the e2e suite's own fixtures, ordering or
+environment — and **this branch has no code channel to any of them**:
+`git diff --name-only 31a7977..dd350ad` is **12 files in
+`supabase/tests`, 5 in `supabase/migrations`, 1 in `scripts/concurrency`,
+and nothing else** — zero under `app/`, `lib/` or `e2e/`. The DDL that
+did change is not on the `extracting -> unsupported_type` edge and is
+nowhere near forwarding activation.
+
+**So the increment's DB evidence is green and its browser gate is RED,
+and this ADR says both.** The gate was NOT re-run to green: it was run
+three times, went a different colour of wrong each time, and is reported
+as it stands. **A fourth run would be re-running to green and was not
+attempted.**
+
+**This is a FINDING FOR ROUND 17, and it is about the SUITE.** Two legs
+of `ingestion.spec.ts` are fragile by construction — one samples a 108 ms
+window on a 1500 ms poll, one depends on browser session state left by a
+different spec file — and a third failure mode is a config footgun
+(`reuseExistingServer: true` silently dropping the env block, surfacing
+as a product-sounding string three layers from its cause). The build
+session does not repair e2e legs and M6 is reserved for dispositions.
 
 ---
 

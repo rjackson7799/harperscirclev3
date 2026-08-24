@@ -32,19 +32,27 @@ STATE — settled, do not redo or re-verify:
   app-layer unit) · lint/typecheck/production build clean · gitleaks
   **373 commits, no leaks**.
 
-  **THE LOCAL GATE IS RED AT THIS SHA AND THE PACKET SAYS SO.** 29
-  tests. Run 1: 18 passed / 2 failed (classified INFRASTRUCTURE from the
-  failure string — a peer's ten-hour-old dev server reused by
-  `reuseExistingServer: true` without the config's env block, so
-  `/api/upload/token` refused; remedied, and run 2 passing both legs
-  confirms it). Run 2: **27 passed / 1 failed / 1 did not run** — the
-  `§4.5 cancel window` leg lost a race it polls for every 1500 ms
-  against a state that lasted **108 ms** (the arrival's own
-  `arrival_events` trail is quoted in the packet). Two consecutive
-  failed runs at one SHA is RED by `e2e-local-gate.md`'s own rule, **no
-  third run was attempted**, and the leg was NOT re-run to green. The
-  branch changes zero files under `app/`, `lib/` or `e2e/`. **Packet
-  Q-I puts it to you.**
+  **THE LOCAL GATE IS RED AT THIS SHA AND THE PACKET SAYS SO.** 29 tests,
+  run THREE times, three DISJOINT failure sets, and NO fourth run:
+  · Run 1 (18/2) was NOT HERMETIC — `reuseExistingServer: true` adopted a
+    peer session’s dev server, which carried none of the config’s
+    `webServer` env block, so `/api/upload/token` had no service-role key.
+    INDEPENDENTLY CORROBORATED by that session from its own `.env.local`
+    and request log. Both its legs passed in run 2, one in 9.1 s against
+    an earlier 1.0 m timeout.
+  · Run 2 (27/1/1) failed `ingestion.spec.ts:361`, the §4.5 cancel window:
+    the polled state lasted **108 ms** against a **1500 ms** poll (the
+    arrival’s own `arrival_events` trail is quoted in the packet).
+  · Run 3 (21/1/7), fully hermetic — zero project node processes, both
+    servers spawned by Playwright — failed `ingestion.spec.ts:102`
+    (FWD-01) with the browser still signed in as the EXTRACTION spec’s
+    founder (`extract.founder.*` while asserting on `ingest.founder.*`):
+    a CROSS-SPEC SESSION LEAK, evidenced by Playwright’s own page
+    snapshot. Every extraction leg passed in that run.
+  All three are inside the suite’s fixtures, ordering or environment, and
+  the branch touches **zero** files under `app/`, `lib/` or `e2e/`. The
+  gate was NOT re-run to green. **Packet Q-I puts it to you, under both
+  readings of the flake rule, and asks you to disposition the SUITE.**
 
   ONE UNREPRODUCED VITEST TRANSIENT is also recorded rather than
   smoothed over, and it is not a defect claim: a

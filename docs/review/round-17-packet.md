@@ -152,13 +152,15 @@ any leg binds to (see the F12 line above).
 - **gitleaks** (the digest-pinned image `ci.yml` uses, run identically):
   `373 commits scanned` · `no leaks found`.
 - **Local gate (browser truth, LOCAL-only): 29 tests; RED at this SHA.**
-  Run 1: 18 passed / 2 failed. Run 2: **27 passed / 1 failed / 1 did not
-  run.** Two consecutive failed runs at one SHA is RED by the gate's own
-  rule. Full detail, both classifications and the arrival trail that
-  evidences the second are in the section below. **The total is stated
-  exactly rather than as "unchanged"** (R7/F-11's lesson): the gate is
-  **29** tests, as it was — 6A adds no e2e leg, because it adds no app
-  surface.
+  Run 1: 18 passed / 2 failed (NOT HERMETIC — a peer’s dev server was
+  adopted; independently corroborated by that session). Run 2: 27 passed /
+  1 failed / 1 did not run. Run 3, fully hermetic: 21 passed / 1 failed /
+  7 did not run. **Three disjoint failure sets, none with a code channel
+  from 6A**, and NO fourth run. **The total is stated exactly rather than
+  as "unchanged"** (R7/F-11’s lesson): the gate is **29** tests, as it
+  was — 6A adds no e2e leg, because it adds no app surface. Full detail,
+  all three classifications and the evidence for each are in the section
+  below.
 
 **One unreproduced transient, recorded as such and NOT claimed as
 diagnosed.** A first full `vitest` run failed one test —
@@ -176,91 +178,93 @@ after.
 
 ---
 
-## The local gate, and the one classification it required
+## The local gate — RED at this SHA
 
-`supabase/` moved, so F12 binds the full gate rather than letting it be
-inherited.
+**THE LOCAL GATE IS RED AT THIS SHA. THREE RUNS, THREE DISJOINT FAILURE
+SETS, AND NO FOURTH RUN.**
 
-**Run 1 failed two steps and the failure was DIAGNOSTIC, not a timeout.**
-Both failures were the two upload-driven legs — `extraction.spec.ts:166`
-(WRK-02 live) and `ingestion.spec.ts:161` (UPL-01 live) — and both
-reported the same locator text:
+`supabase/` moved, so F12 binds the full gate (29 tests). It was run three
+times and it is reported RED. Each failure was classified from evidence —
+the failure string, the database, or Playwright's own page snapshot — and
+never from the fact that a later run went differently.
 
-```
-118 × locator resolved to <p role="status" class="field-help">
-      Uploading is not available for this person.</p>
-```
+**Run 1 — 18 passed, 2 failed** (`extraction.spec.ts:166`,
+`ingestion.spec.ts:161`). Both upload-driven legs, both reporting
+`Uploading is not available for this person.` — `upload-form.tsx:63`, the
+branch taken when `POST /api/upload/token` returns non-OK. **NOT
+HERMETIC, and therefore not a measurement of this tree.**
+`playwright.config.ts` carries the full `webServer` env — the demo keys,
+the service-role key, `HC_DB_URL` — but only when IT starts the server;
+`reuseExistingServer: true` adopted a dev server a PEER SESSION had
+started at 09:20:33 for a design review, which carried none of it, so the
+route had no service-role key with which to mint a storage grant.
+**Independently corroborated by the peer session that owns that server**,
+from evidence this session could not see: their `.env.local` lacks
+`SUPABASE_SERVICE_ROLE_KEY`, `POSTMARK_INBOUND_SECRET`,
+`ANTHROPIC_BASE_URL`, `HC_AUTHSERV_ID` and `HC_TRUSTED_HOP`, and their
+server's own request log shows it served the onboarding-spec traffic.
+`e2e-local-gate.md` titles that section **"Prerequisites (hermetic
+startup)"** and says to confirm the port is free — this run did not meet
+it.
 
-That string is `upload-form.tsx:63`, reached when `POST
-/api/upload/token` returns not-ok. **Every non-upload leg passed** —
-a11y 5/5, the whole walkthrough, and the ingestion legs before the upload
-step.
-
-**Classification: INFRASTRUCTURE, and the gate document names this exact
-trap.** `playwright.config.ts` carries the full `webServer` env — the
-demo keys, the service-role key, `HC_DB_URL` — but only when IT starts
-the dev server; `reuseExistingServer: true` means a dev server already
-running is reused instead. The reused server had been started by a peer
-session **at 09:20, roughly ten hours earlier**, predating both the
-`db:reset` and the Docker Desktop restart, so it carried none of that
-env. `e2e-local-gate.md` says it in as many words: *"a dev server you
-already have running is reused, so kill stale ones when in doubt."*
-
-**Remedy applied, once, per the flake policy** (a failed step is re-run
-at most once and only after classifying from the retained trace): the
-stale dev server was killed, and the gate re-run with playwright starting
-its own. **A product failure is never re-run to green — it is a finding.
-This was not one, and the evidence for that is the failure string, not
-the fact that it passed afterwards.**
-
-**Run 2 result: 27 passed, 1 failed, 1 did not run.** Both run-1
-failures PASSED — step 12 in **9.1 s** against its earlier 1.0 m
-timeout — which is the confirmation that run 1's classification was
-right. But a DIFFERENT leg failed:
+**Run 2 — 27 passed, 1 failed, 1 did not run.** The stale server was
+killed and Playwright spawned its own. **Both run-1 legs passed**
+(`ingestion.spec.ts:161` in **9.1 s** against its earlier 1.0 m timeout),
+which is what confirms run 1's classification rather than merely
+asserting it. A DIFFERENT leg failed — `ingestion.spec.ts:361`, the §4.5
+cancel window: `wanted extracting, still unsupported_type`. Evidenced
+from the arrival's own `public.arrival_events`:
 
 ```
-e2eingestion.spec.ts:361 — cancel closes the member window honestly (§4.5 live)
-Error: pollState(09ff287d-…): wanted extracting, still unsupported_type
+scanned    -> extracting                          19:42:56.219993+00
+extracting -> unsupported_type  unsupported_mime  19:42:56.327759+00
 ```
 
-### THE GATE IS RED AT THIS SHA, AND IT IS REPORTED AS RED
+The state that leg polls for existed for **108 milliseconds**; it polls
+every **1500 ms**. The verdict is `normalizeArrival`'s judgement of the
+leg's OWN deliberately-malformed three-line PDF fixture.
 
-`e2e-local-gate.md`'s own rule: *"Two consecutive failed gate runs at
-one SHA = the gate is RED at that SHA, whatever a third run says."*
-**No third run was attempted**, and none should be — a product failure
-is never re-run to green.
-
-### What the evidence says about the run-2 failure
-
-Not an assertion — the arrival's own trail. `public.arrival_events` for
-`09ff287d-8565-4d41-8f72-315da9dc2365`:
+**Run 3 — 21 passed, 1 failed, 7 did not run.** Fully hermetic: **zero**
+project node processes before starting (the peer stood down entirely),
+stack and `hc_clamd` healthy, clean `db:reset`, verifier exact **67**,
+both servers spawned by Playwright. **Every extraction leg passed,
+including both that failed in run 1.** A THIRD, different leg failed —
+`ingestion.spec.ts:102` (FWD-01), with `forwarding_active_at` still null.
+Evidenced from **Playwright's own page snapshot at the moment of
+failure**, which shows the browser signed in as
 
 ```
-scanned    -> extracting                          attempt 1  19:42:56.219993+00
-extracting -> unsupported_type  unsupported_mime  attempt 1  19:42:56.327759+00
+extract.founder.1787603230839@example.com
 ```
 
-- The state the leg polls for existed for **108 milliseconds**; the leg
-  polls every **1500 ms**. It can only pass by catching that window.
-- The verdict is `unsupported_mime`, `normalizeArrival`'s judgement of
-  the leg's OWN deliberately-malformed three-line PDF fixture
-  (`%PDF-1.4
-% cancel-leg …
-%%EOF
-`, `ingestion.spec.ts:363`).
-- **This branch changes ZERO files under `app/`, `lib/`, `e2e/`** or any
-  path the extract worker or the e2e suite executes:
-  `git diff --name-only 31a7977..dd350ad` is **12 files in
-  `supabase/tests`, 5 in `supabase/migrations`, 1 in
-  `scripts/concurrency`** and nothing else. 6A has no code channel to
-  this leg, and the DDL it does change is not on the
-  `extracting -> unsupported_type` edge.
+while the leg asserts on `ingest.founder.<stamp>`'s subject. **That is a
+cross-spec session leak**: the extraction spec's founder was still
+authenticated when the ingestion spec navigated to its verification link,
+so the confirm route ran for the wrong account and the ingestion
+founder's subject was never activated.
 
-**So the classification offered is: a suite-ordering race, pre-existing,
-not a 6A regression.** That is offered as a classification WITH its
-evidence, not as a dismissal — the round is free to reject it. It is
-left as a FINDING rather than fixed here: the build session does not
-repair e2e legs, and M6 is reserved for dispositions. **See Q-I.**
+**What the three runs say together.** Three runs, three DISJOINT failure
+sets, every one of them inside the e2e suite's own fixtures, ordering or
+environment — and **this branch has no code channel to any of them**:
+`git diff --name-only 31a7977..dd350ad` is **12 files in
+`supabase/tests`, 5 in `supabase/migrations`, 1 in `scripts/concurrency`,
+and nothing else** — zero under `app/`, `lib/` or `e2e/`. The DDL that
+did change is not on the `extracting -> unsupported_type` edge and is
+nowhere near forwarding activation.
+
+**So the increment's DB evidence is green and its browser gate is RED,
+and this ADR says both.** The gate was NOT re-run to green: it was run
+three times, went a different colour of wrong each time, and is reported
+as it stands. **A fourth run would be re-running to green and was not
+attempted.**
+
+**This is a FINDING FOR ROUND 17, and it is about the SUITE.** Two legs
+of `ingestion.spec.ts` are fragile by construction — one samples a 108 ms
+window on a 1500 ms poll, one depends on browser session state left by a
+different spec file — and a third failure mode is a config footgun
+(`reuseExistingServer: true` silently dropping the env block, surfacing
+as a product-sounding string three layers from its cause). The build
+session does not repair e2e legs and M6 is reserved for dispositions.
 
 ---
 
@@ -340,21 +344,35 @@ app half must not over-claim at 6B.
 predicted.** M6 stays reserved for this round's dispositions.
 **Recommended: CONFIRM**, and spend M6 on Q-B and Q-D if both are taken.
 
-**Q-I · The local gate is RED at this SHA. How should the round take
-it?** Two runs, two different causes: run 1 infrastructure (a stale
-reused dev server, remedied and confirmed by run 2 passing both legs),
-run 2 the `§4.5 cancel window` leg losing a **108 ms** race it polls for
-every 1500 ms. The branch touches no `app/`, `lib/` or `e2e/` file at
-all, so there is no code channel from 6A to that leg.
-**Recommended: accept the DB evidence as green and the browser gate as
-RED-with-classification, and open a round-17 finding to make
-`ingestion.spec.ts:361` deterministic** — it should drive
-`/api/worker/extract` itself, or assert the cancel window against a
-state it can actually hold, rather than depending on the extract worker
-NOT having run yet. **It should not be re-run to green, and it was
-not.**
+**Q-I · THE LOCAL GATE IS RED AT THIS SHA. How should the round take it,
+and will it disposition the SUITE?** Three runs, three disjoint failure
+sets — run 1 not hermetic (a peer’s dev server adopted by
+`reuseExistingServer: true`, corroborated by that session’s own
+`.env.local` and request log), run 2 the §4.5 cancel leg losing a 108 ms
+race it polls for every 1500 ms, run 3 the FWD-01 leg running against a
+browser still signed in as the EXTRACTION spec’s founder. Every one is
+inside the suite’s fixtures, ordering or environment; the branch touches
+**zero** files under `app/`, `lib/` or `e2e/`.
 
----
+**Two readings of the rule, and the round should pick one rather than
+letting the build session pick for it.** Strictly, *"two consecutive
+failed gate runs at one SHA = the gate is RED, whatever a third run
+says"* — and three runs failed, so it is RED either way. On the other
+reading, run 1 was never a gate run at all: `e2e-local-gate.md` titles
+its own setup section **"Prerequisites (hermetic startup)"**, and a run
+that adopted a foreign, differently-configured server did not measure
+this tree. **This packet reports RED under BOTH readings** and does not
+use the reclassification to upgrade the colour.
+
+**Recommended: accept the DB evidence as green, record the browser gate
+as RED, and open a round-17 finding against the SUITE** — make
+`ingestion.spec.ts:361` drive `/api/worker/extract` itself rather than
+depending on the extract worker not having run yet; isolate browser
+session state between spec files so `ingestion.spec.ts:102` cannot run
+as another spec’s founder; and consider `reuseExistingServer: false`
+for the gate, since adopting a foreign server surfaces as a
+product-sounding string three layers from its cause. **The gate was not
+re-run to green and a fourth run was not attempted.**
 
 ## Coverage rows
 
