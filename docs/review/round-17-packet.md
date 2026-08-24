@@ -18,6 +18,28 @@ rather than at a run three commits behind it (R7/F-8).
 | Round-17 packet head | `6c280ec` | this file and the round-17 kickoff — **docs-only** | **green**, run `32770470394` (23 steps, 22 success, 1 skipped) |
 | CI-record head | `2f4c4a6` | this file again, adding the run id above — **docs-only**, and the last commit on the branch | its own docs-only run; the evidence run is the one named on the row above |
 
+> **AMENDED AT ROUND 17 (ADR-0025 D7, from F-4).** That last row was
+> **false when the review read it**: three commits stood after `2f4c4a6`
+> — `fd1cfbd`, `9c28f7d`, `874432f` — and one of them is titled *"the
+> ledger names its own last commit."* Everything it asserted was true at
+> the real head, which the review confirmed independently, so it cost the
+> round nothing except the exact thing the convention exists for. That is
+> R7/F-9's shape, in the packet written to prevent it.
+>
+> **A packet cannot name its own SHA, so the last row is replaced by the
+> RULE, which is checkable at any future head and cannot go stale:**
+>
+> **Every commit after the evidence head is docs-only.** Verify it —
+> do not take it:
+>
+> ```
+> git diff --name-only <evidence-head>..HEAD -- . ':(exclude)docs'
+> ```
+>
+> returning **empty**. The evidence head for the 6A build is `dd350ad`;
+> the evidence head for the round-17 dispositions is `b324e95`
+> (ADR-0025 D14). Both bind by that rule and by no SHA in this table.
+
 The docs head `e0186ce` moves three files, all under `docs/`. The TREE
 RELATIONSHIP is what binds a leg, and it is docs-only.
 
@@ -344,6 +366,19 @@ app half must not over-claim at 6B.
 predicted.** M6 stays reserved for this round's dispositions.
 **Recommended: CONFIRM**, and spend M6 on Q-B and Q-D if both are taken.
 
+> **AMENDED AT ROUND 17 (ADR-0025 D7, from F-7).** *"As the plan
+> predicted"* attributes a number to the plan that the plan does not
+> state. The plan says **6 of ≤ 7**, in four places, all with M7
+> unconsumed — *"M7 is NOT consumed and the bound closes at 6 of ≤ 7"*
+> (`slice-6-plan.md:926`, and again at `:1165`, `:1234`, `:1291`) —
+> because it counted M6's dispositions as spent. Five was the build's
+> number, not the plan's; the substance (M7 unconsumed) was right.
+>
+> **RULED: CONFIRM, with the count as it now stands — six spent, M7
+> UNCONSUMED**, M6 being `20260824120006_disposition_guards.sql`. M6 was
+> spent on Q-B and Q-D as recommended, and Q-D was taken as the whole
+> class rather than as one CHECK (ADR-0025 D1).
+
 **Q-I · THE LOCAL GATE IS RED AT THIS SHA. How should the round take it,
 and will it disposition the SUITE?** Three runs, three disjoint failure
 sets — run 1 not hermetic (a peer’s dev server adopted by
@@ -391,9 +426,14 @@ running.
 
 - **Local evidence:** at `dd350ad`'s tree, quoted verbatim above (one
   head, complete summary lines).
-- **PR: #11**, opened by the owner 2026-08-24 — base `main`, head
-  `slice/6-care-inbox` @ `9c28f7d`, 16 commits / 23 files, **DO NOT
-  MERGE without owner sign-off** in the title and the body. (`gh` is
+- **PR: #11**, opened by the owner 2026-08-24 — base `main`, head branch
+  `slice/6-care-inbox`, **DO NOT MERGE without owner sign-off** in the
+  title and the body. *(**AMENDED AT ROUND 17**, F-4: this row named a
+  head SHA `9c28f7d` and a count "16 commits / 23 files", both of which
+  move on every push and both of which were already stale when the
+  review read them — the real head was `874432f`, 17 commits / 23 files.
+  A PR row names the PR and the base; the head and the counts are read
+  from the API at the moment they matter.)* (`gh` is
   UNAUTHENTICATED in the build session and device-flow is out of bounds,
   so opening it was always the owner's step.) GitHub's "Able to merge" is
   mechanical — it means no conflicts, not that ADR-0006 is satisfied.

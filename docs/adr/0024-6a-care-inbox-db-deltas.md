@@ -1,11 +1,32 @@
 # ADR-0024 — Slice 6A: the Care Inbox DB increment, design decisions and deltas as built
 
-**Status:** Proposed — the as-built record for round 17.
+**Status:** **Accepted — RATIFIED AS AMENDED at round 17** (ADR-0025),
+pending owner sign-off and merge; the merge SHA and its CI run belong in
+ADR-0025's sign-off addendum, per the ADR-0020 / ADR-0021 precedent.
+
+**Where this document was amended, and by whom.** Round 17 amended it in
+five places, and the original prose is preserved at every site with the
+amendment beside it (the ADR-0023 D3 rule: a record that is quietly
+rewritten stops being a record). The five, each marked **AMENDED AT
+ROUND 17** at its site:
+
+1. **M1's property sentence and its scope** — the `23502` class was open
+   on `hc.approve_proposal`'s CONFLICT arm (ADR-0025 D1, S-1).
+2. **D1's "ONE CONSEQUENCE"** — there are two (ADR-0025 D5, from F-2),
+   and the first of them is now CLOSED (ADR-0025 D3, Q-B).
+3. **D3** — the pattern departure the retirement leaves behind, recorded
+   with the condition under which it is repaid (ADR-0025 D9, Q-E).
+4. **D10's "all ask the same question of the same arrival"** — two of the
+   five carried liveness and three did not (ADR-0025 D4, from F-3).
+5. **D12's bound** — 5 of ≤ 7 becomes **6 of ≤ 7** now that M6 is spent,
+   with M7 still UNCONSUMED (ADR-0025 D7, from F-7).
+
 **Date:** 2026-08-24
 **Scope:** Decisions made while building 6A (five migrations,
 `20260824120001`–`20260824120005`; **M6 stays reserved** for round-17
 dispositions and **M7 closes UNCONSUMED**, so Q2's bound stands at
-**5 of ≤ 7**), per the slice-6 plan (`docs/review/slice-6-plan.md`,
+**5 of ≤ 7** — *AMENDED AT ROUND 17: M6 is spent, `20260824120006`, and
+the bound closes at **6 of ≤ 7***), per the slice-6 plan (`docs/review/slice-6-plan.md`,
 PLANNED–RULED, Q1–Q10 SETTLED 2026-08-24, every recommendation accepted
 as written) and the 6A build kickoff. Authority order applied: the plan
 (the M-rows are BINDING) → TSD §4.9 whole, §4.2/§4.5/§4.7, §3.2–§3.4,
@@ -88,6 +109,32 @@ with neither `occurred_on` nor `local_at` raises **23514**, not 23502 — a
 different code, a different class, and not what this finding is about.
 Recorded here and carried to round 17 rather than folded in silently.
 
+> **AMENDED AT ROUND 17 (ADR-0025 D1, packet Q-C and Q-D).** The scope
+> above is ratified and the property sentence is not. It was wrong in two
+> directions at once.
+>
+> **It understated the classes.** The same click reached five more raw
+> classes than `23502`, because `p_edits -> 'fields'` is merged at
+> `20260824120003:478` with no validation at all, before every guard:
+> `23514 tasks_check` (guarded on the conflict arm, unguarded on the
+> ordinary one), `23514 temporal_shape` (the class named above),
+> `22P02`/`22007` through every cast the insert arms perform, `23503` on
+> a payload-supplied `episode_id`, and `22023`/`22P02` through `parents`.
+>
+> **It overstated its own class.** The seven columns are the ORDINARY
+> arm's. M1's guard block sits inside the `else` branch (`:541-550`), and
+> the CONFLICT arm's own guard (`:492-497`) checks `field`, `value` and
+> `domain` — **not `risk_class`**, which `use_new` writes into a NOT NULL
+> column at `:673`. So `23502` was reachable on the conflict arm **with
+> no edit at all**, in the same function, while this section recorded the
+> class as closed. Found by the dispositions session re-deriving the
+> enumeration (ADR-0025 S-1), not by the review.
+>
+> M6 closes all six at the destination and the sentence above is true as
+> written for the first time. `own_domain_undeclared` (P0001) stays as
+> the one NAMED-and-not-taken channel, for the reason this section gives:
+> it is a named refusal, not a raw error.
+
 ### R4/F-10 — RECORDED, and NOT taken at this layer
 
 **The finding:** *"A stage-2 duplicate always yields a silent
@@ -156,6 +203,35 @@ inventing an exemption — or narrowing a second function — is an owner
 decision, not a build decision. Pinned visibly at 060:16 and put to round
 17 (question 2 below).
 
+> **AMENDED AT ROUND 17 — "ONE" IS TWO, and the first one is now CLOSED.**
+>
+> **The consequence above is CLOSED (ADR-0025 D3, packet Q-B).** M6 adds
+> view×5 to `hc.create_manual_proposal` in the LADDER form — not the
+> arrival form, because the arrival is created in the same transaction
+> and so can carry no `object_shares` row, which makes `hc.visible_at`'s
+> share rung dead there. `060:16` is inverted in M6's own commit. The
+> cost is real and is on the record: manual entry now requires view×5, so
+> a below-cliff member loses it entirely rather than losing only the half
+> M2 took. `024:14` is the green assertion that says so and it was
+> inverted with its argument written at the site.
+>
+> **THE SECOND CONSEQUENCE (ADR-0025 D5, from F-2).** The added predicate
+> hardcodes `hc.all_domains(), true`, which makes `hc.visible_at` rung 3
+> — *"unresolved or empty lineage: manage on all five, or nothing"* —
+> unreachable for it, while the manage check immediately above still
+> passes `v_prop.taint_resolved` and can take rung 3. So on an
+> UNRESOLVED-lineage proposal a `care_circle`-tier actor holding manage×5
+> was allowed by the old check and is refused by the new one — **and the
+> refusal reason is the care_circle ceiling (rung 4), not the view×5
+> ladder.** Latent: nothing in the tree writes `taint_resolved` false.
+>
+> **Q7 is RATIFIED UNCHANGED.** Passing `v_prop.taint_resolved` into the
+> new predicate would make it a *different* predicate from the one
+> `hc.log_artifact_read` and the artifact route enforce — which is the
+> rule-inventing Q7 forbids — and the outcome it produces is correct on
+> its own terms. Only this record needed amending. The divergence is
+> pinned as pure `hc.visible_at` calls at `064:17-19`.
+
 ## D2 — M2: `hc.extractions_for`'s gate, and why there is no band column
 
 ADR-0019 Q-C's queued candidate, whose consumer is finally real: §4.2.3's
@@ -215,6 +291,34 @@ stays exactly the five worker stages with 019 untouched; and no worker
 can ever lease a review. **The invariant is not weakened by accident — it
 is retired because it stopped being true**, and the CHECK carries the
 part of it that still is.
+
+> **AMENDED AT ROUND 17 (ADR-0025 D9, packet Q-E): RATIFIED, and one
+> thing the argument above does not consider is recorded.**
+>
+> All three premises were re-derived at the round and all three hold, so
+> the retirement stands. But D3 presents a BINARY — seed the worker
+> table, or retire the FK — and there is a third option: **a small closed
+> stage-vocabulary table that BOTH `hc.stage_budgets` and
+> `hc.arrival_transitions` reference.** It keeps referential integrity,
+> keeps the vocabulary enumerable by query, and is **this repo's own
+> shipped pattern**: `hc.reason_codes`, `hc.log_event_types` and
+> `arrival_transitions` itself are all seeded lookup tables, and the
+> migration that created `arrival_transitions` names the pattern in its
+> own comment — *"the `hc.stage_budgets` pattern: `hc` schema, seeded,
+> append-by-migration"* (`20260816010009:42-43`).
+>
+> That migration calls the result *"closed, seeded, append-by-migration
+> and typo-proof"*. Three of those four still hold. **The stage
+> vocabulary is no longer append-by-DATA**: a CHECK is not enumerable,
+> and adding a sixth stage is now a constraint drop-and-add rather than
+> an insert.
+>
+> **NOTED rather than taken.** Building the table now would be new DDL
+> for a change nobody has asked for, in a slot reserved for dispositions,
+> to fix an ergonomic rather than a defect. **The condition is stated
+> instead: the next time a stage is added, or the stage vocabulary needs
+> to be read by query, that is the migration that builds it** — and the
+> next author should not read the inline CHECK as house style.
 
 ## D4 — M3: the terminal arm is a WRITE HALF that CONSULTS the graph
 
@@ -373,6 +477,37 @@ manifest, the decision and the receipt cannot disagree about who may see
 this arrival. 060:13, 062:11–12 and 063:12–13 assert it from three
 different surfaces with the same member.
 
+> **AMENDED AT ROUND 17 (ADR-0025 D4, from F-3): the sentence was true of
+> the GATE and false of the QUESTION, and M6 makes it true of both.**
+>
+> All five asked the same `visible_at` question. They did not ask it of
+> the same THING. Two read the arrival ROW and required it live, with the
+> `deleted_at is null` their shared source `hc.log_artifact_read`
+> (`20260821120001:79-82`) carries; three never read the row at all:
+>
+> | surface | `visible_at` gate | `deleted_at is null` |
+> |---|---|---|
+> | `hc.extractions_for` (`20260824120002:628-631`) | yes | **yes** |
+> | `hc.receipt_for` (`20260824120005:103-106`) | yes | **yes** |
+> | `hc.approve_proposal` (`:611`) | yes | no |
+> | `hc.reject_proposal` (`:298`) | yes | no |
+> | `arrival_renditions_select` (`20260824120004:118-122`) | yes | no |
+>
+> So a soft-deleted arrival could be DECIDED and its manifest READ by a
+> member who could not read its artifact, its facts or the receipt for
+> the decision they had just made — *"you may decide it but not see what
+> you decided"*, which is what §4.2.4's `visible` flag exists to prevent.
+> Unreachable: nothing in the tree writes `arrivals.deleted_at`.
+>
+> **Taken anyway at M6, on the round-15 FINDING 2 precedent** recorded in
+> `056`'s own header, where `hc.list_known_senders` omitted the identical
+> guard, was equally unreachable, and was fixed *"on the live-actor
+> principle, not on a live exploit."* All three surfaces now carry it —
+> the two functions in `hc.log_artifact_read`'s own EXISTS shape, so zero
+> rows is the ONE shape for nonexistent, foreign, deleted, revoked and
+> below-cliff alike; the policy by `ALTER POLICY`, so there is no window
+> in which the table is readable without one. Driven at `064:11-13`.
+
 ## D11 — Suite re-pins forced by the increment (all same-commit)
 
 The ING-10 exact-set discipline working as designed. **Every one of these
@@ -411,6 +546,20 @@ needs no DDL — exactly as the plan predicted, so the over-provisioned
 slot was not spent.
 
 The tree moves **62 → 67 migrations / 59 → 64 pgTAP files**.
+
+> **AMENDED AT ROUND 17 (ADR-0025 D7, from F-7): the bound closes at
+> 6 of ≤ 7, which is the number the plan predicted.** M6 is now spent —
+> `20260824120006_disposition_guards.sql`, the round-17 dispositions —
+> and **M7 still closes UNCONSUMED**. The plan said *"M7 is NOT consumed
+> and the bound closes at 6 of ≤ 7"* in four places (`slice-6-plan.md:926`,
+> `:1165`, `:1234`, `:1291`), counting M6's dispositions as spent; the
+> packet's Q-H attributed "5 of ≤ 7" to the plan, which is the build's
+> number and not the plan's. Both are now the same number.
+>
+> The tree moves **62 → 68 migrations / 59 → 65 pgTAP files**, and the
+> leg table below is superseded for the row counts by ADR-0025 D14:
+> pgTAP **1610 across 65 files**, concurrency **75/75**, vitest
+> **689/689** unchanged, everything else unchanged.
 
 | Leg | At `main` `31a7977` | At the 6A head |
 |---|---|---|
