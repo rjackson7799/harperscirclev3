@@ -391,9 +391,12 @@ running.
 
 - **Local evidence:** at `dd350ad`'s tree, quoted verbatim above (one
   head, complete summary lines).
-- **PR:** to be opened by the owner — `gh` is UNAUTHENTICATED in the
-  build session and device-flow is out of bounds. Base `main` @
-  `31a7977`, **DO NOT MERGE** banner in the description.
+- **PR: #11**, opened by the owner 2026-08-24 — base `main`, head
+  `slice/6-care-inbox` @ `9c28f7d`, 16 commits / 23 files, **DO NOT
+  MERGE without owner sign-off** in the title and the body. (`gh` is
+  UNAUTHENTICATED in the build session and device-flow is out of bounds,
+  so opening it was always the owner's step.) GitHub's "Able to merge" is
+  mechanical — it means no conflicts, not that ADR-0006 is satisfied.
 - **Pins:** no drift this slice — Supabase CLI as pinned, image
   `public.ecr.aws/supabase/postgres:17.6.1.106`, Node 22.15.0 /
   npm 10.9.2.
@@ -408,12 +411,18 @@ running.
 - **A standing transient to expect in CI:** a "Start local Postgres"
   `toomanyrequests` failure is the ECR Public anonymous quota on the
   runners, never a repo defect — re-run later.
-- **CI at the pushed head:** push run **32770470394** @ `6c280ec` —
-  conclusion **success**, 23 steps, 22 success, the single `skipped`
-  being the on-failure log capture (the same shape as the base run at
-  `31a7977`). Secret scanning, service-role containment, the schema pin,
-  the clean reset, the exact-state verifier, pgTAP, concurrency,
-  db:verify under --fail-on warning, vitest, the G9 generator check, the
-  FULL upgrade rehearsal, lint and typecheck all green on the runner.
-  The **pull_request** run fires when the owner opens the PR; its id is
-  confirmable via the public API then.
+- **CI green on the runner at the FINAL head, both events** (the round-8
+  convention):
+  · **push** run **32774474238** @ `9c28f7d` — **success**
+  · **pull_request** run **32775812160** @ `9c28f7d` — **success**
+  The earlier push run **32770470394** @ `6c280ec` (23 steps, 22 success,
+  the single `skipped` being the on-failure log capture) is the one the
+  evidence block was written against; the two above supersede it at the
+  branch head and agree with it. Secret scanning, service-role
+  containment, the schema pin, the clean reset, the exact-state verifier,
+  pgTAP, concurrency, db:verify under `--fail-on warning`, vitest, the G9
+  generator check, the FULL upgrade rehearsal, lint and typecheck all
+  green on the runner.
+
+  **CI does not run the browser gate.** A green badge on this PR is not
+  evidence about the gate, which is RED — see the section above and Q-I.

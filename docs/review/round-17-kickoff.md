@@ -76,8 +76,11 @@ THE TASK — the round-17 review leg, the ADR-0006 / round-8 cadence:
      §4.2/§4.5/§4.7, §3.2–§3.4, §3.7, §6.4, PRD §4.2 whole, §6.4,
      §7.3–§7.4, and the inherited obligations in ADR-0023 (D17's owed
      findings the plan takes; D24's rulings) + ADR-0019 Q-C.
-  2. Push the branch and open the PR at the START of this session if not
-     already done; confirm CI green on the pushed head (public API,
+  2. **The PR is ALREADY OPEN: #11** (base `main`, head
+     `slice/6-care-inbox` @ `9c28f7d`, DO NOT MERGE in the title) and CI
+     is green on the runner at that head for BOTH events — push
+     `32774474238`, pull_request `32775812160`. Do NOT open a second one.
+     Re-confirm CI yourself on whatever head you review (public API,
      anonymous — `gh` is UNAUTHENTICATED, never device-flow; **pending
      never counts as green**). A "Start local Postgres"
      `toomanyrequests` failure is the ECR Public anonymous quota on the
