@@ -3,9 +3,10 @@ import { createHash } from 'node:crypto';
 import { readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { CORPUS_ROOT, corpusManifest } from '@/lib/eval/manifest';
-import { developmentCorpus, readCorpusFile, type CorpusItem } from '@/lib/eval/corpus';
+import { corpusMime, developmentCorpus, readCorpusFile, type CorpusItem } from '@/lib/eval/corpus';
 import { blindCorpus } from '@/lib/eval/blind';
 import { isKnownField, riskClassFor } from '@/lib/extraction/fields';
+import { normalizeArrival } from '@/lib/pipeline/render';
 
 // ============================================================================
 // B1 · The G9 corpus (slice-5 plan B1, Q5 SETTLED; TSD §6.10; PRD §6.4,
@@ -136,10 +137,15 @@ describe('B1 · labels are well-formed and agree with the field catalogue', () =
   });
 });
 
-describe('B1 · the corpus spec is MET, not merely written down', () => {
+describe('B1 · the corpus spec is MEASURED, not merely written down', () => {
   const { minimums } = manifest;
 
-  it('every banded field clears the stated blind support', () => {
+  // AMENDED at the round-16 sign-off. This block was titled "is MET" and the
+  // leg below "clears the stated blind support"; both were true of the LABELS
+  // and false of the MATERIAL (ADR-0023 D11, spec §4.2). The assertions are
+  // unchanged and still worth keeping — they are what a grown corpus has to
+  // reach — but they are now named for what they actually measure.
+  it('every banded field clears the stated LABELLED blind support', () => {
     for (const field of manifest.band_fields) {
       const supporting = blind.filter((i) => i.labels.some((l) => l.field === field));
       expect(supporting.length, `blind support for ${field}`).toBeGreaterThanOrEqual(
@@ -199,5 +205,126 @@ describe('B1 · the corpus spec is MET, not merely written down', () => {
     // The injection probe is B5's INJ-01 fixture; it EXTRACTS — the whole
     // point is that a fully successful injection still lands as a proposal.
     expect(dev.some((i) => i.document_class === 'injection_probe')).toBe(true);
+  });
+});
+
+// ============================================================================
+// §4 RESTATED AT THE ROUND-16 SIGN-OFF — support is a RENDITION, not a label
+// (owner ruling 2026-08-23; the finding is ADR-0023 D11, the ruling is D24).
+//
+// A label records what an item IS. It does not establish that the item
+// CONTAINS a rendition of that value — and for eight of the twelve blind
+// items it does not: the photo-class encoder in scripts/fixtures/g9-build.mjs
+// never renders a glyph, because paintRows uses a row's text only to SIZE a
+// rectangle. So `Elmwood Drug` lives in corpus.json and in no byte the model
+// is given, and a flawless reader scores a miss on it.
+//
+// Every number the spec's §4 used to state was therefore larger than anything
+// a run could demonstrate, and no floor in §6 was arithmetically reachable.
+// This block MEASURES the real support, through the pipeline's own
+// normalizeArrival, so the spec cannot drift back into aspiration. It is
+// written to go RED the moment the corpus grows (§7 row 1 or row 2) — and that
+// red is the signal to re-pin these numbers in the same commit as the ADR
+// recording the corpus change, never to loosen them.
+// ============================================================================
+
+describe('B1 · §4.2 — readable support, measured through the pipeline itself', () => {
+  const renditionOf = (item: CorpusItem): string => {
+    const result = normalizeArrival(readCorpusFile(item), corpusMime(item));
+    return result.outcome === 'rendered' ? (result.text ?? '').toLowerCase() : '';
+  };
+  const renditions = new Map(blind.map((i) => [i.id, renditionOf(i)]));
+  const readable = (item: CorpusItem, field: string): boolean =>
+    item.labels.some(
+      (l) => l.field === field && renditions.get(item.id)!.includes(String(l.value).toLowerCase()),
+    );
+
+  it('exactly four blind items carry a rendition of anything they are labelled with', () => {
+    const carrying = blind
+      .filter((i) => i.labels.some((l) => readable(i, l.field)))
+      .map((i) => i.id)
+      .sort();
+    expect(carrying).toEqual([
+      'blind-discharge-01',
+      'blind-discharge-02',
+      'blind-eob-01',
+      'blind-eob-02',
+    ]);
+    // All four are the same source type, which is why §4.2's second column is
+    // 1 for every banded field: §4's ≥ 2 source-type minimum is met by
+    // NOTHING once the unreadable items stop counting.
+    expect(
+      new Set(blind.filter((i) => carrying.includes(i.id)).map((i) => i.source_type)),
+    ).toEqual(new Set(['born_digital_pdf']));
+  });
+
+  it('the other eight carry NOTHING — not a partial rendition, none at all', () => {
+    const unreadable = blind.filter((i) => renditions.get(i.id)!.length === 0);
+    expect(unreadable.length).toBe(8);
+    for (const item of unreadable) {
+      expect(item.labels.length, `${item.id} is labelled`).toBeGreaterThan(0);
+      for (const label of item.labels) {
+        expect(readable(item, label.field), `${item.id}:${label.field}`).toBe(false);
+      }
+    }
+  });
+
+  it('readable support per banded field is what the spec §4.2 states', () => {
+    // [readable support, distinct readable source types] — pinned exactly. A
+    // number moving here means the corpus moved, and the spec table moves with
+    // it in the same commit.
+    const expected: Record<string, [number, number]> = {
+      document_date: [4, 1],
+      provider: [4, 1],
+      amount: [2, 1],
+      policy_number: [2, 1],
+      member_id: [2, 1],
+      coverage_determination: [2, 1],
+      medication_name: [2, 1],
+      medication_dose: [2, 1],
+      medication_frequency: [2, 1],
+      allergy_substance: [2, 1],
+      appointment_date: [1, 1],
+      appointment_time: [1, 1],
+    };
+    const measured: Record<string, [number, number]> = {};
+    for (const field of manifest.band_fields) {
+      const supporting = blind.filter((i) => readable(i, field));
+      measured[field] = [supporting.length, new Set(supporting.map((i) => i.source_type)).size];
+    }
+    expect(measured).toEqual(expected);
+  });
+
+  it('the §4 minimums are NOT met on that set — which is what keeps G9 closed', () => {
+    const shortfalls: string[] = [];
+    for (const field of manifest.band_fields) {
+      const supporting = blind.filter((i) => readable(i, field));
+      if (supporting.length < manifest.minimums.blind_support_per_field) {
+        shortfalls.push(`${field}:support`);
+      }
+      if (
+        new Set(supporting.map((i) => i.source_type)).size <
+        manifest.minimums.source_types_per_field
+      ) {
+        shortfalls.push(`${field}:source_types`);
+      }
+    }
+    // TEN of twelve fields miss the support minimum; ALL TWELVE miss the
+    // source-type minimum. Asserting the SHORTFALL rather than compliance is
+    // deliberate: this is the fact that keeps the G9 gate closed, and if it
+    // ever stops being true, that is a corpus change someone has to record.
+    expect(shortfalls.length).toBe(22);
+    expect(shortfalls).toContain('appointment_date:support');
+    expect(shortfalls).toContain('document_date:source_types');
+
+    // The arithmetic §6 now carries beside every floor: max recall is
+    // readable / labelled, because the rest contain nothing to read. The
+    // highest any banded field reaches is 0.50 against a LOWEST floor of 0.85,
+    // so no row is signable and none may be argued into being signed.
+    const ceilings = manifest.band_fields.map((field) => {
+      const labelled = blind.filter((i) => i.labels.some((l) => l.field === field)).length;
+      return blind.filter((i) => readable(i, field)).length / labelled;
+    });
+    expect(Math.max(...ceilings)).toBeLessThanOrEqual(0.5);
   });
 });
