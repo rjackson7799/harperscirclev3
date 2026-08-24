@@ -110,6 +110,11 @@ select is((
     'presence(p_subject uuid)',
     'product_state(p_arrival uuid)',
     'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
+    -- 6A M5: §4.2.4's receipt. proposal_commits holds NO member privilege
+    -- and does not get a blanket one — the table IS the
+    -- one-proposal-one-object claim, so the receipt gets ONE definer
+    -- with ONE gate (the arrival's view-over-all-five, matching M2)
+    'receipt_for(p_arrival uuid)',
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
     'record_auth_failure(p_identifier text)',
     'record_auth_success(p_kind text)',
@@ -185,7 +190,8 @@ select is((
         'mint_step_up','note_suspicious_attempts',
         'outbox_ack','outbox_drain','pending_security_actions','presence',
         'product_state',
-        'propagate_taint_growth','reclassify_taint','record_auth_failure',
+        'propagate_taint_growth','receipt_for','reclassify_taint',
+        'record_auth_failure',
         'record_auth_success','record_context_for','record_tombstone',
         'reject_proposal','remove_member',
         'request_freeze','resolve_duplicate','resolve_forwarding',
@@ -195,7 +201,7 @@ select is((
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the seventy-one boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the seventy-two boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -346,6 +352,9 @@ with actual as (
   -- as approve; terminalize_decided_arrival is a write half and appears in
   -- no grant row by design
   union all select 'reject_proposal', 'authenticated'
+  -- 6A M5: the receipt read — authenticated only, gated in-function on
+  -- the arrival exactly as approve, reject and extractions_for are
+  union all select 'receipt_for', 'authenticated'
   -- 5A M3: close_extraction_run is a trigger function — hc_internal-owned,
   -- granted to nobody; it appears in no grant row by design
 )
