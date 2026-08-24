@@ -1176,9 +1176,12 @@ written; shipped migrations are never edited.
 slots, one of them a REPLACEMENT that removes an AGPL obligation.**
 `mupdf` 1.28.0 (**AGPL-3.0-or-later**) OUT; `pdfjs-dist` 6.2.108
 (**Apache-2.0**) + `@napi-rs/canvas` 1.0.8 (**MIT**) IN as §6.3's
-rasterizer; `tesseract.js` 7.0.0 (**Apache-2.0**) for §6.9's OCR. Net two
-runtime dependencies become three and the licence posture strictly
-improves — that is the honest arithmetic and it is the argument. **Every
+rasterizer; `tesseract.js` 7.0.0 (**Apache-2.0**) for §6.9's OCR. **The
+bound is three ADDITIONS, not a total: the argued runtime set goes from
+TWO to FOUR** — one package removed, three added — **and the licence
+posture strictly improves.** Both halves belong in the argument; a plan
+reporting "two become three" would be doing to this bound what round 16
+caught being done to `mupdf`'s licence. **Every
 licence above was read from the npm registry in this planning session and
 MUST be re-verified from the installed manifest** (`node -e
 "console.log(require('./node_modules/<pkg>/package.json').license)"` —
