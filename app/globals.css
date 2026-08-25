@@ -117,10 +117,21 @@ h2 {
 }
 
 /* Inputs (§5) — white fill, 9–10px radius; the 2px green focus ring the
-   spec requires the build to add (§8). */
+   spec requires the build to add (§8).
+
+   6B close-out: `input[type='file']` JOINED this list. It was the one
+   visible input type the rule never enumerated, so the upload form's
+   control inherited no box and no floor — the native widget measured
+   253×21 at 390px, well under §8.7's 44. Nothing had caught it because
+   nothing had ever LOOKED: /upload got its first browser audit from the
+   R5/F-6 pinned-manifest legs (a11y.spec.ts:344), which failed on it
+   immediately. An enumerated floor silently exempts whatever nobody
+   listed, so the CI half now pins the SELECTOR LIST, not just the
+   declaration (tests/design/touch-targets.test.ts). */
 input[type='text'],
 input[type='email'],
 input[type='password'],
+input[type='file'],
 select,
 textarea {
   width: 100%;

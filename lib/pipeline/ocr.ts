@@ -64,17 +64,44 @@ type TesseractWorker = {
   terminate: () => Promise<unknown>;
 };
 
+/**
+ * Where the engine's two moving parts actually live in THIS install.
+ *
+ * `langPath` was resolved this way from the start. `workerPath` was NOT —
+ * it was left to tesseract.js's own default, which computes it from the
+ * library's `__dirname` (`src/worker/node/defaultOptions.js`). Under plain
+ * Node — every unit test here, including the ones that run the REAL engine
+ * — that is a true directory and the worker spawns. Inside the Next server
+ * bundle it is rewritten, and the 6B close-out gate watched the worker try
+ * to spawn `C:\ROOT\node_modules\tesseract.js\src\worker-script\node\
+ * index.js`: MODULE_NOT_FOUND, uncaught, on every page. §6.9's reading aid
+ * was absent from the running app while the suite stayed green, because
+ * the axis that broke was never mocked-vs-real — it was
+ * plain-Node-vs-bundled-runtime, and only an e2e leg crosses that.
+ *
+ * Both paths are resolved HERE, the same createRequire way, so the
+ * engine's location is a fact of the installed tree and no bundler is
+ * asked to guess it.
+ */
+export function engineLocations(): { langPath: string; workerPath: string } {
+  const require = createRequire(import.meta.url);
+  return {
+    // The engine's own data package, resolved locally — the `4.0.0_best_int`
+    // build is exactly what the library's lstmOnly CDN default names.
+    langPath: join(
+      dirname(require.resolve('@tesseract.js-data/eng/package.json')),
+      '4.0.0_best_int',
+    ),
+    workerPath: require.resolve('tesseract.js/src/worker-script/node/index.js'),
+  };
+}
+
 async function bootWorker(): Promise<TesseractWorker> {
   const { createWorker, OEM } = await import('tesseract.js');
-  const require = createRequire(import.meta.url);
-  // The engine's own data package, resolved locally — the `4.0.0_best_int`
-  // build is exactly what the library's lstmOnly CDN default names.
-  const langPath = join(
-    dirname(require.resolve('@tesseract.js-data/eng/package.json')),
-    '4.0.0_best_int',
-  );
+  const { langPath, workerPath } = engineLocations();
   return (await createWorker('eng', OEM.LSTM_ONLY, {
     langPath,
+    workerPath,
     gzip: true,
     // No cache reads or writes: the resolved package IS the source, and a
     // worker must not scatter traineddata copies into its working directory.

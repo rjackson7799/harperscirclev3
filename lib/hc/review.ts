@@ -1,5 +1,6 @@
 import 'server-only';
 import { withRequestRole, type RequestClaims } from '@/lib/db/request-role';
+import { isoText, isoTextOrNull } from './rows';
 
 /**
  * The review screen's data half (6B B6; slice-6 plan B6/B7; PRD §4.2.3).
@@ -133,7 +134,7 @@ export async function proposalsFor(
       status: String(row.status),
       supersedes_id: (row.supersedes_id as string | null) ?? null,
       anomaly_flags: (row.anomaly_flags as string[] | null) ?? [],
-      decided_at: row.decided_at ? String(row.decided_at) : null,
+      decided_at: isoTextOrNull(row.decided_at),
       reject_reason: (row.reject_reason as string | null) ?? null,
     }));
   });
@@ -151,8 +152,12 @@ export async function recentRecordChange(
 ): Promise<string | null> {
   if (!UUID_RE.test(subjectId)) return null;
   return withRequestRole('authenticated', claims, async (q) => {
-    const r = await q.query('select max(changed_at) as t from hc.presence($1)', [subjectId]);
-    return r.rows[0]?.t ? String(r.rows[0].t) : null;
+    // The alias keeps the column's own name so the value SAYS it is a
+    // moment — `as t` is what hid this one from the boundary scanner.
+    const r = await q.query('select max(changed_at) as changed_at from hc.presence($1)', [
+      subjectId,
+    ]);
+    return isoTextOrNull(r.rows[0]?.changed_at);
   });
 }
 
@@ -262,7 +267,7 @@ export async function arrivalForReview(
       channel: row.channel as string,
       sender_address: (row.sender_address as string | null) ?? null,
       sender_display_name: (row.sender_display_name as string | null) ?? null,
-      received_at: String(row.received_at),
+      received_at: isoText(row.received_at),
       subject_id: row.subject_id as string,
       scan_verdict: (row.scan_verdict as string | null) ?? null,
       can_view: row.can_view === true,
