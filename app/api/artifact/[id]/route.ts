@@ -3,6 +3,7 @@ import { liveSessionClaims } from '@/lib/auth/session';
 import { logArtifactRead, readableArtifact, readableRendition } from '@/lib/hc/artifacts';
 import { asServiceRole } from '@/lib/db/service-role';
 import { promotedPageKey, promotedPageTextKey, type PageExt } from '@/lib/pipeline/page-keys';
+import { fetchStorageWithin } from '@/lib/storage/fetch';
 
 /**
  * GET /api/artifact/[id] — the §1.3 six steps, literally (slice-4 plan
@@ -55,6 +56,24 @@ function renditionPageMissing(page: number): Response {
   );
 }
 
+/**
+ * 6B close-out F5 (ADR-0026 D18): storage did not answer in time. This is a
+ * DIFFERENT fact from rendition_page_missing — that one says the manifest
+ * names a page storage does not hold, which is permanent and repairable;
+ * this one says the page is very likely there and the read stalled, which is
+ * transient and retryable. Collapsing the two would tell the screen to say
+ * "page 3 is missing" about a page that is not missing, and this route does
+ * not guess. Like that report, this branch is reachable only past every gate
+ * — authorized caller, clean artifact, their own manifest — so naming it
+ * leaks nothing.
+ */
+function storageTimeout(page: number): Response {
+  return Response.json(
+    { error: 'storage_timeout', page },
+    { status: 504, headers: { 'cache-control': 'private, no-store' } },
+  );
+}
+
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
@@ -98,9 +117,18 @@ export async function GET(
   }
 
   const range = req.headers.get('range');
-  const upstream = await fetch(data.signedUrl, {
-    headers: range ? { range } : undefined,
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetchStorageWithin(data.signedUrl, {
+      headers: range ? { range } : undefined,
+    });
+  } catch (err) {
+    // F5: a storage read that stalls or refuses answers in the shape this
+    // path already gives an unreachable storage — the ONE 404, never a leaky
+    // body and never a request the caller waits out.
+    console.error(`artifact: storage read of ${id} failed: ${(err as Error).message}`);
+    return notFound();
+  }
   if (!upstream.ok && upstream.status !== 206 && upstream.status !== 416) {
     console.error(`artifact: storage answered ${upstream.status}`);
     return notFound();
@@ -175,7 +203,19 @@ async function servePage(
     );
     return renditionPageMissing(pageNo);
   }
-  const upstream = await fetch(data.signedUrl);
+  let upstream: Response;
+  try {
+    upstream = await fetchStorageWithin(data.signedUrl);
+  } catch (err) {
+    // F5: the machine-read sibling is not manifest-promised, so its failure
+    // stays the ordinary 404 — one shape, as everywhere else on this route.
+    // The PAGE, which the manifest does promise, gets the named state.
+    if (wantText) return notFound();
+    console.error(
+      `artifact: promoted page ${pageNo} of ${arrivalId}: ${(err as Error).message}`,
+    );
+    return storageTimeout(pageNo);
+  }
   if (!upstream.ok) {
     if (wantText) return notFound();
     console.error(`artifact: promoted page ${pageNo} of ${arrivalId} answered ${upstream.status}`);
