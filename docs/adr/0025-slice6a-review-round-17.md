@@ -6,10 +6,11 @@ verdict moved**: F-1 is **FIXED IN PART** with its residue OWED to 6B,
 because the sign-off found two raw Postgres classes still reachable at
 the approve click and drove both live (D16 S16.2, S16.3). The corrected
 tally is **3 FIXED · 1 FIXED IN PART · 1 OWED · 1 ACCEPTED · 1
-ACCEPTED-NOTE = 7**. **THE MERGE IS NOT YET AUTHORISED and was NOT
-performed** — it remains the owner's, is a **MERGE COMMIT, never a
-squash**, and its SHA, parents, tree hash and CI run belong in D16 S16.10
-when it happens (the ADR-0021 shape).
+ACCEPTED-NOTE = 7**. **MERGED at `d59de15`** — a MERGE COMMIT, never a
+squash, parents `31a7977` + `4d4e38f`, tree `d9656a63` verified identical
+to the branch head's, CI green on `main` at the merge commit (run
+`32803716668`), PR #11 closed as merged. The full merge record is D16
+S16.11. **M7 closes UNCONSUMED; the bound closes at 6 of ≤ 7.**
 
 **Deciders:** the round-17 dispositions session (owner ratifies at sign-off).
 
@@ -1420,3 +1421,66 @@ into `main` is worth more than one closed by DDL no round has read.
 still block, no credential exists in CI or the gate, and **zero
 dependencies were added** — the dev reserve is unspent through a third
 slice.
+
+---
+
+### S16.11 — THE MERGE, stamped after the fact (the 4A `95dab27` pattern)
+
+**PR #11 merged as a MERGE COMMIT, never a squash** (ADR-0006):
+**`d59de15`**, parents **`31a7977`** (`main`, **unmoved through the whole
+round** — 24 ahead, 0 behind at the merge) + **`4d4e38f`** (the branch
+head). The merged tree is verified **IDENTICAL** to `4d4e38f`'s — both
+**`d9656a63`** — and `git diff d59de15 slice/6-care-inbox` is empty.
+**25 commits, 28 files.**
+
+**Every commit this document cites is reachable from `main`**, checked
+mechanically rather than asserted: `git rev-list 31a7977..4d4e38f --not
+HEAD` returns **0**. All six red→green pairs survive as pairs —
+`6e45a13`→`d95e728` (M1), `badb499`→`189503c` (M2), `7f962af`→`29e03f5`
+(M3), `300a73a`→`b8b6353` (M4), `a2f5db6`→`278f918` (M5),
+`91fd7a9`→`b324e95` (M6) — so **every failure signature these ADRs quote
+survives in the history rather than only in prose.** That is the whole
+reason ADR-0006 forbids the squash.
+
+**CI green on `main` AT THE MERGE COMMIT: run `32803716668`**, read
+anonymously from the public Actions API at `d59de15`. **23 steps, and the
+only non-success is the on-failure database-log capture, skipped as
+designed.**
+
+**One honest note about that run, because round 17 penalised exactly this
+kind of imprecision (F-4).** On a push to `main` the upgrade leg is a
+**DELIBERATE no-op**: `git merge-base HEAD origin/main` equals `HEAD`, so
+it prints *"HEAD is the base — no increment to rehearse"* and exits 0
+(`.github/workflows/ci.yml:89-91`, which says so in its own comment). The
+rehearsal that matters therefore comes from the **branch head**, run
+**`32803042083`** @ `4d4e38f`, where step 16 — *"Upgrade leg — base
+reset, increment apply, both suites"* — ran and reported **success**
+against the base `31a7977`, applying all six 6A migrations in order.
+**Both runs are cited because neither alone covers the claim.**
+
+**PR #11 read back from the public PR API after the merge:** state
+**closed**, `merged: true`, `merge_commit_sha` **`d59de15`**, merged at
+`2026-08-25T03:03:27Z`. GitHub recorded the merge commit, not a squash.
+
+**No evidence leg was re-run at the merge, and the reason is tree
+identity, not convenience.** The merged tree is byte-identical to the
+branch head's (`d9656a63` = `d9656a63`), so every leg in D14 and S16.9
+binds unchanged — clean reset, exact verifier at 68, pgTAP
+`Files=65, Tests=1610 PASS`, concurrency 75/75, `db:verify` under
+`--fail-on warning`, the upgrade rehearsal, vitest 689/689, lint,
+typecheck, build and gitleaks. Re-running them at an identical tree would
+be evidence of nothing.
+
+**THE GATE IS STILL RED and `main` knows it.** `ingestion.spec.ts:361`
+was never green at this tree; `:400` has never executed at it; both are
+owed re-observation BY TITLE at 6B under D8's six conditions, and
+`UXA-01` and `RLS-10` carry the annotation on `main` now. **CI does not
+run the browser gate**, so run `32803716668` is not evidence about it.
+
+**Round 17 closes. Slice 6A is on `main`, with F-1 at FIXED IN PART and
+its residue owed to 6B B8.** The slice-5B queue is unchanged at **39
+OWED**; the 6B queue carries F-5's six conditions, the payload-contract
+residue's six, R4/F-10 (Q-A), Q-G's RCP-01 caution, and the
+`hc.revise_object` / step-up audit. **B1, the rasterizer swap, keeps its
+plan-bound first position.** `M7 closes UNCONSUMED and the bound closes
+at 6 of ≤ 7` — the plan's own number, by the plan's own route.

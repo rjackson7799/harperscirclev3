@@ -1,8 +1,18 @@
 # ADR-0024 — Slice 6A: the Care Inbox DB increment, design decisions and deltas as built
 
-**Status:** **Accepted — RATIFIED AS AMENDED at round 17** (ADR-0025),
-pending owner sign-off and merge; the merge SHA and its CI run belong in
-ADR-0025's sign-off addendum, per the ADR-0020 / ADR-0021 precedent.
+**Status:** **Accepted — RATIFIED AS AMENDED at round 17** (ADR-0025) and
+**MERGED to `main` at `d59de15`** — a MERGE COMMIT, never a squash,
+parents `31a7977` + `4d4e38f`, tree `d9656a63` verified identical to the
+branch head's, CI green on `main` at the merge commit (run
+`32803716668`), PR #11 closed as merged. The full merge record is
+ADR-0025 D16 S16.11, per the ADR-0020 / ADR-0021 precedent.
+
+**One amendment site was added AFTER round 17, at the owner sign-off**
+(site 6 below), and with it **F-1's verdict moved to FIXED IN PART**: two
+raw Postgres classes remain reachable at the approve click, both driven
+live, and the residue is OWED to 6B B8 (ADR-0025 D16 S16.2, S16.3,
+S16.8). It crosses into `main` deliberately and unreachably — `hc` is not
+exposed to PostgREST and no shipped caller exists.
 
 **Where this document was amended, and by whom.** Round 17 amended it in
 five places, and the original prose is preserved at every site with the
