@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -229,11 +229,19 @@ describe('B1 · the corpus spec is MEASURED, not merely written down', () => {
 // ============================================================================
 
 describe('B1 · §4.2 — readable support, measured through the pipeline itself', () => {
-  const renditionOf = (item: CorpusItem): string => {
-    const result = normalizeArrival(readCorpusFile(item), corpusMime(item));
-    return result.outcome === 'rendered' ? (result.text ?? '').toLowerCase() : '';
-  };
-  const renditions = new Map(blind.map((i) => [i.id, renditionOf(i)]));
+  // Populated once before the cases: normalizeArrival went async at 6B B1
+  // (the rasterizer swap), so the measurement moves into a hook while the
+  // property it measures stays exactly the pinned one.
+  const renditions = new Map<string, string>();
+  beforeAll(async () => {
+    for (const item of blind) {
+      const result = await normalizeArrival(readCorpusFile(item), corpusMime(item));
+      renditions.set(
+        item.id,
+        result.outcome === 'rendered' ? (result.text ?? '').toLowerCase() : '',
+      );
+    }
+  });
   const readable = (item: CorpusItem, field: string): boolean =>
     item.labels.some(
       (l) => l.field === field && renditions.get(item.id)!.includes(String(l.value).toLowerCase()),

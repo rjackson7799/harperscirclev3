@@ -18,8 +18,9 @@
 //   SAMPLES.        WARM_RUNS per cohort per leg, stated in the output.
 //   COLD vs WARM.   Reported SEPARATELY, never blended. Cold is the first
 //                   observation after a restart (connection pools empty,
-//                   mupdf's WASM module unloaded, no plan caches); warm is
-//                   the steady state. A blended p95 flatters the cold path
+//                   the rasterizer not yet loaded — pdfjs and the canvas
+//                   binding since 6B B1 — no plan caches); warm is the
+//                   steady state. A blended p95 flatters the cold path
 //                   and slanders the warm one.
 //   PERCENTILE.     PRF-06's method, verbatim: nearest-rank on the sorted
 //                   sample, index ceil(0.95·n) − 1. Kept identical so the two

@@ -335,14 +335,18 @@ describe('B3 · the run identity is configuration, and it is recorded', () => {
 describe('R2/F-1 · the configuration hash is pinned to a LITERAL', () => {
   // Regenerate deliberately, in the same commit as the ADR that records the
   // re-run: node -e "console.log(require('./lib/ai/config').configurationHash())"
-  const PINNED = 'd6512861eefa1fc4';
+  // Moved at 6B B1 with hc-5b-1 → hc-6b-1: the rasterizer swap re-derived
+  // maxRenderedBytes from the provider request limit (R2/F-8), and §6.3's
+  // ceilings are a covered input — exactly the movement this pin exists to
+  // make visible.
+  const PINNED = '35dad2ec988dad6f';
 
   it('the running configuration hash equals the pinned value', () => {
     expect(configurationHash()).toBe(PINNED);
   });
 
   it('and PROMPT_VERSION still carries it, so the pair cannot drift', () => {
-    expect(PROMPT_VERSION).toBe(`hc-5b-1+${PINNED}`);
+    expect(PROMPT_VERSION).toBe(`hc-6b-1+${PINNED}`);
   });
 });
 

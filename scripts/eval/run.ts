@@ -67,9 +67,9 @@ function parseArgs(): { mode: Mode; batchId?: string } {
  * TypeScript rather than a convenient script: §6.10 only means something if
  * the eval measures what production sends.
  */
-function requestFor(item: CorpusItem) {
+async function requestFor(item: CorpusItem) {
   const bytes = readCorpusFile(item);
-  const normalized = normalizeArrival(bytes, corpusMime(item));
+  const normalized = await normalizeArrival(bytes, corpusMime(item));
   if (normalized.outcome !== 'rendered') {
     return { skipped: normalized.outcome as string };
   }
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
     // requests build, which is the half that breaks silently.
     let ok = 0;
     for (const item of items) {
-      const built = requestFor(item);
+      const built = await requestFor(item);
       if ('skipped' in built) {
         console.log(`  SKIP ${item.id}: ${built.skipped}`);
         continue;
@@ -168,7 +168,7 @@ async function main(): Promise<void> {
   if (mode === 'submit') {
     const requests: Anthropic.Messages.Batches.BatchCreateParams.Request[] = [];
     for (const item of items) {
-      const built = requestFor(item);
+      const built = await requestFor(item);
       if ('skipped' in built) {
         console.log(`  SKIP ${item.id}: ${built.skipped}`);
         continue;
@@ -232,7 +232,7 @@ async function main(): Promise<void> {
         failures.push({ id: result.custom_id, reason: 'unknown_item' });
         continue;
       }
-      const normalized = normalizeArrival(readCorpusFile(item), corpusMime(item));
+      const normalized = await normalizeArrival(readCorpusFile(item), corpusMime(item));
       const pageCount = normalized.outcome === 'rendered' ? normalized.pages.length : 0;
       const prediction = predictionFor(result.custom_id, text, pageCount);
       if (prediction.dropped > 0) {

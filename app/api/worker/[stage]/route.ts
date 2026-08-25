@@ -323,7 +323,7 @@ async function processExtract(
 
   // §4.6: content, never declaration. The store stage recorded a sniffed
   // type; sniffing again here needs no read privilege and cannot be stale.
-  const normalized = normalizeArrival(bytes, sniffMime(bytes));
+  const normalized = await normalizeArrival(bytes, sniffMime(bytes));
   const exit = normalizeExit(normalized);
   if (exit) {
     // Refused BEFORE any provider dispatch — the whole point of §6.3's bounds
@@ -586,7 +586,7 @@ async function processInterpret(msg: PipelineMessage): Promise<string> {
     const circleId = await resolveCircle(msg);
     const bytes = circleId ? await readArtifactBytes(circleId, msg.arrival_id) : null;
     if (bytes) {
-      const normalized = normalizeArrival(bytes, sniffMime(bytes));
+      const normalized = await normalizeArrival(bytes, sniffMime(bytes));
       if (normalized.outcome === 'rendered') documentText = normalized.text;
     }
     operatorNotes.push(

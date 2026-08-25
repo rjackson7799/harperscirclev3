@@ -8,14 +8,17 @@ const nextConfig: NextConfig = {
   // Dev-only; no production effect.
   allowedDevOrigins: ["127.0.0.1"],
 
-  // 5B B2: mupdf is a WASM build that loads its own .wasm asset with
-  // Node's own require/fs at runtime. Bundling it into the Server
-  // Components graph breaks that resolution, so it is opted OUT and
-  // `require`d natively — the documented mechanism for exactly this
+  // 6B B1 (the 5B B2 opt-out, re-pointed at the replacement rasterizer —
+  // D24 ruling 1): `@napi-rs/canvas` is a native N-API addon resolving its
+  // own .node binary through require at runtime, and `pdfjs-dist` resolves
+  // its font/cmap/wasm resource directories relative to its own installed
+  // files. Bundling either into the Server Components graph breaks that
+  // resolution, so both are opted OUT and required natively — the
+  // documented mechanism for exactly this
   // (node_modules/next/dist/docs/01-app/03-api-reference/05-config/
   // 01-next-config-js/serverExternalPackages.md). `pg` is already on
-  // Next's own built-in list; mupdf is not, so it is named here.
-  serverExternalPackages: ["mupdf"],
+  // Next's own built-in list; these two are not, so they are named here.
+  serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas"],
 };
 
 export default nextConfig;

@@ -16,7 +16,10 @@ import {
 } from '@/lib/pipeline/page-keys';
 
 // ============================================================================
-// B2 · §6.3 rendering, as rules-as-code (slice-5 plan B2; RND-01).
+// B2 · §6.3 rendering, as rules-as-code (slice-5 plan B2; RND-01) — the same
+// rules re-pinned across 6B B1's rasterizer swap (D24 ruling 1): `mupdf`
+// (AGPL-3.0-or-later) out, `pdfjs-dist` (Apache-2.0) + `@napi-rs/canvas`
+// (MIT) in, with this suite as the net the swap had to clear unchanged.
 //
 // The §6.3 table IS the test surface: born-digital PDFs go at the standard
 // tier WITH their text layer; scans, phone photos, pill bottles and
@@ -24,16 +27,23 @@ import {
 // bodies are text first. The bounds are enforced BEFORE rendering, which is
 // what makes "never dispatched by accident" true rather than hoped for.
 //
-// The mupdf spike (scripts/spike/mupdf-spike.mjs) established two facts this
-// suite pins so they cannot regress silently:
-//   · Document.openDocument applies EXIF orientation; new mupdf.Image does
-//     not. §6.4's citation space is the page AS DISPLAYED, so only the
-//     document path is correct — and the difference is load-bearing.
-//   · mupdf REPAIRS a truncated PDF rather than refusing it. That is a
-//     behaviour we own, not one we inherit by accident.
+// The rasterizer spike (scripts/spike/rasterizer-spike.mjs) established the
+// replacement pair's facts, pinned here so they cannot regress silently:
+//   · @napi-rs/canvas applies EXIF orientation AT DECODE, so the decoded
+//     frame is the DISPLAYED frame — §6.4's citation space. The spike's
+//     control (the same citations against the same pixels with the EXIF
+//     segment stripped) proves the difference is load-bearing.
+//   · pdfjs REFUSES a truncated PDF (InvalidPDFException) where mupdf
+//     REPAIRED it — the inverse posture, recorded as it is (R7/F-3's
+//     corrected bar), and either way never a crash.
+//   · Skia carries no TIFF codec, so image/tiff exits unsupported_type — a
+//     recorded delta from mupdf, which rendered TIFF.
 // ============================================================================
 
-function render(id: string, ceilings?: Partial<typeof RENDER_CEILINGS>): NormalizeResult {
+function render(
+  id: string,
+  ceilings?: Partial<typeof RENDER_CEILINGS>,
+): Promise<NormalizeResult> {
   const item = corpusItem(id);
   return normalizeArrival(readCorpusFile(item), corpusMime(item), { ceilings });
 }
@@ -48,8 +58,8 @@ function longEdge(page: RenderedPage): number {
 }
 
 describe('B2 · the §6.3 table, row by row', () => {
-  it('born-digital PDF → page images PLUS the embedded text layer, standard tier', () => {
-    const result = render('dev-discharge-01');
+  it('born-digital PDF → page images PLUS the embedded text layer, standard tier', async () => {
+    const result = await render('dev-discharge-01');
     expect(result.outcome).toBe('rendered');
     if (result.outcome !== 'rendered') return;
     expect(result.sourceClass).toBe('born_digital_pdf');
@@ -60,83 +70,95 @@ describe('B2 · the §6.3 table, row by row', () => {
     expect(result.text).toContain('500 mg');
   });
 
-  it('scanned PDF → page images ONLY, high tier (no text layer to lean on)', () => {
-    const result = render('dev-scanned-01');
+  it('scanned PDF → page images ONLY, high tier (no text layer to lean on)', async () => {
+    const result = await render('dev-scanned-01');
     if (result.outcome !== 'rendered') throw new Error(result.outcome);
     expect(result.sourceClass).toBe('scanned_pdf');
     expect(longEdge(result.pages[0])).toBe(HIGH_LONG_EDGE);
     expect(result.text).toBeNull();
   });
 
-  it('phone photo → high tier, and NEVER downsampled below the source', () => {
-    const result = render('dev-eob-02');
+  it('phone photo → high tier, and NEVER downsampled below the source', async () => {
+    const result = await render('dev-eob-02');
     if (result.outcome !== 'rendered') throw new Error(result.outcome);
     expect(result.sourceClass).toBe('photo');
     expect(longEdge(result.pages[0])).toBe(HIGH_LONG_EDGE);
   });
 
-  it('pill bottle and handwritten note → high, never downsampled', () => {
+  it('pill bottle and handwritten note → high, never downsampled', async () => {
     for (const id of ['dev-pill-01', 'dev-note-01']) {
-      const result = render(id);
+      const result = await render(id);
       if (result.outcome !== 'rendered') throw new Error(`${id}: ${result.outcome}`);
       expect(longEdge(result.pages[0]), id).toBe(HIGH_LONG_EDGE);
       expect(longEdge(result.pages[0]), id).toBeGreaterThan(STANDARD_LONG_EDGE);
     }
   });
 
-  it('email body → text first, no page images', () => {
-    const result = render('dev-email-01');
+  it('email body → text first, no page images', async () => {
+    const result = await render('dev-email-01');
     if (result.outcome !== 'rendered') throw new Error(result.outcome);
     expect(result.sourceClass).toBe('email_text');
     expect(result.pages).toEqual([]);
     expect(result.text).toContain('Northgate Medical Group');
   });
 
-  it('a born-digital page is never rendered at the high tier — resolution is a rule, not a setting', () => {
+  it('a born-digital page is never rendered at the high tier — resolution is a rule, not a setting', async () => {
     // §6.3: downsampling a born-digital PDF is free accuracy-wise because
     // the text layer carries the content; spending 3× the tokens on it is
     // exactly the wrong economy.
-    const result = render('dev-eob-01');
+    const result = await render('dev-eob-01');
     if (result.outcome !== 'rendered') throw new Error(result.outcome);
     expect(longEdge(result.pages[0])).toBe(STANDARD_LONG_EDGE);
   });
 });
 
 describe('B2 · the honest normalize exits (§4.3)', () => {
-  it('an encrypted PDF is needs_password, decided before any page loads', () => {
-    expect(render('dev-encrypted-01').outcome).toBe('needs_password');
+  it('an encrypted PDF is needs_password, decided before any page loads', async () => {
+    expect((await render('dev-encrypted-01')).outcome).toBe('needs_password');
   });
 
-  it('undecodable bytes are unsupported_type', () => {
-    expect(render('dev-unsupported-01').outcome).toBe('unsupported_type');
+  it('undecodable bytes are unsupported_type', async () => {
+    expect((await render('dev-unsupported-01')).outcome).toBe('unsupported_type');
   });
 
-  it('a truncated PDF is REPAIRED by mupdf and processed — never a crash', () => {
-    // The spike's finding, owned rather than inherited: what we guarantee is
-    // that the worker survives and the lease is never lost to a throw.
-    const result = render('dev-truncated-01');
+  it('a truncated PDF gets an honest verdict — refused or repaired, never a crash', async () => {
+    // The engines answer this differently and the suite owns the posture
+    // rather than inheriting it: mupdf REPAIRED this fixture; pdfjs REFUSES
+    // it (InvalidPDFException → unsupported_type, the spike's leg 5). What
+    // this pins is the §4.3 guarantee both satisfy: the worker survives and
+    // the lease is never lost to a throw.
+    const result = await render('dev-truncated-01');
     expect(['rendered', 'unsupported_type']).toContain(result.outcome);
+  });
+
+  it('TIFF is refused honestly — the replacement engine carries no TIFF codec', async () => {
+    // A recorded delta from mupdf, which rendered TIFF (6B B1): sniffMime
+    // still answers image/tiff, Skia has no codec for it, and the exit is
+    // unsupported_type rather than a throw. The bytes below are a minimal
+    // little-endian TIFF header — enough for the sniffer, nothing to decode.
+    const tiff = new Uint8Array([0x49, 0x49, 0x2a, 0x00, 0x08, 0, 0, 0, 0, 0]);
+    expect((await normalizeArrival(tiff, 'image/tiff')).outcome).toBe('unsupported_type');
   });
 });
 
 describe('B2 · the ceilings abort BEFORE any provider dispatch', () => {
-  it('page_count is bounded before rendering (PRD §13.3: 200 pages)', () => {
-    const result = render('dev-pagebomb-01');
+  it('page_count is bounded before rendering (PRD §13.3: 200 pages)', async () => {
+    const result = await render('dev-pagebomb-01');
     expect(result).toEqual({ outcome: 'refused', reason: 'page_bound' });
   });
 
-  it('a declared-geometry pixel bomb is refused on its header alone', () => {
-    const result = render('dev-pixelbomb-01');
+  it('a stored-geometry pixel bomb is refused on its header alone', async () => {
+    const result = await render('dev-pixelbomb-01');
     expect(result).toEqual({ outcome: 'refused', reason: 'page_dimensions' });
   });
 
-  it('the wall-clock ceiling is real — a zero budget refuses rather than runs', () => {
-    const result = render('dev-pill-01', { maxWallClockMs: 0 });
+  it('the wall-clock ceiling is real — a zero budget refuses rather than runs', async () => {
+    const result = await render('dev-pill-01', { maxWallClockMs: 0 });
     expect(result).toEqual({ outcome: 'refused', reason: 'wall_clock' });
   });
 
-  it('the rendered-output ceiling is real — a one-byte budget refuses', () => {
-    const result = render('dev-pill-01', { maxRenderedBytes: 1 });
+  it('the rendered-output ceiling is real — a one-byte budget refuses', async () => {
+    const result = await render('dev-pill-01', { maxRenderedBytes: 1 });
     expect(result).toEqual({ outcome: 'refused', reason: 'output_size' });
   });
 
@@ -149,19 +171,19 @@ describe('B2 · the ceilings abort BEFORE any provider dispatch', () => {
 });
 
 describe('B2 · EXIF orientation is normalised BEFORE geometry', () => {
-  it('an angled phone photo renders in its DISPLAYED frame', () => {
+  it('an angled phone photo renders in its DISPLAYED frame', async () => {
     // Stored 3024×2016 landscape, EXIF orientation 6. What a person sees —
     // and therefore what a citation is measured against — is 2016×3024.
-    const result = render('dev-angled-01');
+    const result = await render('dev-angled-01');
     if (result.outcome !== 'rendered') throw new Error(result.outcome);
     const page = result.pages[0];
     expect(page.heightPx).toBeGreaterThan(page.widthPx);
     expect(longEdge(page)).toBe(HIGH_LONG_EDGE);
   });
 
-  it("the corpus's displayed-frame citations land on their values", () => {
+  it("the corpus's displayed-frame citations land on their values", async () => {
     const item = corpusItem('dev-angled-01');
-    const result = render('dev-angled-01');
+    const result = await render('dev-angled-01');
     if (result.outcome !== 'rendered') throw new Error(result.outcome);
     for (const label of item.labels) {
       const rect = cropRect(result.pages[0], label.bbox);
@@ -202,9 +224,9 @@ describe('B2 · geometry is deterministic and resolution-independent', () => {
     expect(rect.y + rect.h).toBeLessThanOrEqual(100);
   });
 
-  it('rendering the same bytes twice produces the same page geometry', () => {
-    const a = render('dev-pill-01');
-    const b = render('dev-pill-01');
+  it('rendering the same bytes twice produces the same page geometry', async () => {
+    const a = await render('dev-pill-01');
+    const b = await render('dev-pill-01');
     expect(pages(a).map((p) => [p.page, p.widthPx, p.heightPx])).toEqual(
       pages(b).map((p) => [p.page, p.widthPx, p.heightPx]),
     );
@@ -237,21 +259,18 @@ describe('B2 · the rendered-page lifecycle and the slice-6 OCR seam', () => {
 });
 
 // ============================================================================
-// Round-16 R3/F-1 and R3/F-2 — the DECLARED-RESOLUTION trap.
+// Round-16 R3/F-1 and R3/F-2 — the DECLARED-RESOLUTION trap, held closed
+// across the engine swap.
 //
-// mupdf's image handler sizes a page as `pixels x 72 / declared_resolution`,
-// and falls back to 96 dpi ONLY when the image declares no resolution at all.
-// Every fixture in fixtures/g9 is density-free, so PT_PER_PX = 0.75 looked
-// like a law of the image path. It is the fallback.
-//
-// Two consequences, both invisible to a density-free corpus:
-//   1 · a 300-dpi scan reports 617x824 of "declared geometry" for a 1928x2576
-//       source, so `nativeLong` collapses and the page renders BELOW the
-//       standard tier - outcome `rendered`, no ceiling fired, nothing logged.
-//       §6.3 says a photo is never downsampled; this downsamples it 3.1x.
-//   2 · the same number gates `page_dimensions`, so the effective ceiling
-//       scales as 80 Mpx x (dpi/96)^2 and a declared-600-dpi pixel bomb walks
-//       through a guard built to refuse it.
+// Under mupdf the trap was a fallback: the image handler sized a page as
+// `pixels x 72 / declared_resolution`, so a density TAG changed the declared
+// geometry — a 300-dpi scan reported 617x824 for a 1928x2576 source, rendered
+// below the standard tier with outcome `rendered`, and the same number gated
+// `page_dimensions` so a declared-600-dpi bomb walked through the ceiling.
+// Under the replacement engine no resolution proxy exists for a raster AT
+// ALL: the ceiling reads TRUE STORED pixels from the file's own header, and
+// the tier reads the decoder's pixel dimensions. These cases hold the door
+// shut whatever engine sits behind the module.
 //
 // These fixtures are built HERE rather than added to fixtures/g9, because the
 // corpus is generated from a spec table and its manifest is asserted to BE the
@@ -276,15 +295,15 @@ describe('R3/F-1 · a declared resolution must not change the rendered tier', ()
   const item = corpusItem('dev-pill-01');
   const native = readCorpusFile(item);
 
-  it('the density-free fixture renders at the high tier (the property today)', () => {
-    const page = pages(normalizeArrival(native, 'image/jpeg'))[0];
+  it('the density-free fixture renders at the high tier (the property today)', async () => {
+    const page = pages(await normalizeArrival(native, 'image/jpeg'))[0];
     expect(longEdge(page)).toBe(HIGH_LONG_EDGE);
   });
 
   it.each([72, 150, 300, 600])(
     'the SAME pixels tagged %i dpi still render at the high tier',
-    (dpi) => {
-      const result = normalizeArrival(withJfifDensity(native, dpi), 'image/jpeg');
+    async (dpi) => {
+      const result = await normalizeArrival(withJfifDensity(native, dpi), 'image/jpeg');
       expect(result.outcome).toBe('rendered');
       const page = pages(result)[0];
       // §6.3: a photo is rendered at the high tier and NEVER downsampled.
@@ -292,6 +311,21 @@ describe('R3/F-1 · a declared resolution must not change the rendered tier', ()
       expect(longEdge(page)).toBe(HIGH_LONG_EDGE);
     },
   );
+});
+
+describe('R3/F-2 · the page_dimensions ceiling reads STORED pixels, not declared points', () => {
+  const bomb = readCorpusFile(corpusItem('dev-pixelbomb-01'));
+
+  it('refuses the density-free bomb (the property today)', async () => {
+    const r = await normalizeArrival(bomb, 'image/jpeg');
+    expect(r).toMatchObject({ outcome: 'refused', reason: 'page_dimensions' });
+  });
+
+  it.each([300, 600, 1200])('refuses the SAME bomb tagged %i dpi', async (dpi) => {
+    const r = await normalizeArrival(withJfifDensity(bomb, dpi), 'image/jpeg');
+    // 30000x30000 stored pixels is 900 Mpx however the header describes it.
+    expect(r).toMatchObject({ outcome: 'refused', reason: 'page_dimensions' });
+  });
 });
 
 // ============================================================================
@@ -313,7 +347,10 @@ describe('R3/F-1 · a declared resolution must not change the rendered tier', ()
 // passed `maxWallClockMs: 0`, which trips the very first sample and cannot
 // tell a deadline from a sample. The scripted clock below stays inside the
 // budget until the last pre-render check an interval sampler would make, then
-// jumps past it: a sampler answers `rendered`, a deadline refuses.
+// jumps past it: a sampler answers `rendered`, a deadline refuses. In-flight
+// renders are additionally raced and CANCELLED at the deadline
+// (lib/pipeline/render.ts renderPageWithDeadline), so a slow page cannot
+// overrun the budget un-interrupted.
 // ============================================================================
 describe('R2/F-8 · maxRenderedBytes is derived from the provider request limit', () => {
   it('base64-inflated pages plus the request overhead reserve fit inside 32 MiB', () => {
@@ -326,7 +363,7 @@ describe('R2/F-8 · maxRenderedBytes is derived from the provider request limit'
 });
 
 describe('R3/F-5 · wall_clock is a DEADLINE, not a sample', () => {
-  it('a clock that expires after the last pre-render sample still refuses', () => {
+  it('a clock that expires after the last pre-render sample still refuses', async () => {
     // Scripted clock: within budget for the start stamp and the first
     // pre-render check, past the budget for every consultation after that.
     // The one-page photo is the hard case — after its single loop-top check
@@ -335,25 +372,10 @@ describe('R3/F-5 · wall_clock is a DEADLINE, not a sample', () => {
     const budget = 90_000;
     const now = () => (++calls <= 2 ? 0 : budget + 1);
     const item = corpusItem('dev-pill-01');
-    const result = normalizeArrival(readCorpusFile(item), corpusMime(item), {
+    const result = await normalizeArrival(readCorpusFile(item), corpusMime(item), {
       ceilings: { maxWallClockMs: budget },
       now,
     });
     expect(result).toEqual({ outcome: 'refused', reason: 'wall_clock' });
-  });
-});
-
-describe('R3/F-2 · the page_dimensions ceiling reads STORED pixels, not declared points', () => {
-  const bomb = readCorpusFile(corpusItem('dev-pixelbomb-01'));
-
-  it('refuses the density-free bomb (the property today)', () => {
-    const r = normalizeArrival(bomb, 'image/jpeg');
-    expect(r).toMatchObject({ outcome: 'refused', reason: 'page_dimensions' });
-  });
-
-  it.each([300, 600, 1200])('refuses the SAME bomb tagged %i dpi', (dpi) => {
-    const r = normalizeArrival(withJfifDensity(bomb, dpi), 'image/jpeg');
-    // 30000x30000 stored pixels is 900 Mpx however the header describes it.
-    expect(r).toMatchObject({ outcome: 'refused', reason: 'page_dimensions' });
   });
 });

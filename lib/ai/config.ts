@@ -140,8 +140,16 @@ export function configurationHash(): string {
 }
 
 /** The human half of the pair. The hash rides with it (below) so the two can
- *  never drift; this constant is what a person reads in a commit message. */
-const PROMPT_VERSION_NAME = 'hc-5b-1';
+ *  never drift; this constant is what a person reads in a commit message.
+ *
+ *  Bumped hc-5b-1 → hc-6b-1 at 6B B1: the rasterizer swap re-derived
+ *  `maxRenderedBytes` from the provider request limit (R2/F-8, 64 MiB →
+ *  21 MiB), and §6.3's ceilings are a covered input — so the configuration
+ *  hash moved and §6.10 says the version moves with it. The rendered pixels
+ *  themselves are unchanged (RND-01's suite and the spike pin geometry,
+ *  tiers and encodings across the engine swap); no band is signed against
+ *  either name — G9 is open and BAND_ARTIFACT_ALLOWLIST is empty. */
+const PROMPT_VERSION_NAME = 'hc-6b-1';
 
 /**
  * `<name>+<configuration hash>`. Bumping the name without the configuration
