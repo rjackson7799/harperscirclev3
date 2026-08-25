@@ -1358,20 +1358,62 @@ THE BROWSER GATE** — the two green runs above are not evidence about it.
 
 ---
 
-### S16.10 — THE MERGE: not taken in this session
+### S16.10 — THE MERGE: authorised, and why M7 still stays closed
 
-**The merge is NOT authorised in this session and was NOT performed.**
-The owner is the sole merge authority (ADR-0006), authorisation was not
-given here, and the sign-off has moved a verdict — so the ratification
-the owner is being asked for is not the one ADR-0025 carried when this
-session opened.
+**The sign-off put TWO decisions to the owner and the owner returned
+both to the sign-off's own recommendation, 2026-08-24.** Both are
+resolved here, with the argument, before either is acted on.
 
-**When it is authorised it is a MERGE COMMIT, never a squash**, so all
-six red→green pairs and the docs commits stay reachable from `main`; the
-merged tree must be verified IDENTICAL to the branch head's; both parents
-and the tree hash are recorded here; CI must be confirmed green on `main`
-AT THE MERGE COMMIT before the merge is called done; PR #11 closes as
-merged; and the merge record lands here and in ADR-0024's Status line.
+**DECISION A — M7 STAYS CLOSED, and the residue stays OWED to 6B.**
+RULING 7 is confirmed rather than reversed, and one fact found while
+resolving it is decisive and was not in hand when the ruling was written:
+
+**The residue is not reachable by any client.** `supabase/config.toml:15`
+exposes `schemas = ["public", "graphql_public"]` — **`hc` is not
+exposed**, so `hc.approve_proposal` cannot be called over PostgREST by
+`authenticated` or by anyone else. Checked against the catalog rather
+than the config alone: **zero** functions in `public` or `graphql_public`
+reference `hc.` at all, so no wrapper re-exposes it. And `app/`, `lib/`
+and `e2e/` hold **two comments and zero call sites**. The channel opens
+only when a server-side caller is written, and that caller is **6B B8** —
+the app half of `DEC-01`, which is the exact row the residue is owed
+against. **The fix is owed to the slice that first makes it reachable.**
+
+Three further reasons, each sufficient alone:
+
+1. **There is no precedent for a sign-off authoring DDL.** ADR-0023 D24 —
+   the precedent this session was held to — records its own evidence leg
+   as *"documentation, two comment repairs and one new test block"* and
+   states plainly: *"The migration bound stays SPENT at 8 of ≤ 8 — this
+   leg authored no DDL and needed none."* A sign-off fixes source; a
+   dispositions slot fixes schema.
+2. **It would breach RULING 5 one section later.** RULING 5 adopts D6's
+   rule as standing practice: a session that finds a settled record wrong
+   records the discrepancy and does not move it on its own authority. A
+   sign-off that authored the migration it had just ruled on would be
+   both the author and the ratifier of unreviewed DDL — the precise shape
+   D6 exists to forbid.
+3. **The bound closes where the plan said it would.** 6 of ≤ 7 with M7
+   UNCONSUMED is the plan's own number in four places, reached by the
+   plan's own route. Spending M7 on a channel no client can reach would
+   buy nothing and would cost the one number the round got exactly right.
+
+**DECISION B — THE MERGE IS AUTHORISED**, on the ADR-0015
+sign-off-with-merge precedent, and is performed in this session. It is
+recorded in S16.11 as it happened.
+
+**It is a MERGE COMMIT, never a squash** (ADR-0006), so all six red→green
+pairs and the docs commits stay reachable from `main`; the merged tree is
+verified IDENTICAL to the branch head's; both parents and the tree hash
+are recorded; CI is confirmed green on `main` AT THE MERGE COMMIT before
+the merge is called done; PR #11 closes as merged; and the merge record
+lands in S16.11 and in ADR-0024's Status line.
+
+**F-1 remains FIXED IN PART across the merge, and that is deliberate.**
+`main` takes a MAJOR whose class is narrowed rather than closed, with
+both residual signatures quoted in this document and in `DEC-01`, and
+with six acceptance conditions at 6B (S16.8). A verdict carried honestly
+into `main` is worth more than one closed by DDL no round has read.
 
 **Nothing is production-activated by this sign-off.** Proposals rest at
 `pending`, G9 stays OPEN, `BAND_ARTIFACT_ALLOWLIST` stays EMPTY, G3/G4/G7
