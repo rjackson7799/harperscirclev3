@@ -11,6 +11,15 @@ import pg from 'pg';
 // from second browser contexts.
 //
 // Runs against the live local stack (`supabase start`) + `next dev`.
+//
+// RESTRUCTURED AT 6B under ADR-0025 D8 (F-5): no `test.describe.serial` —
+// no failing leg may prevent another leg from executing. This spec IS a
+// walkthrough — each leg continues one story — so its legs stay
+// order-dependent by nature; what changes is that a failure no longer
+// SKIPS what follows. Dependent legs guard their preconditions with a
+// named expectation, so a cascade reads as "requires the earlier legs",
+// never as a bare TypeError. Contexts close in afterAll so this spec
+// leaves no session state behind for a neighbour.
 // ============================================================================
 
 const DB_URL = 'postgresql://postgres:postgres@127.0.0.1:54342/postgres';
@@ -39,7 +48,19 @@ async function query(text: string, params: unknown[] = []) {
   }
 }
 
-test.describe.serial('the §11.4-3 walkthrough', () => {
+/** A named precondition: when an earlier walkthrough leg failed, the
+ *  dependent leg still EXECUTES (D8 condition 1) and says what it was
+ *  missing instead of throwing a bare TypeError. */
+function requires(value: unknown, what: string) {
+  expect(value, `requires the walkthrough's earlier legs: ${what}`).toBeTruthy();
+}
+
+test.describe('the §11.4-3 walkthrough', () => {
+  test.afterAll(async () => {
+    await founderContext?.close().catch(() => {});
+    await inviteeContext?.close().catch(() => {});
+  });
+
   test('founder: create account → Step 1 with no mail check (§4.1.2)', async ({ browser }) => {
     // ONE founder context for the whole walkthrough: until verification,
     // the only session an unverified founder can hold is the signup-minted
@@ -58,6 +79,7 @@ test.describe.serial('the §11.4-3 walkthrough', () => {
   });
 
   test('steps 1–2: two subjects, divergent situations and zips (AC-AUTH-1)', async () => {
+    requires(founderPage, 'the founder account');
     const page = founderPage;
     await page.goto('/setup');
     await page.waitForURL('**/setup/step/1');
@@ -83,6 +105,7 @@ test.describe.serial('the §11.4-3 walkthrough', () => {
   });
 
   test('the custodianship declarations are the circle log’s first rows (AC-AUTH-6)', async () => {
+    requires(circleId, 'the circle from steps 1–2');
     const rows = await query(
       'select event_type, seq from public.access_log where circle_id = $1 order by seq limit 2',
       [circleId],
@@ -92,6 +115,8 @@ test.describe.serial('the §11.4-3 walkthrough', () => {
   });
 
   test('abandon after step 2, return → resume at step 3 with the circle intact (AC-AUTH-9)', async () => {
+    requires(founderPage, 'the founder account');
+    requires(circleId, 'the circle from steps 1–2');
     const page = founderPage;
     await page.goto('/setup');
     await page.waitForURL(`**/setup/step/3?circle=${circleId}`);
@@ -99,6 +124,8 @@ test.describe.serial('the §11.4-3 walkthrough', () => {
   });
 
   test('steps 3–4 and the completion screen (AC-AUTH-2/5; ADR-0011)', async () => {
+    requires(founderPage, 'the founder account');
+    requires(circleId, 'the circle from steps 1–2');
     const page = founderPage;
     await page.goto(`/setup/step/3?circle=${circleId}`);
     await page.check('input[name="context"][value="a-hospital-stay-or-discharge"]');
@@ -123,15 +150,23 @@ test.describe.serial('the §11.4-3 walkthrough', () => {
   });
 
   test('verification flips the mirror; the invite affordance appears', async () => {
+    requires(founderPage, 'the founder account');
+    requires(circleId, 'the circle from steps 1–2');
     const page = founderPage;
     // The confirmation mail was requested at create-account; fetch the
-    // link from Mailpit and click it.
+    // link from Mailpit and click it — asserting the picked message is
+    // addressed to THIS founder before its link is used (the ingestion
+    // spec's run-3 lesson, ADR-0025 D8 condition 3).
     const search = await fetch(
       `${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:${FOUNDER_EMAIL}`)}`,
     ).then((r) => r.json());
     expect(search.messages.length).toBeGreaterThan(0);
+    const picked = (
+      search.messages as Array<{ ID: string; To?: Array<{ Address?: string }> }>
+    ).find((m) => (m.To ?? []).some((t) => t.Address === FOUNDER_EMAIL));
+    expect(picked, `no Mailpit message addressed to ${FOUNDER_EMAIL}`).toBeTruthy();
     const message = await fetch(
-      `${MAILPIT}/api/v1/message/${search.messages[0].ID}`,
+      `${MAILPIT}/api/v1/message/${picked!.ID}`,
     ).then((r) => r.json());
     // B9: the confirmation template routes through /confirm?token_hash
     // (the link-extraction accessor widens; the walkthrough's steps are
@@ -153,6 +188,8 @@ test.describe.serial('the §11.4-3 walkthrough', () => {
   });
 
   test('an invite at summary-only: ceiling under the selector, link shown once', async () => {
+    requires(founderPage, 'the founder account');
+    requires(circleId, 'the circle from steps 1–2');
     const page = founderPage;
     await page.goto(`/${circleId}/invite`);
     await expect(page.locator('main')).toContainText("They'll start at summary only");
@@ -170,6 +207,7 @@ test.describe.serial('the §11.4-3 walkthrough', () => {
   test('invitee: ceiling before anything, create account with the address fixed, land on the Timeline (AC-AUTH-7 shape, §4.1.4)', async ({
     browser,
   }) => {
+    requires(acceptUrl, 'the invite link');
     inviteeContext = await browser.newContext();
     inviteePage = await inviteeContext.newPage();
     const path = acceptUrl.replace(/^https?:\/\/[^/]+/, '');
@@ -196,6 +234,8 @@ test.describe.serial('the §11.4-3 walkthrough', () => {
   });
 
   test('AC-AUTH-11: the founder’s session cannot accept Dan’s invite', async () => {
+    requires(founderPage, 'the founder account');
+    requires(acceptUrl, 'the invite link');
     const page = founderPage;
     const path = acceptUrl.replace(/^https?:\/\/[^/]+/, '');
     await page.goto(path);
@@ -206,6 +246,9 @@ test.describe.serial('the §11.4-3 walkthrough', () => {
   });
 
   test('AC-PERM-3: removal closes the sessions channel, checked from Dan’s live context', async () => {
+    requires(founderPage, 'the founder account');
+    requires(inviteePage, "Dan's live context from the invitee leg");
+    requires(circleId, 'the circle from steps 1–2');
     const member = await query(
       `select cm.id from public.circle_members cm
         join public.accounts a on a.id = cm.account_id

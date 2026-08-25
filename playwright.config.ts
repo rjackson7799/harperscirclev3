@@ -31,17 +31,26 @@ export default defineConfig({
   // adapter against a local Messages-API shape and NO credential is involved
   // anywhere in the gate (G9/G3's standing constraint, made a deployment fact
   // rather than a promise).
+  //
+  // 6B (ADR-0025 D8 condition 4): `reuseExistingServer: false` on BOTH.
+  // Reusing a server someone else started adopts it WITHOUT this config's
+  // env block — the 6A gate's run 1 adopted a peer session's dev server that
+  // carried no service-role key, and the only symptom was "Uploading is not
+  // available for this person.", a product-sounding string three layers from
+  // its cause. Such a run is INVALID, not flaky. A stale server on either
+  // port now fails the gate AT STARTUP, in the config's own words, which is
+  // the honest exit (docs/ops/e2e-local-gate.md: confirm the ports are free).
   webServer: [
     {
       command: 'node scripts/ai-fixture-server.mjs --port 8787',
       url: 'http://127.0.0.1:8787/',
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       timeout: 30_000,
     },
     {
     command: 'npm run dev',
     url: 'http://127.0.0.1:3000/sign-in',
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 120_000,
     env: {
       NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54341',

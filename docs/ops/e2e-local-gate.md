@@ -53,11 +53,54 @@ gate** — G9/G3's standing constraint as a deployment fact rather than a
 promise. If port 8787 is taken, the gate fails at startup rather than
 silently reaching for a provider.
 
+**Slice 6 (6B) REPAIRS the suite under ADR-0025 D8's six conditions**
+(F-5: three 6A gate runs produced three disjoint failure sets, all inside
+the suite's own fixtures, ordering or environment):
+
+- **No `test.describe.serial` anywhere.** A serial block converts every
+  fragile leg into a coverage hole for everything behind it —
+  `ingestion.spec.ts:400`, the live half of two GREEN coverage rows, was
+  skipped in all three runs behind unrelated failures. The property is
+  the rule: **no failing leg may prevent another leg from executing.**
+  Provisioning is memoized per spec, every ingestion/extraction leg is
+  runnable BY TITLE alone, and the walkthrough's order-dependent legs
+  guard their preconditions with a named expectation instead of a
+  TypeError.
+- **The cancel leg cancels FIRST, then drives `/api/worker/extract`
+  itself.** The pipeline queue is shared and every invocation dispatches
+  a batch by each MESSAGE's stage, so "catch the arrival at `extracting`
+  before something drains it" is a race (run 2 lost a 108 ms window on a
+  1500 ms poll). The repaired leg lets the eager chain rest the arrival
+  at `extracting`, cancels, then drains the queued extract work itself
+  and asserts nothing was written — §4.5 demonstrated, not raced.
+- **Verification clicks verify their inputs.** Every Mailpit pick asserts
+  the message is addressed to the account under test before its link is
+  used, and the founder provisions assert the click verified THAT
+  account — a wrong pick fails at the pick (run 3 failed three layers
+  downstream of a wrong-session confirm).
+- **`reuseExistingServer: false` on both webServers.** A reused server
+  carries none of this config's env; run 1 adopted a peer's dev server
+  and produced an INVALID run whose only symptom was a product-sounding
+  string. A stale server on 3000 or 8787 now fails the gate at startup.
+
+**The targeted run (D8 condition 5).** After a repair to the suite, the
+two owed legs are executed BY TITLE and recorded as a **targeted run,
+never as a gate result**:
+
+```
+npx playwright test e2e/ingestion.spec.ts -g "cancel closes the member window honestly"
+npx playwright test e2e/ingestion.spec.ts -g "below the cliff"
+```
+
+A round packet may not report a gate result for `e2e/ingestion.spec.ts`
+until `:400` (below the cliff) has been observed executing (D8
+condition 6).
+
 ## Prerequisites (hermetic startup)
 
 ```
 npx supabase start          # DB 54342 · API 54341 · Mailpit 54344
-npm run db:reset            # clean leg — exact 59 migrations (5A)
+npm run db:reset            # clean leg — exact 68 migrations (6A merged)
 node scripts/verify-migration-state.mjs supabase/migrations
 docker run -d --name hc_clamd -p 3310:3310 clamav/clamav:stable
                             # the B9 gate stack's scanner (§1.6): wait
@@ -71,16 +114,19 @@ docker run -d --name hc_clamd -p 3310:3310 clamav/clamav:stable
                             # runs it by hand if you want to watch it.
 ```
 
-- **`npm run db:reset` expects exact 60 migrations at 5B** (the 5A
-  increment merged; 5B is app-only and touches nothing under
-  `supabase/`).
+- **`npm run db:reset` expects exact 68 migrations at 6B** (the 6A
+  increment merged; 6B's app units touch nothing under `supabase/`
+  except its one pre-authorised migration slot, which moves this count
+  when spent).
 
 - Node 22.15.0 / npm 10.9.2 (`.nvmrc`); browsers via
   `npx playwright install chromium` once.
 - No `.env.local` is required: `playwright.config.ts` carries the full
-  webServer env (local demo keys, `HC_DB_URL`) and starts `npm run dev`
-  itself (`reuseExistingServer: true` — a dev server you already have
-  running is reused, so kill stale ones when in doubt).
+  webServer env (local demo keys, `HC_DB_URL`) and starts BOTH servers
+  itself. **`reuseExistingServer: false` (6B, ADR-0025 D8 condition 4):**
+  a server already on 3000 or 8787 fails the gate at startup — kill stale
+  ones first; an adopted server carries none of the config's env and
+  produces an INVALID run, not a flaky one.
 - Mailpit needs no configuration; the walkthrough reads verification
   mail through its API at 54344.
 - Known post-reset quirk: `supabase db reset` restarts containers and

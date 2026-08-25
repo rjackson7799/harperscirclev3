@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Browser, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 // ============================================================================
@@ -12,6 +12,12 @@ import AxeBuilder from '@axe-core/playwright';
 //
 // Runs under the local-gate protocol (docs/ops/e2e-local-gate.md) — CI
 // does not run browsers (ADR-0014/R6). Never real family data.
+//
+// RESTRUCTURED AT 6B under ADR-0025 D8 (F-5): no `test.describe.serial` —
+// no failing leg may prevent another leg from executing. The account and
+// the circle are MEMOIZED provisions with self-sufficient fallbacks, so
+// each audit leg runs alone (the targeted-run condition) and a failed
+// prerequisite reports itself into dependents instead of skipping them.
 // ============================================================================
 
 const PHONE = { width: 390, height: 844 };
@@ -101,15 +107,22 @@ let circleId = '';
 /** Click the confirmation link out of Mailpit (the walkthrough's
  *  pattern): a fresh PASSWORD sign-in of an unverified account is
  *  refused unconditionally (the probed GoTrue fact, ADR-0014 D3), so
- *  the keyboard leg verifies the account first — the keyboard test is
- *  about operability, not the verification state machine. */
+ *  the audit legs verify the account first — they are about operability,
+ *  not the verification state machine. The message is asserted to be
+ *  THIS account's before its link is used (the run-3 lesson). */
 async function verifyByMail(page: Page) {
   const search = await fetch(
     `${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:${EMAIL}`)}`,
   ).then((r) => r.json());
   expect(search.messages.length).toBeGreaterThan(0);
+  const picked = (
+    search.messages as Array<{ ID: string; To?: Array<{ Address?: string }> }>
+  ).find((m) => (m.To ?? []).some((t) => t.Address === EMAIL));
+  if (!picked) {
+    throw new Error(`Mailpit search for ${EMAIL} returned no message addressed to it`);
+  }
   const message = await fetch(
-    `${MAILPIT}/api/v1/message/${search.messages[0].ID}`,
+    `${MAILPIT}/api/v1/message/${picked.ID}`,
   ).then((r) => r.json());
   const link = String(message.Text ?? message.HTML).match(
     /https?:\/\/[^\s"'<>]+(?:verify|confirm)[^\s"'<>]*/,
@@ -118,9 +131,79 @@ async function verifyByMail(page: Page) {
   await page.goto(link!);
 }
 
+/** The verified account, provisioned once — by whichever leg needs it
+ *  first — in a throwaway context so no leg's own page carries state it
+ *  did not make. */
+let accountMemo: Promise<void> | null = null;
+function ensureAccount(browser: Browser): Promise<void> {
+  accountMemo ??= (async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await page.goto('/create-account');
+      await page.fill('input[name="name"]', 'Avery');
+      await page.fill('input[name="email"]', EMAIL);
+      await page.fill('input[name="password"]', PASSWORD);
+      await page.click('button[type="submit"]');
+      await page.waitForURL('**/setup/step/1');
+      await verifyByMail(page);
+    } finally {
+      await context.close();
+    }
+  })();
+  return accountMemo;
+}
+
+async function signIn(page: Page) {
+  await page.goto('/sign-in');
+  await page.fill('input[name="email"]', EMAIL);
+  await page.fill('input[name="password"]', PASSWORD);
+  await page.click('button[type="submit"]');
+  await page.waitForURL((url) => !url.pathname.startsWith('/sign-in'));
+}
+
+/** The circle, for legs that audit (app) shell routes: reuses the one the
+ *  setup-steps leg drove, or — running alone, or after that leg failed —
+ *  drives setup itself, resume-aware, without audits. */
+async function ensureCircle(browser: Browser): Promise<string> {
+  if (circleId) return circleId;
+  await ensureAccount(browser);
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await signIn(page);
+    await page.goto('/setup');
+    for (let hops = 0; hops < 6 && !circleId; hops++) {
+      await page.waitForURL('**/setup/**');
+      const url = new URL(page.url());
+      const fromQuery = url.searchParams.get('circle');
+      if (fromQuery) circleId = fromQuery;
+      if (url.pathname.endsWith('/step/1')) {
+        await page.check('input[name="relationship"][value="daughter"]');
+        await page.check('input[name="slice"][value="money-paperwork"]');
+        await page.click('button[type="submit"]');
+      } else if (url.pathname.endsWith('/step/2')) {
+        await page.fill('input[name="subject_name_1"]', 'Nell');
+        await page.check('input[name="situation_1"][value="At home, on their own"]');
+        await page.fill('input[name="zip_1"]', '02140');
+        await page.click('button[type="submit"]');
+      } else if (url.pathname.endsWith('/step/3')) {
+        await page.check('input[name="context"][value="paperwork-piling-up"]');
+        await page.click('button[type="submit"]');
+      } else {
+        break; // step 4 / complete: the circle exists and is captured
+      }
+    }
+    if (!circleId) throw new Error('ensureCircle: setup did not yield a circle id');
+    return circleId;
+  } finally {
+    await context.close();
+  }
+}
+
 test.use({ viewport: PHONE }); // §8.8: phone is the primary review device
 
-test.describe.serial('the D7 browser a11y leg', () => {
+test.describe('the D7 browser a11y leg', () => {
   test('public routes: sign-in, create-account, reset, wasnt-me', async ({
     page,
   }) => {
@@ -130,17 +213,11 @@ test.describe.serial('the D7 browser a11y leg', () => {
   });
 
   test('keyboard: sign-in is fully operable — Tab order, visible ring, Enter submits', async ({
+    browser,
     page,
   }) => {
     // The account must exist for Enter to land somewhere honest.
-    await page.goto('/create-account');
-    await page.fill('input[name="name"]', 'Avery');
-    await page.fill('input[name="email"]', EMAIL);
-    await page.fill('input[name="password"]', PASSWORD);
-    await page.click('button[type="submit"]');
-    await page.waitForURL('**/setup/step/1');
-    await verifyByMail(page);
-    await page.context().clearCookies();
+    await ensureAccount(browser);
 
     await page.goto('/sign-in');
     const ringOnActive = () =>
@@ -177,12 +254,12 @@ test.describe.serial('the D7 browser a11y leg', () => {
   });
 
   test('setup steps 1–4 and completion, audited; keyboard traversal of step 1', async ({
+    browser,
     page,
   }) => {
-    await page.goto('/sign-in');
-    await page.fill('input[name="email"]', EMAIL);
-    await page.fill('input[name="password"]', PASSWORD);
-    await page.click('button[type="submit"]');
+    await ensureAccount(browser);
+    await signIn(page);
+    await page.goto('/setup');
     await page.waitForURL('**/setup/step/1');
 
     await expectNoAxeViolations(page);
@@ -243,19 +320,16 @@ test.describe.serial('the D7 browser a11y leg', () => {
   });
 
   test('the (app) shell routes and account, audited at 390px', async ({
+    browser,
     page,
   }) => {
-    await page.goto('/sign-in');
-    await page.fill('input[name="email"]', EMAIL);
-    await page.fill('input[name="password"]', PASSWORD);
-    await page.click('button[type="submit"]');
-    await page.waitForURL((url) => !url.pathname.startsWith('/sign-in'));
+    const circle = await ensureCircle(browser);
+    await signIn(page);
 
-    expect(circleId).toBeTruthy();
     for (const path of [
-      `/${circleId}/timeline`,
-      `/${circleId}/tasks`,
-      `/${circleId}/invite`,
+      `/${circle}/timeline`,
+      `/${circle}/tasks`,
+      `/${circle}/invite`,
       '/account',
     ]) {
       await auditRoute(page, path);
