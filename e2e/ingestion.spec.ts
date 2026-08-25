@@ -247,9 +247,9 @@ async function uploadArrival(f: Founder, bytes: Buffer, filename: string): Promi
   return arrival.rows[0].id as string;
 }
 
-function inboundPayload(f: Founder, overrides: Record<string, unknown>) {
+function inboundPayload(f: Founder, overrides: Record<string, unknown>, sender: string = SENDER) {
   return {
-    FromFull: { Email: SENDER, Name: 'Front Desk' },
+    FromFull: { Email: sender, Name: 'Front Desk' },
     OriginalRecipient: `${f.localPart}@harperscircle.app`,
     MessageID: `e2e-${randomUUID()}`,
     Subject: 'Papers',
@@ -267,19 +267,23 @@ async function postInbound(f: Founder, payload: unknown) {
   });
 }
 
-async function postAttachment(f: Founder, name: string, content: Buffer) {
+async function postAttachment(f: Founder, name: string, content: Buffer, sender: string = SENDER) {
   const res = await postInbound(
     f,
-    inboundPayload(f, {
-      Attachments: [
-        {
-          Name: name,
-          ContentType: 'application/pdf',
-          ContentLength: content.byteLength,
-          Content: content.toString('base64'),
-        },
-      ],
-    }),
+    inboundPayload(
+      f,
+      {
+        Attachments: [
+          {
+            Name: name,
+            ContentType: 'application/pdf',
+            ContentLength: content.byteLength,
+            Content: content.toString('base64'),
+          },
+        ],
+      },
+      sender,
+    ),
   );
   expect(res.status()).toBe(200);
   const body = await res.json();
@@ -333,17 +337,28 @@ test.describe('the 4B ingestion leg', () => {
   test('TUS upload → store → scan → gate: honest states end at Reading (UPL-01 live)', async ({
     browser,
   }) => {
+    // REWORKED WITH THE 6B B5 FIRE, in the same unit that lit it: the eager
+    // chain no longer RESTS at `extracting` — gate fires extract, extract
+    // fires interpret, and for a valid document the honest end state is
+    // `Needs you`. `Reading` is now a moment, not a plateau, so the moment
+    // is asserted from the EVENT LOG (it never un-happens) and the end
+    // state from the surface.
     const f = await theFounder(browser);
-    const arrival = await uploadArrival(f, pdfBytes('upl-01'), `discharge-${stamp}.pdf`);
+    const valid = readFileSync(
+      path.join(process.cwd(), 'fixtures', 'g9', 'development', 'dev-discharge-01.pdf'),
+    );
+    const bytes = Buffer.concat([valid, Buffer.from(`\n% hc-gate upl-01 ${stamp}\n`, 'latin1')]);
+    const arrival = await uploadArrival(f, bytes, `discharge-${stamp}.pdf`);
 
-    // The eager chain (upload complete → store → scan via clamd → gate;
-    // uploads PASS the gate) rests at extracting — the Q7 seam.
-    await pollState(arrival, ['extracting']);
+    // Reading BEGAN — §4.2.2's promise, made true the moment it is made.
+    await pollEvent(arrival, 'extracting');
+    // …and the whole eager chain finishes without a single manual drive.
+    await pollState(arrival, ['proposals_ready']);
 
     await f.page.goto(`/${f.circleId}/inbox`);
     const main = (await f.page.textContent('main')) ?? '';
     expect(main).toContain('Uploaded document');
-    expect(main).toContain('Reading');
+    expect(main).toContain('Needs you');
   });
 
   test('the artifact route streams the clean original; unknown ids share the shape (RLS-10 live)', async ({
@@ -352,7 +367,10 @@ test.describe('the 4B ingestion leg', () => {
     const f = await theFounder(browser);
     const bytes = pdfBytes('artifact-route');
     const arrival = await uploadArrival(f, bytes, `artifact-${stamp}.pdf`);
-    await pollState(arrival, ['extracting']);
+    // The artifact is stored at `store` and clean-gated after `scan`; the
+    // event log is the stable observation (post-B5, later states are the
+    // eager chain's to race through).
+    await pollEvent(arrival, 'scanned');
 
     const res = await f.page.request.get(`/api/artifact/${arrival}`);
     expect(res.status()).toBe(200);
@@ -479,37 +497,48 @@ test.describe('the 4B ingestion leg', () => {
     await pollEvent(dupChildId, 'extracting');
   });
 
-  // 6B REWORK (ADR-0025 D8 condition 2) — the third life of this leg, and
-  // the lesson is on the record: the first version borrowed a leftover
-  // arrival; the second made its own but then drove store/scan/gate through
-  // worker posts — and the pipeline queue is SHARED, each invocation
-  // draining a batch and dispatching by the MESSAGE's stage, so one of the
-  // leg's own posts (or any still-draining invocation) could pick up the
-  // just-enqueued extract message and advance the arrival off `extracting`
-  // in milliseconds (run 2 lost exactly that race: a 108 ms window against
-  // a 1500 ms poll). The repair inverts the order: the leg lets the eager
-  // chain rest the arrival at `extracting` (the Q7 seam guarantees nothing
-  // fires extract), CANCELS FIRST, and only then drives
-  // `/api/worker/extract` ITSELF — proving §4.5's whole point end-to-end:
-  // the cancel beat the reading, and the machinery honours it by absorbing
-  // the queued work and writing NOTHING.
+  // 6B REWORK (ADR-0025 D8 condition 2) — the FOURTH life of this leg, each
+  // on the record: the first borrowed a leftover arrival; the second made
+  // its own but raced the shared queue's drains (run 2 lost a 108 ms window
+  // on a 1500 ms poll); the third rested on the Q7 seam — and then B5's
+  // eager fire, landing in this same increment, closed that seam for every
+  // gate-fired path. The one route INTO the §4.5 window with no eager fire
+  // is the accept-sender RELEASE (held → extracting in accept's own
+  // transaction, nothing fired), which is also the §4.5 story at its most
+  // real: mail a person had to admit, cancelled before the machinery read
+  // it. The leg still CANCELS FIRST and then drives `/api/worker/extract`
+  // ITSELF — the cancel beat the reading, and the machinery honours it by
+  // absorbing the queued work and writing NOTHING.
   test('cancel closes the member window honestly (§4.5 live)', async ({ browser }) => {
     const f = await theFounder(browser);
-    // A VALID document (the corpus discharge fixture), so what the cancel
-    // beats is work that would otherwise have succeeded — a refusal after
-    // cancellation then proves the cancel, not a decode failure.
-    const valid = readFileSync(
-      path.join(process.cwd(), 'fixtures', 'g9', 'development', 'dev-discharge-01.pdf'),
+    // A distinct sender, so this leg's mail HOLDS whatever its siblings
+    // accepted — and a BODILESS email (no attachments), so the PARENT is
+    // the one arrival: the inbox row, the cancel form and the queued
+    // extract work all name the same id. The body carries readable content,
+    // so what the cancel beats is a read that would otherwise have
+    // completed to proposals.
+    const cancelSender = `records.${stamp}@cardiology-example.org`;
+    const res = await postInbound(
+      f,
+      inboundPayload(
+        f,
+        { TextBody: 'Amoxicillin 500 mg twice daily. Call the front desk with questions.' },
+        cancelSender,
+      ),
     );
-    const cancelBytes = Buffer.concat([
-      valid,
-      Buffer.from(`\n% hc-gate cancel ${stamp}\n`, 'latin1'),
-    ]);
-    const target = await uploadArrival(f, cancelBytes, `cancel-${stamp}.pdf`);
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.action).toBe('accepted');
+    const target = body.arrival_id as string;
+    await pollState(target, ['held_unknown_sender']);
 
-    // The eager chain (store → scan → gate) rests it at `extracting` with
-    // the extract message queued and deliberately unfired.
-    expect(await pollState(target, ['extracting'])).toBe('extracting');
+    // The person admits the sender; the release lands the arrival at
+    // `extracting` in accept_sender's OWN transaction — queued, unfired
+    // (the release is the one route into the window with no eager fire).
+    await f.page.goto(`/${f.circleId}/inbox`);
+    await f.page.click('button:has-text("accept this sender")');
+    await f.page.waitForURL('**/inbox?accepted=1');
+    expect(await pollState(target, ['extracting'], 15_000)).toBe('extracting');
 
     // The person cancels while the window is open.
     await f.page.goto(`/${f.circleId}/inbox`);
@@ -551,7 +580,9 @@ test.describe('the 4B ingestion leg', () => {
     // below is authorization, never absence.
     const cliffBytes = pdfBytes('below-cliff');
     const probeArrival = await uploadArrival(f, cliffBytes, `cliff-${stamp}.pdf`);
-    await pollState(probeArrival, ['extracting']);
+    // Stored + clean-gated is all the probe needs; the event log is the
+    // stable observation post-B5.
+    await pollEvent(probeArrival, 'scanned');
     const founderSees = await f.page.request.get(`/api/artifact/${probeArrival}`);
     expect(founderSees.status()).toBe(200);
 
