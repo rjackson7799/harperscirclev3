@@ -205,7 +205,7 @@ async function processScan(msg: PipelineMessage, origin: string, key: string): P
   return `${outcome.verdict}:${r}`;
 }
 
-async function processGate(msg: PipelineMessage): Promise<string> {
+async function processGate(msg: PipelineMessage, origin: string, key: string): Promise<string> {
   const claim = await claimStage(msg.arrival_id, 'gate');
   if (claim.result !== 'claimed') {
     if (claim.result === 'invalid_state') {
@@ -237,20 +237,23 @@ async function processGate(msg: PipelineMessage): Promise<string> {
 
   const r = await advanceArrival(msg.arrival_id, 'scanned', to, claim.leaseId!, reason);
   if (r === 'advanced' && to === 'extracting') {
-    // The Q7 seam: enqueued for the extract worker, and DELIBERATELY NOT
-    // fired. `gate → extract` is the one hand-off in the pipeline with no
-    // eager fire, and at round-16 sign-off that became a RULING rather than
-    // an oversight: firing it collapses §4.5's cancel window — median ~35 s,
-    // most of it relay dead time — to seconds, while nothing yet tells a
-    // family that Reading has begun. The arrival-received signal lands
-    // FIRST; the eager fire follows it. Owner ruling 2026-08-23; the
-    // finding is ADR-0023 D14 (R8/F-2), the ruling is D24.
+    // 6B B5: the LAST hand-off joins scan and gate. The eager fire was HELD
+    // by owner ruling (ADR-0023 D14/D24 ruling 3) until an arrival-received
+    // signal existed, because collapsing §4.5's ~35 s cancel window to
+    // seconds while a member watched a stale snapshot would make PRD
+    // §4.2.2's promise false at the moment it was made. The signal shipped
+    // FIRST (the Care Inbox revalidates — InboxRevalidator, bounded by one
+    // relay tick), the fire follows it, and the ORDER is enforced by the
+    // fire's own test asserting the signal's presence
+    // (tests/routes/worker-stage.test.ts). PRF-07 reports the new median
+    // rather than this comment asserting it.
     await sendPipelineWork({
       circle_id: msg.circle_id,
       arrival_id: msg.arrival_id,
       stage: 'extract',
       channel,
     });
+    fireWorker(origin, 'extract', key);
   }
   return `${to}:${r}`;
 }
@@ -737,7 +740,7 @@ export async function POST(
       else if (msg.stage === 'scan') outcome = await processScan(msg, origin, key);
       else if (msg.stage === 'extract') outcome = await processExtract(msg, origin, key);
       else if (msg.stage === 'interpret') outcome = await processInterpret(msg);
-      else outcome = await processGate(msg);
+      else outcome = await processGate(msg, origin, key);
       await archivePipelineWork(work.msg_id);
       processed.push({ arrival_id: msg.arrival_id, stage: msg.stage, outcome });
     } catch (err) {

@@ -37,6 +37,15 @@ const inbox = {
 };
 vi.mock('@/lib/hc/inbox', () => inbox);
 
+// 6B B5: the revalidator is a CLIENT component (useRouter) and this file
+// renders the page with renderToStaticMarkup, where no app router exists.
+// Stubbed to nothing here — its behaviour has its own suite
+// (tests/app/inbox-revalidator.test.tsx) and its presence on the page is
+// pinned by source there and by the fire's precondition test.
+vi.mock('@/components/inbox/InboxRevalidator', () => ({
+  InboxRevalidator: () => null,
+}));
+
 const CIRCLE = '11111111-0000-4000-8000-000000000001';
 const CLAIMS = { sub: '33333333-0000-4000-8000-000000000003', role: 'authenticated' };
 
