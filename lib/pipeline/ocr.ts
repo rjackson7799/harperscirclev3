@@ -101,10 +101,28 @@ type TesseractWorker = {
  * project root. The fallback is what makes this independent of a particular
  * bundler's behaviour rather than a bet on it.
  */
-function resolveInstalled(specifier: string, ...fallbackSegments: string[]): string {
-  const nodeRequire = createRequire(import.meta.url);
+/**
+ * THE SPECIFIER MUST BE A LITERAL AT THE CALL SITE — passing it in as a
+ * variable is a real defect, not a style choice.
+ *
+ * A `require.resolve(someVariable)` is unanalysable, and Turbopack answers
+ * it with `Module not found: Can't resolve <dynamic>` — **481 and 556 times
+ * in a single gate run**, because it re-attempts the resolution constantly.
+ * That load destabilised the dev server: two review legs began timing out on
+ * a 404 from `/decide/submit`, a route with nothing to do with OCR, on runs
+ * where the identical legs had passed at the previous head. The run before
+ * this helper existed emitted the warning ZERO times and those legs passed.
+ *
+ * So the resolve stays a literal (statically analysable, silent, exactly as
+ * it was), and the CALLER hands in a thunk. What the helper adds is the part
+ * that matters: the answer is CHECKED. Inside the bundle a resolve returns a
+ * module id rather than a path, so an absolute path that exists on disk is
+ * used and anything else falls back to the installed tree under the project
+ * root.
+ */
+function realPathOr(resolve: () => string, ...fallbackSegments: string[]): string {
   try {
-    const resolved = nodeRequire.resolve(specifier);
+    const resolved = resolve();
     if (isAbsolute(resolved) && existsSync(resolved)) return resolved;
   } catch {
     // Not resolvable from this context — the fallback below is the answer.
@@ -113,13 +131,14 @@ function resolveInstalled(specifier: string, ...fallbackSegments: string[]): str
 }
 
 export function engineLocations(): { langPath: string; workerPath: string } {
+  const nodeRequire = createRequire(import.meta.url);
   return {
     // The engine's own data package, resolved locally — the `4.0.0_best_int`
     // build is exactly what the library's lstmOnly CDN default names.
     langPath: join(
       dirname(
-        resolveInstalled(
-          '@tesseract.js-data/eng/package.json',
+        realPathOr(
+          () => nodeRequire.resolve('@tesseract.js-data/eng/package.json'),
           '@tesseract.js-data',
           'eng',
           'package.json',
@@ -127,8 +146,8 @@ export function engineLocations(): { langPath: string; workerPath: string } {
       ),
       '4.0.0_best_int',
     ),
-    workerPath: resolveInstalled(
-      'tesseract.js/src/worker-script/node/index.js',
+    workerPath: realPathOr(
+      () => nodeRequire.resolve('tesseract.js/src/worker-script/node/index.js'),
       'tesseract.js',
       'src',
       'worker-script',
