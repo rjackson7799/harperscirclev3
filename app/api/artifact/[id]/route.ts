@@ -1,7 +1,8 @@
 import { asUser } from '@/lib/db/user';
 import { liveSessionClaims } from '@/lib/auth/session';
-import { logArtifactRead, readableArtifact } from '@/lib/hc/artifacts';
+import { logArtifactRead, readableArtifact, readableRendition } from '@/lib/hc/artifacts';
 import { asServiceRole } from '@/lib/db/service-role';
+import { promotedPageKey, type PageExt } from '@/lib/pipeline/page-keys';
 
 /**
  * GET /api/artifact/[id] — the §1.3 six steps, literally (slice-4 plan
@@ -39,6 +40,21 @@ function notFound(): Response {
   });
 }
 
+/**
+ * 6B B2 (R4/F-6): a page the MANIFEST names that storage does not hold is
+ * REPORTED, never 404'd. This branch is reachable only past every gate — the
+ * caller is authorized, the artifact is clean, the manifest is theirs to
+ * read — so the report leaks nothing; what it does is turn permanent partial
+ * promotion from an invisible 404 into a named, repairable state the review
+ * screen can say out loud ("page 3 of this document is missing").
+ */
+function renditionPageMissing(page: number): Response {
+  return Response.json(
+    { error: 'rendition_page_missing', page },
+    { status: 503, headers: { 'cache-control': 'private, no-store' } },
+  );
+}
+
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
@@ -54,6 +70,13 @@ export async function GET(
 
   // Step 3 — the independent clean gate (AC-INBOX-15).
   if (artifact.scan_verdict !== 'clean' || !artifact.storage_key) return notFound();
+
+  // 6B B2: ?page=N serves the promoted rendering through this SAME route —
+  // same gates above, same evidence discipline below, no second byte path.
+  const pageParam = new URL(req.url).searchParams.get('page');
+  if (pageParam !== null) {
+    return servePage(claims, id, artifact.circle_id, pageParam);
+  }
 
   // Step 6 runs BEFORE bytes move: no trail, no read.
   try {
@@ -95,4 +118,63 @@ export async function GET(
     if (v) headers.set(h, v);
   }
   return new Response(upstream.body, { status: upstream.status, headers });
+}
+
+/**
+ * The promoted page (6B B2). Reached only past steps 1–3; from here:
+ *   · the MANIFEST is the contract (6A M4): the page number must be one it
+ *     names and the extension comes from it — a fact, never a default
+ *     (R3/F-8). No manifest, a page outside it, or a malformed number all
+ *     answer the ONE 404 shape — indistinguishable from every other
+ *     refusal, and the manifest itself is read RLS-true so it cannot become
+ *     an oracle.
+ *   · evidence before bytes, unchanged: every page view writes its
+ *     artifact_read entry through hc.log_artifact_read before a byte moves.
+ *   · a manifest-named page ABSENT from storage is REPORTED (R4/F-6),
+ *     never served as a ghost — see renditionPageMissing above.
+ */
+async function servePage(
+  claims: Parameters<typeof logArtifactRead>[0]['claims'],
+  arrivalId: string,
+  circleId: string,
+  pageParam: string,
+): Promise<Response> {
+  if (!/^\d{1,3}$/.test(pageParam)) return notFound();
+  const pageNo = Number(pageParam);
+  if (pageNo < 1) return notFound();
+
+  const rendition = await readableRendition(claims, arrivalId);
+  if (!rendition || pageNo > rendition.page_count) return notFound();
+  const ext = rendition.page_exts[pageNo - 1] as PageExt | undefined;
+  if (ext !== 'png' && ext !== 'jpg') return notFound();
+
+  // Evidence before bytes — the same §1.3 step 6 the original rides.
+  try {
+    await logArtifactRead({ claims, arrivalId });
+  } catch (err) {
+    console.error(`artifact: access-log write failed: ${(err as Error).message}`);
+    return new Response('unavailable', { status: 500 });
+  }
+
+  const key = promotedPageKey(circleId, arrivalId, pageNo, ext);
+  const { data, error } = await asServiceRole().storage.from('artifacts').createSignedUrl(key, 30);
+  if (error || !data?.signedUrl) {
+    console.error(
+      `artifact: promoted page ${pageNo} of ${arrivalId} refused by storage: ${error?.message ?? 'no url'}`,
+    );
+    return renditionPageMissing(pageNo);
+  }
+  const upstream = await fetch(data.signedUrl);
+  if (!upstream.ok) {
+    console.error(`artifact: promoted page ${pageNo} of ${arrivalId} answered ${upstream.status}`);
+    return renditionPageMissing(pageNo);
+  }
+
+  const headers = new Headers({
+    'cache-control': 'private, no-store',
+    'content-type': ext === 'jpg' ? 'image/jpeg' : 'image/png',
+  });
+  const length = upstream.headers.get('content-length');
+  if (length) headers.set('content-length', length);
+  return new Response(upstream.body, { status: 200, headers });
 }

@@ -243,15 +243,19 @@ describe('B2 · geometry is deterministic and resolution-independent', () => {
 
 describe('B2 · the rendered-page lifecycle and the slice-6 OCR seam', () => {
   it('attempt staging is lease-scoped and unreachable from a user path', () => {
-    const key = renderStagingKey('c1', 'a1', 'lease-9', 3);
+    const key = renderStagingKey('c1', 'a1', 'lease-9', 3, 'png');
     expect(key).toContain('lease-9');
     expect(key.startsWith('render/attempt/')).toBe(true);
   });
 
-  it('a promoted page is per-arrival and write-once — no lease in the key', () => {
-    const key = promotedPageKey('c1', 'a1', 3);
-    expect(key).not.toContain('lease');
-    expect(promotedPageKey('c1', 'a1', 3)).toBe(key);
+  it('a promoted page is per-arrival, write-once, and its ext is REQUIRED — both extensions build, no default exists (R3/F-8)', () => {
+    // 6B B2 (Q5): the old `'png'` default encoded the wrong answer for the
+    // MAJORITY of arrivals — extFor returns 'jpg' for every photo and scan.
+    // With `ext` required the wrong answer stops being expressible: the
+    // extension comes from the 6A M4 manifest, a recorded fact.
+    expect(promotedPageKey('c1', 'a1', 3, 'png')).toBe('render/circle/c1/arrival/a1/p003.png');
+    expect(promotedPageKey('c1', 'a1', 3, 'jpg')).toBe('render/circle/c1/arrival/a1/p003.jpg');
+    expect(promotedPageKey('c1', 'a1', 3, 'jpg')).not.toContain('lease');
   });
 
   it('slice 6 can add OCR text beside a promoted page without moving it', () => {
@@ -259,7 +263,7 @@ describe('B2 · the rendered-page lifecycle and the slice-6 OCR seam', () => {
     // OCR text lands as a SIBLING of the page artifact, and citation
     // geometry is normalised against the page — so neither the stored
     // coordinates nor the promoted artifact changes when §6.9 arrives.
-    const page = promotedPageKey('c1', 'a1', 3);
+    const page = promotedPageKey('c1', 'a1', 3, 'png');
     const text = promotedPageTextKey('c1', 'a1', 3);
     expect(text).not.toBe(page);
     expect(text.startsWith(page.slice(0, page.lastIndexOf('.')))).toBe(true);
@@ -454,11 +458,14 @@ describe('B2 · the email rendition — sanitised, resource-free (Q6; PRD §4.2.
     const canvas = createCanvas(img.width, img.height);
     const cx = canvas.getContext('2d');
     cx.drawImage(img, 0, 0);
-    const data = cx.getImageData(0, 0, img.width, img.height).data;
+    // Measure the band the header and first body lines occupy — a short
+    // message on a full page is overwhelmingly white, so the whole-page
+    // mean cannot discriminate ink from blank.
+    const data = cx.getImageData(0, 0, img.width, 400).data;
     let sum = 0;
     for (let i = 0; i < data.length; i += 4) sum += (data[i] + data[i + 1] + data[i + 2]) / 3;
     const mean = sum / (data.length / 4);
-    expect(mean).toBeLessThan(254); // ink present
+    expect(mean).toBeLessThan(253); // ink present in the message band
     expect(mean).toBeGreaterThan(180); // …on a mostly-light page, not a black box
   });
 

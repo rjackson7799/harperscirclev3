@@ -323,7 +323,11 @@ async function processExtract(
 
   // §4.6: content, never declaration. The store stage recorded a sniffed
   // type; sniffing again here needs no read privilege and cannot be stale.
-  const normalized = await normalizeArrival(bytes, sniffMime(bytes));
+  // The CHANNEL rides along (6B B2, Q6): it is what distinguishes the email
+  // body's JSON envelope from a member-uploaded .json file.
+  const normalized = await normalizeArrival(bytes, sniffMime(bytes), {
+    channel: msg.channel ?? (await lookupChannel(msg.arrival_id)),
+  });
   const exit = normalizeExit(normalized);
   if (exit) {
     // Refused BEFORE any provider dispatch — the whole point of §6.3's bounds
@@ -398,7 +402,15 @@ async function processExtract(
     },
   ];
 
-  const r = await finalizeExtraction(msg.arrival_id, lease, facts, proposals);
+  // 6A M4's fifth parameter, supplied (6B B2): the manifest derives from the
+  // SAME pages the staging writes above and the promotion copies below, so
+  // the recorded extension can never disagree with the stored object
+  // (R3/F-8) and partial promotion becomes detectable (R4/F-6).
+  const rendition = {
+    page_count: normalized.pages.length,
+    page_exts: normalized.pages.map((page) => extFor(page.mime)),
+  };
+  const r = await finalizeExtraction(msg.arrival_id, lease, facts, proposals, rendition);
   if (r !== 'advanced') {
     await gcRenderStaging(circleId, msg.arrival_id, lease);
     return r;
@@ -586,7 +598,9 @@ async function processInterpret(msg: PipelineMessage): Promise<string> {
     const circleId = await resolveCircle(msg);
     const bytes = circleId ? await readArtifactBytes(circleId, msg.arrival_id) : null;
     if (bytes) {
-      const normalized = await normalizeArrival(bytes, sniffMime(bytes));
+      const normalized = await normalizeArrival(bytes, sniffMime(bytes), {
+        channel: msg.channel ?? (await lookupChannel(msg.arrival_id)),
+      });
       if (normalized.outcome === 'rendered') documentText = normalized.text;
     }
     operatorNotes.push(

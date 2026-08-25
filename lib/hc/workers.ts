@@ -40,8 +40,10 @@ export type PipelineStage = 'store' | 'scan' | 'gate' | 'extract' | 'interpret';
  * Their ABSENCE is not a different quality of answer. A re-queued interpret
  * (a resolved stage-2 duplicate, a sweeper rescue) carries no facts, and the
  * worker re-normalises the artifact and sends the document itself — the same
- * source material extraction saw. Recorded as a 5B delta, with a definer
- * (`hc.extractions_for`) offered to the owner for the next DB-opening slice.
+ * source material extraction saw. (The definer that 5B offered shipped at
+ * 6A M2 as `hc.extractions_for` — gated for MEMBERS at the arrival's
+ * view×5, not for hc_pipeline, so the hand-off here stays the pipeline's
+ * only channel, §3.10 unchanged.)
  */
 export type CarriedFact = {
   field: string;
@@ -134,21 +136,35 @@ export async function finalizeScan(
   return r.rows[0].r as AdvanceResult;
 }
 
+/** 6A M4's manifest shape, supplied by the worker at 6B B2: the rendered
+ *  page count and the per-page extension, derived from the SAME pages the
+ *  staging writes and the promotion copies — never from a default. */
+export type RenditionManifest = { page_count: number; page_exts: string[] };
+
 /**
  * hc.finalize_extraction — §4.5's one transaction: the conditional transition
  * runs FIRST and gates everything below it, so a lost CAS publishes nothing.
  * M5's stage-2 detection runs inside it, which is why 'advanced' can mean
- * either `extracted` or `duplicate_suspected_stage2`.
+ * either `extracted` or `duplicate_suspected_stage2`. 6A M4 added the fifth
+ * parameter (the rendition manifest, written on the won transition); 6B B2
+ * supplies it — the seam 062 case 10 pinned, closed from the app side.
  */
 export async function finalizeExtraction(
   arrivalId: string,
   leaseId: string,
   facts: unknown[],
   proposals: unknown[],
+  rendition: RenditionManifest | null = null,
 ): Promise<AdvanceResult> {
   const r = await asPipeline().query(
-    'select hc.finalize_extraction($1, $2, $3::jsonb, $4::jsonb) as r',
-    [arrivalId, leaseId, JSON.stringify(facts), JSON.stringify(proposals)],
+    'select hc.finalize_extraction($1, $2, $3::jsonb, $4::jsonb, $5::jsonb) as r',
+    [
+      arrivalId,
+      leaseId,
+      JSON.stringify(facts),
+      JSON.stringify(proposals),
+      rendition === null ? null : JSON.stringify(rendition),
+    ],
   );
   return r.rows[0].r as AdvanceResult;
 }

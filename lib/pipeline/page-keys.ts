@@ -40,12 +40,19 @@ export function renderStagingPrefix(
   return `render/attempt/${circleId}/${arrivalId}/${leaseId}`;
 }
 
+// 6B B2 (R3/F-8, Q5 SETTLED): `ext` is REQUIRED on both page-key builders.
+// The old `'png'` default encoded the wrong answer for the MAJORITY of
+// arrivals — `extFor` returns 'jpg' for every photo, every scan, every pill
+// bottle — and a default is exactly how a caller guesses without noticing.
+// The extension is a FACT, recorded in the 6A M4 rendition manifest and
+// derived at write time from the rendered page's own mime; with no default,
+// the wrong answer stops being expressible.
 export function renderStagingKey(
   circleId: string,
   arrivalId: string,
   leaseId: string,
   page: number,
-  ext: PageExt = 'png',
+  ext: PageExt,
 ): string {
   return `${renderStagingPrefix(circleId, arrivalId, leaseId)}/${pageStem(page)}.${ext}`;
 }
@@ -58,7 +65,7 @@ export function promotedPageKey(
   circleId: string,
   arrivalId: string,
   page: number,
-  ext: PageExt = 'png',
+  ext: PageExt,
 ): string {
   return `${promotedPagePrefix(circleId, arrivalId)}/${pageStem(page)}.${ext}`;
 }

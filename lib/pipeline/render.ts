@@ -20,7 +20,8 @@ import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from 'pdf
  *   |---------------------------------|--------------------------|-----------|
  *   | born-digital PDF                | page images + text layer | 1568      |
  *   | scanned PDF, photo, pill bottle | page images only         | 2576      |
- *   | email body                      | text (no page images)    | —         |
+ *   | email body                      | text, with the rendered  | 1568      |
+ *   |                                 | message as a 2nd source  |           |
  *
  * Resolution is a cost lever with a floor in both directions. Downsampling a
  * born-digital PDF is free — the text layer carries the characters — while
@@ -143,6 +144,14 @@ export type NormalizeOptions = {
   ceilings?: Partial<RenderCeilings>;
   /** Injectable clock, so the wall-clock ceiling is testable without waiting. */
   now?: () => number;
+  /**
+   * The arrival's channel (6B B2, Q6). The inbound webhook stages an email
+   * BODY as a JSON envelope under application/json, and CONTENT cannot tell
+   * that envelope from a member-uploaded .json file — the channel can. Only
+   * `email` unlocks the envelope path; everything else keeps §4.6's honest
+   * unsupported_type for JSON bytes.
+   */
+  channel?: 'email' | 'upload' | null;
 };
 
 /**
@@ -319,17 +328,31 @@ export async function normalizeArrival(
   const outOfTime = () => now() - startedAt >= ceilings.maxWallClockMs;
   const remaining = () => ceilings.maxWallClockMs - (now() - startedAt);
 
-  // §6.3 row 4: an email body is text first. No decoder is involved, so no
-  // ceiling but the size of the body itself applies.
+  // §6.3 row 4 AS WRITTEN (Q6 SETTLED at 6B): "Email body | Text, with the
+  // rendered message as a SECOND SOURCE." Text stays first; the sanitised,
+  // resource-free rendition gives §6.4's crop something to resolve to for
+  // the product's primary intake channel. The §4.6 bounded posture carries
+  // over: the body byte ceiling refuses BEFORE any parse.
   if (isTextual(mime)) {
     if (outOfTime()) return { outcome: 'refused', reason: 'wall_clock' };
-    return {
-      outcome: 'rendered',
-      sourceClass: 'email_text',
-      pageCount: 1,
-      pages: [],
-      text: new TextDecoder().decode(bytes),
-    };
+    if (bytes.byteLength > EMAIL_BODY_MAX_BYTES) {
+      return { outcome: 'refused', reason: 'page_bound' };
+    }
+    const text = new TextDecoder().decode(bytes);
+    return renderEmailMessage(text, ceilings, outOfTime);
+  }
+
+  // The email-body ENVELOPE — {subject, from, text_body, html_body} staged
+  // by the inbound webhook as application/json. Channel-gated (see
+  // NormalizeOptions.channel): a member-uploaded .json is not an email.
+  if (mime === 'application/json' && options.channel === 'email') {
+    if (outOfTime()) return { outcome: 'refused', reason: 'wall_clock' };
+    if (bytes.byteLength > EMAIL_BODY_MAX_BYTES) {
+      return { outcome: 'refused', reason: 'page_bound' };
+    }
+    const envelope = parseEmailEnvelope(bytes);
+    if (!envelope) return { outcome: 'unsupported_type' };
+    return renderEmailMessage(envelope, ceilings, outOfTime);
   }
 
   const magic = magicFor(mime);
@@ -473,6 +496,222 @@ async function pageText(doc: PDFDocumentProxy, pageNumber: number): Promise<stri
   } catch {
     return '';
   }
+}
+
+// ----------------------------------------------------------------------------
+// The email rendition (6B B2; Q6 SETTLED: RENDER, honouring §6.3 row 4 as
+// written; PRD §4.2.8's inert-links rule carried to rendering).
+//
+// SANITISED AND RESOURCE-FREE BY CONSTRUCTION: the message is reduced to
+// TEXT — scripts, styles and comments deleted; tags stripped; entities
+// decoded AFTER stripping so nothing re-parses; an anchor keeps its text
+// with its target shown inert in parentheses, never fetched, never resolved
+// for a title — and the text is drawn as glyphs onto a canvas. There is no
+// HTML engine, no resource loader and no code path that can reach the
+// network; tests/pipeline/render.test.ts asserts an attempted network call
+// as a FAILURE rather than trusting this comment.
+//
+// The page is the standard tier in portrait-letter proportions (1212×1568 —
+// the same frame a born-digital PDF page renders at), PNG like every other
+// text page, paginated under the SAME named ceilings as documents: the body
+// byte ceiling before any parse (§4.6), maxPages on the wrapped line count
+// before any drawing, maxRenderedBytes on the encoded output, the wall
+// clock consulted between and after pages.
+// ----------------------------------------------------------------------------
+
+/** The §4.6 bounded posture for message bodies: refused before any parse.
+ *  512 KiB of TEXT is ~150 rendered pages — far beyond any real mail body
+ *  and comfortably under the page bound's own arithmetic. */
+export const EMAIL_BODY_MAX_BYTES = 512 * 1024;
+
+const EMAIL_PAGE_W = 1212;
+const EMAIL_PAGE_H = 1568;
+const EMAIL_MARGIN = 96;
+const EMAIL_FONT_PX = 28;
+const EMAIL_LINE_H = 40;
+
+type EmailMessage = { subject: string; from: string; body: string };
+
+/** The inbound webhook's envelope, read defensively: a JSON blob without the
+ *  envelope's body keys is not an email body, however it arrived. */
+function parseEmailEnvelope(bytes: Uint8Array): EmailMessage | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const o = parsed as Record<string, unknown>;
+  if (!('text_body' in o) && !('html_body' in o)) return null;
+  const textBody = typeof o.text_body === 'string' ? o.text_body : '';
+  const htmlBody = typeof o.html_body === 'string' ? o.html_body : '';
+  return {
+    subject: typeof o.subject === 'string' ? o.subject : '',
+    from: typeof o.from === 'string' ? o.from : '',
+    body: textBody.trim() !== '' ? textBody : htmlToText(htmlBody),
+  };
+}
+
+function safeCodePoint(code: number): string {
+  if (!Number.isFinite(code) || code < 0x20 || code > 0x10ffff) return ' ';
+  try {
+    return String.fromCodePoint(code);
+  } catch {
+    return ' ';
+  }
+}
+
+/**
+ * HTML reduced to text — never rendered as HTML. Order matters: executable
+ * and stylistic machinery is DELETED first (its content must not survive as
+ * text), anchors keep their text with the target inert in parentheses,
+ * block boundaries become newlines, every remaining tag is stripped, and
+ * entities decode LAST so a decoded `<` can never re-enter parsing.
+ */
+function htmlToText(html: string): string {
+  let s = html;
+  s = s.replace(/<script\b[\s\S]*?<\/script\s*>/gi, ' ');
+  s = s.replace(/<style\b[\s\S]*?<\/style\s*>/gi, ' ');
+  s = s.replace(/<head\b[\s\S]*?<\/head\s*>/gi, ' ');
+  s = s.replace(/<!--[\s\S]*?-->/g, ' ');
+  s = s.replace(
+    /<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>([\s\S]*?)<\/a\s*>/gi,
+    (_m, dq: string | undefined, sq: string | undefined, bare: string | undefined, inner: string) => {
+      const href = (dq ?? sq ?? bare ?? '').trim().slice(0, 80);
+      const text = inner.replace(/<[^>]+>/g, '').trim();
+      return href ? `${text} (${href})` : text;
+    },
+  );
+  s = s.replace(/<(?:br|\/p|\/div|\/li|\/tr|\/h[1-6]|\/blockquote|\/pre)\b[^>]*\/?>/gi, '\n');
+  s = s.replace(/<[^>]+>/g, '');
+  s = s
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) => safeCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_m, dec: string) => safeCodePoint(parseInt(dec, 10)))
+    .replace(/&amp;/gi, '&');
+  s = s.replace(/[ \t]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n');
+  return s.trim();
+}
+
+/** Greedy word wrap by MEASURED width — an overlong unbroken run is split
+ *  hard so no line can escape the page. */
+function wrapLines(
+  measure: (s: string) => number,
+  text: string,
+  maxWidth: number,
+): string[] {
+  const out: string[] = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trimEnd();
+    if (line === '') {
+      out.push('');
+      continue;
+    }
+    let current = '';
+    for (const word of line.split(' ')) {
+      let w = word;
+      // Hard-split a single run wider than the page.
+      while (measure(w) > maxWidth) {
+        let cut = Math.max(1, Math.floor((maxWidth / measure(w)) * w.length));
+        while (cut > 1 && measure(w.slice(0, cut)) > maxWidth) cut--;
+        const head = w.slice(0, cut);
+        if (current !== '') {
+          out.push(current);
+          current = '';
+        }
+        out.push(head);
+        w = w.slice(cut);
+      }
+      if (w === '') continue;
+      const candidate = current === '' ? w : `${current} ${w}`;
+      if (measure(candidate) > maxWidth && current !== '') {
+        out.push(current);
+        current = w;
+      } else {
+        current = candidate;
+      }
+    }
+    out.push(current);
+  }
+  return out;
+}
+
+async function renderEmailMessage(
+  message: EmailMessage | string,
+  ceilings: RenderCeilings,
+  outOfTime: () => boolean,
+): Promise<NormalizeResult> {
+  const composed =
+    typeof message === 'string'
+      ? message
+      : [
+          message.from ? `From: ${message.from}` : null,
+          message.subject ? `Subject: ${message.subject}` : null,
+          '',
+          message.body,
+        ]
+          .filter((line): line is string => line !== null)
+          .join('\n');
+
+  const measureCtx = createCanvas(1, 1).getContext('2d');
+  measureCtx.font = `${EMAIL_FONT_PX}px sans-serif`;
+  const measure = (s: string) => measureCtx.measureText(s).width;
+
+  const contentW = EMAIL_PAGE_W - 2 * EMAIL_MARGIN;
+  const linesPerPage = Math.floor((EMAIL_PAGE_H - 2 * EMAIL_MARGIN) / EMAIL_LINE_H);
+  const lines = wrapLines(measure, composed, contentW);
+  const totalPages = Math.max(1, Math.ceil(lines.length / linesPerPage));
+  // The page bound holds for messages exactly as for documents, decided on
+  // the wrapped line count BEFORE any drawing.
+  if (totalPages > ceilings.maxPages) return { outcome: 'refused', reason: 'page_bound' };
+
+  const pages: RenderedPage[] = [];
+  let renderedBytes = 0;
+  for (let p = 0; p < totalPages; p++) {
+    if (outOfTime()) return { outcome: 'refused', reason: 'wall_clock' };
+    const canvas: Canvas = createCanvas(EMAIL_PAGE_W, EMAIL_PAGE_H);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, EMAIL_PAGE_W, EMAIL_PAGE_H);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.font = `${EMAIL_FONT_PX}px sans-serif`;
+    ctx.textBaseline = 'top';
+    const slice = lines.slice(p * linesPerPage, (p + 1) * linesPerPage);
+    for (let i = 0; i < slice.length; i++) {
+      if (slice[i] !== '') ctx.fillText(slice[i], EMAIL_MARGIN, EMAIL_MARGIN + i * EMAIL_LINE_H);
+    }
+    let encoded: Uint8Array;
+    try {
+      encoded = new Uint8Array(await canvas.encode('png'));
+    } catch {
+      return { outcome: 'unsupported_type' };
+    }
+    renderedBytes += encoded.byteLength;
+    if (renderedBytes > ceilings.maxRenderedBytes) {
+      return { outcome: 'refused', reason: 'output_size' };
+    }
+    if (outOfTime()) return { outcome: 'refused', reason: 'wall_clock' };
+    pages.push({
+      page: p + 1,
+      widthPx: EMAIL_PAGE_W,
+      heightPx: EMAIL_PAGE_H,
+      mime: 'image/png',
+      bytes: encoded,
+    });
+  }
+
+  return {
+    outcome: 'rendered',
+    sourceClass: 'email_text',
+    pageCount: pages.length,
+    pages,
+    text: composed,
+  };
 }
 
 /**
