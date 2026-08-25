@@ -426,10 +426,17 @@ browser gate existing at all, and for R5/F-6's manifest in particular.
    no direct integration test of the kind `tests/hc/inbox.test.ts` gives the
    inbox layer. That gap is what let finding 2 through and it is **not**
    closed by this slice.
-2. **`tests/lint/a11y-fence` has now timed out under load three times** in
-   one slice (B2, B9, close-out), always 6/6 alone. Three occurrences of one
-   shape stop being noise. Queued for diagnosis, not for another
-   classification.
+2. **The fence transient has now hit FIVE times in one slice, across TWO
+   fence files.** D14 carries the roll: `a11y-fence` at B2 and at the
+   close-out head (6/6 alone); `db-fence` at B9 and at the F5 head
+   `7ecc81b` (34/34 alone); and a fifth at the evidence head `7496cbc`
+   whose **identity was never captured**, because that run was not teed.
+   *This item previously read "three times (B2, B9, close-out), always 6/6
+   alone" — a stale count that also filed B9 under the wrong fence file. It
+   is corrected here against D14 rather than left for the round to trip on.*
+   Five occurrences of one shape stop being noise. Queued for diagnosis, not
+   for another classification — and the full vitest suite gets teed the way
+   `test:concurrency` already is, so the sixth arrives with a name.
 3. **RCP-02 stays pending, tagged 7.** Documents and People & roles do not
    exist.
 4. **UXA-03** — the review screen's copy, the receipt's sentences and the

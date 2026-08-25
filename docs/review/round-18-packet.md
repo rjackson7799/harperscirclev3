@@ -325,6 +325,12 @@ red commit.
 bytes from a CDN at runtime, which would break the no-remote-fetch posture
 B2 made a test failure.
 
+**Owner position, recorded 2026-08-25: the recommended answer is ACCEPTED.**
+`@tesseract.js-data/eng` is carried as **data for the Q3 engine**, not as a
+fourth argued runtime dependency. The question still stands to round 18; it
+now goes up carrying the owner's position rather than only a build session's
+recommendation. A build session records; the round rules.
+
 ### Q2 — the `rendered` flag, RATIFICATION ASKED
 
 B10 gave blind labels a measured `rendered` flag; unrendered items are
@@ -338,13 +344,27 @@ for ratification rather than assumed.
 The review screen's copy, the receipt's sentences and the refusal/staleness
 language are **read at this gate**, per the UXA-01/UXA-02 pattern.
 
-### Q4 — the a11y-fence transient, now three occurrences
+### Q4 — the fence transient, now FIVE occurrences across TWO fence files
 
-`tests/lint/a11y-fence.test.ts` has timed out under full parallel load at
-three separate heads in this slice (B2, B9, close-out), always 6/6 alone,
-always clean on a full re-run. Classified, never diagnosed, per D14's shape.
-**Three occurrences of one shape is itself a finding.** Recommended: queue it
-for diagnosis rather than a fourth classification.
+A lint-fence test has timed out under full parallel load at **five** separate
+points in this slice. Each time, the file passed when run alone and the full
+suite was clean on re-run: `tests/lint/a11y-fence` at B2 and at the close-out
+head (6/6 alone); `tests/lint/db-fence` at B9 and at the F5 head `7ecc81b`
+(34/34 alone); and a fifth at the evidence head `7496cbc` — 876/877 on a
+190.8 s run, then 877/877 twice at the same head with no code in between —
+**whose identity was never captured, because that run was not teed.** All five
+carry the same loaded-vs-clean duration signature. Classified, never
+diagnosed, per D14.
+
+*An earlier draft of this question read "three occurrences (B2, B9,
+close-out), always 6/6 alone." That undercounted, and it filed B9 under the
+wrong fence file — B9 was `db-fence` at 34/34. Corrected against ADR-0026 D14
+at the head being pushed.*
+
+**Five occurrences of one shape, one of which cannot even be named, is itself
+a finding.** Recommended: queue it for diagnosis rather than a sixth
+classification, and tee the full vitest suite the way `test:concurrency`
+already is, so that the next one arrives with a name.
 
 ### Q5 — `lib/hc/review.ts` has no live-DB module test
 
