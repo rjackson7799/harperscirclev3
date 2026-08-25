@@ -64,7 +64,6 @@ function props(overrides: Partial<ReviewScreenProps> = {}): ReviewScreenProps {
     circleId: 'c-1',
     arrivalId: 'a-1',
     pageCount: 2,
-    pageExts: ['png', 'jpg'],
     facts: FACTS,
     proposals: PROPOSALS,
     allHigh: true,

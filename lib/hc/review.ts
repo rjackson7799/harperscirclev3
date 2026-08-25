@@ -41,6 +41,121 @@ export type ReviewArrival = {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** One extracted fact, exactly as `hc.extractions_for` returns it — seven
+ *  columns, no band (Q4: a band is a property of the calibration, computed
+ *  at render time from the pair, never stored on the fact). */
+export type ReviewFact = {
+  field: string;
+  value: string;
+  confidence: number;
+  risk_class: string;
+  citation: { page: number; bbox: [number, number, number, number] };
+  model_id: string;
+  prompt_version: string;
+};
+
+/**
+ * The middle region's read (6B B7): `hc.extractions_for`, gated in-function
+ * at the arrival's view×5 — the same one answer `arrivalForReview` resolved
+ * — then filtered through `extractions_select`'s own predicate, so the
+ * definer is never wider than the RLS it stands in for. Zero rows for the
+ * unauthorized is the same shape as zero facts; the page only calls this
+ * past `can_view`, so here zero means zero.
+ */
+export async function extractionsFor(
+  claims: RequestClaims,
+  arrivalId: string,
+): Promise<ReviewFact[]> {
+  if (!UUID_RE.test(arrivalId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query('select * from hc.extractions_for($1)', [arrivalId]);
+    return r.rows.map((row) => {
+      const citation = (row.citation ?? {}) as { page?: number; bbox?: number[] };
+      const bbox = Array.isArray(citation.bbox) ? citation.bbox : [0, 0, 0, 0];
+      return {
+        field: String(row.field ?? ''),
+        value: typeof row.value === 'string' ? row.value : JSON.stringify(row.value ?? null),
+        confidence: Number(row.confidence ?? 0),
+        risk_class: String(row.risk_class ?? 'high'),
+        citation: {
+          page: Number(citation.page ?? 1),
+          bbox: [
+            Number(bbox[0] ?? 0),
+            Number(bbox[1] ?? 0),
+            Number(bbox[2] ?? 0),
+            Number(bbox[3] ?? 0),
+          ] as [number, number, number, number],
+        },
+        model_id: String(row.model_id ?? ''),
+        prompt_version: String(row.prompt_version ?? ''),
+      };
+    });
+  });
+}
+
+export type ReviewProposal = {
+  id: string;
+  kind: string;
+  version: number;
+  payload: Record<string, unknown>;
+  status: string;
+  supersedes_id: string | null;
+  anomaly_flags: string[];
+  decided_at: string | null;
+  reject_reason: string | null;
+};
+
+/**
+ * The right region's read: an RLS-true select — `proposals_select` gates
+ * rows at manage over the proposal's OWN taint, so a member sees exactly
+ * the items they could decide, and nothing here re-implements that rule.
+ */
+export async function proposalsFor(
+  claims: RequestClaims,
+  circleId: string,
+  arrivalId: string,
+): Promise<ReviewProposal[]> {
+  if (!UUID_RE.test(circleId) || !UUID_RE.test(arrivalId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query(
+      `select id, kind::text as kind, version, payload, status, supersedes_id,
+              anomaly_flags, decided_at, reject_reason
+         from public.proposals
+        where circle_id = $1 and arrival_id = $2
+        order by created_at, id`,
+      [circleId, arrivalId],
+    );
+    return r.rows.map((row) => ({
+      id: row.id as string,
+      kind: String(row.kind),
+      version: Number(row.version),
+      payload: (row.payload ?? {}) as Record<string, unknown>,
+      status: String(row.status),
+      supersedes_id: (row.supersedes_id as string | null) ?? null,
+      anomaly_flags: (row.anomaly_flags as string[] | null) ?? [],
+      decided_at: row.decided_at ? String(row.decided_at) : null,
+      reject_reason: (row.reject_reason as string | null) ?? null,
+    }));
+  });
+}
+
+/**
+ * §4.2.9's presence, saying ONLY what `hc.presence` knows — existence
+ * without content: ids, dates and types of the subject's record objects.
+ * The most recent change is the honest concurrent-review signal ("the
+ * record changed"), and nothing here can claim to know who is looking.
+ */
+export async function recentRecordChange(
+  claims: RequestClaims,
+  subjectId: string,
+): Promise<string | null> {
+  if (!UUID_RE.test(subjectId)) return null;
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query('select max(changed_at) as t from hc.presence($1)', [subjectId]);
+    return r.rows[0]?.t ? String(r.rows[0].t) : null;
+  });
+}
+
 export async function arrivalForReview(
   claims: RequestClaims,
   circleId: string,
