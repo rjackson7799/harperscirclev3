@@ -104,11 +104,13 @@ describe('6B B9 · the pass is budgeted — a reading aid never holds the lease'
     'pages beyond the wall clock land empty instead of running the stage out',
     { timeout: 180_000 },
     async () => {
-      // A scripted clock already past the deadline: every page is beyond
-      // budget, so every page lands empty and the engine never runs a page.
+      // A scripted clock: the first call anchors the deadline, every later
+      // call is past it — so every page is beyond budget, lands empty, and
+      // the engine never runs a page.
+      let calls = 0;
       const out = await ocrRenderedPages(
         [await textPage(1, ['Amoxicillin 500 mg']), await textPage(2, ['Call the desk'])],
-        { now: () => Number.MAX_SAFE_INTEGER },
+        { now: () => (calls++ === 0 ? 0 : OCR_WALL_CLOCK_MS + 1) },
       );
       expect(out).toEqual([
         { page: 1, text: '' },

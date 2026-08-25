@@ -336,6 +336,38 @@ test.describe('the D7 browser a11y leg', () => {
     }
   });
 
+  // 6B B9 (R5/F-6): the routes the pinned audit list found UNAUDITED —
+  // senders shipped a render throw precisely because no browser ever
+  // visited it. Each is audited in a real, reachable state: the inbox and
+  // senders in their first-run states, upload as the live form,
+  // invite/created in its no-invite state.
+  test('the Care Inbox family: inbox, senders, upload, invite/created, audited at 390px', async ({
+    browser,
+    page,
+  }) => {
+    const circle = await ensureCircle(browser);
+    await signIn(page);
+
+    for (const path of [
+      `/${circle}/inbox`,
+      `/${circle}/senders`,
+      `/${circle}/upload`,
+      `/${circle}/invite/created`,
+    ]) {
+      await auditRoute(page, path);
+    }
+  });
+
+  // 6B B9 (R5/F-6): the recovery surfaces, audited in the states a person
+  // actually reaches without a fixture token: reset/confirm asking for its
+  // code, and accept refusing an invalid invitation honestly.
+  test('the recovery surfaces: reset/confirm, and accept with an invalid token', async ({
+    page,
+  }) => {
+    await auditRoute(page, '/reset/confirm');
+    await auditRoute(page, '/accept/not-a-real-token');
+  });
+
   test('styleguide: contrast-on axe over every composition; reduced motion stills the pulse', async ({
     page,
   }) => {

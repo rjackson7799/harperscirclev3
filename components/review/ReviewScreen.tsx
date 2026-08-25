@@ -121,6 +121,70 @@ function CropView({
   );
 }
 
+type MachineTextResult =
+  | { kind: 'loading' }
+  | { kind: 'text'; text: string }
+  | { kind: 'empty' }
+  | { kind: 'absent' }
+  | { kind: 'failed' };
+
+/**
+ * §6.9's machine-read text, offered per page under its exact label
+ * (A11Y-08; 6B B9). Fetched lazily THROUGH the artifact fence — the same
+ * gated, evidence-logged route the page image rides — the first time a
+ * person opens it. Poor confidence arrives as an EMPTY transcript and is
+ * SAID; a source with no sibling (born-digital, email) says that instead.
+ */
+function MachineReadText({ arrivalId, page }: { arrivalId: string; page: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const [result, setResult] = useState<MachineTextResult | null>(null);
+
+  const toggle = () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && result === null) {
+      setResult({ kind: 'loading' });
+      fetch(`/api/artifact/${arrivalId}?page=${page}&text=1`)
+        .then(async (res): Promise<MachineTextResult> => {
+          if (res.status === 404) return { kind: 'absent' };
+          if (!res.ok) return { kind: 'failed' };
+          const text = (await res.text()).trim();
+          return text ? { kind: 'text', text } : { kind: 'empty' };
+        })
+        .catch((): MachineTextResult => ({ kind: 'failed' }))
+        .then(setResult);
+    }
+  };
+
+  return (
+    <div className="review-machine-text-block">
+      <button
+        type="button"
+        className="button-secondary review-machine-text-toggle"
+        aria-expanded={expanded}
+        onClick={toggle}
+      >
+        Machine-read text — may contain errors
+      </button>
+      {expanded && result ? (
+        result.kind === 'loading' ? (
+          <p className="micro-meta">Reading…</p>
+        ) : result.kind === 'text' ? (
+          <pre className="review-machine-text">{result.text}</pre>
+        ) : result.kind === 'empty' ? (
+          <p className="micro-meta">
+            Machine reading couldn&apos;t produce reliable text for this page.
+          </p>
+        ) : result.kind === 'absent' ? (
+          <p className="micro-meta">No machine-read text is stored for this page.</p>
+        ) : (
+          <p className="micro-meta">The machine-read text couldn&apos;t be loaded right now.</p>
+        )
+      ) : null}
+    </div>
+  );
+}
+
 export function ReviewScreen({
   circleId,
   arrivalId,
@@ -224,6 +288,9 @@ export function ReviewScreen({
                   }}
                 />
               ) : null}
+              {/* A11Y-08: the page's machine-read text, in the page's own
+                  slot so page navigation and text navigation are ONE order. */}
+              <MachineReadText arrivalId={arrivalId} page={page} />
             </div>
           ))}
         </section>

@@ -70,7 +70,19 @@ export function promotedPageKey(
   return `${promotedPagePrefix(circleId, arrivalId)}/${pageStem(page)}.${ext}`;
 }
 
-/** §6.9's seam, reserved here and built in slice 6. */
+/** §6.9's machine-read text, staged beside its page in the SAME attempt
+ *  prefix (6B B9) — so promotion, which copies the prefix by name, carries
+ *  the sibling with no second path and no manifest change. */
+export function renderStagingTextKey(
+  circleId: string,
+  arrivalId: string,
+  leaseId: string,
+  page: number,
+): string {
+  return `${renderStagingPrefix(circleId, arrivalId, leaseId)}/${pageStem(page)}.txt`;
+}
+
+/** §6.9's seam, reserved at 5B and consumed at 6B B9. */
 export function promotedPageTextKey(
   circleId: string,
   arrivalId: string,

@@ -253,11 +253,19 @@ test.describe('the 5B extraction leg', () => {
          from public.extraction_runs where arrival_id = $1`,
       [arrival],
     );
-    expect(runs.rows).toHaveLength(1);
-    expect(runs.rows[0].o).toBe('published');
-    expect(runs.rows[0].closed_at).not.toBeNull();
-    expect(runs.rows[0].model_id).toBeTruthy();
-    expect(runs.rows[0].prompt_version).toBeTruthy();
+    // R8/F-10 (6B B9): the idempotence CLAIM is the PRODUCT's — exactly one
+    // PUBLISHED run for this circle's arrival — not the shared queue's
+    // quietness. The old toHaveLength(1) asserted no second ATTEMPT ever
+    // STARTED, which held only by file ordering and teardown on a queue all
+    // four specs share; under a parallel or targeted run a redelivered
+    // message may open and honestly close a second run without violating
+    // anything the product promises (the CAS makes the loser lose, not
+    // not-exist).
+    const published = runs.rows.filter((r) => r.o === 'published');
+    expect(published).toHaveLength(1);
+    expect(published[0].closed_at).not.toBeNull();
+    expect(published[0].model_id).toBeTruthy();
+    expect(published[0].prompt_version).toBeTruthy();
 
     const proposals = await query(
       `select count(*)::int as n from public.proposals where arrival_id = $1 and status = 'pending'`,

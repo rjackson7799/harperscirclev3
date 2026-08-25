@@ -2,7 +2,7 @@ import { asUser } from '@/lib/db/user';
 import { liveSessionClaims } from '@/lib/auth/session';
 import { logArtifactRead, readableArtifact, readableRendition } from '@/lib/hc/artifacts';
 import { asServiceRole } from '@/lib/db/service-role';
-import { promotedPageKey, type PageExt } from '@/lib/pipeline/page-keys';
+import { promotedPageKey, promotedPageTextKey, type PageExt } from '@/lib/pipeline/page-keys';
 
 /**
  * GET /api/artifact/[id] — the §1.3 six steps, literally (slice-4 plan
@@ -73,9 +73,11 @@ export async function GET(
 
   // 6B B2: ?page=N serves the promoted rendering through this SAME route —
   // same gates above, same evidence discipline below, no second byte path.
-  const pageParam = new URL(req.url).searchParams.get('page');
+  // 6B B9: &text=1 serves §6.9's machine-read sibling the same way.
+  const search = new URL(req.url).searchParams;
+  const pageParam = search.get('page');
   if (pageParam !== null) {
-    return servePage(claims, id, artifact.circle_id, pageParam);
+    return servePage(claims, id, artifact.circle_id, pageParam, search.get('text') === '1');
   }
 
   // Step 6 runs BEFORE bytes move: no trail, no read.
@@ -138,6 +140,7 @@ async function servePage(
   arrivalId: string,
   circleId: string,
   pageParam: string,
+  wantText = false,
 ): Promise<Response> {
   if (!/^\d{1,3}$/.test(pageParam)) return notFound();
   const pageNo = Number(pageParam);
@@ -156,9 +159,17 @@ async function servePage(
     return new Response('unavailable', { status: 500 });
   }
 
-  const key = promotedPageKey(circleId, arrivalId, pageNo, ext);
+  // 6B B9 · §6.9's machine-read sibling, through this same fence. The
+  // sibling is NOT manifest-promised — only image-only sources have one —
+  // so its ABSENCE is the ordinary 404 shape, never the
+  // rendition_page_missing report: a page with no machine-read text is not
+  // a partial promotion, and the one shape stays one shape.
+  const key = wantText
+    ? promotedPageTextKey(circleId, arrivalId, pageNo)
+    : promotedPageKey(circleId, arrivalId, pageNo, ext);
   const { data, error } = await asServiceRole().storage.from('artifacts').createSignedUrl(key, 30);
   if (error || !data?.signedUrl) {
+    if (wantText) return notFound();
     console.error(
       `artifact: promoted page ${pageNo} of ${arrivalId} refused by storage: ${error?.message ?? 'no url'}`,
     );
@@ -166,13 +177,18 @@ async function servePage(
   }
   const upstream = await fetch(data.signedUrl);
   if (!upstream.ok) {
+    if (wantText) return notFound();
     console.error(`artifact: promoted page ${pageNo} of ${arrivalId} answered ${upstream.status}`);
     return renditionPageMissing(pageNo);
   }
 
   const headers = new Headers({
     'cache-control': 'private, no-store',
-    'content-type': ext === 'jpg' ? 'image/jpeg' : 'image/png',
+    'content-type': wantText
+      ? 'text/plain; charset=utf-8'
+      : ext === 'jpg'
+        ? 'image/jpeg'
+        : 'image/png',
   });
   const length = upstream.headers.get('content-length');
   if (length) headers.set('content-length', length);

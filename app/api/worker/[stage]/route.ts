@@ -33,7 +33,8 @@ import {
 import { scanBytes } from '@/lib/scan/scanner';
 import { sniffMime } from '@/lib/pipeline/mime';
 import { normalizeArrival, type NormalizeResult } from '@/lib/pipeline/render';
-import { extFor, renderStagingKey } from '@/lib/pipeline/page-keys';
+import { extFor, renderStagingKey, renderStagingTextKey } from '@/lib/pipeline/page-keys';
+import { isImageOnlySource, ocrRenderedPages } from '@/lib/pipeline/ocr';
 import { extractFromArrival } from '@/lib/ai/extract';
 import { interpretArrival, type DraftProposal } from '@/lib/ai/interpret';
 import {
@@ -349,6 +350,32 @@ async function processExtract(
       page.bytes,
       page.mime,
     );
+  }
+
+  // 6B B9 · §6.9: an IMAGE-ONLY source's pages are machine-read and staged
+  // as the pNNN.txt siblings the slice-5 exit assertion reserved — the SAME
+  // attempt prefix, so the promotion below carries them by name with no
+  // second path and no manifest change. Every page gets its sibling: a
+  // below-floor or out-of-budget page lands EMPTY, which the screen renders
+  // as the honest sentence rather than garbage. A born-digital PDF has a
+  // text layer and an email body IS text — neither is machine-read at all.
+  // An engine failure is warned and absorbed: a reading aid must never fail
+  // the answer it aids.
+  if (isImageOnlySource(normalized.sourceClass)) {
+    try {
+      const transcripts = await ocrRenderedPages(normalized.pages);
+      for (const t of transcripts) {
+        await writeRenderStaging(
+          renderStagingTextKey(circleId, msg.arrival_id, lease, t.page),
+          new TextEncoder().encode(t.text),
+          'text/plain; charset=utf-8',
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `extract: machine-read text unavailable for ${msg.arrival_id}: ${(err as Error).message}`,
+      );
+    }
   }
 
   const answer = await extractFromArrival({
