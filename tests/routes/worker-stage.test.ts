@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { INBOX_REVALIDATE_SECONDS } from '@/lib/inbox/revalidate';
 
 // ============================================================================
 // B4 · /api/worker/[stage] — store · scan · gate, each the §4.3 sequence
@@ -303,6 +306,34 @@ describe('B4 · gate — the SND-01 machinery; uploads pass, strangers hold', ()
     // (ADR-0023 D14 for the finding, D24 for the ruling). The assertion is
     // UNCHANGED — what changed is that it now pins a decision, not a gap.
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // ==========================================================================
+  // 6B B5 · THE FIRE, behind its signal (Q8 SETTLED; D24 ruling 3: the
+  // signal, THEN the fire, never the reverse). The eager fire collapses
+  // §4.5's ~35 s cancel window — median relay dead time — to seconds; taking
+  // it before a surface tells a family that Reading has begun would make
+  // PRD §4.2.2's promise false at the moment it is made. The ORDERING IS
+  // ENFORCED HERE, not intended: the fire's own test asserts the signal is
+  // present, so a refactor that removes the signal fails THIS test rather
+  // than silently restoring the gap.
+  // ==========================================================================
+  it('the fire’s precondition: the arrival-received signal is PRESENT and bounded by one relay tick', () => {
+    const page = readFileSync(
+      join(process.cwd(), 'app', '(app)', '[circle]', 'inbox', 'page.tsx'),
+      'utf8',
+    );
+    expect(page).toContain('InboxRevalidator');
+    expect(INBOX_REVALIDATE_SECONDS).toBeGreaterThan(0);
+    expect(INBOX_REVALIDATE_SECONDS).toBeLessThanOrEqual(60);
+  });
+
+  it('gate → extracting FIRES the extract worker eagerly — the seam’s last hand-off joins scan and gate', async () => {
+    workers.readPipelineWork.mockResolvedValueOnce([msg('gate')]);
+    workers.senderRecognised.mockResolvedValueOnce(true);
+    await route.POST(req('gate'), ctx('gate'));
+    const fired = fetchMock.mock.calls.map((c) => String((c as unknown as [string])[0]));
+    expect(fired).toContain('http://local.test/api/worker/extract');
   });
 
   it('an unknown sender holds — AC-INBOX-7: the gate precedes extracting', async () => {
