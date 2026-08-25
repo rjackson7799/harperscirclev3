@@ -985,6 +985,23 @@ a:focus-visible {
 .review-decision-buttons {
   margin-top: 8px;
 }
+/* §4.2.4's receipt (6B B8): a quiet closing block under the three regions. */
+.review-receipt {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.review-receipt h2 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+.review-receipt ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+.review-receipt li {
+  padding: 4px 0;
+}
 
 /* The §8.7 reduced-motion query — written ONCE against the animation
    system above, completing the seed's gap with iteration-count (an

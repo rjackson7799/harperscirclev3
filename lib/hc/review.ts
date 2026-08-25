@@ -156,6 +156,85 @@ export async function recentRecordChange(
   });
 }
 
+/**
+ * The two decisions (6B B8) — the FIRST app callers that can reach the
+ * decide definers. Both ride the request-role channel: the caller's own
+ * authority, the definers' write-time re-check (M2's view×5 predicate, the
+ * version gate, §6.4's confirmation) and the 6B payload contract decide —
+ * never this module. `p_edits` carries exactly what the person did; the
+ * `extractions` row is NEVER touched from here (Q7's smaller sibling: the
+ * extraction is the honest record of what the model read).
+ */
+export async function approveProposal(
+  claims: RequestClaims,
+  proposalId: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+  edits: Record<string, unknown> | null,
+): Promise<Record<string, unknown>> {
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query('select hc.approve_proposal($1, $2, $3, $4) as r', [
+      proposalId,
+      expectedVersion,
+      idempotencyKey,
+      edits === null ? null : JSON.stringify(edits),
+    ]);
+    return r.rows[0].r as Record<string, unknown>;
+  });
+}
+
+/** hc.reject_proposal — nothing is written to the record; the absent
+ *  proposal_commits row is the assertion. The reason is §4.2.3's optional
+ *  one tap, and its vocabulary is the DB's to enforce. */
+export async function rejectProposal(
+  claims: RequestClaims,
+  proposalId: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+  reason: string | null,
+): Promise<Record<string, unknown>> {
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query('select hc.reject_proposal($1, $2, $3, $4) as r', [
+      proposalId,
+      expectedVersion,
+      idempotencyKey,
+      reason,
+    ]);
+    return r.rows[0].r as Record<string, unknown>;
+  });
+}
+
+/** One §4.2.4 receipt row, exactly as `hc.receipt_for` returns it.
+ *  `visible` is EXPLICIT — "you may not see this" and "there is nothing
+ *  here" are the two sentences a receipt must never confuse — and an
+ *  invisible destination keeps its `object_type` but never its name, its
+ *  id or a handle (counted, never named). */
+export type ReceiptRow = {
+  proposal_id: string;
+  status: string;
+  reject_reason: string | null;
+  object_type: string | null;
+  object_id: string | null;
+  label: string | null;
+  visible: boolean;
+};
+
+export async function receiptFor(claims: RequestClaims, arrivalId: string): Promise<ReceiptRow[]> {
+  if (!UUID_RE.test(arrivalId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query('select * from hc.receipt_for($1)', [arrivalId]);
+    return r.rows.map((row) => ({
+      proposal_id: row.proposal_id as string,
+      status: String(row.status),
+      reject_reason: (row.reject_reason as string | null) ?? null,
+      object_type: row.object_type ? String(row.object_type) : null,
+      object_id: (row.object_id as string | null) ?? null,
+      label: (row.label as string | null) ?? null,
+      visible: row.visible === true,
+    }));
+  });
+}
+
 export async function arrivalForReview(
   claims: RequestClaims,
   circleId: string,
