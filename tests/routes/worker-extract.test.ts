@@ -262,6 +262,22 @@ describe('B4 · claim → COMMIT → render → provider → finalize, in that o
     expect(workers.archivePipelineWork).toHaveBeenCalledWith(11);
   });
 
+  it('the rendition manifest rides finalize — page count and per-page ext from the render (6B B2)', async () => {
+    // 6A M4's fifth parameter, supplied at last: the manifest is derived
+    // from the SAME pages the staging writes and the promotion copies, so
+    // the recorded extension can never disagree with the stored object
+    // (R3/F-8), and partial promotion becomes detectable (R4/F-6).
+    workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+    await route.POST(req('extract'), ctx('extract'));
+    expect(workers.finalizeExtraction).toHaveBeenCalledWith(
+      ARRIVAL,
+      LEASE,
+      expect.any(Array),
+      expect.any(Array),
+      { page_count: 1, page_exts: ['png'] },
+    );
+  });
+
   it('the interpret hand-off carries the facts the attempt just published', async () => {
     workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
     await route.POST(req('extract'), ctx('extract'));

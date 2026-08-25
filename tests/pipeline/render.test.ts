@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   HIGH_LONG_EDGE,
   RENDER_CEILINGS,
@@ -94,12 +94,20 @@ describe('B2 · the §6.3 table, row by row', () => {
     }
   });
 
-  it('email body → text first, no page images', async () => {
+  it('email body → text first, WITH the rendered message as a second source (Q6)', async () => {
+    // §6.3 row 4 AS WRITTEN: "Email body | Text, with the rendered message
+    // as a second source." The as-built record truncated the row's second
+    // half and the code matched the altered row — pages: [], so §6.4's crop
+    // was unsatisfiable for the whole email class (ADR-0023 D12, R7/F-4).
+    // Q6 SETTLED: RENDER the message.
     const result = await render('dev-email-01');
     if (result.outcome !== 'rendered') throw new Error(result.outcome);
     expect(result.sourceClass).toBe('email_text');
-    expect(result.pages).toEqual([]);
     expect(result.text).toContain('Northgate Medical Group');
+    expect(result.pages.length).toBeGreaterThan(0);
+    expect(result.pages[0].mime).toBe('image/png');
+    expect(longEdge(result.pages[0])).toBe(STANDARD_LONG_EDGE);
+    expect(result.pageCount).toBe(result.pages.length);
   });
 
   it('a born-digital page is never rendered at the high tier — resolution is a rule, not a setting', async () => {
@@ -352,6 +360,139 @@ describe('R3/F-2 · the page_dimensions ceiling reads STORED pixels, not declare
 // (lib/pipeline/render.ts renderPageWithDeadline), so a slow page cannot
 // overrun the budget un-interrupted.
 // ============================================================================
+// ============================================================================
+// B2 — the email rendition (Q6 SETTLED: RENDER the message, honouring §6.3
+// row 4 as written). The live email-body arrival is the inbound webhook's
+// JSON ENVELOPE — {subject, from, text_body, html_body, headers} staged as
+// application/json — which until this unit dead-ended at unsupported_type
+// (magicFor knew no JSON), so the product's primary intake channel had no
+// rendering to cite AT ALL. The CHANNEL is the discriminator: an email-body
+// envelope renders; a member-uploaded .json stays unsupported_type.
+//
+// THE SAFETY COST IS A UNIT, NOT A FOOTNOTE (PRD §4.2.8): the rendition is
+// produced from a sanitised, resource-free document — no remote fetch of any
+// kind (images, stylesheets, fonts, srcset, @import), no script execution,
+// no redirect following, byte and page ceilings before any parse. A network
+// call attempted during an email render is a TEST FAILURE, asserted below.
+// ============================================================================
+function envelope(over: Record<string, unknown> = {}): Uint8Array {
+  return new TextEncoder().encode(
+    JSON.stringify({
+      subject: 'Discharge paperwork',
+      from: 'frontdesk@cardiology-example.org',
+      message_id: 'probe-1',
+      text_body: 'Amoxicillin 500 mg twice daily.\nCall the front desk with questions.',
+      html_body: '',
+      headers: [],
+      ...over,
+    }),
+  );
+}
+
+describe('B2 · the email rendition — sanitised, resource-free (Q6; PRD §4.2.8)', () => {
+  it('the inbound JSON envelope renders on the email channel', async () => {
+    const result = await normalizeArrival(envelope(), 'application/json', { channel: 'email' });
+    if (result.outcome !== 'rendered') throw new Error(result.outcome);
+    expect(result.sourceClass).toBe('email_text');
+    expect(result.pages.length).toBeGreaterThan(0);
+    expect(result.pages[0].mime).toBe('image/png');
+    expect(longEdge(result.pages[0])).toBe(STANDARD_LONG_EDGE);
+    // The text source carries the message the rendition shows.
+    expect(result.text).toContain('Amoxicillin 500 mg twice daily.');
+    expect(result.text).toContain('Discharge paperwork');
+  });
+
+  it('the SAME bytes on the upload channel stay unsupported_type — a .json file is not an email', async () => {
+    const result = await normalizeArrival(envelope(), 'application/json', { channel: 'upload' });
+    expect(result.outcome).toBe('unsupported_type');
+  });
+
+  it('a network call attempted during an email render is a TEST FAILURE (PRD §4.2.8)', async () => {
+    const http = (await import('node:http')).default;
+    const https = (await import('node:https')).default;
+    const spies = [
+      vi.spyOn(globalThis, 'fetch'),
+      vi.spyOn(http, 'request'),
+      vi.spyOn(http, 'get'),
+      vi.spyOn(https, 'request'),
+      vi.spyOn(https, 'get'),
+    ];
+    try {
+      const hostile = envelope({
+        text_body: '',
+        html_body:
+          '<html><head><link rel="stylesheet" href="https://evil.example/x.css">' +
+          "<style>@import url('https://evil.example/i.css'); " +
+          "@font-face { font-family: e; src: url('https://evil.example/f.woff2'); }</style></head>" +
+          '<body><script src="https://evil.example/s.js"></script>' +
+          '<img src="https://evil.example/pixel.png" srcset="https://evil.example/2x.png 2x">' +
+          '<p>Amoxicillin <b>500 mg</b> twice daily &amp; with food.</p>' +
+          '<a href="https://evil.example/redirect">click here</a></body></html>',
+      });
+      const result = await normalizeArrival(hostile, 'application/json', { channel: 'email' });
+      expect(result.outcome).toBe('rendered');
+      if (result.outcome !== 'rendered') return;
+      expect(result.pages.length).toBeGreaterThan(0);
+      // Sanitised: the CONTENT survives with entities decoded…
+      expect(result.text).toContain('Amoxicillin 500 mg twice daily & with food.');
+      // …the link is INERT — its target shown as plain text, never resolved…
+      expect(result.text).toContain('click here');
+      // …and no markup, style or script machinery leaks into the rendition.
+      expect(result.text).not.toMatch(/@import|font-face|<script|<style|<img|srcset/);
+      // The whole point, asserted: NOTHING reached for the network.
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
+  it('the rendition carries the message as INK, not an empty page', async () => {
+    const result = await normalizeArrival(envelope(), 'application/json', { channel: 'email' });
+    if (result.outcome !== 'rendered') throw new Error(result.outcome);
+    const { loadImage, createCanvas } = await import('@napi-rs/canvas');
+    const img = await loadImage(Buffer.from(result.pages[0].bytes));
+    const canvas = createCanvas(img.width, img.height);
+    const cx = canvas.getContext('2d');
+    cx.drawImage(img, 0, 0);
+    const data = cx.getImageData(0, 0, img.width, img.height).data;
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 4) sum += (data[i] + data[i + 1] + data[i + 2]) / 3;
+    const mean = sum / (data.length / 4);
+    expect(mean).toBeLessThan(254); // ink present
+    expect(mean).toBeGreaterThan(180); // …on a mostly-light page, not a black box
+  });
+
+  it('a long message paginates, and the pages number themselves 1..n', async () => {
+    const body = Array.from({ length: 140 }, (_, i) => `Line ${i + 1} of the long message.`).join(
+      '\n',
+    );
+    const result = await normalizeArrival(envelope({ text_body: body }), 'application/json', {
+      channel: 'email',
+    });
+    if (result.outcome !== 'rendered') throw new Error(result.outcome);
+    expect(result.pages.length).toBeGreaterThan(1);
+    expect(result.pages.map((p) => p.page)).toEqual(result.pages.map((_, i) => i + 1));
+    expect(result.pageCount).toBe(result.pages.length);
+  });
+
+  it('the body byte ceiling refuses BEFORE any parse — §4.6 carried to message rendering', async () => {
+    const result = await normalizeArrival(
+      envelope({ text_body: 'x'.repeat(700_000) }),
+      'application/json',
+      { channel: 'email' },
+    );
+    expect(result).toEqual({ outcome: 'refused', reason: 'page_bound' });
+  });
+
+  it('rendering the same envelope twice produces the same page geometry', async () => {
+    const a = await normalizeArrival(envelope(), 'application/json', { channel: 'email' });
+    const b = await normalizeArrival(envelope(), 'application/json', { channel: 'email' });
+    expect(pages(a).map((p) => [p.page, p.widthPx, p.heightPx])).toEqual(
+      pages(b).map((p) => [p.page, p.widthPx, p.heightPx]),
+    );
+  });
+});
+
 describe('R2/F-8 · maxRenderedBytes is derived from the provider request limit', () => {
   it('base64-inflated pages plus the request overhead reserve fit inside 32 MiB', () => {
     const API_REQUEST_LIMIT_BYTES = 32 * 1024 * 1024;

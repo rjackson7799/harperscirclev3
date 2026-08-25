@@ -31,6 +31,7 @@ vi.mock('@/lib/db/user', () => ({
 
 const artifacts = {
   readableArtifact: vi.fn(),
+  readableRendition: vi.fn(),
   logArtifactRead: vi.fn(),
 };
 vi.mock('@/lib/hc/artifacts', () => artifacts);
@@ -63,12 +64,16 @@ const fetchMock = vi.fn();
 function get(headers: Record<string, string> = {}): Request {
   return new Request(`http://local.test/api/artifact/${ARRIVAL}`, { method: 'GET', headers });
 }
+function getPage(page: string): Request {
+  return new Request(`http://local.test/api/artifact/${ARRIVAL}?page=${page}`, { method: 'GET' });
+}
 const ctx = { params: Promise.resolve({ id: ARRIVAL }) };
 
 beforeEach(async () => {
   vi.resetAllMocks();
   session.liveSessionClaims.mockResolvedValue(CLAIMS);
   artifacts.readableArtifact.mockResolvedValue(ROW);
+  artifacts.readableRendition.mockResolvedValue(null);
   artifacts.logArtifactRead.mockResolvedValue(undefined);
   createSignedUrl.mockResolvedValue({
     data: { signedUrl: 'http://storage.internal/signed/abc' },
@@ -170,6 +175,119 @@ describe('B7 · the signed URL is server-consumed; bytes stream through the rout
     createSignedUrl.mockResolvedValueOnce({ data: null, error: { message: 'nope' } });
     const res = await route.GET(get(), ctx);
     expect(res.status).toBe(404);
+  });
+});
+
+// ============================================================================
+// 6B B2 · ?page=N — the promoted rendering, served through the SAME route,
+// the SAME gates and the SAME evidence discipline (no second byte path; the
+// fence stays uniform). The page's extension comes from the MANIFEST (6A M4)
+// — a fact, never a guess (R3/F-8) — and a page the manifest names that
+// storage does not hold is REPORTED, not 404'd (R4/F-6): detection is what
+// makes partial promotion repairable, and the screen says "page 3 is
+// missing" instead of serving a citation to a ghost.
+// ============================================================================
+describe('6B B2 · ?page=N serves the promoted rendering through the same fence', () => {
+  const RENDITION = { page_count: 2, page_exts: ['png', 'jpg'] };
+
+  it('streams the named page with the MANIFEST extension and content-type', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    fetchMock.mockResolvedValueOnce(
+      new Response(new Uint8Array([9, 9]), {
+        status: 200,
+        headers: { 'content-type': 'image/jpeg', 'content-length': '2' },
+      }),
+    );
+    const res = await route.GET(getPage('2'), ctx);
+    expect(res.status).toBe(200);
+    expect(createSignedUrl).toHaveBeenCalledWith(
+      `render/circle/${ROW.circle_id}/arrival/${ARRIVAL}/p002.jpg`,
+      30,
+    );
+    expect(res.headers.get('content-type')).toBe('image/jpeg');
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('evidence before bytes holds for pages exactly as for the original', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    const order: string[] = [];
+    artifacts.logArtifactRead.mockImplementationOnce(async () => {
+      order.push('log');
+    });
+    fetchMock.mockImplementationOnce(async () => {
+      order.push('fetch');
+      return new Response(new Uint8Array([1]), {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      });
+    });
+    const res = await route.GET(getPage('1'), ctx);
+    expect(res.status).toBe(200);
+    expect(order).toEqual(['log', 'fetch']);
+  });
+
+  it('no manifest, a page outside it, and a malformed page all answer the ONE 404 shape', async () => {
+    const ghost = await (async () => {
+      artifacts.readableArtifact.mockResolvedValueOnce(null);
+      return (await route.GET(get(), ctx)).text();
+    })();
+
+    const bodies: string[] = [];
+    const statuses: number[] = [];
+
+    artifacts.readableRendition.mockResolvedValueOnce(null); // not rendered / not visible
+    let res = await route.GET(getPage('1'), ctx);
+    statuses.push(res.status);
+    bodies.push(await res.text());
+
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION); // page 3 of 2
+    res = await route.GET(getPage('3'), ctx);
+    statuses.push(res.status);
+    bodies.push(await res.text());
+
+    res = await route.GET(getPage('0'), ctx); // not a page number
+    statuses.push(res.status);
+    bodies.push(await res.text());
+
+    res = await route.GET(getPage('abc'), ctx);
+    statuses.push(res.status);
+    bodies.push(await res.text());
+
+    expect(statuses).toEqual([404, 404, 404, 404]);
+    expect(new Set([...bodies, ghost]).size).toBe(1);
+    expect(createSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('unauthorized answers the ghost WITHOUT touching the manifest — no oracle through ?page', async () => {
+    artifacts.readableArtifact.mockResolvedValueOnce(null);
+    const res = await route.GET(getPage('1'), ctx);
+    expect(res.status).toBe(404);
+    expect(artifacts.readableRendition).not.toHaveBeenCalled();
+    expect(artifacts.logArtifactRead).not.toHaveBeenCalled();
+  });
+
+  it('a page the manifest names that storage lacks is REPORTED, not 404’d (R4/F-6)', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    fetchMock.mockResolvedValueOnce(new Response('missing', { status: 404 }));
+    const res = await route.GET(getPage('1'), ctx);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'rendition_page_missing', page: 1 });
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('a signed-URL refusal for a manifest-named page is the same honest report', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    createSignedUrl.mockResolvedValueOnce({ data: null, error: { message: 'Object not found' } });
+    const res = await route.GET(getPage('2'), ctx);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'rendition_page_missing', page: 2 });
+  });
+
+  it('the original (no page parameter) is byte-for-byte unchanged by the feature', async () => {
+    const res = await route.GET(get(), ctx);
+    expect(res.status).toBe(200);
+    expect(createSignedUrl).toHaveBeenCalledWith(ROW.storage_key, 30);
+    expect(artifacts.readableRendition).not.toHaveBeenCalled();
   });
 });
 
