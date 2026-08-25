@@ -460,3 +460,75 @@ describe('R2/F-11 · a real credential may not be pointed at an arbitrary host',
     expect(await egress(undefined, 'sk-ant-a-real-looking-key')).toBeNull();
   });
 });
+
+// ============================================================================
+// 6B B4 · the STATUS-AWARE provider arm (ADR-0023 R2/F-5, R2/F-9, R2/F-14) —
+// taken at this slice because slice 6 is the first slice in which a PERSON
+// reads the label. "Couldn't read it — it ran out of retries" on a rate
+// limit is a lie told to a family; a permanent 400 burned three durable
+// attempts over ~15 minutes before earning the same wrong words.
+//
+// The arm is STATUS-AWARE, not a retry loop: the lease stays the ONLY
+// durable counter. A 429 whose retry-after fits inside the remaining lease
+// budget is waited out ONCE within the same attempt; a permanent request
+// error terminalizes immediately; an overload (529 — the status the
+// provider actually sends, which the fixture now speaks: F-14) stays the
+// machinery's to retry; and `model_context_window_exceeded` maps to what it
+// is instead of falling through to "no text content".
+// ============================================================================
+describe('6B B4 · the status-aware provider arm', () => {
+  it('a permanent 400 is PERMANENT — terminalized honestly, never retried into "budget exhausted" (R2/F-5)', async () => {
+    const result = await extractFromArrival(extractInput({ text: 'HC-FIXTURE-400 marker' }));
+    expect(result.outcome).toBe('permanent');
+  });
+
+  it('a 429 whose retry-after fits the lease budget is waited out ONCE, in-attempt — and the retry succeeds', async () => {
+    server.reset();
+    const t0 = Date.now();
+    const result = await extractFromArrival(
+      extractInput({ text: 'HC-FIXTURE-429-ONCE marker' }),
+    );
+    expect(result.outcome).toBe('ok');
+    expect(server.requests.length).toBe(2); // the 429, then the one in-attempt retry
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(900); // the retry-after was honoured
+  });
+
+  it('a retry-after BEYOND the lease budget is not waited for — unavailable, the lease machinery retries', async () => {
+    server.reset();
+    const result = await extractFromArrival(
+      extractInput({
+        text: 'HC-FIXTURE-429-ALWAYS marker',
+        deadlineIso: new Date(Date.now() + 40_000).toISOString(),
+      }),
+    );
+    expect(result.outcome).toBe('unavailable');
+    expect(server.requests.length).toBe(1); // no in-attempt retry was possible
+  });
+
+  it('the overloaded shape is 529 — the status the provider actually sends (R2/F-14)', async () => {
+    const res = await fetch(`${server.url}/v1/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-opus-5',
+        max_tokens: 16,
+        messages: [{ role: 'user', content: [{ type: 'text', text: 'HC-FIXTURE-OVERLOAD' }] }],
+      }),
+    });
+    expect(res.status).toBe(529);
+    await res.text();
+  });
+
+  it('…and the adapter maps an overload to unavailable: an outage is the machinery’s to retry', async () => {
+    const result = await extractFromArrival(extractInput({ text: 'HC-FIXTURE-OVERLOAD marker' }));
+    expect(result.outcome).toBe('unavailable');
+  });
+
+  it('model_context_window_exceeded maps to what it is, never "no text content" (R2/F-9)', async () => {
+    const result = await extractFromArrival(extractInput({ text: 'HC-FIXTURE-CONTEXT marker' }));
+    expect(result).toMatchObject({
+      outcome: 'truncated',
+      detail: 'model_context_window_exceeded',
+    });
+  });
+});
