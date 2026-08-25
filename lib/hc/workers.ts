@@ -233,7 +233,22 @@ export async function advanceArrival(
 }
 
 const QUEUE = 'pipeline_work';
-export const READ_VT_SECONDS = 120;
+
+/** §4.3's longest stage wall clock — extract's 300 s. The visibility window
+ *  is DERIVED from it, never set beside it. */
+const LONGEST_STAGE_SECONDS = 300;
+
+/**
+ * 6B B3 (R4/F-7): the read visibility window OUTLIVES the longest stage.
+ * At 120 s it sat under extract's 300 s clock, so for any extract that
+ * actually worked, mid-flight redelivery was the NORMAL case — a second
+ * reader received the in-flight message, its claim answered stale_lease,
+ * and it archived the message unconditionally while the first still held
+ * the lease. Correctness never depended on the window (claim-before-work),
+ * but the queue's shape made the exceptional path the routine one. The
+ * margin covers claim, render and finalize around the provider call.
+ */
+export const READ_VT_SECONDS = LONGEST_STAGE_SECONDS + 60;
 
 /** pgmq.read — claim up to qty work items for one visibility window. */
 export async function readPipelineWork(qty: number): Promise<QueuedWork[]> {
@@ -297,10 +312,12 @@ export async function deferPipelineWork(msgId: number, seconds = 3600): Promise<
  *
  * And only messages hidden FAR into the future. pgmq gives an in-flight read
  * and a deliberate deferral exactly the same shape: a `vt` in the future. The
- * two are separated by HOW far — a read hides for READ_VT_SECONDS (120 s),
- * D13 deferred for an hour — so the threshold sits well above the read window
- * and comfortably below the deferral. Without it, a release could hand a
- * message another worker is holding to a second reader.
+ * two are separated by HOW far — a read hides for READ_VT_SECONDS (derived
+ * above the longest stage clock; R4/F-7), D13 deferred for an hour — so the
+ * threshold is DERIVED from the read window (raise one and the other moves,
+ * R4/F-13, pinned by tests/hc/queue-contract.test.ts) and sits comfortably
+ * below the deferral. Without it, a release could hand a message another
+ * worker is holding to a second reader.
  *
  * Even then nothing could go wrong twice: claim-before-work means a second
  * reader's hc.claim_stage answers `stale_lease` before any external call. The

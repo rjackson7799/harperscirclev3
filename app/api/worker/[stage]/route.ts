@@ -572,12 +572,53 @@ function draftPayloads(
   return drafted;
 }
 
+/**
+ * 6B B3 (R4/F-11): the queue message is trusted input to nobody. `msg.facts`
+ * is validated at RUNTIME — a non-array, and any element without the carried
+ * shape, is treated as ABSENT, which fails CLOSED into the re-read path (the
+ * document itself plus the operator note) instead of riding garbage to the
+ * provider while skipping both — the thin-answer-that-looks-normal D6 rules
+ * out.
+ */
+function carriedFacts(raw: unknown): CarriedFact[] {
+  if (!Array.isArray(raw)) return [];
+  const valid: CarriedFact[] = [];
+  for (const f of raw) {
+    const c = f as Partial<CarriedFact> | null;
+    if (
+      c &&
+      typeof c.field === 'string' &&
+      typeof c.value === 'string' &&
+      typeof c.confidence === 'number' &&
+      c.citation !== null &&
+      typeof c.citation === 'object'
+    ) {
+      valid.push(c as CarriedFact);
+    }
+  }
+  // Partially-valid is still not a normal hand-off: keep only a set that
+  // survived WHOLE, so a mangled message never masquerades as a thin one.
+  return valid.length === raw.length ? valid : [];
+}
+
 async function processInterpret(msg: PipelineMessage): Promise<string> {
   // ING-07: the in-flight transition (extracted → interpreting) happens AT
   // the claim, so one lease spans the stage. M3 REFUSES the run identity off
   // the extract stage — no stage borrows an identity it does not record.
   const claim = await claimStage(msg.arrival_id, 'interpret');
-  if (claim.result !== 'claimed') return claim.result;
+  if (claim.result !== 'claimed') {
+    if (claim.result === 'invalid_state') {
+      // 6B B3 (R4/F-10, Q-A CONFIRMED at round 17): the §4.2 defect signal,
+      // processGate's shape. A stage-2 suspect's speculative message lands
+      // here BY DESIGN — the wait is the machinery's answer (pgTAP 055:453)
+      // — and the signal says so out loud instead of returning silently.
+      console.warn(
+        `worker/interpret: arrival ${msg.arrival_id} is not at the interpret entry — ` +
+          `a stage-2 suspect waits for a person; message absorbed`,
+      );
+    }
+    return claim.result;
+  }
   const lease = claim.leaseId!;
 
   // §3.10's one narrow window. The signature cannot express another subject
@@ -585,7 +626,7 @@ async function processInterpret(msg: PipelineMessage): Promise<string> {
   // rather than prompted.
   const context = await recordContextFor(msg.arrival_id);
 
-  const carried = msg.facts ?? [];
+  const carried = carriedFacts(msg.facts);
   const operatorNotes: string[] = [];
   let documentText: string | null = null;
 
@@ -637,12 +678,24 @@ async function processInterpret(msg: PipelineMessage): Promise<string> {
       configurationHash: configurationHash(),
     },
   });
+  // 6B B3 (R4/F-15): the drop counter is READ. Under round-16 D1's defect
+  // every conflict was dropped and the counter that would have said so was
+  // never printed — a §10.4 defect signal, not a struct field to garbage-
+  // collect.
+  if (answer.dropped > 0) {
+    console.warn(
+      `worker/interpret: ${answer.dropped} item(s) dropped during validation for arrival ` +
+        `${msg.arrival_id} (§10.4 signal)`,
+    );
+  }
   const drafted = draftPayloads(answer.data.proposals, context, answer.data.anomalies, bands);
   const r = await finalizeInterpretation(msg.arrival_id, lease, drafted);
   // The exit seam (Q7): proposals REST at `pending`. Nothing is enqueued —
   // the review screen, item-level approval and the receipt are slice 6's, so
   // `Needs you` labels a true state whose acting surface is one slice away.
-  return r + ':' + drafted.length + 'p';
+  return (
+    r + ':' + drafted.length + 'p' + (answer.dropped ? '/' + answer.dropped + 'dropped' : '')
+  );
 }
 
 export async function POST(
