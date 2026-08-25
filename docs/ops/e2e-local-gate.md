@@ -126,8 +126,21 @@ npx playwright test e2e/ingestion.spec.ts -g "below the cliff"
 ```
 
 A round packet may not report a gate result for `e2e/ingestion.spec.ts`
-until `:400` (below the cliff) has been observed executing (D8
-condition 6).
+until **below the cliff** has been observed executing (D8 condition 6).
+Match it BY TITLE, not by line: the leg was `:400` when D8 was written,
+`:574` at the start of the 6B close-out, and `:580` by the end of it —
+because F7's fix added six lines of comment above it. **It drifted twice
+inside one slice, and the second time was while this very paragraph was
+telling you not to trust the number.** A line number in an operational
+instruction goes stale silently; the title does not. (The `:400` in the D8
+condition list above is HISTORY — where the leg sat when the three 6A runs
+skipped it — and stays as written.)
+
+**First observed** in the 6B close-out gate run at `bc3bc85`:
+`ingestion.spec.ts` "below the cliff: a family-tier member sees
+NOTHING (Q6 probed live)" ran and PASSED (46.1 s), discharging condition 6
+and, in the same run, the live half of UXA-01 and RLS-10 — the two rows
+ADR-0025 D8's S-2 annotation recorded as never having been observed.
 
 ## Prerequisites (hermetic startup)
 
@@ -200,6 +213,38 @@ npx playwright test --trace on
   a finding.
 - Two consecutive failed gate runs at one SHA = the gate is RED at that
   SHA, whatever a third run says.
+- **Do NOT `db:reset` before a run that is meant to prove a fix to a leg
+  that accumulates fixture.** A leg that passes only on the first run after a
+  reset is not a passing leg — it is a leg with a hidden precondition, and a
+  reset hides it again. 6B's leg 17 counted EICAR's (fixed) sha across the
+  whole `quarantine` bucket and so asserted "no gate run has ever run
+  before": green at `r6`, red at `r7`, and the difference was a `db:reset`,
+  not the code. When a leg fails on a re-run and passed before, **check
+  whether the FIXTURE accumulated before blaming the code**
+  (ADR-0026 D19). `tests/lint/e2e-fixture-scope.test.ts` now catches the
+  shape mechanically.
+- An **interrupted** run is not a gate result and is not one of those two —
+  but it must be RECORDED as interrupted, with the reason, rather than
+  quietly dropped. Stopping a run whose environment has already been
+  diagnosed as broken is legitimate; stopping one because its legs are
+  failing is not, and the difference is whether you can name the mechanism.
+
+### After ANY interrupted run: kill the orphans first
+
+Stopping Playwright kills the parent — **its `webServer` children survive.**
+The 6B close-out left five (`next dev` plus its `start-server` at 474 MB,
+the fixture server on 8787, the test CLI, a worker) holding ~546 MB and both
+ports. Because `reuseExistingServer: false`, those orphans fail the NEXT run
+at startup, which reads as a fresh mystery unless you know to look:
+
+```
+# PowerShell — find them, then Stop-Process the ones under this repo
+Get-CimInstance Win32_Process -Filter "name='node.exe'" |
+  Select-Object ProcessId, CommandLine
+```
+
+Then confirm 3000 and 8787 are free before re-running. On a memory-bounded
+host this is also the cheapest memory you will ever reclaim.
 
 ## Scope
 
