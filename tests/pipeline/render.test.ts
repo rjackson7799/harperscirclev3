@@ -294,6 +294,55 @@ describe('R3/F-1 · a declared resolution must not change the rendered tier', ()
   );
 });
 
+// ============================================================================
+// B1 — the rasterizer swap rides two owed findings whose home is the swap
+// because the swap is where they are cheap (slice-6 plan B1).
+//
+// R2/F-8 · the output ceiling and the provider's request ceiling were never
+// in the same argument: `maxRenderedBytes` was 64 MiB while the Messages API
+// accepts 32 MB per request and inline base64 inflates every byte by 4/3 —
+// so a render between ~24 MB and 64 MB passed OUR ceiling and died at the
+// provider's, where it was then mislabelled by the retry machinery (R2/F-5).
+// The bound is DERIVED here, not asserted: encoded output × 4/3, plus a
+// reserve for the text layer, prompts, schema and JSON framing, must fit the
+// request the pages actually ride in.
+//
+// R3/F-5 · `wall_clock` was a SAMPLE, not a deadline: consulted between
+// pages, never after the last one, so a clock that crossed the budget during
+// the final page's render still returned `rendered` — and the only test
+// passed `maxWallClockMs: 0`, which trips the very first sample and cannot
+// tell a deadline from a sample. The scripted clock below stays inside the
+// budget until the last pre-render check an interval sampler would make, then
+// jumps past it: a sampler answers `rendered`, a deadline refuses.
+// ============================================================================
+describe('R2/F-8 · maxRenderedBytes is derived from the provider request limit', () => {
+  it('base64-inflated pages plus the request overhead reserve fit inside 32 MiB', () => {
+    const API_REQUEST_LIMIT_BYTES = 32 * 1024 * 1024;
+    const REQUEST_OVERHEAD_RESERVE_BYTES = 4 * 1024 * 1024;
+    expect(Math.ceil((RENDER_CEILINGS.maxRenderedBytes * 4) / 3)).toBeLessThanOrEqual(
+      API_REQUEST_LIMIT_BYTES - REQUEST_OVERHEAD_RESERVE_BYTES,
+    );
+  });
+});
+
+describe('R3/F-5 · wall_clock is a DEADLINE, not a sample', () => {
+  it('a clock that expires after the last pre-render sample still refuses', () => {
+    // Scripted clock: within budget for the start stamp and the first
+    // pre-render check, past the budget for every consultation after that.
+    // The one-page photo is the hard case — after its single loop-top check
+    // an interval sampler has nowhere left to look and answers `rendered`.
+    let calls = 0;
+    const budget = 90_000;
+    const now = () => (++calls <= 2 ? 0 : budget + 1);
+    const item = corpusItem('dev-pill-01');
+    const result = normalizeArrival(readCorpusFile(item), corpusMime(item), {
+      ceilings: { maxWallClockMs: budget },
+      now,
+    });
+    expect(result).toEqual({ outcome: 'refused', reason: 'wall_clock' });
+  });
+});
+
 describe('R3/F-2 · the page_dimensions ceiling reads STORED pixels, not declared points', () => {
   const bomb = readCorpusFile(corpusItem('dev-pixelbomb-01'));
 
