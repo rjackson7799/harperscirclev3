@@ -1,14 +1,18 @@
 # The G9 corpus spec — labels, partitions, minimum support, and the bands the owner signs
 
 **Status:** the corpus and this spec are BUILT (slice-5 plan B1, Q5
-SETTLED). **The G9 GATE ITSELF IS NOT CLOSED**: it closes when the owner
+SETTLED), and **§7 row 1 is BOUGHT** (Q10 SETTLED 2026-08-24; built at
+6B B10): the blind partition grew 12 → 40, including the email channel,
+and the readable-support arithmetic below is restated against the grown
+corpus. **The G9 GATE ITSELF IS NOT CLOSED**: it closes when the owner
 signs the per-field acceptance bands below, against a completed eval run
 on the BLIND partition — before any real document reaches a provider,
 never quietly. Until then the shipping default is **all-high-risk**
 (TSD §6.5), and B4 loads bands only from an allowlisted eval artifact
 whose configuration hash matches the running `(model_id,
 prompt_version)` — a missing, stale, altered or partial artifact fails
-closed to all-high.
+closed to all-high. §6.A states the mechanical rule by which a measured
+number becomes a signable row at all.
 
 **Authority:** TSD §6.10 (the evaluation set), §6.4 (our own citation
 geometry), §6.5 (risk is not confidence) → PRD §6.4 (the bands as
@@ -57,13 +61,26 @@ project's own `mupdf`, over the BLIND partition (page 1, `DeviceGray`):
 | 1 scanned PDF | **0** | 40 |
 | 7 photo JPEG | **0** | **7–8** — flat 8×8 blocks |
 
-**Eight of twelve blind items carry no rendition of the values they are
-labelled with.** §4 and §6 below are therefore stated against the
-**READABLE SET** — the four that do — and the numbers they previously
-stated (11 supporting items for `document_date`, 6 for
-`medication_dose`) counted *labels*, not renditions. An honest n = 2
-beats a stated n = 6 that is really n = 2; §7 prices buying the
-difference, and buying it is a separate, deliberate owner decision.
+**Eight of twelve blind items carried no rendition of the values they
+were labelled with.** §4 and §6 below were therefore restated against
+the **READABLE SET** — and §7 row 1 priced buying the difference.
+
+**THE PURCHASE WAS MADE (Q10, built at 6B B10), and D11's letter is now
+ENCODED IN THE MANIFEST**: every label carries a `rendered` flag —
+`true` when the material carries a rendition of the value (the PDF text
+layer, the email body), `false` when it does not (the photo/scanned
+classes, whose encoder sizes rectangles from text and never paints a
+glyph). The flag is **MEASURED**, not declared:
+`tests/eval/corpus.test.ts` drives every blind item through the
+pipeline's own `normalizeArrival` (with the *sniffed* mime — R3/F-12)
+and fails if any flag disagrees with the rendition. The scorer excludes
+`rendered: false` labels from recall — a flawless reader cannot return
+them — and books a production that "matches" one as a **false
+positive**: the twelve photo/scanned blind items are now pure
+hallucination catchers, which is the honest job their material can do.
+Max recall's arithmetic is thereby 1.0 for every banded field: the §6
+floors are REACHABLE at last, and what keeps G9 closed is the gate
+itself — a completed blind run, §6.A's rule, and the owner's signature.
 
 ---
 
@@ -72,7 +89,7 @@ difference, and buying it is a separate, deliberate owner decision.
 | Partition | Items | Read by | Reached through |
 |---|---|---|---|
 | `development` | 16 | worker + adapter tests · the fixture server · prompt and schema iteration | `lib/eval/corpus.ts` |
-| **`blind`** | 12 | **scored eval runs ONLY** | `lib/eval/blind.ts`, §1.7 import-fenced to the harness |
+| **`blind`** | **40** *(12 → 40 at the Q10 purchase, 6B B10)* | **scored eval runs ONLY** | `lib/eval/blind.ts`, §1.7 import-fenced to the harness |
 
 The fence is the mechanism. Nothing under `app/`, `lib/ai/`, or the
 worker tests can import `lib/eval/blind`; ESLint reds and
@@ -95,12 +112,12 @@ outcomes the pipeline must survive. Both live in the one corpus.
 
 | Class | development | blind | Why it exists |
 |---|---|---|---|
-| `discharge_summary` | 3 | 3 | §6.4's first named class; born-digital and scanned |
-| `eob` | 2 | 3 | The insurance/financial field family |
-| `pill_bottle` | 1 | 2 | §6.3's never-downsampled row |
-| `handwritten_note` | 1 | 2 | §6.3's never-downsampled row |
-| `phone_photo_angled` | 1 | 2 | EXIF orientation 6 — geometry against the image **as displayed** |
-| `email_body` | 1 | 0 | §6.3 row 4: text first |
+| `discharge_summary` | 3 | 14 | §6.4's first named class; born-digital (incl. a MULTI-PAGE and a MULTI-MEDICATION item) and scanned |
+| `eob` | 2 | 12 | The insurance/financial field family |
+| `pill_bottle` | 1 | 3 | §6.3's never-downsampled row |
+| `handwritten_note` | 1 | 3 | §6.3's never-downsampled row |
+| `phone_photo_angled` | 1 | 3 | EXIF orientation 6 — geometry against the image **as displayed** |
+| `email_body` | 1 | 5 | §6.3 row 4: text first — and since Q10, the primary intake channel is SCORED |
 | `injection_probe` | 1 | 0 | INJ-01 — extracts normally; §4.10's blast radius is a proposal |
 | `refusal_probe` | 1 | 0 | §6.8 — HTTP 200 with `stop_reason: "refusal"` |
 | `encrypted_pdf` | 1 | 0 | §4.3 normalize → `needs_password` |
@@ -127,89 +144,62 @@ the corpus against them, so this section cannot drift into aspiration.
 | Blind negative examples per banded field (field genuinely absent) | **≥ 1** |
 | Adjudicated ambiguous labels per partition | **≥ 1** |
 
-### 4.1 As built — LABELLED support
+### 4.1 As built at the Q10 purchase — RENDERED support, which governs
 
-Every row here is true of `corpus.json`, and every row was, until the
-round-16 review, taken to be the corpus's support. **It is not.** A label
-records what the item IS; it does not establish that the item CONTAINS a
-rendition a reader could return. Kept, because these are the numbers a
-grown corpus has to reach.
+**Support counts RENDERED LABELS** (D11 encoded: `rendered: true`,
+measured through `normalizeArrival`), and it counts **labels, not
+items** (R6/F-10 — the multi-medication item contributes two to each
+medication field). The readable blind set is **28 items** across TWO
+source types — born-digital PDF and email text; the twelve photo/scanned
+items carry `rendered: false` labels and stand as hallucination
+catchers. `tests/eval/corpus.test.ts` pins this table exactly; a number
+moving there means the corpus moved, and this table moves with it in the
+same commit.
 
-| Banded field | Blind support | Source types | Blind negatives | Dev support |
+| Banded field | Rendered blind support | Readable source types | Readable negatives ≥ | Max recall |
 |---|---|---|---|---|
-| `document_date` | 11 | born-digital PDF, photo JPEG, scanned PDF | 1 | 9 |
-| `provider` | 11 | born-digital PDF, photo JPEG, scanned PDF | 1 | 10 |
-| `amount` | 4 | born-digital PDF, photo JPEG | 8 | 3 |
-| `policy_number` | 4 | born-digital PDF, photo JPEG | 8 | 3 |
-| `member_id` | 4 | born-digital PDF, photo JPEG | 8 | 3 |
-| `coverage_determination` | 4 | born-digital PDF, photo JPEG | 8 | 3 |
-| `medication_name` | 6 | born-digital PDF, photo JPEG, scanned PDF | 6 | 5 |
-| `medication_dose` | 6 | born-digital PDF, photo JPEG, scanned PDF | 6 | 5 |
-| `medication_frequency` | 6 | born-digital PDF, photo JPEG, scanned PDF | 6 | 5 |
-| `allergy_substance` | 5 | born-digital PDF, photo JPEG, scanned PDF | 7 | 4 |
-| `appointment_date` | 4 | born-digital PDF, photo JPEG, scanned PDF | 8 | 3 |
-| `appointment_time` | 4 | born-digital PDF, photo JPEG, scanned PDF | 8 | 3 |
+| `document_date` | 25 | 2 | 3 | **1.0** |
+| `provider` | 27 | 2 | 1 | **1.0** |
+| `amount` | 12 | 2 | many | **1.0** |
+| `policy_number` | 12 | 2 | many | **1.0** |
+| `member_id` | 12 | 2 | many | **1.0** |
+| `coverage_determination` | 12 | 2 | many | **1.0** |
+| `medication_name` | 14 | 2 | many | **1.0** |
+| `medication_dose` | 14 | 2 | many | **1.0** |
+| `medication_frequency` | 14 | 2 | many | **1.0** |
+| `allergy_substance` | 13 | 2 | many | **1.0** |
+| `appointment_date` | 12 | 2 | many | **1.0** |
+| `appointment_time` | 12 | 2 | many | **1.0** |
 
-### 4.2 As built — READABLE support, which is what a run can demonstrate
+Max recall is 1.0 *by construction now*: recall's denominator is
+rendered labels, because a label the material carries no rendition of
+is not a thing any reader — flawless or otherwise — can return, and
+counting it was how every floor became unreachable. The unrendered
+labels still exist, still carry their geometry, and still do work: a
+produced value that "matches" one is a **false positive**, which is
+precisely the failure mode a photo of flat blocks can honestly test.
 
-**This is the table that governs.** Support counts an item only when the
-labelled value is actually rendered in the bytes the model receives —
-measured, not declared, by `tests/eval/corpus.test.ts` driving the
-pipeline's own `normalizeArrival`. The readable blind set is four items,
-**all born-digital PDF**: `blind-discharge-01`, `blind-discharge-02`,
-`blind-eob-01`, `blind-eob-02`.
+### 4.2 The minimums are MET, and what still keeps the gate closed
 
-`max recall` is arithmetic, not a prediction: it is the best a flawless
-reader could score, because the remaining supporting items contain
-nothing to read.
+- **≥ 3 blind items per banded field** — met by all twelve (12–27).
+- **≥ 2 distinct readable source types per banded field** — met by all
+  twelve: born-digital PDF plus the email channel Q6 made renderable
+  and Q10 made scored.
+- **≥ 1 readable blind negative per banded field** — met by all twelve
+  (`provider`'s is the anonymous reminder email; `document_date`'s are
+  the three undated emails).
+- **≥ 1 adjudicated ambiguous label per partition** — met, unchanged.
 
-| Banded field | Readable blind support | Source types | Readable negatives | **max recall** |
-|---|---|---|---|---|
-| `document_date` | 4 | 1 | 0 | **0.36** |
-| `provider` | 4 | 1 | 0 | **0.36** |
-| `amount` | 2 | 1 | 2 | **0.50** |
-| `policy_number` | 2 | 1 | 2 | **0.50** |
-| `member_id` | 2 | 1 | 2 | **0.50** |
-| `coverage_determination` | 2 | 1 | 2 | **0.50** |
-| `medication_name` | 2 | 1 | 2 | **0.33** |
-| `medication_dose` | 2 | 1 | 2 | **0.33** |
-| `medication_frequency` | 2 | 1 | 2 | **0.33** |
-| `allergy_substance` | 2 | 1 | 2 | **0.40** |
-| `appointment_date` | 1 | 1 | 3 | **0.25** |
-| `appointment_time` | 1 | 1 | 3 | **0.25** |
+**What keeps G9 closed is now the GATE, not the arithmetic**: a
+completed blind run over this corpus, §6.A's mechanical rule, and the
+owner's signature on the result. `BAND_ARTIFACT_ALLOWLIST` stays EMPTY
+until that happens, and every field ships all-high-risk (§6.5).
 
-### 4.3 The minimums are NOT met, and that is the honest statement
-
-Against §4.2, and stated plainly rather than left to be discovered at the
-gate:
-
-- **≥ 3 blind items per banded field** — met by two fields of twelve
-  (`document_date`, `provider`, at exactly 4). Ten fields sit at 1 or 2.
-- **≥ 2 distinct source types per banded field** — met by **nothing**.
-  Effective source-type coverage is **1** (born-digital PDF) for every
-  banded field. §4.1's second column was satisfied entirely by items on
-  which extraction is impossible.
-- **≥ 1 blind negative per banded field** — met by ten of twelve;
-  `document_date` and `provider` have none within the readable set.
-- **≥ 1 adjudicated ambiguous label per partition** — met, unaffected.
-
-**The consequence, which is the point of restating this:** no floor in
-§6 is arithmetically reachable, so **the G9 gate cannot be closed as this
-corpus stands** — not because the pipeline is bad, but because the
-apparatus cannot measure it. `BAND_ARTIFACT_ALLOWLIST` stays EMPTY and
-every field ships all-high-risk (§6.5's shipping default) until §7 row 1
-or row 2 is bought deliberately. A gate that cannot be passed is not a
-conservative gate; it is a gate that gets argued around at the meeting
-where it fails, and this section exists so that meeting starts from the
-arithmetic instead.
-
-**The honest reading of these numbers.** Four supporting items is enough
-to catch a field the pipeline cannot read at all; it is **not** enough to
-distinguish 0.90 precision from 0.95 — and two is not enough to catch
-much of anything. §6 therefore states bands as *floors with a stated
-confidence limit* AND with the measurable ceiling beside them, and §7
-states what growing the corpus would buy — an owner call, priced, at the
-gate.
+**The honest statistical reading stands.** Twelve to twenty-seven
+supporting labels put a real interval around a measured number — that
+is what the purchase bought — but a measured 1.00 at n = 12 is still
+"no error in twelve tries", not "≥ 0.98 in the world". §10.4's live
+quality signals are what narrow it after G4.
 
 ---
 
@@ -245,29 +235,65 @@ signs and an eval run writes the artifact B4 matches against.
 Per §6.10 the report is **per-field precision and recall, never one
 global number**, keyed `(model_id, prompt_version)`.
 
-**RESTATED AT THE ROUND-16 SIGN-OFF** against §4.2's readable set (owner
-ruling 2026-08-23; ADR-0023 D11/D24). The floors are unchanged — they are
-what the *product* requires — but each now carries the **ceiling this
-corpus can demonstrate**, and where the ceiling is below the floor the
-row is **UNSIGNABLE**: no eval run over this corpus can produce a number
-that clears it, so signing it would be signing an arithmetic
-impossibility. Every row is unsignable today. That is a statement about
-the apparatus, not about the pipeline.
+**RESTATED AT THE Q10 PURCHASE (6B B10).** The floors are unchanged —
+they are what the *product* requires, and the round-16 rule that "the
+floors do not move to meet the apparatus" held in both directions: the
+apparatus moved to meet them. With §4.1's arithmetic every ceiling is
+1.0, so every row is **REACHABLE**; none is SIGNED, and §6.A states the
+mechanical rule by which a run's numbers earn a signable row.
 
-| Field | Class | Proposed precision floor | Proposed recall floor | Max recall (§4.2) | Signable? |
+| Field | Class | Proposed precision floor | Proposed recall floor | Max recall (§4.1) | Reachable? |
 |---|---|---|---|---|---|
-| `medication_name` | high | 0.98 | 0.95 | 0.33 | **NO** |
-| `medication_dose` | high | 0.98 | 0.95 | 0.33 | **NO** |
-| `medication_frequency` | high | 0.95 | 0.90 | 0.33 | **NO** |
-| `allergy_substance` | high | 0.98 | 0.95 | 0.40 | **NO** |
-| `member_id` | high | 0.95 | 0.90 | 0.50 | **NO** |
-| `policy_number` | high | 0.95 | 0.90 | 0.50 | **NO** |
-| `coverage_determination` | high | 0.90 | 0.85 | 0.50 | **NO** |
-| `provider` | high | 0.95 | 0.90 | 0.36 | **NO** |
-| `amount` | high | 0.95 | 0.90 | 0.50 | **NO** |
-| `appointment_date` | high | 0.95 | 0.90 | 0.25 | **NO** |
-| `appointment_time` | high | 0.95 | 0.90 | 0.25 | **NO** |
-| `document_date` | standard | 0.95 | 0.95 | 0.36 | **NO** |
+| `medication_name` | high | 0.98 | 0.95 | 1.0 | yes — unsigned |
+| `medication_dose` | high | 0.98 | 0.95 | 1.0 | yes — unsigned |
+| `medication_frequency` | high | 0.95 | 0.90 | 1.0 | yes — unsigned |
+| `allergy_substance` | high | 0.98 | 0.95 | 1.0 | yes — unsigned |
+| `member_id` | high | 0.95 | 0.90 | 1.0 | yes — unsigned |
+| `policy_number` | high | 0.95 | 0.90 | 1.0 | yes — unsigned |
+| `coverage_determination` | high | 0.90 | 0.85 | 1.0 | yes — unsigned |
+| `provider` | high | 0.95 | 0.90 | 1.0 | yes — unsigned |
+| `amount` | high | 0.95 | 0.90 | 1.0 | yes — unsigned |
+| `appointment_date` | high | 0.95 | 0.90 | 1.0 | yes — unsigned |
+| `appointment_time` | high | 0.95 | 0.90 | 1.0 | yes — unsigned |
+| `document_date` | standard | 0.95 | 0.95 | 1.0 | yes — unsigned |
+
+### 6.A The threshold rule — how a measured number becomes a band (R6/F-4)
+
+Written HERE, before any run can produce a signable artifact, because
+the alternative was discovering at the sign-off meeting that the
+harness's rows were rejected by `loadBands` as `artifact_partial`
+forever and improvising the rule under pressure.
+`lib/eval/thresholds.ts` is this section's arithmetic;
+`tests/eval/thresholds.test.ts` pins the mirror.
+
+1. **The floors gate entry.** A field's manifest row carries the
+   `{high, medium}` pair `loadBands` requires **only** when the run's
+   measured numbers clear every one of:
+   - `precision ≥` its §6 precision floor;
+   - `recall ≥` its §6 recall floor;
+   - `support ≥` the §4 minimum (3 rendered blind labels);
+   - `citation accuracy ≥ 0.90`, **measured** — at least nine of ten
+     value-hits must land their bbox on the labelled region (same page,
+     intersection at least half the smaller box). This is R3/F-7's
+     teeth: a model with perfect values and uniformly wrong boxes
+     cannot sign, because the box is what a person is shown before
+     approving. An UNMEASURED citation accuracy does not pass — no
+     evidence is not good evidence.
+2. **The pair itself is PRD §6.4's defaults** — `high ≥ 0.85`,
+   `medium ≥ 0.60` — for every field that clears. The rule never
+   computes a threshold from the measurements: moving a pair off the
+   defaults is a per-field OWNER decision on per-field
+   confidence-vs-accuracy evidence, recorded at the gate.
+3. **An artifact is signable only when EVERY banded field cleared.** An
+   unsignable manifest omits the pairs it did not earn, and `loadBands`'
+   own `artifact_partial` guard fails it closed to all-high —
+   enforcement stays exactly where it always was, and a partly-good run
+   cannot ship as a partly-calibrated product (the half-calibrated state
+   §6.5 forbids).
+4. **Signing is still the owner's act**: the run's digest enters
+   `BAND_ARTIFACT_ALLOWLIST` in the sign-off commit, with the ADR
+   recording the numbers signed against. Nothing in this rule closes
+   the gate; it makes what the gate reads mechanical.
 
 The per-field notes the floors were argued from stand unchanged: a wrong
 `medication_name` is the worst single failure available here, and the
@@ -312,12 +338,11 @@ part, not reading.
 
 | Change | Cost | What it buys |
 |---|---|---|
-| Blind items 12 → 40 (same builder, more spec rows) | ~1 h build, ~+2 MB in-tree, ~2× eval cost per run | Bands at n ≈ 12–15 per field: a real interval rather than a floor |
-| Photographed synthetic documents (print, photograph, label) | Owner time; a physical loop | The only way to measure the model's *vision* rather than our contract |
+| ~~Blind items 12 → 40 (same builder, more spec rows)~~ **BOUGHT — Q10, built at 6B B10** | was: ~1 h build, ~+2 MB in-tree, ~2× eval cost per run (landed at ~+0.8 MB) | Bands at n = 12–27 per field: a real interval rather than a floor — delivered as §4.1 |
+| Photographed synthetic documents (print, photograph, label) | Owner time; a physical loop | The only way to measure the model's *vision* rather than our contract. **Still out (Q10 kept row 2 out)** |
 | A second annotator + inter-annotator agreement | Owner time | Turns "adjudicated" into a measured agreement rate |
 
-None of these is taken as a build decision. All three are the kind of
-thing the G9 gate exists to decide with evidence in hand.
+Rows 2 and 3 remain owner decisions at the gate, with evidence in hand.
 
 ---
 
@@ -331,7 +356,11 @@ npx vitest run tests/eval/corpus.test.ts     # the governance assertions
 
 **Adding an item** means adding a row to `SPEC` in the builder and
 re-running it — never dropping a file into `fixtures/g9` by hand, which
-the manifest-completeness test rejects. **Changing a blind item after
+the manifest-completeness test rejects. **The PDF writer refuses
+non-Latin-1 text loudly** (R6/F-17; the guard's first run caught two
+live truncations in the shipped corpus — a curly apostrophe and an
+em-dash silently mangled to control bytes): transliterate, or extend
+the writer first. **Changing a blind item after
 bands are signed invalidates those bands**, the same way a prompt or
 model change does (§6.10): the pair `(model_id, prompt_version)` and the
 eval manifest's full-configuration hash are what make that traceable.

@@ -1,0 +1,11 @@
+From: claims@brightpath.example
+Subject: Claim processed
+
+Provider: Silver Lake Radiology
+Statement date: 2026-08-14
+Policy number: PN-5083-27
+Member ID: MB-62114
+Coverage determination: Partially covered
+Amount you may owe: $41.20
+
+This is not a bill.

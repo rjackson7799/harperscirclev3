@@ -28,13 +28,16 @@
 // ============================================================================
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { blindCorpus } from '@/lib/eval/blind';
-import { readCorpusFile, corpusMime, type CorpusItem } from '@/lib/eval/corpus';
+import { corpusManifest } from '@/lib/eval/manifest';
+import { readCorpusFile, type CorpusItem } from '@/lib/eval/corpus';
 import { scoreRun, type Prediction } from '@/lib/eval/score';
+import { bandRowsFor } from '@/lib/eval/thresholds';
 import { normalizeArrival } from '@/lib/pipeline/render';
+import { sniffMime } from '@/lib/pipeline/mime';
 import { predictionFor } from '@/scripts/eval/predict';
 import {
   EXTRACT_EFFORT,
@@ -69,7 +72,11 @@ function parseArgs(): { mode: Mode; batchId?: string } {
  */
 async function requestFor(item: CorpusItem) {
   const bytes = readCorpusFile(item);
-  const normalized = await normalizeArrival(bytes, corpusMime(item));
+  // R3/F-12 (rode Q10): the harness normalises with the SNIFFED mime,
+  // exactly as the worker does — content, never declaration. The two agreed
+  // on every old fixture by luck of the extensions; now they agree by
+  // construction.
+  const normalized = await normalizeArrival(bytes, sniffMime(bytes));
   if (normalized.outcome !== 'rendered') {
     return { skipped: normalized.outcome as string };
   }
@@ -189,6 +196,20 @@ async function main(): Promise<void> {
     console.error('--collect needs a batch id');
     process.exit(2);
   }
+  // R6/F-16 (rode Q10): the output path is checked BEFORE any API call. The
+  // old order fetched the whole batch and then threw EEXIST at the manifest
+  // write — a failure AFTER the round-trip, on the one command whose input
+  // cost money to produce. The manifest is immutable by design ({flag:'wx'});
+  // re-collecting is refused HERE, with the remedy stated.
+  const outFile = path.join(OUT_DIR, `${batchId}.json`);
+  if (existsSync(outFile)) {
+    console.error(
+      `already collected: ${path.relative(process.cwd(), outFile)}\n` +
+        'The run manifest is immutable. To re-collect this batch, move the file aside first;\n' +
+        'nothing was fetched.',
+    );
+    process.exit(1);
+  }
   const batch = await client.messages.batches.retrieve(batchId);
   if (batch.processing_status !== 'ended') {
     console.log(`batch ${batchId} is ${batch.processing_status} — not ready`);
@@ -232,7 +253,8 @@ async function main(): Promise<void> {
         failures.push({ id: result.custom_id, reason: 'unknown_item' });
         continue;
       }
-      const normalized = await normalizeArrival(readCorpusFile(item), corpusMime(item));
+      const itemBytes = readCorpusFile(item);
+      const normalized = await normalizeArrival(itemBytes, sniffMime(itemBytes));
       const pageCount = normalized.outcome === 'rendered' ? normalized.pages.length : 0;
       const prediction = predictionFor(result.custom_id, text, pageCount);
       if (prediction.dropped > 0) {
@@ -249,6 +271,15 @@ async function main(): Promise<void> {
   // make the bands better than the pipeline.
   const score = scoreRun(items, predictions);
 
+  // R6/F-4 (6B B10): THE THRESHOLD RULE. The manifest rows now carry the
+  // {high, medium} pair loadBands requires — but ONLY for fields that
+  // cleared the §6 floors, the §4 support minimum and the citation floor
+  // (docs/eval/g9-corpus-spec.md §6.A; lib/eval/thresholds.ts is the
+  // arithmetic). An unsignable manifest omits the pairs it did not earn, so
+  // loadBands' own artifact_partial guard fails it closed — writing rows it
+  // rejected FOREVER is what this replaces.
+  const banded = bandRowsFor(score.fields, corpusManifest().minimums.blind_support_per_field);
+
   const digest = writeManifest(`${batchId}.json`, {
     ...manifestSkeleton(),
     batch_id: batchId,
@@ -256,29 +287,29 @@ async function main(): Promise<void> {
     items: items.length,
     scored: predictions.length,
     failures,
-    fields: Object.fromEntries(
-      score.fields.map((f) => [
-        f.field,
-        {
-          precision: f.precision,
-          recall: f.recall,
-          support: f.support,
-          tp: f.tp,
-          fp: f.fp,
-          fn: f.fn,
-        },
-      ]),
-    ),
+    fields: banded.rows,
+    signable: banded.signable,
+    unsignable: banded.unsignable,
     unscored: score.unscored,
   });
 
   console.log('');
-  console.log('field                     precision  recall  support');
+  console.log('field                     precision  recall  citation  support  signable');
   for (const f of score.fields) {
     const p = f.precision === null ? '    —' : f.precision.toFixed(3);
     const r = f.recall === null ? '    —' : f.recall.toFixed(3);
-    console.log(`${f.field.padEnd(24)}  ${p.padStart(8)}  ${r.padStart(6)}  ${String(f.support).padStart(7)}`);
+    const c = f.citation_accuracy === null ? '    —' : f.citation_accuracy.toFixed(3);
+    const s = banded.unsignable[f.field] ? `NO (${banded.unsignable[f.field].join(', ')})` : 'yes';
+    console.log(
+      `${f.field.padEnd(24)}  ${p.padStart(8)}  ${r.padStart(6)}  ${c.padStart(8)}  ${String(f.support).padStart(7)}  ${s}`,
+    );
   }
+  console.log('');
+  console.log(
+    banded.signable
+      ? 'Every banded field cleared its floors: this manifest is SIGNABLE at the gate.'
+      : 'NOT SIGNABLE: the fields marked above did not clear their floors. loadBands would refuse this artifact as partial, which is the designed fail-closed.',
+  );
   const totalDropped = [...dropped.values()].reduce((a, b) => a + b, 0);
   if (totalDropped > 0) {
     console.log('');
