@@ -474,3 +474,158 @@ describe('6B close-out F5 · a stalled storage read becomes a named state, never
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+// ============================================================================
+// 6B close-out · F6 (ADR-0026 D20) — THE BOUND F5 DREW WAS IN THE WRONG PLACE.
+//
+// Gate run r7 at 7ecc81b came back 36/2. F5's own leg went GREEN (leg 35,
+// REV-02, 12.2 s against r6's 120 s timeout), and leg 38 — A11Y-08 / OCR-01,
+// which PASSED at r6 in 8.6 s — went red on `.review-machine-text` never
+// appearing. The preserved trace (%TEMP%\claude\r7-failures\) shows why:
+//
+//   404  GET  17552ms  /api/artifact/b4cf239a…?page=1
+//   -1   GET       -1  /api/artifact/b4cf239a…?page=1&text=1   NEVER ANSWERED
+//
+// THE DISCRIMINATOR: if that hang had been inside the fetch F5 bounded, it
+// would have ANSWERED — the text path returns notFound() on timeout, so a 404
+// at ~10 s. It never answered at all. The hang is UPSTREAM of the bound. The
+// 404 that took 17.5 s corroborates: that path returns before any fetch, so
+// 17.5 s was spent in the DB reads and the signed-URL hop ahead of it.
+//
+// So F5's fix is correct and INCOMPLETE. It bounded the two `fetch` calls,
+// which is what the gate had found. But
+// `asServiceRole().storage.from('artifacts').createSignedUrl(key, 30)` is
+// itself an outbound HTTP call, and readableArtifact / readableRendition /
+// logArtifactRead are three more network round-trips. The class was never
+// "unbounded fetch" — it is UNBOUNDED NETWORK CALL IN A ROUTE A PERSON IS
+// WAITING ON, and bounding the visible half is exactly the partial fix
+// ADR-0026 already warns about: reasonable, precedented, and still a guess.
+//
+// AND PER-CALL BOUNDS DO NOT COMPOSE. Eight awaits at ten seconds each is
+// eighty seconds of spinner, every one of them "within bounds". The number a
+// person experiences is the SUM, so the budget has to be shared — which is
+// what the last case here pins, and what no per-call bound can satisfy.
+//
+// These are the r7 finding pinned BEFORE the fix exists. The first six fail
+// by HANGING; the seventh fails still PENDING at 20 s.
+// ============================================================================
+describe('6B close-out F6 · every await in the route is inside ONE answer budget', () => {
+  const RENDITION = { page_count: 2, page_exts: ['png', 'jpg'] };
+  const NEVER = () => new Promise<never>(() => {});
+
+  /**
+   * The budget this route must answer within, stated HERE rather than
+   * imported: the test says what the contract is and the code has to meet it.
+   * A number the test reads back out of the code under test pins nothing.
+   */
+  const BUDGET = 15_000;
+  /** One second past it — close enough that these cases pin the contract, not
+   *  merely "eventually". F5's cases used the gate leg's own 120 s, which
+   *  proves the hang is gone but would accept an eighty-second answer. */
+  const OVER_BUDGET = BUDGET + 1_000;
+
+  function getText(page: string): Request {
+    return new Request(`http://local.test/api/artifact/${ARRIVAL}?page=${page}&text=1`, {
+      method: 'GET',
+    });
+  }
+
+  /** Answer, or the marker that the route out-waited an entire gate leg. */
+  async function answerWithin(req: Request, ms = OVER_BUDGET): Promise<Response | 'HUNG'> {
+    const answered = route.GET(req, ctx);
+    const raced = Promise.race([
+      answered,
+      new Promise<'HUNG'>((r) => setTimeout(() => r('HUNG'), ms)),
+    ]);
+    await vi.advanceTimersByTimeAsync(ms);
+    return raced;
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('a stalled RLS read is bounded — and keeps the ONE 404 shape (404 ≡ 403)', async () => {
+    artifacts.readableArtifact.mockImplementationOnce(NEVER);
+    const res = await answerWithin(get());
+    expect(res).not.toBe('HUNG');
+    expect((res as Response).status).toBe(404);
+  });
+
+  it('a stalled MANIFEST read is bounded — the page path answers, it does not spin', async () => {
+    artifacts.readableRendition.mockImplementationOnce(NEVER);
+    const res = await answerWithin(getPage('1'));
+    expect(res).not.toBe('HUNG');
+    expect((res as Response).status).toBe(404);
+  });
+
+  it('a stalled access-log write is bounded — evidence before bytes, and NO bytes move', async () => {
+    artifacts.logArtifactRead.mockImplementationOnce(NEVER);
+    const res = await answerWithin(get());
+    expect(res).not.toBe('HUNG');
+    // Its existing shape: a trail that cannot be confirmed refuses the read.
+    expect((res as Response).status).toBe(500);
+    expect(createSignedUrl).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a stalled signed-URL hop on the PAGE path is storage_timeout, NOT rendition_page_missing', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    createSignedUrl.mockImplementationOnce(NEVER);
+    const res = await answerWithin(getPage('1'));
+    expect(res).not.toBe('HUNG');
+    const answer = res as Response;
+    // F5's distinction, applied one call earlier: 503 says the manifest names
+    // a page storage does not hold — permanent, repairable. This says the page
+    // is very likely there and the hop stalled — transient, retryable.
+    expect(answer.status).toBe(504);
+    expect(await answer.json()).toEqual({ error: 'storage_timeout', page: 1 });
+    expect(answer.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('a stalled signed-URL hop on the MAIN byte path keeps the ONE 404 shape', async () => {
+    createSignedUrl.mockImplementationOnce(NEVER);
+    const res = await answerWithin(get());
+    expect(res).not.toBe('HUNG');
+    expect((res as Response).status).toBe(404);
+  });
+
+  it('a stalled signed-URL hop on the MACHINE-READ sibling keeps the ONE 404 — it is not manifest-promised', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    createSignedUrl.mockImplementationOnce(NEVER);
+    const res = await answerWithin(getText('1'));
+    expect(res).not.toBe('HUNG');
+    expect((res as Response).status).toBe(404);
+  });
+
+  it('FOUR awaits each answering inside its own bound STILL answer within the shared budget', async () => {
+    // Nine seconds is "slow, but inside any per-call bound this codebase would
+    // pick". Four of them in series is 36 s — and every one of them is within
+    // bounds. 20 s sits deliberately BETWEEN the 15 s budget and that 36 s, so
+    // this case can only pass if the budget is SHARED across the awaits rather
+    // than restarted at each one. It is the case a per-call bound cannot pass.
+    const slow = <T>(v: T) => () => new Promise<T>((r) => setTimeout(() => r(v), 9_000));
+    artifacts.readableArtifact.mockImplementationOnce(slow(ROW));
+    artifacts.readableRendition.mockImplementationOnce(slow(RENDITION));
+    artifacts.logArtifactRead.mockImplementationOnce(slow(undefined));
+    createSignedUrl.mockImplementationOnce(
+      slow({ data: { signedUrl: 'http://storage.internal/signed/abc' }, error: null }),
+    );
+
+    // Past the budget, nowhere near the 36 s four separate bounds would allow.
+    const res = await answerWithin(getPage('1'), 20_000);
+    expect(res).not.toBe('HUNG');
+    // The budget lands mid-flight in the SECOND await — the manifest read,
+    // which started at 9 s and would have returned at 18 s — so the answer is
+    // that read's named state, the ONE 404. Which await gets cut is incidental;
+    // that the route answers at all by 20 s is the whole finding.
+    expect((res as Response).status).toBe(404);
+  });
+
+  it('a healthy request leaves NO timer behind — on the main byte path too', async () => {
+    const res = await route.GET(get(), ctx);
+    expect(res.status).toBe(200);
+    // A budget that outlives its own request is a handle that keeps the
+    // process awake — the same trap F5's own timer had to be cleared out of.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
