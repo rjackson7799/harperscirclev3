@@ -506,8 +506,14 @@ describe('6B close-out F5 · a stalled storage read becomes a named state, never
 // person experiences is the SUM, so the budget has to be shared — which is
 // what the last case here pins, and what no per-call bound can satisfy.
 //
-// These are the r7 finding pinned BEFORE the fix exists. The first six fail
-// by HANGING; the seventh fails still PENDING at 20 s.
+// These are the r7 finding pinned BEFORE the fix exists. Seven fail by HANGING
+// outright; the last is still unanswered at 20 s.
+//
+// The SESSION read is here for the same reason and was found the same way:
+// liveSessionClaims is two auth-server round-trips (getUser, then getClaims)
+// and it is the FIRST thing this route does, so a stall there is precisely the
+// "never answered" shape leg 38 recorded — before the route even knows who is
+// asking.
 // ============================================================================
 describe('6B close-out F6 · every await in the route is inside ONE answer budget', () => {
   const RENDITION = { page_count: 2, page_exts: ['png', 'jpg'] };
@@ -543,6 +549,16 @@ describe('6B close-out F6 · every await in the route is inside ONE answer budge
 
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
+
+  it('a stalled SESSION read is bounded — the route answers before it knows who is asking', async () => {
+    session.liveSessionClaims.mockImplementationOnce(NEVER);
+    const res = await answerWithin(get());
+    expect(res).not.toBe('HUNG');
+    // No claims is already this route's 404 — a session it could not read in
+    // time is a session it does not have.
+    expect((res as Response).status).toBe(404);
+    expect(artifacts.readableArtifact).not.toHaveBeenCalled();
+  });
 
   it('a stalled RLS read is bounded — and keeps the ONE 404 shape (404 ≡ 403)', async () => {
     artifacts.readableArtifact.mockImplementationOnce(NEVER);
