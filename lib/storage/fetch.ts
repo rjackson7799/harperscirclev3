@@ -23,6 +23,13 @@
  * `app/` and `lib/` are still unbounded (postmark inbound, upload/complete,
  * the two TUS proxy hops, outbound mail, and the two client-side upload
  * calls). They are OWED, not fixed — see ADR-0026 D18.
+ *
+ * AND THAT SCOPE WAS DRAWN IN THE WRONG PLACE — gate run r7 said so, one
+ * commit later. The route's other seven awaits are network calls too, and
+ * per-call bounds do not compose besides. This helper is now one participant
+ * in `lib/http/budget.ts`'s whole-request budget rather than the route's only
+ * bound; it keeps its AbortController because this is the one call where
+ * cancellation is actually available. See ADR-0026 D20 (F6).
  */
 
 /**

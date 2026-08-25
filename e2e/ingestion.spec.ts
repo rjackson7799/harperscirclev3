@@ -445,11 +445,17 @@ test.describe('the 4B ingestion leg', () => {
     );
     expect(evidence.rows[0]).toMatchObject({ verdict: 'infected', expires_at: null });
 
-    // The bytes left the artifacts bucket for the no-read-grant quarantine.
+    // The bytes left the artifacts bucket for the no-read-grant quarantine —
+    // counted inside THIS run's circle. EICAR is a fixed string, so its sha is
+    // identical on every run and each run leaves one more object behind under a
+    // circle of its own; counting that sha bucket-wide asserted "no gate run
+    // has ever run before", which is true exactly once per storage reset. That
+    // is what reddened leg 17 at r7 with nothing about the product changed.
     const buckets = await query(
       `select bucket_id, count(*)::int as n from storage.objects
-        where name like '%' || $1 group by bucket_id`,
-      [row.rows[0].sha],
+        where name like 'circle/' || $1 || '/%' and name like '%' || $2
+        group by bucket_id`,
+      [f.circleId, row.rows[0].sha],
     );
     expect(buckets.rows).toEqual([expect.objectContaining({ bucket_id: 'quarantine', n: 1 })]);
 

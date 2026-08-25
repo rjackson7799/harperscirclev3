@@ -4,6 +4,7 @@ import { logArtifactRead, readableArtifact, readableRendition } from '@/lib/hc/a
 import { asServiceRole } from '@/lib/db/service-role';
 import { promotedPageKey, promotedPageTextKey, type PageExt } from '@/lib/pipeline/page-keys';
 import { fetchStorageWithin } from '@/lib/storage/fetch';
+import { AnswerBudget, AnswerBudgetExceeded } from '@/lib/http/budget';
 
 /**
  * GET /api/artifact/[id] — the §1.3 six steps, literally (slice-4 plan
@@ -74,17 +75,52 @@ function storageTimeout(page: number): Response {
   );
 }
 
+/**
+ * 6B close-out F6 (ADR-0026 D20): a budget overrun on a read whose EMPTY answer
+ * is already this route's 404. Collapsing the two is the right shape here — a
+ * session or a row this route could not read in time is one it does not have,
+ * and the caller learns nothing either way, so the ONE 404 stays one 404.
+ *
+ * Anything that is NOT an overrun is a real error and is left to propagate
+ * exactly as it did before: this bounds the wait, it does not swallow faults.
+ */
+function noneOnOverrun(err: unknown): null {
+  if (!(err instanceof AnswerBudgetExceeded)) throw err;
+  console.error(`artifact: ${err.message}`);
+  return null;
+}
+
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const { id } = await ctx.params;
+  // 6B close-out F6: ONE budget for the whole request, spent down by every
+  // network call below rather than restarted at each. Per-call bounds do not
+  // compose — eight awaits at ten seconds each is eighty seconds of spinner
+  // with every call "within bounds" — and the number a person waits is the SUM.
+  const budget = AnswerBudget.open();
+  try {
+    return await answer(req, id, budget);
+  } finally {
+    // A budget that outlives its own request keeps the process awake.
+    budget.clear();
+  }
+}
+
+async function answer(req: Request, id: string, budget: AnswerBudget): Promise<Response> {
   const supabase = await asUser();
-  const claims = await liveSessionClaims(supabase);
+  // Two auth-server round-trips (getUser, then getClaims), and the first thing
+  // this route does — so the first thing that can fail to answer.
+  const claims = await budget
+    .race(liveSessionClaims(supabase), 'liveSessionClaims')
+    .catch(noneOnOverrun);
   if (!claims?.sub) return notFound();
 
   // Steps 1+2 — one RLS-true query; zero rows is the one shape.
-  const artifact = await readableArtifact(claims, id);
+  const artifact = await budget
+    .race(readableArtifact(claims, id), 'readableArtifact')
+    .catch(noneOnOverrun);
   if (!artifact) return notFound();
 
   // Step 3 — the independent clean gate (AC-INBOX-15).
@@ -96,21 +132,36 @@ export async function GET(
   const search = new URL(req.url).searchParams;
   const pageParam = search.get('page');
   if (pageParam !== null) {
-    return servePage(claims, id, artifact.circle_id, pageParam, search.get('text') === '1');
+    return servePage(
+      claims,
+      id,
+      artifact.circle_id,
+      pageParam,
+      search.get('text') === '1',
+      budget,
+    );
   }
 
-  // Step 6 runs BEFORE bytes move: no trail, no read.
+  // Step 6 runs BEFORE bytes move: no trail, no read. A budget overrun lands in
+  // this same catch and refuses the read exactly as a failed write does — a
+  // trail that could not be CONFIRMED is not a trail.
   try {
-    await logArtifactRead({ claims, arrivalId: id });
+    await budget.race(logArtifactRead({ claims, arrivalId: id }), 'logArtifactRead');
   } catch (err) {
     console.error(`artifact: access-log write failed: ${(err as Error).message}`);
     return new Response('unavailable', { status: 500 });
   }
 
-  // Step 4 — the signed URL lives and dies server-side.
-  const { data, error } = await asServiceRole()
-    .storage.from('artifacts')
-    .createSignedUrl(artifact.storage_key, 30);
+  // Step 4 — the signed URL lives and dies server-side. F6: this is an outbound
+  // HTTP call that merely is not spelled `fetch`, so it is raced like one.
+  const signed = await budget
+    .race(
+      asServiceRole().storage.from('artifacts').createSignedUrl(artifact.storage_key, 30),
+      'createSignedUrl',
+    )
+    .catch(noneOnOverrun);
+  if (!signed) return notFound(); // the overrun, already named in the log
+  const { data, error } = signed;
   if (error || !data?.signedUrl) {
     console.error(`artifact: signed url refused: ${error?.message ?? 'no url'}`);
     return notFound();
@@ -119,9 +170,10 @@ export async function GET(
   const range = req.headers.get('range');
   let upstream: Response;
   try {
-    upstream = await fetchStorageWithin(data.signedUrl, {
-      headers: range ? { range } : undefined,
-    });
+    upstream = await budget.race(
+      fetchStorageWithin(data.signedUrl, { headers: range ? { range } : undefined }),
+      'storage read',
+    );
   } catch (err) {
     // F5: a storage read that stalls or refuses answers in the shape this
     // path already gives an unreachable storage — the ONE 404, never a leaky
@@ -168,20 +220,24 @@ async function servePage(
   arrivalId: string,
   circleId: string,
   pageParam: string,
-  wantText = false,
+  wantText: boolean,
+  budget: AnswerBudget,
 ): Promise<Response> {
   if (!/^\d{1,3}$/.test(pageParam)) return notFound();
   const pageNo = Number(pageParam);
   if (pageNo < 1) return notFound();
 
-  const rendition = await readableRendition(claims, arrivalId);
+  const rendition = await budget
+    .race(readableRendition(claims, arrivalId), 'readableRendition')
+    .catch(noneOnOverrun);
   if (!rendition || pageNo > rendition.page_count) return notFound();
   const ext = rendition.page_exts[pageNo - 1] as PageExt | undefined;
   if (ext !== 'png' && ext !== 'jpg') return notFound();
 
-  // Evidence before bytes — the same §1.3 step 6 the original rides.
+  // Evidence before bytes — the same §1.3 step 6 the original rides, budget
+  // and all: a trail that could not be confirmed refuses the read.
   try {
-    await logArtifactRead({ claims, arrivalId });
+    await budget.race(logArtifactRead({ claims, arrivalId }), 'logArtifactRead');
   } catch (err) {
     console.error(`artifact: access-log write failed: ${(err as Error).message}`);
     return new Response('unavailable', { status: 500 });
@@ -195,7 +251,17 @@ async function servePage(
   const key = wantText
     ? promotedPageTextKey(circleId, arrivalId, pageNo)
     : promotedPageKey(circleId, arrivalId, pageNo, ext);
-  const { data, error } = await asServiceRole().storage.from('artifacts').createSignedUrl(key, 30);
+  const signed = await budget
+    .race(asServiceRole().storage.from('artifacts').createSignedUrl(key, 30), 'createSignedUrl')
+    .catch(noneOnOverrun);
+  if (!signed) {
+    // F6: the OVERRUN is not the same fact as a refusal. A refusal below means
+    // the manifest names a page storage does not hold — permanent, repairable,
+    // 503. This means the hop did not answer in time — transient, retryable —
+    // so it takes F5's named 504, one call earlier than F5 reached.
+    return wantText ? notFound() : storageTimeout(pageNo);
+  }
+  const { data, error } = signed;
   if (error || !data?.signedUrl) {
     if (wantText) return notFound();
     console.error(
@@ -205,7 +271,7 @@ async function servePage(
   }
   let upstream: Response;
   try {
-    upstream = await fetchStorageWithin(data.signedUrl);
+    upstream = await budget.race(fetchStorageWithin(data.signedUrl), 'storage read');
   } catch (err) {
     // F5: the machine-read sibling is not manifest-promised, so its failure
     // stays the ordinary 404 — one shape, as everywhere else on this route.
