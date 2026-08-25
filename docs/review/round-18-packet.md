@@ -32,15 +32,30 @@ when the review read it). So the last row is a RULE, checkable at any head.
 | Close-out red | `76d7299`, `0eb0ad1` | **F6 + F7** pinned — nine cases that fail by HANGING, and a scanner | idem |
 | Close-out green | `7373e14` | F6 + F7 fixed — `lib/http/budget.ts` (D19, D20) | idem |
 | **Evidence head** | `7496cbc` | **F8 fixed — the last commit that moved a non-docs tree.** Every number below was produced at this tree, and the gate is **38 passed (7.6 m)** on it (D21) | not run at this SHA; **its code was run** — see below |
-| Docs head | `740e1a6` | **docs-only** on top of the evidence head — inherits its gate run under ADR-0015 F12. `git diff --name-only 7496cbc..740e1a6` lists five files, all under `docs/` | **run 151 — SUCCESS** |
+| Docs head | *(this file and the documents it names — **no SHA**, per the rule above)* | **docs-only** on top of the evidence head, inheriting its gate run under ADR-0015 F12. The RULE, checkable at whatever head you are reading: `git diff --name-only 7496cbc..HEAD` lists only paths under `docs/` | **green — the RULE is below** |
 
 ### CI — pushed on owner authority, and GREEN; what that does and does not prove
 
 Until 2026-08-25 this section read *"CI has never run on this slice"*, and it
 was true: `git ls-remote --heads origin 'slice/6b*'` returned nothing. The
-owner then authorised the push. The branch is pushed and **CI run 151 at
-`740e1a6` concluded `success` on attempt 1** (242 s,
-`actions/runs/32910646071`).
+owner then authorised the push. The branch is pushed and CI is green.
+
+**Stated as a rule, because a packet that names its own SHA goes stale — this
+one already did once.** An earlier draft of this section put `740e1a6` in the
+ledger's docs-head row; the next docs commit falsified it inside ten minutes,
+which is round-17 F-4 happening again to the document that opens by warning
+about it. The checkable claim instead: **the newest CI run on
+`slice/6b-care-inbox-app` concluded `success`, and its tree differs from the
+evidence head `7496cbc` only under `docs/`.** Both halves are verifiable at
+any head, and neither rots.
+
+The runs behind that rule, as history rather than as a standing claim:
+**run 151 at `740e1a6`, `success`, attempt 1, 242 s**
+(`actions/runs/32910646071`) — the first CI run this slice ever had; and
+**run 152 at `49a6bfd`, `success`, attempt 1, 256 s**
+(`actions/runs/32911291657`), the docs commit that recorded run 151. Each
+docs commit re-runs the full pipeline, so the rule is re-proved rather than
+assumed each time.
 
 **The run is at the docs head, not the evidence head, and that is not a
 loophole.** `git diff --name-only 7496cbc..740e1a6` lists five files, every
