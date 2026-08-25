@@ -100,7 +100,7 @@ condition 6).
 
 ```
 npx supabase start          # DB 54342 · API 54341 · Mailpit 54344
-npm run db:reset            # clean leg — exact 68 migrations (6A merged)
+npm run db:reset            # clean leg — exact 69 migrations (6A merged + the 6B slot)
 node scripts/verify-migration-state.mjs supabase/migrations
 docker run -d --name hc_clamd -p 3310:3310 clamav/clamav:stable
                             # the B9 gate stack's scanner (§1.6): wait
@@ -114,10 +114,10 @@ docker run -d --name hc_clamd -p 3310:3310 clamav/clamav:stable
                             # runs it by hand if you want to watch it.
 ```
 
-- **`npm run db:reset` expects exact 68 migrations at 6B** (the 6A
-  increment merged; 6B's app units touch nothing under `supabase/`
-  except its one pre-authorised migration slot, which moves this count
-  when spent).
+- **`npm run db:reset` expects exact 69 migrations at 6B** (the 6A
+  increment merged; 6B's one pre-authorised migration slot is SPENT —
+  `20260825120001_payload_contract.sql`, the S16.8 residue — and no
+  other 6B unit touches `supabase/`).
 
 - Node 22.15.0 / npm 10.9.2 (`.nvmrc`); browsers via
   `npx playwright install chromium` once.
