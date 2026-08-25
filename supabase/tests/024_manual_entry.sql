@@ -244,8 +244,24 @@ select is(pg_temp.msg_as_member(current_setting('t.u2')::uuid, format(
   $$ select hc.create_manual_proposal(%L, %L, 'task',
        jsonb_build_object('title', 'Refill run')) $$,
   current_setting('t.c1'), current_setting('t.s1'))),
-  'no_error',
-  'the same member CAN draft where they hold manage on the drafted union');
+  'draft_refused',
+  -- AMENDED AT ROUND 17 (ADR-0025 D3, packet Q-B), and the argument belongs
+  -- here rather than only in a commit message, because this assertion was
+  -- GREEN and the round inverted it. Until 6A M2, manage-over-the-drafted-
+  -- union authorized BOTH halves: Priya (family, manage on `schedule` alone)
+  -- could draft this task AND approve it. M2 narrowed approve to view×5 and
+  -- said nothing about creation, which left her able to create an item only
+  -- somebody else could decide — 060 case 16 pinned exactly that, open, and
+  -- carried it to the round. Q-B closes it at creation.
+  --
+  -- THE COST IS REAL AND IS NOT HIDDEN: manual entry now requires view×5, so
+  -- a below-cliff member loses it entirely rather than losing only the half
+  -- M2 took. The alternative the round considered and REJECTED was exempting
+  -- manual entries from the approve gate, which would make manual entry the
+  -- one path that writes to the record without the evidence gate §3.7 exists
+  -- to enforce. 064 case 16 drives the other way: manage×5 implies view×5, so
+  -- the coordinator the product expects to use manual entry is untouched.
+  'the same member can NO LONGER draft where they hold manage on the drafted union alone — "you cannot create what you cannot approve" (round 17, Q-B)');
 
 -- ----------------------------------------------------------------------------
 -- 15–16 · Freeze refuses drafting (no ingestion processing, §3.8) and
@@ -266,8 +282,11 @@ select is(pg_temp.msg_as_member(current_setting('t.u1')::uuid, format(
 select is(pg_temp.scalar(format(
   $$ select count(*)::text from public.arrivals where circle_id = %L and channel = 'manual' $$,
   current_setting('t.c1'))),
-  '3',
-  'the frozen draft wrote nothing (fixture + approved + refill only)');
+  '2',
+  -- RE-PINNED AT ROUND 17 in the same commit as the change that forced it:
+  -- the `Refill run` draft above is now refused (Q-B), so the count that
+  -- proves the FROZEN draft wrote nothing loses that row and nothing else.
+  'the frozen draft wrote nothing (fixture + approved only — the refill draft is refused at round 17, case 14)');
 
 -- ----------------------------------------------------------------------------
 -- 17 · EXECUTE closure.

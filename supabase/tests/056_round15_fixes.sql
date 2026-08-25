@@ -220,7 +220,7 @@ select ok(
       and position('pg_advisory_xact_lock' in d)
             < position('detect_stage2_duplicate' in d)
    from (select pg_get_functiondef(
-           'hc.finalize_extraction(uuid,uuid,jsonb,jsonb)'::regprocedure) as d) x),
+           'hc.finalize_extraction(uuid,uuid,jsonb,jsonb,jsonb)'::regprocedure) as d) x),
   'FINDING 1: hc.finalize_extraction takes the per-circle taint lock BEFORE it asks hc.detect_stage2_duplicate — the duplicate predicate is evaluated under the same serialization point that guards publication (behavioural half: concurrency case 44)');
 
 -- ----------------------------------------------------------------------------

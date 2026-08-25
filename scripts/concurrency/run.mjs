@@ -159,6 +159,24 @@
 //           exactly ONE current row for the field (old before the
 //           commit, new after), never zero, never two.
 //
+//   Case 45 6A M3: two coordinators deciding the LAST two proposals of one
+//           arrival simultaneously produce EXACTLY ONE terminal transition —
+//           the first leaves it at "Needs you" because work remains, the
+//           second terminalizes under the same circle lock.
+//   Case 46 6A M3: approve versus reject on ONE proposal yields ONE decision;
+//           the loser is refused, its idempotency claim rolls back with it,
+//           and exactly one commit row and one terminal transition stand.
+//   Case 47 6A M2 (Q7): a grant lowered while an approval WAITS defeats it
+//           through the ADDED predicate ALONE — the actor still clears manage
+//           on the proposal's own taint and no longer clears view across all
+//           five domains on the arrival. Before Q7 this approval succeeded.
+//   Case 48 6A M3 (R-rule): a freeze committing while a REJECTION waits
+//           defeats it with the NAMED freeze_active signature, and burns no
+//           idempotency key.
+//   Case 49 6A M4 (§4.5): a cancellation committing while finalization waits
+//           discards the rendition MANIFEST with the rest of the answer — the
+//           manifest is the winner's record of what was rendered.
+//
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
 // pg_locks (100 ms poll, 20 s bound) before release; per-case timeout 45 s;
@@ -290,6 +308,9 @@ async function cleanupCircle(admin, c) {
     `delete from public.approval_attempts where proposal_id in
        (select id from public.proposals where circle_id = $1)`,
     `delete from public.proposal_commits where circle_id = $1`,
+    // 6A M4: replica mode disables the FK cascade from arrivals, so the
+    // manifest is deleted explicitly like every other pipeline row here
+    `delete from public.arrival_renditions where circle_id = $1`,
     `delete from public.provenance_edges where circle_id = $1`,
     `delete from public.record_revisions where circle_id = $1`,
     `delete from public.object_shares where circle_id = $1`,
@@ -2745,6 +2766,304 @@ async function case44(admin) {
   }
 }
 
+// --- 6A fixtures ---------------------------------------------------------------
+
+// An arrival resting at `proposals_ready` — where slice 5 left it and where
+// slice 6 picks it up — carrying `n` pending task proposals.
+async function mkReviewable(admin, fx, tag, n) {
+  const a = (await admin.query(
+    `insert into public.arrivals (circle_id, subject_id, channel, state, storage_key)
+     values ($1, $2, 'upload', 'proposals_ready', $3) returning id`,
+    [fx.c, fx.s, `orig/circle/${fx.c}/arrival/${tag}`])).rows[0].id;
+  const props = [];
+  for (let i = 0; i < n; i++) {
+    props.push((await admin.query(
+      `insert into public.proposals (arrival_id, circle_id, subject_id, kind, payload, taint)
+       values ($1, $2, $3, 'task', jsonb_build_object('title', $4::text), '{schedule}')
+       returning id`, [a, fx.c, fx.s, `${tag} item ${i + 1}`])).rows[0].id);
+  }
+  return { arrival: a, proposals: props };
+}
+
+// --- case 45: the LAST two decisions, raced (6A M3) ----------------------------
+//
+// Two coordinators decide the last two proposals of one arrival at the same
+// moment. The terminal arm runs INSIDE each deciding transaction, so the
+// question is whether it can fire twice — an arrival that reached `filed`
+// and then `nothing_filed`, or two terminal events for one review, would
+// both be visible to a family as the record contradicting itself.
+
+async function case45(admin) {
+  const fx = await mkCircle(admin, 'c45');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const w = await mkReviewable(admin, fx, 'c45', 2);
+
+    // S1 decides the first of the two and holds the transaction open, so it
+    // owns the per-circle advisory lock hc.reject_proposal takes.
+    await asUser(s1, fx.u1);
+    await s1.query('begin');
+    const r1 = (await s1.query(
+      `select hc.reject_proposal($1, 1, 'c45-k1', 'wrong') as r`,
+      [w.proposals[0]])).rows[0].r;
+
+    // S2 decides the LAST one and must block behind that lock.
+    await asUser(s2, fx.u2);
+    const p2 = s2.query(
+      `select hc.reject_proposal($1, 1, 'c45-k2', 'not_important') as r`,
+      [w.proposals[1]]).then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.reject_proposal%', 'reject backend');
+    await waitForLockWait(admin, pid2, 's2 reject on the circle lock');
+
+    await s1.query('commit');
+    const r2 = await withTimeout(p2, 'case45 second decision');
+
+    const st = (await admin.query(
+      `select (select a.state::text from public.arrivals a where a.id = $1) as s,
+              (select count(*)::int from public.arrival_events e
+                where e.arrival_id = $1
+                  and e.to_state in ('filed', 'nothing_filed')) as terminals,
+              (select count(*)::int from public.proposals p
+                where p.arrival_id = $1 and p.status = 'rejected') as decided`,
+      [w.arrival])).rows[0];
+
+    check('case45 (6A M3): two coordinators deciding the LAST two proposals simultaneously produce EXACTLY ONE terminal transition — the first decision leaves the arrival at "Needs you" because work remains, the second terminalizes it under the same circle lock, and the record never contradicts itself',
+      !(r2 instanceof Error)
+        && r1.arrival_state === 'proposals_ready'
+        && r2.arrival_state === 'nothing_filed'
+        && st.s === 'nothing_filed' && st.terminals === 1 && st.decided === 2,
+      `err=${r2 instanceof Error ? r2.message : 'none'} first=${r1.arrival_state} second=${r2 instanceof Error ? '-' : r2.arrival_state} state=${st.s} terminals=${st.terminals} decided=${st.decided}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 46: approve versus reject on ONE proposal (6A M3) --------------------
+//
+// The two decisions are mirrors and they race on the same row. Exactly one
+// may land: a proposal that was both approved and rejected would put an
+// object in the record with a rejection beside it in the trail.
+
+async function case46(admin) {
+  const fx = await mkCircle(admin, 'c46');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const w = await mkReviewable(admin, fx, 'c46', 1);
+
+    // S1 approves and holds the transaction open — it owns the proposal row
+    // lock (`for update`) and the per-circle advisory lock.
+    await asUser(s1, fx.u1);
+    await s1.query('begin');
+    const r1 = (await s1.query(
+      `select hc.approve_proposal($1, 1, 'c46-approve') as r`,
+      [w.proposals[0]])).rows[0].r;
+
+    // S2 rejects the SAME proposal and blocks on the row lock.
+    await asUser(s2, fx.u2);
+    const p2 = s2.query(
+      `select hc.reject_proposal($1, 1, 'c46-reject', 'wrong') as r`,
+      [w.proposals[0]]).then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.reject_proposal%', 'reject backend');
+    await waitForLockWait(admin, pid2, 's2 reject behind the approval');
+
+    await s1.query('commit');
+    const r2 = await withTimeout(p2, 'case46 loser');
+
+    const st = (await admin.query(
+      `select (select p.status from public.proposals p where p.id = $1) as status,
+              (select count(*)::int from public.proposal_commits c
+                where c.proposal_id = $1) as commits,
+              (select count(*)::int from public.approval_attempts a
+                where a.proposal_id = $1) as attempts,
+              (select a.state::text from public.arrivals a where a.id = $2) as s`,
+      [w.proposals[0], w.arrival])).rows[0];
+
+    check('case46 (6A M3): approve versus reject on ONE proposal yields ONE decision — the loser is refused in the approval_refused shape, its idempotency claim rolls back with it (so the key is not burned), and exactly one commit row and one terminal transition stand',
+      r2 instanceof Error && /approval_refused/.test(r2.message)
+        && r1.status === 'approved' && r1.arrival_state === 'filed'
+        && st.status === 'approved' && st.commits === 1 && st.attempts === 1
+        && st.s === 'filed',
+      `loser=${r2 instanceof Error ? r2.message : `NO ERROR (${JSON.stringify(r2)})`} status=${st.status} commits=${st.commits} attempts=${st.attempts} state=${st.s}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 47: a grant lowered between render and approve (6A M2 / Q7) ---------
+//
+// §4.9's write-time re-check, now carrying M2's added predicate. The case is
+// built so that ONLY the new predicate can refuse: the actor keeps `manage`
+// on the proposal's own taint throughout, and loses `view` across all five
+// domains while the approval waits on the circle lock. Before Q7 this
+// approval SUCCEEDED — the actor could still approve a fact whose source and
+// citation had just become invisible to them.
+
+async function case47(admin) {
+  const fx = await mkCircle(admin, 'c47');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const w = await mkReviewable(admin, fx, 'c47', 1);
+
+    // S1 holds the circle lock and lowers the approver on the FOUR domains
+    // the proposal is not tainted with. `schedule` — the task's own domain —
+    // stays at manage.
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+    await s1.query(
+      `update public.access_grants set level = 'summary'
+        where member_id = $1 and subject_id = $2 and domain <> 'schedule'`,
+      [fx.m2, fx.s]);
+
+    // S2 approves and blocks on that lock.
+    await asUser(s2, fx.u2);
+    const p2 = s2.query(
+      `select hc.approve_proposal($1, 1, 'c47-k') as r`,
+      [w.proposals[0]]).then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.approve_proposal%', 'approve backend');
+    await waitForLockWait(admin, pid2, 's2 approve on the circle lock');
+
+    await s1.query('commit');
+    const r2 = await withTimeout(p2, 'case47 approve after the grant drops');
+
+    // The isolating assertion: manage-on-taint STILL passes, so the refusal
+    // can only be the view-over-all-five predicate M2 added.
+    const lv = (await admin.query(
+      `select hc.visible_at(hc.ctx_for($1), $2, '{schedule}'::hc.domain[], true,
+                            null, null, null)::text as manage_on_taint,
+              hc.visible_at(hc.ctx_for($1), $2, hc.all_domains(), true,
+                            'arrival', $3, null)::text as view_on_arrival`,
+      [fx.u2, fx.s, w.arrival])).rows[0];
+    const st = (await admin.query(
+      `select (select p.status from public.proposals p where p.id = $1) as status,
+              (select count(*)::int from public.tasks t
+                where t.source_proposal_id = $1) as objects,
+              (select a.state::text from public.arrivals a where a.id = $2) as s`,
+      [w.proposals[0], w.arrival])).rows[0];
+
+    check('case47 (6A M2, Q7): a grant lowered while an approval WAITS defeats it through the ADDED predicate alone — the actor still clears manage on the proposal\'s own taint and no longer clears view across all five domains on the arrival, so the source and citation went dark and the write is refused; nothing lands and the arrival stays at "Needs you"',
+      r2 instanceof Error && /approval_refused/.test(r2.message)
+        && lv.manage_on_taint === 'manage' && lv.view_on_arrival !== 'view'
+        && st.status === 'pending' && st.objects === 0 && st.s === 'proposals_ready',
+      `err=${r2 instanceof Error ? r2.message : `NO ERROR (${JSON.stringify(r2)})`} manage_on_taint=${lv.manage_on_taint} view_on_arrival=${lv.view_on_arrival} status=${st.status} objects=${st.objects} state=${st.s}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 48: a freeze committing mid-decision (the R-rule, on reject) --------
+//
+// The round-6 R-rule, carried to the mirror hc.reject_proposal introduces. A
+// freeze suspends ALL interactive access (§3.8), and a rejection is an
+// interactive act on the record, so the refusal must keep its NAMED
+// signature rather than falling through to the generic post-lock one.
+
+async function case48(admin) {
+  const fx = await mkCircle(admin, 'c48');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const w = await mkReviewable(admin, fx, 'c48', 2);
+
+    // S1 holds the circle lock and opens a freeze.
+    await s1.query('begin');
+    await s1.query(`select pg_advisory_xact_lock(hashtext('taint:' || $1::text))`, [fx.c]);
+    await s1.query(
+      `insert into public.freezes (circle_id, state) values ($1, 'open')`, [fx.c]);
+
+    // S2 rejects and blocks.
+    await asUser(s2, fx.u1);
+    const p2 = s2.query(
+      `select hc.reject_proposal($1, 1, 'c48-k', 'other') as r`,
+      [w.proposals[0]]).then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.reject_proposal%', 'reject backend');
+    await waitForLockWait(admin, pid2, 's2 reject on the circle lock');
+
+    await s1.query('commit');
+    const r2 = await withTimeout(p2, 'case48 reject after the freeze');
+
+    const st = (await admin.query(
+      `select (select p.status from public.proposals p where p.id = $1) as status,
+              (select count(*)::int from public.approval_attempts a
+                where a.proposal_id = $1) as attempts,
+              (select a.state::text from public.arrivals a where a.id = $2) as s`,
+      [w.proposals[0], w.arrival])).rows[0];
+
+    check('case48 (6A M3, the R-rule): a freeze committing while a REJECTION waits on the per-circle lock defeats it with the NAMED freeze_active signature — the predicate evaluates under the serialization point, the proposal stays pending, and the idempotency claim rolls back so the key is not burned',
+      r2 instanceof Error && /freeze_active/.test(r2.message)
+        && st.status === 'pending' && st.attempts === 0
+        && st.s === 'proposals_ready',
+      `err=${r2 instanceof Error ? r2.message : `NO ERROR (${JSON.stringify(r2)})`} status=${st.status} attempts=${st.attempts} state=${st.s}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 49: the rendition manifest versus cancellation (6A M4 / §4.5) -------
+//
+// The manifest is written in finalize_extraction's transaction precisely so
+// it is the WINNER's record of what was rendered. §4.5's cancel window is
+// the case that proves it: a cancellation committing mid-wait must leave no
+// manifest behind, or the screen would later describe pages belonging to a
+// rendering that was discarded.
+
+async function case49(admin) {
+  const fx = await mkCircle(admin, 'c49');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    const w = await mkExtracting(admin, fx, 'c49-a');
+
+    // S1: a member's cancellation, held open.
+    await asUser(s1, fx.u1);
+    await s1.query('begin');
+    await s1.query(`select hc.cancel_arrival($1)`, [w.arrival]);
+
+    // S2: the worker finalizes WITH a manifest, and blocks.
+    const rendition = JSON.stringify({ page_count: 3, page_exts: ['jpg', 'jpg', 'png'] });
+    const p2 = s2.query(
+      `select hc.finalize_extraction($1, $2, $3::jsonb, '[]'::jsonb, $4::jsonb) as r`,
+      [w.arrival, w.lease, FACTS, rendition]).then(r => r.rows[0].r).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.finalize_extraction%',
+      'finalize backend');
+    await waitForLockWait(admin, pid2, 's2 finalize behind the cancel');
+
+    await s1.query('commit');
+    const r2 = await withTimeout(p2, 'case49 finalize after cancel');
+
+    const n = (await admin.query(
+      `select (select count(*)::int from public.arrival_renditions r
+                where r.arrival_id = $1) as renditions,
+              (select count(*)::int from public.extractions e
+                where e.arrival_id = $1) as facts,
+              (select a.state::text from public.arrivals a where a.id = $1) as s`,
+      [w.arrival])).rows[0];
+
+    check('case49 (6A M4, §4.5): a cancellation committing while finalization WAITS discards the manifest with the rest of the answer — no rendition row, no facts, the arrival cancelled. The manifest is the WINNER\'s record of what was rendered, so a discarded attempt can never leave the screen describing pages that were thrown away',
+      r2 === 'cancelled' && n.renditions === 0 && n.facts === 0 && n.s === 'cancelled',
+      `r=${r2} renditions=${n.renditions} facts=${n.facts} state=${n.s}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -2794,6 +3113,11 @@ try {
   await case42(admin);
   await case43(admin);
   await case44(admin);
+  await case45(admin);
+  await case46(admin);
+  await case47(admin);
+  await case48(admin);
+  await case49(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;

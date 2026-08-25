@@ -442,9 +442,13 @@ select is(pg_temp.errmsg(format(
 -- 25 · EXECUTE closure.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.scalar($$
-  select (has_function_privilege('hc_pipeline', 'hc.finalize_extraction(uuid, uuid, jsonb, jsonb)', 'execute')
+  select (has_function_privilege('hc_pipeline', 'hc.finalize_extraction(uuid, uuid, jsonb, jsonb, jsonb)', 'execute')
       and has_function_privilege('hc_pipeline', 'hc.finalize_interpretation(uuid, uuid, jsonb)', 'execute')
-      and not has_function_privilege('authenticated', 'hc.finalize_extraction(uuid, uuid, jsonb, jsonb)', 'execute')
+      and not has_function_privilege('authenticated', 'hc.finalize_extraction(uuid, uuid, jsonb, jsonb, jsonb)', 'execute')
+      -- 6A M4 (Q5): the manifest's write half is owner-only, exactly like
+      -- write_extractions and write_proposals beside it
+      and not has_function_privilege('hc_pipeline', 'hc.write_rendition(uuid, uuid, jsonb)', 'execute')
+      and not has_function_privilege('authenticated', 'hc.write_rendition(uuid, uuid, jsonb)', 'execute')
       and not has_function_privilege('hc_pipeline', 'hc.write_extractions(uuid, uuid, jsonb)', 'execute')
       and not has_function_privilege('hc_pipeline', 'hc.write_proposals(uuid, uuid, jsonb)', 'execute')
       and not has_function_privilege('authenticated', 'hc.write_proposals(uuid, uuid, jsonb)', 'execute')

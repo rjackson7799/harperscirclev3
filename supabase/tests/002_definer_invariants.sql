@@ -75,7 +75,15 @@ select is((
     'execute_wasnt_me(p_token text)',
     'expire_held_mail()',
     'expire_scan_results()',
-    'finalize_extraction(p_arrival uuid, p_lease uuid, p_facts jsonb, p_proposals jsonb)',
+    -- 6A M2 (ADR-0019 Q-C): the review screen's fact read — §4.2.3's
+    -- middle region, gated on the ARRIVAL at the same view×5 approval
+    -- now uses, and never wider than extractions_select
+    'extractions_for(p_arrival uuid)',
+    -- 6A M4 (Q5): the fifth parameter is the rendition manifest. The
+    -- 4-argument function was DROPPED rather than overloaded — two
+    -- functions differing only by a defaulted trailing parameter make
+    -- every 4-argument call ambiguous, and workers.ts:150 still makes one
+    'finalize_extraction(p_arrival uuid, p_lease uuid, p_facts jsonb, p_proposals jsonb, p_rendition jsonb)',
     'finalize_interpretation(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
     'finalize_scan(p_arrival uuid, p_lease uuid, p_verdict text, p_detail jsonb)',
     'finalize_store(p_arrival uuid, p_lease uuid, p_storage_key text, p_sha256 bytea, p_mime_detected text, p_byte_size bigint)',
@@ -102,11 +110,19 @@ select is((
     'presence(p_subject uuid)',
     'product_state(p_arrival uuid)',
     'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
+    -- 6A M5: §4.2.4's receipt. proposal_commits holds NO member privilege
+    -- and does not get a blanket one — the table IS the
+    -- one-proposal-one-object claim, so the receipt gets ONE definer
+    -- with ONE gate (the arrival's view-over-all-five, matching M2)
+    'receipt_for(p_arrival uuid)',
     'reclassify_taint(p_object_type hc.object_type, p_object_id uuid)',
     'record_auth_failure(p_identifier text)',
     'record_auth_success(p_kind text)',
     'record_context_for(p_arrival uuid)',
     'record_tombstone(p_circle_id uuid, p_object_type text, p_object_id uuid, p_storage_keys text[], p_scope text, p_requested_by uuid, p_reason text)',
+    -- 6A M3: approve's mirror. The loop could not close without it —
+    -- proposals.reject_reason has waited since 1B with nothing to write it
+    'reject_proposal(p_proposal_id uuid, p_expected_version integer, p_idempotency_key text, p_reason text)',
     'remove_member(p_member_id uuid, p_keep_share_ids uuid[])',
     'request_freeze(p_circle_id uuid, p_claimant_contact text, p_reason text, p_claimant_relationship text)',
     'resolve_duplicate(p_arrival uuid, p_resolution text)',
@@ -131,6 +147,10 @@ select is((
     'taint_union(a hc.domain[], b hc.domain[])',
     'taint_union_2(a hc.domain[], b hc.domain[])',
     'taint_union_agg(hc.domain[])',
+    -- 6A M3: the §4.9 terminal arm as a WRITE HALF — owner-only, called
+    -- from the two deciding definers, running AS the calling definer, so
+    -- it joins this inventory and NOT the SECURITY DEFINER set below
+    'terminalize_decided_arrival(p_arrival uuid)',
     'tier_defaults(p_tier hc.tier)',
     'tombstone_guard()',
     'tsv_documents()',
@@ -139,7 +159,10 @@ select is((
     'uid()',
     'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)',
     'write_extractions(p_arrival uuid, p_lease uuid, p_facts jsonb)',
-    'write_proposals(p_arrival uuid, p_lease uuid, p_proposals jsonb)'
+    'write_proposals(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
+    -- 6A M4: the manifest's §4.5 write half — owner-only, reachable
+    -- through the finalizer alone, running AS the calling definer
+    'write_rendition(p_arrival uuid, p_lease uuid, p_rendition jsonb)'
   ],
   'the hc function inventory is exactly the enumerated set — no stray overloads');
 
@@ -158,7 +181,7 @@ select is((
         'create_arrival',
         'create_circle','create_invite','create_manual_proposal',
         'ctx','ctx_for','describe_invite','execute_wasnt_me','expire_held_mail',
-        'expire_scan_results',
+        'expire_scan_results','extractions_for',
         'finalize_extraction','finalize_interpretation','finalize_scan',
         'finalize_store',
         'grant_vectors','link_provenance','list_known_senders',
@@ -167,9 +190,10 @@ select is((
         'mint_step_up','note_suspicious_attempts',
         'outbox_ack','outbox_drain','pending_security_actions','presence',
         'product_state',
-        'propagate_taint_growth','reclassify_taint','record_auth_failure',
+        'propagate_taint_growth','receipt_for','reclassify_taint',
+        'record_auth_failure',
         'record_auth_success','record_context_for','record_tombstone',
-        'remove_member',
+        'reject_proposal','remove_member',
         'request_freeze','resolve_duplicate','resolve_forwarding',
         'revise_object','revoke_invite',
         'revoke_sender',
@@ -177,7 +201,7 @@ select is((
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
         'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the sixty-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the seventy-two boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -320,6 +344,17 @@ with actual as (
   union all select 'list_known_senders', 'authenticated'
   -- 5A M2 (§3.10's letter): the one pipeline read of the record
   union all select 'record_context_for', 'hc_pipeline'
+  -- 6A M2 (Q7 + ADR-0019 Q-C): the fact read §4.2.3's middle region
+  -- needs. authenticated only — the pipeline has hc_internal's own path
+  -- and never reads a person's view of an arrival
+  union all select 'extractions_for', 'authenticated'
+  -- 6A M3: the decision a person makes when the answer is no. Same reach
+  -- as approve; terminalize_decided_arrival is a write half and appears in
+  -- no grant row by design
+  union all select 'reject_proposal', 'authenticated'
+  -- 6A M5: the receipt read — authenticated only, gated in-function on
+  -- the arrival exactly as approve, reject and extractions_for are
+  union all select 'receipt_for', 'authenticated'
   -- 5A M3: close_extraction_run is a trigger function — hc_internal-owned,
   -- granted to nobody; it appears in no grant row by design
 )
@@ -484,6 +519,12 @@ insert into snapshot_expected values
   ('hc_internal',   'extraction_runs', 'SELECT'),
   ('hc_internal',   'extraction_runs', 'INSERT'),
   ('hc_internal',   'extraction_runs', 'UPDATE'),
+  -- 6A M4 (Q5): the rendition manifest. `authenticated` READS it at the
+  -- same view-on-all-five the pages are served at, and holds nothing
+  -- else; only hc_internal writes, through hc.write_rendition
+  ('authenticated', 'arrival_renditions', 'SELECT'),
+  ('hc_internal',   'arrival_renditions', 'SELECT'),
+  ('hc_internal',   'arrival_renditions', 'INSERT'),
   ('hc_internal',   'known_senders',   'SELECT'),
   ('hc_internal',   'pipeline_outbox', 'SELECT'),
   ('hc_internal',   'pipeline_outbox', 'INSERT'),
@@ -559,6 +600,8 @@ select is((
         'approval_attempts_internal','approval_attempts_internal_update',
         'approval_attempts_internal_write',
         'arrival_events_internal','arrival_events_internal_append',
+        -- 6A M4: the rendition manifest's internal pair
+        'arrival_renditions_internal','arrival_renditions_internal_write',
         'arrivals_internal','arrivals_internal_advance','arrivals_internal_intake',
         'auth_attempts_internal','auth_attempts_internal_append',
         'auth_attempts_internal_prune',
@@ -607,7 +650,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated one hundred one');
+  'the hc_internal policy list is exactly the enumerated one hundred three');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:

@@ -253,7 +253,7 @@ select enum_has_labels('hc', 'arrival_state',
   'hc.arrival_state gains duplicate_suspected_stage2 — Q8''s DISTINCT internal state, appended last (append-only-safe)');
 
 select is(pg_temp.tq($sql$
-  select ((select count(*) from hc.arrival_transitions) = 22
+  select ((select count(*) from hc.arrival_transitions) = 24
     and exists (select 1 from hc.arrival_transitions
                 where stage = 'extract' and from_state = 'extracting'
                   and to_state = 'duplicate_suspected_stage2')
@@ -263,13 +263,16 @@ select is(pg_temp.tq($sql$
     and exists (select 1 from hc.arrival_transitions
                 where stage = 'gate' and from_state = 'duplicate_suspected_stage2'
                   and to_state = 'nothing_filed'))::text $sql$), 'true',
-  -- AMENDED at round 16 (5B M8): 21 -> 22. This leg pins that M5 added
-  -- EXACTLY its three Q8 edges, and it still does — all three are asserted
-  -- by name below and none is touched. The COUNT moved because M8 later
-  -- added interpret's failure edge (R4/F-2, ADR-0023 D21), which is a
-  -- different migration answering a different finding. Pinned by name in
-  -- 058; the count here keeps the graph closed against anything unnamed.
-  'the closed graph grows by EXACTLY the three Q8 edges: extracting → <state> and <state> → interpreting | nothing_filed (22 rows after 5B M8)');
+  -- AMENDED at round 16 (5B M8): 21 -> 22, and again at 6A M3: 22 -> 24.
+  -- This leg pins that M5 added EXACTLY its three Q8 edges, and it still
+  -- does — all three are asserted by name below and none is touched. The
+  -- COUNT moved twice for reasons that are not M5's: 5B M8 added
+  -- interpret's failure edge (R4/F-2, ADR-0023 D21), and 6A M3 added the
+  -- LOOP's two exits (review: proposals_ready → filed | nothing_filed),
+  -- without which every arrival that reached "Needs you" stayed there for
+  -- ever. Both are pinned BY NAME elsewhere — 058 and 061 — and the count
+  -- here keeps the graph closed against anything unnamed.
+  'the closed graph grows by EXACTLY the three Q8 edges: extracting → <state> and <state> → interpreting | nothing_filed (24 rows after 5B M8 and 6A M3)');
 
 select ok((
   select count(*) = 22 and count(distinct hc.state_rank(x)) = 22

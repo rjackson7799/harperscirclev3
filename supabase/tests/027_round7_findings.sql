@@ -237,6 +237,12 @@ select is(pg_temp.scalar($$
   -- the involuntary path always used, so no enum value and no label moved.
   || 'interpret:interpreting>extract_failed,'
   || 'interpret:interpreting>proposals_ready,'
+  -- 6A M3: THE LOOP'S OWN EDGES. proposals_ready appeared here exactly
+  -- once, as a to_state, and never as a from_state; `filed` appeared in no
+  -- row at all. Stage 'review' is a stage of the LOOP, not of §4.3 — it
+  -- carries no hc.stage_budgets row, so no worker can ever lease it, and
+  -- the stage column's foreign key became a closed CHECK to say so.
+  || 'review:proposals_ready>filed,review:proposals_ready>nothing_filed,'
   || 'scan:stored>quarantined,scan:stored>scan_unavailable,'
   || 'scan:stored>scan_inconclusive,scan:stored>scanned,'
   || 'scan:stored>duplicate_suspected,'       -- 4A M6: the post-scan suspect entry
