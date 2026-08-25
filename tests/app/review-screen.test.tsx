@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, afterEach, describe, expect, it } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
@@ -152,6 +152,61 @@ describe('6B B7 · §6.4: the evidence gates the control', () => {
     const img = card.querySelector('.review-crop img') as HTMLImageElement;
     expect(img).toBeTruthy();
     expect(img.getAttribute('src')).toContain('/api/artifact/a-1?page=1');
+  });
+});
+
+describe('6B B9 · A11Y-08: machine-read text, labelled and offered per page', () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function open(pageIndex = 0) {
+    render(<ReviewScreen {...props()} />);
+    const toggles = container.querySelectorAll('button.review-machine-text-toggle');
+    expect(toggles.length).toBe(2); // one per page — parity with page navigation
+    await act(async () => {
+      (toggles[pageIndex] as HTMLElement).click();
+    });
+    return toggles[pageIndex] as HTMLButtonElement;
+  }
+
+  it('every page offers its machine-read text under §6.9’s exact label', () => {
+    render(<ReviewScreen {...props()} />);
+    const toggles = container.querySelectorAll('button.review-machine-text-toggle');
+    expect(toggles.length).toBe(2);
+    for (const t of Array.from(toggles)) {
+      expect(t.textContent).toMatch(/machine-read( text)? — may contain errors/i);
+    }
+  });
+
+  it('opening a page’s text fetches THROUGH the artifact fence and renders it', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('Amoxicillin 500 mg', { status: 200 }));
+    const toggle = await open(0);
+    expect(fetchMock).toHaveBeenCalledWith('/api/artifact/a-1?page=1&text=1');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('.review-machine-text')?.textContent).toContain(
+      'Amoxicillin 500 mg',
+    );
+  });
+
+  it('poor confidence is SAID: an empty transcript renders the honest sentence, never blank', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 200 }));
+    await open(0);
+    expect(container.textContent).toMatch(/couldn(’|')t produce reliable text/i);
+  });
+
+  it('a source with no machine-read text says exactly that', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('not found', { status: 404 }));
+    await open(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/artifact/a-1?page=2&text=1');
+    expect(container.textContent).toMatch(/no machine-read text is stored/i);
   });
 });
 

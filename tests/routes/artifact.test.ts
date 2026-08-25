@@ -321,3 +321,79 @@ describe('B7 · evidence before bytes (§1.3 step 6; §10.5)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+// ============================================================================
+// 6B B9 · §6.9's machine-read text through the SAME fence: ?page=N&text=1
+// serves the pNNN.txt sibling — same gates, same manifest contract, same
+// evidence-before-bytes, no second byte path and no new privileged consumer
+// (the A2 fence allowlist does not move). The sibling is NOT
+// manifest-promised — only image-only sources have one — so its ABSENCE is
+// the ordinary 404 shape, never the rendition_page_missing report: a page
+// with no machine-read text is not a partial promotion.
+// ============================================================================
+describe('6B B9 · ?page=N&text=1 — the machine-read sibling through the fence', () => {
+  const RENDITION = { page_count: 2, page_exts: ['png', 'jpg'] };
+
+  function getText(page: string): Request {
+    return new Request(`http://local.test/api/artifact/${ARRIVAL}?page=${page}&text=1`, {
+      method: 'GET',
+    });
+  }
+
+  it('serves the sibling as utf-8 text, no-store, keyed to the reserved stem', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    fetchMock.mockResolvedValueOnce(new Response('Amoxicillin 500 mg', { status: 200 }));
+    const res = await route.GET(getText('1'), ctx);
+    expect(res.status).toBe(200);
+    expect(createSignedUrl).toHaveBeenCalledWith(
+      `render/circle/${ROW.circle_id}/arrival/${ARRIVAL}/p001.txt`,
+      30,
+    );
+    expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8');
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+    expect(await res.text()).toBe('Amoxicillin 500 mg');
+  });
+
+  it('an EMPTY sibling serves as an empty 200 — "couldn’t read reliably" is the screen’s sentence to say', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 200 }));
+    const res = await route.GET(getText('2'), ctx);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('');
+  });
+
+  it('an ABSENT sibling is the one 404 shape — not image-only is not a partial promotion', async () => {
+    const ghost = await (async () => {
+      artifacts.readableArtifact.mockResolvedValueOnce(null);
+      return (await route.GET(get(), ctx)).text();
+    })();
+
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    createSignedUrl.mockResolvedValueOnce({ data: null, error: { message: 'Object not found' } });
+    const res = await route.GET(getText('1'), ctx);
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe(ghost);
+  });
+
+  it('the manifest still gates: a page outside it answers 404 before any key is built', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    const res = await route.GET(getText('3'), ctx);
+    expect(res.status).toBe(404);
+    expect(createSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('evidence before bytes holds for the text exactly as for the pages', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    const order: string[] = [];
+    artifacts.logArtifactRead.mockImplementationOnce(async () => {
+      order.push('log');
+    });
+    fetchMock.mockImplementationOnce(async () => {
+      order.push('fetch');
+      return new Response('text', { status: 200 });
+    });
+    const res = await route.GET(getText('1'), ctx);
+    expect(res.status).toBe(200);
+    expect(order).toEqual(['log', 'fetch']);
+  });
+});

@@ -66,6 +66,15 @@ vi.mock('@/lib/ai/extract', () => ai);
 const interpretMod = { interpretArrival: vi.fn() };
 vi.mock('@/lib/ai/interpret', () => interpretMod);
 
+// 6B B9: the engine is mocked (its real reading is tests/pipeline/ocr.test.ts's
+// business); `isImageOnlySource` stays REAL so the route's class gating is the
+// thing exercised, not a mock of it.
+const ocr = { ocrRenderedPages: vi.fn() };
+vi.mock('@/lib/pipeline/ocr', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return { ...actual, ocrRenderedPages: ocr.ocrRenderedPages };
+});
+
 const WORKER_KEY = 'w'.repeat(48);
 const CIRCLE = '11111111-0000-4000-8000-000000000001';
 const ARRIVAL = '55555555-0000-4000-8000-000000000005';
@@ -172,6 +181,7 @@ beforeEach(async () => {
     pages: [PAGE],
     text: 'Dose: 500 mg',
   });
+  ocr.ocrRenderedPages.mockResolvedValue([{ page: 1, text: 'Amoxicillin 500 mg' }]);
   ai.extractFromArrival.mockResolvedValue(OK_EXTRACT);
   interpretMod.interpretArrival.mockResolvedValue({
     outcome: 'ok',
@@ -392,6 +402,107 @@ describe('B4 · the §4.3 normalize exits land honest states', () => {
     await route.POST(req('extract'), ctx('extract'));
     expect(storage.gcRenderStaging).toHaveBeenCalledWith(CIRCLE, ARRIVAL, LEASE);
     expect(storage.promoteRenderedPages).not.toHaveBeenCalled();
+  });
+
+  // ==========================================================================
+  // 6B B9 · §6.9: machine-read text staged as the pNNN.txt siblings the
+  // slice-5 exit assertion reserved. Staged into the SAME attempt prefix as
+  // the pages, so promotion (which copies the prefix by name) carries them
+  // with no second path and no manifest change — neither the stored
+  // coordinates nor the promoted artifact moves, exactly as pinned.
+  // ==========================================================================
+  describe('6B B9 · §6.9 OCR — image-only sources gain their .txt siblings', () => {
+    function txtStagings() {
+      return storage.writeRenderStaging.mock.calls.filter((c) => String(c[0]).endsWith('.txt'));
+    }
+
+    it('a scanned PDF’s page text is staged at the reserved sibling key, as utf-8 text', async () => {
+      render.normalizeArrival.mockReturnValueOnce({
+        outcome: 'rendered',
+        sourceClass: 'scanned_pdf',
+        pageCount: 1,
+        pages: [PAGE],
+        text: null,
+      });
+      workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+      await route.POST(req('extract'), ctx('extract'));
+
+      expect(ocr.ocrRenderedPages).toHaveBeenCalledTimes(1);
+      const staged = txtStagings();
+      expect(staged).toHaveLength(1);
+      expect(staged[0][0]).toBe(`render/attempt/${CIRCLE}/${ARRIVAL}/${LEASE}/p001.txt`);
+      expect(new TextDecoder().decode(staged[0][1] as Uint8Array)).toBe('Amoxicillin 500 mg');
+      expect(staged[0][2]).toBe('text/plain; charset=utf-8');
+      // Promotion is untouched: the sibling rides the same prefix copy.
+      expect(storage.promoteRenderedPages).toHaveBeenCalledWith(CIRCLE, ARRIVAL, LEASE);
+    });
+
+    it('a photo is image-only too', async () => {
+      render.normalizeArrival.mockReturnValueOnce({
+        outcome: 'rendered',
+        sourceClass: 'photo',
+        pageCount: 1,
+        pages: [PAGE],
+        text: null,
+      });
+      workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+      await route.POST(req('extract'), ctx('extract'));
+      expect(ocr.ocrRenderedPages).toHaveBeenCalledTimes(1);
+    });
+
+    it('a born-digital PDF is NOT machine-read — it has a text layer already', async () => {
+      // The default beforeEach mock is born_digital_pdf.
+      workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+      await route.POST(req('extract'), ctx('extract'));
+      expect(ocr.ocrRenderedPages).not.toHaveBeenCalled();
+      expect(txtStagings()).toHaveLength(0);
+    });
+
+    it('an email rendition is NOT machine-read — the body IS text, and OCR of a rendering of text manufactures errors', async () => {
+      render.normalizeArrival.mockReturnValueOnce({
+        outcome: 'rendered',
+        sourceClass: 'email_text',
+        pageCount: 1,
+        pages: [PAGE],
+        text: 'Amoxicillin 500 mg',
+      });
+      workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+      await route.POST(req('extract'), ctx('extract'));
+      expect(ocr.ocrRenderedPages).not.toHaveBeenCalled();
+    });
+
+    it('poor confidence stages the EMPTY sibling — offered honestly, never garbage (§6.9)', async () => {
+      render.normalizeArrival.mockReturnValueOnce({
+        outcome: 'rendered',
+        sourceClass: 'scanned_pdf',
+        pageCount: 1,
+        pages: [PAGE],
+        text: null,
+      });
+      ocr.ocrRenderedPages.mockResolvedValueOnce([{ page: 1, text: '' }]);
+      workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+      await route.POST(req('extract'), ctx('extract'));
+      const staged = txtStagings();
+      expect(staged).toHaveLength(1);
+      expect(new TextDecoder().decode(staged[0][1] as Uint8Array)).toBe('');
+    });
+
+    it('an engine failure never fails the answer — a reading aid is not the pipeline’s spine', async () => {
+      render.normalizeArrival.mockReturnValueOnce({
+        outcome: 'rendered',
+        sourceClass: 'scanned_pdf',
+        pageCount: 1,
+        pages: [PAGE],
+        text: null,
+      });
+      ocr.ocrRenderedPages.mockRejectedValueOnce(new Error('wasm failed to load'));
+      workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+      await route.POST(req('extract'), ctx('extract'));
+      // The answer still publishes and promotes; the siblings are simply absent.
+      expect(workers.finalizeExtraction).toHaveBeenCalled();
+      expect(storage.promoteRenderedPages).toHaveBeenCalledWith(CIRCLE, ARRIVAL, LEASE);
+      expect(txtStagings()).toHaveLength(0);
+    });
   });
 });
 
