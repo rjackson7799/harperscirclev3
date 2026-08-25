@@ -534,13 +534,19 @@ describe('5B B6 · the stage-2 duplicate cites the document it matched', () => {
   });
 
   it('the affordance never depends on naming the match', async () => {
-    // The contract, not a fixture case: whatever a caller can or cannot see
-    // of the matched document, the QUESTION is always answerable. The copy
-    // degrades; the affordance does not.
-    parents = [stage2Parent()];
+    // SHARPENED at 6B B6 (R5/F-13's last residue): the old form asserted the
+    // same two substrings as "both resolutions are offered" against the SAME
+    // fixture — a comment, not a test. This drives the DEGRADED case: the
+    // pointer is SET and the document is unreadable, and the question is
+    // still answerable with the honest generic line. (F-13's dead `documents`
+    // scaffolding is dead no longer — the Q-A grant made the read live, and
+    // the mock serves it above.)
+    parents = [stage2Parent({ duplicate_of_document_id: 'ffffffff-0000-4000-8000-0000000000ff' })];
+    documents = []; // the pointer names a document this caller cannot read
     const html = await renderInbox();
     expect(html).toContain('value="same_thing"');
     expect(html).toContain('value="different"');
+    expect(html).toContain('something already filed');
   });
 
   it('stage 1 keeps its own copy — the two questions are not the same question', async () => {

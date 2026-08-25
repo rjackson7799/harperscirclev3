@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
 import { liveSessionClaims } from '@/lib/auth/session';
 import { productStates } from '@/lib/hc/inbox';
@@ -91,17 +91,75 @@ function verdictLine(row: ArrivalRow): string | null {
   return "unverified · we couldn't confirm this came from them";
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * 6B B6 (R5/F-2): an error is an ERROR STATE, never an empty one. "You may
+ * not see this" and "there is nothing here" are different sentences, and
+ * "something broke" is a third — a DB blip must never show a forty-item
+ * family its first-run empty state.
+ */
+function loadFailed() {
+  return (
+    <>
+      <PageHeader title="Care Inbox" context="Every item shows exactly where it is." />
+      <p className="field-help" role="alert">
+        We couldn&apos;t load the Care Inbox just now. Nothing has been lost — please try
+        again in a moment.
+      </p>
+    </>
+  );
+}
+
+/** 6B B6 (R5/F-7): every marker the submit routes emit is READ and rendered. */
+function noticeFor(
+  sp: Record<string, string | string[] | undefined>,
+): { kind: 'alert' | 'status'; text: string } | null {
+  const e = typeof sp.e === 'string' ? sp.e : null;
+  if (e === 'cancel') {
+    return { kind: 'alert', text: "That item couldn't be stopped — it may have already finished." };
+  }
+  if (e === 'accept') {
+    return { kind: 'alert', text: "That sender couldn't be accepted just now. Please try again." };
+  }
+  if (e === 'resolve') {
+    return { kind: 'alert', text: "That answer couldn't be saved just now. Please try again." };
+  }
+  if (sp.cancelled === '1') {
+    return { kind: 'status', text: 'Stopped. Nothing from that item was read or kept.' };
+  }
+  if (sp.accepted === '1') {
+    return { kind: 'status', text: 'Sender accepted. Their held mail is being read now.' };
+  }
+  if (sp.resolved === '1') {
+    return { kind: 'status', text: 'Thanks — your answer moved it along.' };
+  }
+  return null;
+}
+
 export default async function InboxPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ circle: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { circle } = await params;
+  // R5/F-2's sharpest edge: a non-UUID segment used to reach Postgres, fail
+  // the uuid cast, and render as a BLANK inbox with a 200. It is a 404.
+  if (!UUID_RE.test(circle)) notFound();
   const supabase = await asUser();
   const claims = await liveSessionClaims(supabase);
   if (!claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/inbox`)}`);
 
-  const { data: parentData } = await supabase
+  const notice = noticeFor(await searchParams);
+  const noticeBlock = notice ? (
+    <p className="field-help" role={notice.kind}>
+      {notice.text}
+    </p>
+  ) : null;
+
+  const { data: parentData, error: parentsError } = await supabase
     .from('arrivals')
     .select(
       'id, state, channel, sender_address, sender_display_name, auth_result, scan_verdict, received_at, duplicate_of_document_id',
@@ -111,6 +169,10 @@ export default async function InboxPage({
     .is('deleted_at', null)
     .order('received_at', { ascending: false })
     .limit(50);
+  if (parentsError) {
+    console.error(`inbox: parents read failed: ${parentsError.message}`);
+    return loadFailed();
+  }
   const parents = (parentData ?? []) as ArrivalRow[];
 
   const childCounts = new Map<string, number>();
@@ -120,7 +182,7 @@ export default async function InboxPage({
   type Suspect = { arrivalId: string; stage: 1 | 2; documentId?: string | null };
   const childSuspects = new Map<string, Suspect[]>();
   if (parents.length > 0) {
-    const { data: childData } = await supabase
+    const { data: childData, error: childrenError } = await supabase
       .from('arrivals')
       .select('id, parent_arrival_id, state, duplicate_of_document_id')
       .eq('circle_id', circle)
@@ -129,6 +191,12 @@ export default async function InboxPage({
         parents.map((p) => p.id),
       )
       .is('deleted_at', null);
+    if (childrenError) {
+      // A degraded list could hide a held item's only affordance — the whole
+      // read fails honestly instead (R5/F-2).
+      console.error(`inbox: children read failed: ${childrenError.message}`);
+      return loadFailed();
+    }
     for (const child of (childData ?? []) as {
       id: string;
       parent_arrival_id: string;
@@ -211,12 +279,16 @@ export default async function InboxPage({
     // First run: the forwarding address IS the content (§8.6's one
     // exception). The copy never asserts nothing exists — it shows THIS
     // caller's view (the Q6 fail-closed posture).
-    const { data: subjectData } = await supabase
+    const { data: subjectData, error: subjectsError } = await supabase
       .from('subjects')
       .select('id, first_name, forwarding_local_part, forwarding_active_at')
       .eq('circle_id', circle)
       .is('deleted_at', null)
       .order('first_name');
+    if (subjectsError) {
+      console.error(`inbox: subjects read failed: ${subjectsError.message}`);
+      return loadFailed();
+    }
     const subjects = (subjectData ?? []) as SubjectRow[];
     return (
       <>
@@ -228,6 +300,12 @@ export default async function InboxPage({
           title="Care Inbox"
           context="Anything mailed or uploaded lands here first, with its progress shown honestly — nothing is filed without a person approving it."
         />
+        {noticeBlock}
+        <p className="meta">
+          {/* R5/F-8: whatever empties `parents` must not also remove the
+              path to the surface governing who may write. */}
+          <a href={`/${circle}/senders`}>Known senders</a>
+        </p>
         <div className="choice-list">
           {subjects.map((s) => (
             <Card key={s.id}>
@@ -253,6 +331,7 @@ export default async function InboxPage({
           and accurate, never a control that is already dead. */}
       <InboxRevalidator />
       <PageHeader title="Care Inbox" context="Every item shows exactly where it is." />
+      {noticeBlock}
       <p className="meta">
         {/* 5B B8: the senders surface lives beside the thing it manages — a
             sender is accepted from this screen, so the list of accepted
@@ -271,12 +350,14 @@ export default async function InboxPage({
           const attachments = childCounts.get(row.id) ?? 0;
           return (
             <Card key={row.id}>
-              <span className="row-title">
+              {/* 6B B6: each row opens the review route — the door PRD
+                  §4.2.3's screen (B7) stands behind. */}
+              <a className="row-title" href={`/${circle}/inbox/${row.id}`}>
                 {row.channel === 'email'
                   ? (row.sender_display_name ? `${row.sender_display_name} · ` : '') +
                     (row.sender_address ?? 'unknown sender')
                   : 'Uploaded document'}
-              </span>
+              </a>
               <span className="meta"> · {labels.get(row.id) ?? '—'}</span>
               {verdict ? <p className="meta">{verdict}</p> : null}
               {attachments > 0 ? (

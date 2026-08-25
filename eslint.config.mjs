@@ -105,6 +105,26 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
   ]),
   // --------------------------------------------------------------------------
+  // 6B B6: `no-html-link-for-pages` OFF, with the bug on the record rather
+  // than nine unrelated files rewritten to appease it. The rule's app-dir
+  // scanner builds one regex per route and then collapses dynamic segments
+  // with a GREEDY `\[.*\]` replace — so the slice's first
+  // dynamic-literal-dynamic route, `/[circle]/inbox/[arrival]`, becomes
+  // `^/((?!.+?\..+?).*?)/$`, a regex matching EVERY one-segment path, and
+  // every static internal `<a>` in the tree (/sign-in, /reset,
+  // /create-account, /setup) turned into a violation the moment the review
+  // route existed. This codebase links internally with plain anchors BY
+  // DESIGN (progressive enhancement; the walkthrough exercises
+  // no-JS-hostile flows), so the rule was only ever vacuously satisfied —
+  // it is retired here explicitly instead of silently never firing.
+  // --------------------------------------------------------------------------
+  {
+    name: "hc/no-html-link-rule-retired",
+    rules: {
+      "@next/next/no-html-link-for-pages": "off",
+    },
+  },
+  // --------------------------------------------------------------------------
   // The §8.7 a11y floor (D2, A11Y-05) — landed before the first component so
   // "CI checks from the first component" is literal. flat/recommended as the
   // base (explicit devDep pinning the version; the rules resolve against the
