@@ -109,6 +109,24 @@ function allHigh(reason: AllHighReason): BandMode {
 }
 
 export function loadBands(options: LoadBandsOptions): BandMode {
+  const mode = resolveBands(options);
+  // 6B B4 (R1/F-6): a NON-DEFAULT all-high says so out loud. The shipping
+  // default — nothing signed, nothing configured — is the mode, not an
+  // event, and stays quiet. But every OTHER all-high reason means an owner
+  // completed G9 steps (a digest in the allowlist, a path in the deploy)
+  // and the artifact still did not load: without this line that state is
+  // indistinguishable from the default at every call site, forever.
+  if (mode.mode === 'all_high' && mode.reason !== 'no_signed_artifact') {
+    console.warn(
+      `bands: ALL-HIGH fallback where a signed artifact was expected — reason ${mode.reason} ` +
+        `(HC_BANDS_ARTIFACT=${options.artifactPath ?? configuredArtifactPath() ?? '(unset)'}); ` +
+        `every field publishes high until this is resolved`,
+    );
+  }
+  return mode;
+}
+
+function resolveBands(options: LoadBandsOptions): BandMode {
   const allowlist = options.allowlist ?? BAND_ARTIFACT_ALLOWLIST;
   if (allowlist.length === 0) return allHigh('no_signed_artifact');
 
@@ -132,7 +150,16 @@ export function loadBands(options: LoadBandsOptions): BandMode {
   } catch {
     return allHigh('artifact_unreadable');
   }
-  if (!artifact || typeof artifact !== 'object' || typeof artifact.fields !== 'object') {
+  // `typeof null === 'object'` — without the null check a `fields: null`
+  // artifact walks past this guard and THROWS at the field loop, the one
+  // malformed shape that did not fail closed (R1/F-4; in the worker that
+  // throw is an unacked-redelivery poison loop).
+  if (
+    !artifact ||
+    typeof artifact !== 'object' ||
+    typeof artifact.fields !== 'object' ||
+    artifact.fields === null
+  ) {
     return allHigh('artifact_unreadable');
   }
 
@@ -181,21 +208,37 @@ export function effectiveRiskClass(field: string, value: unknown, mode: BandMode
 }
 
 /**
- * PRD §6.4's three rendering bands. Slice 6's review screen is the consumer;
- * slice 5 records the answer so the pair (fact, band) is already coherent
- * when that screen arrives. In all-high mode there is no band to report —
- * the interface runs in all-high-risk mode from the first arrival, which
- * §6.5 says it must be able to do.
+ * PRD §6.4's three rendering bands, as a DISCRIMINATED result (Q4 SETTLED at
+ * the slice-6 gate; 6B B4 is the change). The review screen computes this at
+ * RENDER time from the run's `(model_id, prompt_version)` pair — nothing
+ * stores a band on a fact, because a band is a property of the CALIBRATION,
+ * not of the fact, and storing one would freeze a calibration into the
+ * record and make every re-calibration a data migration.
+ *
+ * Three states, because `null` used to mean two different facts at once:
+ *
+ *   · `all_high` — no band exists for ANYTHING, by design. §6.5's shipping
+ *     mode; the screen renders it ONCE, globally.
+ *   · `banded` — this field's calibrated band for this confidence.
+ *   · `uncalibrated` — the run is calibrated and THIS field is not in it
+ *     (R6/F-11's reachable state: non-banded fields get artifact rows no
+ *     band covers). Rendered per fact, honestly — never as an unremarkable
+ *     low.
  */
+export type ConfidenceBandResult =
+  | { kind: 'all_high' }
+  | { kind: 'banded'; band: 'high' | 'medium' | 'low' }
+  | { kind: 'uncalibrated' };
+
 export function confidenceBand(
   field: string,
   confidence: number,
   mode: BandMode,
-): 'high' | 'medium' | 'low' | null {
-  if (mode.mode === 'all_high') return null;
+): ConfidenceBandResult {
+  if (mode.mode === 'all_high') return { kind: 'all_high' };
   const thresholds = mode.bands[field];
-  if (!thresholds) return null;
-  if (confidence >= thresholds.high) return 'high';
-  if (confidence >= thresholds.medium) return 'medium';
-  return 'low';
+  if (!thresholds) return { kind: 'uncalibrated' };
+  if (confidence >= thresholds.high) return { kind: 'banded', band: 'high' };
+  if (confidence >= thresholds.medium) return { kind: 'banded', band: 'medium' };
+  return { kind: 'banded', band: 'low' };
 }

@@ -193,7 +193,10 @@ describe('B3 · §6.8 — a refusal is HTTP 200, and it is checked FIRST', () =>
   });
 
   it('a provider outage is unavailable — retried by the machinery, never finalized early', async () => {
-    const result = await extractFromArrival(extractInput({ text: 'HC-FIXTURE-503 marker' }));
+    // The marker moved HC-FIXTURE-503 → HC-FIXTURE-OVERLOAD at 6B B4
+    // (R2/F-14): overloaded_error is HTTP 529, and once the arm branches on
+    // status a fixture speaking the wrong one exercises the wrong branch.
+    const result = await extractFromArrival(extractInput({ text: 'HC-FIXTURE-OVERLOAD marker' }));
     expect(result.outcome).toBe('unavailable');
   });
 });

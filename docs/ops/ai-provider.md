@@ -106,11 +106,13 @@ any other before G9 closes.
 | G9-2 | The owner has read the per-field precision/recall against `docs/eval/g9-corpus-spec.md` §6 and **signed the bands**, recorded in an ADR | ☐ |
 | G9-3 | The run manifest's digest is in `BAND_ARTIFACT_ALLOWLIST` (`lib/extraction/bands.ts`) **in the same commit as the sign-off ADR** | ☐ |
 | G9-4 | The shipped `(model_id, prompt_version)` pair MATCHES that run. A change to the model, the prompts, the schema, the parameters or the §6.3 render rules is a different configuration hash and **is not shippable without a re-run** (§6.10) | ☐ |
+| G9-5 | **`HC_BANDS_ARTIFACT`** (6B B4; ADR-0023 R1/F-6) — the ABSOLUTE path the signed artifact is deployed at, set on the worker. Unset = the artifact never loads whatever the allowlist says, and until this row existed that state had **no ops row and no log line** — an owner could complete every G9 step and still run all-high forever, silently. `loadBands` now WARNS on every non-default all-high (a digest allowlisted or a path configured, and the artifact still refused, with the reason named); the review screen renders the mode (6B B7), so a silent all-high is visible to a person and not only to a log | After deploy, the worker logs carry NO `bands: ALL-HIGH fallback` line, and the review screen does not show the global all-high notice |
 
 Until G9-2 is signed, the pipeline runs **all-high-risk**, which §6.5 calls the
 shipping default rather than a degraded state. That is structural, not
 configured: `loadBands` fails closed on a missing, stale, altered, partial,
-malformed or non-blind artifact, with a test for each shape.
+malformed or non-blind artifact, with a test for each shape — and since 6B B4
+a non-default all-high says so in the worker log (R1/F-6).
 
 ---
 
