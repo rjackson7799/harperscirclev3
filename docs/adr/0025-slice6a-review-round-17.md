@@ -788,10 +788,35 @@ healthy, `hc_clamd` needed the recorded `docker start` revive, and every
 leg above ran after. **No leg was captured before the wedge**, so nothing
 here is evidence from a broken environment.
 
-**CI at the final head** is confirmed by this session from the public
-Actions API, unauthenticated, and recorded in the addendum below.
+**CI on the runner, BOTH events, read by this session from the public
+Actions API, unauthenticated** (the round-8 convention). `gh` is
+unauthenticated here and device-flow is out of bounds, so these are read
+anonymously at the SHA, never taken from a badge:
+
+· **push** run **32791520674** @ `f291a01` — **success**
+· **pull_request** run **32791524619** @ `f291a01` — **success**
+
+Both `completed`; neither pending. `f291a01` is the head that carries
+ADR-0025 and the four amended records; the evidence head `b324e95` is two
+commits behind it and binds by the docs-only rule above. Secret scanning,
+service-role containment, the schema pin, the clean reset, the exact-state
+verifier, pgTAP, concurrency, `db:verify` under `--fail-on warning`,
+vitest, the G9 generator check, the FULL upgrade rehearsal with M6 in the
+chain, lint and typecheck all green on the runner.
+
+**PR #11**, read from the public PR API at the same moment: **open**, not
+merged, base `main`, head branch `slice/6-care-inbox`, **DO NOT MERGE
+without owner sign-off** in the title and the body. Following F-4's own
+lesson, this row names the PR and the base and not the head SHA or the
+commit count, both of which move on every push. GitHub's "Able to merge"
+is mechanical — it means no conflicts, not that ADR-0006 is satisfied.
+
 **CI DOES NOT RUN THE BROWSER GATE**; a green badge on PR #11 is not
 evidence about the gate, which is RED.
+
+*(This section names its own commit's parent, not itself: a document
+cannot name its own SHA. The commit that adds this section is docs-only
+and its own two runs are the last word — verifiable by the rule above.)*
 
 ---
 
