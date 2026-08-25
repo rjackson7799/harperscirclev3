@@ -17,7 +17,7 @@ const workers = {
 };
 vi.mock('@/lib/hc/workers', () => workers);
 
-const storage = { purgeQuarantineOlderThan: vi.fn() };
+const storage = { purgeQuarantineOlderThan: vi.fn(), sweepRenderStaging: vi.fn() };
 vi.mock('@/lib/storage/artifacts', () => storage);
 
 const WORKER_KEY = 'w'.repeat(48);
@@ -44,6 +44,7 @@ beforeEach(async () => {
   workers.expireScanResults.mockResolvedValue({ removed: 0 });
   workers.expireHeldMail.mockResolvedValue({ expired_count: 0 });
   storage.purgeQuarantineOlderThan.mockResolvedValue({ removed: 0 });
+  storage.sweepRenderStaging.mockResolvedValue({ removed: 0 });
   savedEnv.HC_WORKER_KEY = process.env.HC_WORKER_KEY;
   savedEnv.CRON_SECRET = process.env.CRON_SECRET;
   process.env.HC_WORKER_KEY = WORKER_KEY;
@@ -99,5 +100,39 @@ describe('B5 · the four nightly legs, each reported', () => {
     expect(body.errors).toContain('taint_sweep');
     expect(workers.expireScanResults).toHaveBeenCalled();
     expect(storage.purgeQuarantineOlderThan).toHaveBeenCalled();
+    expect(storage.sweepRenderStaging).toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// 6B B3 · the render-staging sweep (ADR-0023 R3/F-3 + R4/F-4, fixed ONCE).
+// Attempt staging leaks on every non-graceful exit, and the prefix is keyed
+// by a lease id that existed only in the dead invocation's stack — so the
+// orphan is UNREACHABLE BY CONSTRUCTION for any lease-keyed GC, up to 64 MB
+// of a family's rendered medical pages sitting outside any future DEL-01
+// cascade. A sweep by PREFIX AGE needs no lease id: anything under
+// render/attempt/** older than a day belongs to no live attempt (a lease is
+// minutes, retries are hours at most). The sweep is NOT a substitute for
+// the DEL-01 cascade and does not pretend to be — it reaps abandoned
+// attempt staging; promoted pages are the cascade's.
+// ============================================================================
+describe('6B B3 · the render-staging sweep reaches the unreachable orphan', () => {
+  it('sweeps render/attempt/** by PREFIX AGE — a day, no lease id needed — and reports the count', async () => {
+    storage.sweepRenderStaging.mockResolvedValueOnce({ removed: 4 });
+    const res = await route.POST(post());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(storage.sweepRenderStaging).toHaveBeenCalledWith(24);
+    expect(body.render_staging_swept).toBe(4);
+  });
+
+  it('a failing sweep is isolated and named, like every other leg', async () => {
+    storage.sweepRenderStaging.mockRejectedValueOnce(new Error('list failed'));
+    const res = await route.POST(post());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.render_staging_swept).toBeNull();
+    expect(body.errors).toContain('render_staging_sweep');
+    expect(workers.runTaintSweep).toHaveBeenCalled();
   });
 });

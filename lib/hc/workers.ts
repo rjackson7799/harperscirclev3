@@ -233,7 +233,7 @@ export async function advanceArrival(
 }
 
 const QUEUE = 'pipeline_work';
-const READ_VT_SECONDS = 120;
+export const READ_VT_SECONDS = 120;
 
 /** pgmq.read — claim up to qty work items for one visibility window. */
 export async function readPipelineWork(qty: number): Promise<QueuedWork[]> {
@@ -306,7 +306,7 @@ export async function deferPipelineWork(msgId: number, seconds = 3600): Promise<
  * reader's hc.claim_stage answers `stale_lease` before any external call. The
  * threshold buys the wasted claim, not the correctness.
  */
-const DEFERRAL_THRESHOLD_SECONDS = READ_VT_SECONDS + 180;
+export const DEFERRAL_THRESHOLD_SECONDS = READ_VT_SECONDS + 180;
 
 export async function releaseDeferredWork(limit = 200): Promise<number> {
   const r = await asPipeline().query(
