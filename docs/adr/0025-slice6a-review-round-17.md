@@ -1,10 +1,15 @@
 # ADR-0025 — round-17 dispositions: slice 6A, the Care Inbox database increment
 
-**Status:** **Proposed** — the dispositions record for round 17, awaiting
-owner sign-off. Under ADR-0006's cadence the sign-off and the merge are
-their own session; this document is what that session rules on. The
-merge, when it happens, is a **MERGE COMMIT, never a squash**, and its
-SHA and CI run belong in a sign-off addendum here (the ADR-0021 shape).
+**Status:** **ACCEPTED AS CORRECTED at owner sign-off** (D16, head
+`208bda2`) — the dispositions record for round 17, ratified with **one
+verdict moved**: F-1 is **FIXED IN PART** with its residue OWED to 6B,
+because the sign-off found two raw Postgres classes still reachable at
+the approve click and drove both live (D16 S16.2, S16.3). The corrected
+tally is **3 FIXED · 1 FIXED IN PART · 1 OWED · 1 ACCEPTED · 1
+ACCEPTED-NOTE = 7**. **THE MERGE IS NOT YET AUTHORISED and was NOT
+performed** — it remains the owner's, is a **MERGE COMMIT, never a
+squash**, and its SHA, parents, tree hash and CI run belong in D16 S16.10
+when it happens (the ADR-0021 shape).
 
 **Deciders:** the round-17 dispositions session (owner ratifies at sign-off).
 
@@ -701,13 +706,22 @@ Severity is the **reviewer's**. The one re-grade is argued in D4.
 
 | # | Sev | Verdict | Argument |
 |---|---|---|---|
-| F-1 | MAJOR | **FIXED** | The mechanism, the reachability and all three named channels verified; the enumeration re-derived and found short by three, one of which (S-1) is a `23502` in the class M1 records as closed. Closed at the destination rather than at the literal merge, with the placement argument in D1. Red `91fd7a9` → green `b324e95`. One channel NAMED and not taken: `own_domain_undeclared`, with the reason. |
+| F-1 | MAJOR | **FIXED** → **FIXED IN PART** (D16) | The mechanism, the reachability and all three named channels verified; the enumeration re-derived and found short by three, one of which (S-1) is a `23502` in the class M1 records as closed. Closed at the destination rather than at the literal merge, with the placement argument in D1. Red `91fd7a9` → green `b324e95`. One channel NAMED and not taken: `own_domain_undeclared`, with the reason. |
 | F-2 | MINOR (latent) | **ACCEPTED-NOTE** | The divergence is real and reproduced. Q7 RATIFIED UNCHANGED — passing `v_prop.taint_resolved` would make it a different predicate from `hc.log_artifact_read`'s, which is the rule-inventing Q7 forbids. Record amended in three places, and the general claim is now PINNED at `064:17-19` rather than only written down. |
 | F-3 | OBS → **MINOR** | **FIXED** | Graded UP with the argument (D0 rule 3): the round-15 FINDING 2 precedent already settled that an unreachable liveness omission is fixed on principle. Taken on all three surfaces. The finding's own arithmetic is corrected and the asymmetry is larger than stated (S-3). D10's sentence amended in ADR-0024. |
 | F-4 | MINOR | **FIXED** | Mechanical and correct; the facts it asserts are true at the real head, which the review and this session each confirmed independently. Fixed as recommended — the ledger states a checkable RULE instead of a SHA, and the PR row drops the two fields that move on every push. |
 | F-5 | MAJOR | **OWED** (6B) | Accepted in full, and made heavier: `:400` is the live half of TWO green coverage rows (S-2), now annotated. No fourth run — the review's ruling, endorsed. The scope decision is D8's and is ruled against landing repairs here, on four arguments of which the second is decisive. Six acceptance conditions, the blast radius ranked first. |
 | F-6 | MINOR | **ACCEPTED** | Ratified explicitly on the round's authority, all three sites re-read here as well. The rule it sets for build sessions is stated in D6 so the next one need not guess. ADR-0023's D17 row carries a pointer back. |
 | F-7 | OBS | **FIXED** | Four verbatim citations, all correct. Corrected as recommended AND closed: M6 is spent, so the bound is now 6 of ≤ 7 — the plan's own number by the plan's own route. |
+
+> **CORRECTED AT SIGN-OFF (D16 S16.7).** F-1's verdict moves to **FIXED
+> IN PART · residue OWED (6B)**: the six channels this table's argument
+> enumerates are closed and driven at `064`, but the CLASS is narrowed
+> rather than closed — two more are reachable at the approve click and
+> both were driven live at `208bda2`. The original row and its argument
+> are preserved above; the corrected tally is **3 FIXED · 1 FIXED IN
+> PART · 1 OWED · 1 ACCEPTED · 1 ACCEPTED-NOTE = 7**. F-3's verdict does
+> NOT move — S16.4 corrects D4's argument, not its fix.
 
 **Tally, mechanically from the table: 4 FIXED · 1 OWED · 1 ACCEPTED ·
 1 ACCEPTED-NOTE = 7.** Zero DECLINED, zero OWNER-escalated, zero
@@ -839,3 +853,514 @@ Stated so silence is not read as coverage.
 - **Runs 1-3's classifications** are the packet's, corroborated by
   mechanism (D9, Q-I), not reproduced.
 - **The e2e fixture code** was read for structure only.
+
+---
+
+## D16 — THE OWNER SIGN-OFF: the rulings, and the three defects the sign-off found in THIS document
+
+**Session:** the round-17 owner sign-off, ADR-0006's cadence, the
+ADR-0021 S1–S4 / ADR-0023 D24 shape. **Head signed off: `208bda2`.**
+
+**A sign-off that rubber-stamps is worthless.** ADR-0023 D24 found four
+defects inside the round-16 dispositions document itself and that is the
+bar this session was held to. It attacked the five places D12 and the
+session brief name as most likely wrong, re-derived D2's allowlist and
+D1's cast set from the artifact rather than reading the dispositions
+back, and drove every claim it could reach against the shipped database.
+
+**What it could run, and what it wrote.** No peer session held the tree
+(the only live `node.exe` was Adobe Creative Cloud's — the recorded false
+positive), and the 68-migration stack was healthy. Every probe below ran
+inside a transaction that ends in `ROLLBACK`: **the sign-off wrote
+nothing, moved no migration and reset no database.** Nothing under
+`supabase/`, `app/`, `lib/`, `e2e/`, `scripts/` or `tests/` moved in this
+session, so D14's legs bind unchanged and were not re-run for show.
+
+---
+
+### S16.1 — the five places attacked, and what HELD
+
+Stated first, because a clean area reported clean is a result and because
+what held is most of the round.
+
+**D2's edit-key allowlist is EXACTLY RIGHT — re-derived, not read back.**
+The allowlist at `20260824120006:211-219` was ignored and the closed set
+was rebuilt from the six insert arms (`:530`, `:549`, `:561`, `:574`,
+`:585`, `:601`, `:622`) and from `hc.draft_proposal`
+(`20260824120001:85-191`). The independent derivation is **21 content
+keys**; D2's list is **21 keys**; they are the same 21. **No key is
+wrongly omitted and none is wrongly included.** Three further checks the
+brief asked for:
+
+- `manual` and `parents` are correctly ABSENT, and the two the D2 prose
+  does not name — `source_extraction_ids` and `anomaly_flags` — are also
+  correctly absent (S16.5).
+- `risk_class` is in the list, so an edit can set it; the drafting
+  contract's vocabulary check (`20260824120001:158-161`) is **not**
+  re-run at approve, but `hc.risk_class` is exactly
+  `{standard, high}` at the catalog, so the enum cast closes precisely
+  what drafting closed. No gap.
+- Editing `domain` **cannot lower the authorization bar**. `v_taint` is
+  `hc.taint_union(v_own_arr, v_prop.taint, v_ptaint)` (`:434-435`), and
+  the drafted taint is inside that union — so an edited domain can only
+  ADD to the set the manage check runs against, never subtract.
+
+**D1's destination half is exact, both directions.** `tasks_check` and
+`temporal_shape` are mirrored clause for clause from
+`20260815230002:137` and `:183-186`; the episode reference is tested
+exactly as the constraint tests it — the catalog reads
+`FOREIGN KEY (circle_id, episode_id) REFERENCES episodes(circle_id, id)`
+and the guard tests `e.circle_id = v_prop.circle_id and e.id = …`,
+unfiltered on `deleted_at` because the foreign key is not either. It is
+the **only** payload-derived foreign key on any insert arm — the other
+two references (`supersedes_id`, `artifact_arrival_id`) are function-
+derived, not payload-derived. Excluding the conflict arm is right: its
+`keep_both` guard has tested the due pair since 5A M4 (`:250-254`).
+
+**D1's ordering claim holds for the region it names.** Nothing between
+the merge at `:223` and the cast block at `:317` casts a payload value —
+re-read expression by expression. Every check in that region is
+`is null`, `length`, `jsonb_typeof` or an enum-column cast on
+`v_prop.kind`.
+
+**D15 is verified, not accepted — and against the catalog rather than the
+prose.** M6's complete DDL is three `create or replace function` on
+EXISTING signatures, their owner/revoke/grant restatements (the 2A M8
+way — restating, not adding), and one `alter policy`. No new function, no
+new signature, no new grant, no new enum value, no new transition, no new
+`hc_internal` policy. At the live 68-migration database: **SECURITY
+DEFINER in `hc` = 72** and **`hc_internal` policies = 103**, which are
+`002`'s two pinned numbers unchanged. And the file-level claim is true as
+scoped: `git diff --name-only 97981fd..b324e95` — M6's own red→green
+pair — touches the migration, `024`, `059`, `060` and `064` and **none of
+the seven pin files**.
+
+**D8's scope ruling is UPHELD, and both of its mechanical claims re-ran
+clean at THIS head.** `git diff --name-only 31a7977..HEAD` is 14
+`supabase/tests`, 6 `supabase/migrations`, 1 `scripts/concurrency`, 7
+`docs` — **nothing under `app/`, `lib/` or `e2e/`**. And M6's four
+objects across `app/`, `lib/`, `e2e/` return **two comments in
+`app/api/worker/[stage]/route.ts:521` and `:550`, and zero call sites** —
+no `.rpc(` by string either. D8's second argument is the decisive one and
+it is correct: a suite repair landed here could not be shown green
+without the fourth run the round refused, so landing it would mean
+shipping unverified suite edits into a merge. Upheld.
+
+**D3 is cleanly executed.** The LADDER form shipped
+(`20260824120006:939-940`), not the arrival form; `024:14` was inverted
+with the argument written **at the site** rather than only in a commit
+message; and `024:16`'s exact count moved 3 → 2 **in the same commit as
+the change that forced it**, which is the discipline rule honoured rather
+than cited.
+
+**D13's arithmetic is internally correct** as the round wrote it:
+4 + 1 + 1 + 1 = 7, and 5 + 2 + 2 = 9.
+
+---
+
+### S16.2 — DEFECT 1, and it MOVES A VERDICT: D1's cast half is short by one expression, and the gap is driven by an ALLOWLISTED edit key
+
+**D1 rules that the cast half performs *"exactly the casts the insert
+arms perform"* and is therefore *"complete by construction rather than by
+an enumeration"*. Checked expression by expression, both directions, the
+claim is true of the insert arms and the property it is offered for is
+false — because one payload-derived cast is not on an insert arm.**
+
+`hc.approve_proposal`'s conflict branch casts the payload's `domain` in
+the TAINT MATH, for every outcome:
+
+```sql
+    v_own_arr := case when v_payload ->> 'domain' is not null
+                      then array[(v_payload ->> 'domain')::hc.domain]     -- :421
+                      else '{}'::hc.domain[] end;
+```
+
+The cast block casts `domain` **only under `v_outcome = 'use_new'`**
+(`:320-323`). Under `keep_both` it casts `(v_task ->> 'due_on')::date`
+and nothing else; under `keep` it casts nothing. The destination half is
+fenced by `if v_prop.kind <> 'conflict'` (`:368`) and never runs. So on
+the conflict arm, `:421` is reached with an uncast payload value.
+
+**`domain` is in D2's own allowlist**, so an edit drives it. Driven
+against the shipped database, rollback-only, with the raw signature:
+
+```
+A · conflict keep_both, edit sets a bogus `domain` (an ALLOWLISTED key)
+    ERROR:22P02:invalid input value for enum hc.domain: "bogus"
+
+A2 · CONTROL, same shape, a REAL domain — still approves
+    {"status": "edited_approved", "outcome": "keep_both",
+     "object_type": "task", "arrival_state": "proposals_ready"}
+```
+
+The control is what makes it a defect rather than a refusal: the path is
+otherwise fully live and ends in a written record object.
+
+**And it does not need an edit.** `hc.draft_proposal`'s conflict branch
+(`20260824120001:125-131`) requires non-empty `parents` and **returns
+before the `own_domain` cast at `:153`** — a conflict payload's `domain`
+is never validated or cast at draft time. So a conflict resting at
+`pending` with a malformed `domain` raises the same class under **every**
+outcome, `keep` included, with no edit at all:
+
+```
+drafted conflict, malformed `domain`, outcome KEEP, NO EDIT AT ALL
+    ERROR:22P02:invalid input value for enum hc.domain: "bogus"
+```
+
+**That is S-1's shape exactly, one expression over from S-1's own site** —
+a raw class on the conflict arm, reachable with no edit, in the function
+the round had just finished re-deriving.
+
+**Why the round missed it, in the round's own words.** D1's ordering
+paragraph enumerates what sits below the guard as *"`hc.own_domain`'s
+three casts, the parents loop, all six insert arms"*. The conflict
+branch's `v_own_arr` cast is in none of those three sets: it is not
+`hc.own_domain` (that is the `else` branch, `:428-431`), not the parents
+loop, and not an insert arm. The cast set was derived from the INSERT
+ARMS and the enumeration inherited that frame — which is D0 rule 1's own
+failure mode, committed by the disposition written to apply it.
+
+**The suite could not have caught it.** `064` drives conflicts at
+`use_new` only (`:339`); there is **no `keep_both` case in the file at
+all**. The one arm whose cast coverage is incomplete is the one arm the
+new pgTAP file does not exercise.
+
+**It fires BEFORE the authorization boundary.** `:421` sits above the
+manage check (`:437`) and the M2/M6 arrival gate (`:472-479`), so the
+refusal an unauthorized caller would otherwise get is replaced by a
+Postgres error. No privilege is crossed and nothing is written — the
+transaction aborts — so the user-visible consequence is the same
+MINOR-shaped one F-1 itself was graded on. It is recorded at its true
+size and no larger.
+
+---
+
+### S16.3 — DEFECT 2: D2's edit contract fences `p_edits -> 'fields'` and leaves its siblings unvalidated
+
+`p_edits` is caller-supplied `jsonb` and D2 closes exactly one of its
+keys. A sibling key is cast without validation:
+
+```sql
+     and coalesce((p_edits -> 'confirm_high')::boolean, false) is not true then   -- :500
+```
+
+`jsonb -> boolean` raises on any non-boolean. Driven on a high-risk
+proposal held by an authorized approver, rollback-only:
+
+```
+B · high-risk proposal, p_edits.confirm_high is a jsonb STRING
+    ERROR:22023:cannot cast jsonb string to type boolean
+```
+
+`22023` is a class D1's table does not name. This is **pre-existing and
+not introduced by M6** — so were all six channels D1 enumerates. It is
+recorded because D1's table is offered as an enumeration of what a
+person's click can still reach, and it is short by this one. Every
+`confirm_high` in the shipped suite is a proper boolean (`013:336`,
+`054:224/278/286/395/404`), so nothing in the tree is red and no pin
+moves.
+
+`conflict_outcome`, the other top-level key, is clean: it is read with
+`->>` and vocabulary-checked at `:116-119` before any row is written.
+
+---
+
+### S16.4 — DEFECT 3: D4's equivalence claim is FALSE as stated, and it is the kind of claim D4 says is checkable
+
+**D4 rules:** *"the only thing the `EXISTS` can subtract is
+`deleted_at is null`"*, on the ground that the subquery runs under
+`arrivals_select` at `summary` while the renditions policy already
+requires `view`.
+
+**Tested rather than accepted, and it does not hold.** The two predicates
+do not read the same subject. `arrivals_select`
+(`20260816010007_ingestion_rls.sql:37-45`) tests `hc.visible_at(…, a.subject_id, …)` — the
+**ARRIVAL's** subject. `arrival_renditions_select`
+(`20260824120006:971-978`) tests `hc.visible_at(…, subject_id, …)` — the
+**MANIFEST's** subject. The composite foreign key pins only the circle:
+
+```sql
+foreign key (circle_id, arrival_id) references public.arrivals (circle_id, id) on delete cascade,
+foreign key (circle_id, subject_id) references public.subjects  (circle_id, id)
+```
+
+Nothing ties `arrival_renditions.subject_id` to `arrivals.subject_id`.
+And `hc.visible_at` never reads the arrival row — `p_object_id` feeds
+rungs 4 and 5 only (`20260816120006:73-86`) — so it cannot supply the
+tie either. Driven, rollback-only, on a manifest whose subject differs
+from its arrival's:
+
+```
+the renditions clause on the MANIFEST subject S2  -> view      (passes)
+the arrivals clause on the ARRIVAL  subject S1    -> hidden    (fails)
+arrivals visible to Mira                          -> 0
+THE TEST: manifest rows visible to Mira under M6  -> 0
+CONTROL: arrivals visible to the owner (manage×5) -> 1
+```
+
+Before M6 that manifest was visible — the pre-filter passes and the
+`view` clause returns `view`. After M6 it is not. **The `EXISTS`
+subtracted a row on a ground that is not `deleted_at is null`.**
+
+**Latent, safe in direction, and recorded at that size.** The only writer,
+`hc.write_rendition` (`20260824120004:179-188`), copies `a.subject_id`
+from the arrival, so no shipped row can carry a mismatch. The change is a
+NARROWING, so it can hide a manifest and can never reveal one — **no
+privilege is crossed and F-3's fix is not in question.** What is wrong is
+the ARGUMENT: D4 offers a proof and the property it rests on is enforced
+by a single writer's discipline, not by the schema. That is S-3's shape —
+a claim stated more strongly than the artifact supports — in the
+disposition that found S-3.
+
+---
+
+### S16.5 — two record corrections, neither of which moves a verdict
+
+**S16.5a · D2's machinery-key list is short by two.** D2 names `parents`
+and `manual` as the keys an edit must not re-author. `hc.draft_proposal`
+validates two more payload keys that `hc.approve_proposal` never
+re-validates: **`source_extraction_ids`** (≤ 200, every id belonging to
+THIS arrival, `20260824120001:166-175`) and **`anomaly_flags`** (≤ 20,
+`:177-181`). Both are correctly excluded from the allowlist and both are
+inert at approve — they are stored in their own columns and the approve
+path never reads them from the payload — so the exclusion is right and
+costless. The ruling is unaffected; the count in the prose is not four.
+
+**S16.5b · D15's sentence is true of M6 and false of the branch.**
+*"Exact-set pins `001`, `002`, `007`, `023`, `027`, `055`, `056` did not
+move"* — **all seven moved on this branch**, at M1–M5. D15's heading
+scopes it (*"this round"*) and M6's own pair moves none of them, so the
+claim is right as scoped and wrong as quoted. Stated here because a
+sentence that survives being lifted out of its heading is the kind that
+becomes a settled-record error two rounds later.
+
+---
+
+### S16.6 — THE RULINGS, recorded verbatim
+
+**RULING 1 — on D12(1), ratification.**
+*The round-17 dispositions are **RATIFIED AS CORRECTED**. Every finding's
+disposition stands as argued except F-1's verdict, which moves to FIXED
+IN PART with its residue OWED to 6B (RULING 7). ADR-0024 is **RATIFIED
+AS AMENDED**, and its round-17 amendment list is SHORT BY ONE: a sixth
+site is added at the sign-off for the closing sentence of amendment site
+1, which claims a property the sign-off has falsified.*
+
+**RULING 2 — on D12(2), D2's edit contract, the one narrowing of an
+APPROVAL.**
+*The edit contract is **RATIFIED AS SHIPPED**. §4.2.3's edit corrects a
+value; it does not re-author the proposal, and `parents` and `manual` are
+correctly outside it — `manual` most of all, because an edit that set it
+detached a written record object from its source arrival and no
+enumeration of error classes would have found that. The allowlist was
+re-derived independently and is exactly right. The narrowing is accepted
+knowingly: nothing in the tree sends a refused key, a future client
+could, and §3.7's own reasoning — that an interface-only rule is one a
+second client does not have — is the reasoning that settles it. The
+contract is ratified with the defect at S16.3 recorded against its
+BOUNDARY, not against its content: it fences `p_edits -> 'fields'` and
+its sibling keys are not fenced.*
+
+**RULING 3 — on D12(3), Q-B's cost.**
+*Q-B is **TAKEN as shipped, in the ladder form, and the cost is
+ACCEPTED**. Manual entry now requires view×5 and a below-cliff member
+loses it entirely rather than losing only the approve half M2 took. The
+rejected alternative — exempting manual entry from the approve gate — is
+**REJECTED again here, on the round's own reasoning**: it would make
+manual entry the one path that writes to the record without the evidence
+gate §3.7 exists to enforce, and Q7 is the ruling that puts that gate in
+the database. Closing creation keeps one rule; exempting creates two.
+`024:14` was a GREEN assertion and inverting it is accepted as a real
+product change, not a test repair — it is on the record at the site, in
+`MNL-01`, and in this ruling. `064:16` is the control that keeps the
+coordinator the product actually expects to use manual entry untouched.*
+
+**RULING 4 — on D12(4), D8's scope decision.**
+*D8 is **UPHELD IN FULL**. The suite repairs land at 6B and this branch
+keeps its zero-code-channel property, which was re-verified at `208bda2`
+and not merely inherited. D8's second argument is decisive on its own: a
+repair landed here could not be shown green without the fourth run the
+round refused, so it would mean shipping unverified suite edits into a
+merge. **No fourth run is ordered by this sign-off either.** The gate
+stands RED, `ingestion.spec.ts:361` was never green at this tree and
+`:400` has never executed at it, and the six acceptance conditions stand
+as written — the `test.describe.serial` blast radius ranked first, and
+`:361` and `:400` executed BY TITLE and recorded as a TARGETED RUN rather
+than as a gate result.*
+
+**RULING 5 — on D12(5), D6's rule for build sessions.**
+*D6's rule is **ADOPTED as standing practice**: a build session that
+finds a settled dispositions record wrong **records the discrepancy where
+it will be read — the packet, and a comment at the site — and does not
+move the verdict**. The next round rules. The `e0186ce` correction to
+ADR-0023's D17 R8/F-1 row is **RATIFIED on this round's authority**, its
+three sites having been re-read by the review, by the round and once more
+here; the OWED tally is unchanged at 39.*
+
+**RULING 6 — on Q-E's NOTED pattern departure.**
+*Q-E's retirement of `arrival_transitions_stage_fkey` is **RATIFIED**,
+and the pattern departure is **NOTED, not repaid now**, with the
+condition recorded as the round states it: **the next time a stage is
+added, or the stage vocabulary needs to be read by query, that is the
+migration that builds the closed stage-vocabulary table** both
+`hc.stage_budgets` and `hc.arrival_transitions` reference. Until then the
+inline CHECK is a departure from this repo's shipped lookup-table pattern
+and **the next author must not read it as house style**.*
+
+**RULING 7 — on D12(6), M7, and where the residue goes.**
+***M7 STAYS CLOSED at this sign-off, and the S16.2 / S16.3 residue is
+OWED to 6B.*** *There is no reserved migration slot left; any DDL is an
+owner amendment and this session does not take one on its own authority.
+The residue is crash-shape, not privilege — the transaction aborts,
+nothing is written, no gate is crossed — which is the same class F-1 was
+graded on, and it is unreachable from the shipped tree today: no client
+sends `p_edits`, and no shipped writer produces a conflict payload with a
+malformed `domain`. **The owner may amend this**, and S16.8 states what
+the amendment would cost.*
+
+---
+
+### S16.7 — the CORRECTED TALLY, and what moves in the records
+
+**F-1's verdict moves. `FIXED` → `FIXED IN PART · residue OWED (6B)`.**
+The six channels the round enumerated are closed and each is driven at
+`064`; the CLASS is narrowed, not closed. Two channels remain, both
+demonstrated live at this head with their raw signatures quoted.
+
+| Tally | As the round wrote it (D13) | **As corrected at sign-off** |
+|---|---|---|
+| FIXED | 4 (F-1, F-3, F-4, F-7) | **3** (F-3, F-4, F-7) |
+| FIXED IN PART | — | **1** (F-1) |
+| OWED | 1 (F-5) | 1 (F-5) |
+| ACCEPTED | 1 (F-6) | 1 (F-6) |
+| ACCEPTED-NOTE | 1 (F-2) | 1 (F-2) |
+| **Total** | **7** | **7** |
+
+Zero DECLINED, zero OWNER-escalated, zero BLOCKER — unchanged. **The
+nine questions are unchanged at 5 CONFIRM · 2 TAKEN · 2 RATIFIED-with-an-
+amendment**, with one correction inside Q-C: the sentence *"after M6 the
+sentence is true as written for the first time"* is true of `23502`,
+which is what that sentence says, and must not be read as the wider
+property — the wider property is what S16.2 and S16.3 falsify.
+
+**F-3's verdict does NOT move.** The liveness guard is on all three
+surfaces and works; S16.4 is a correction to D4's argument, not to its
+fix.
+
+**Records amended by this sign-off:**
+
+1. **ADR-0025 D13** — the F-1 row carries the moved verdict and a pointer
+   here; the original text is preserved beside it (the ADR-0023 D3 rule).
+2. **ADR-0024, a SIXTH amendment site** — amendment site 1's closing
+   sentence (*"M6 closes all six at the destination and the sentence
+   above is true as written for the first time"*) is corrected in place,
+   and the head's amendment list says five where it is now six.
+3. **`docs/coverage.md` `DEC-01`** — the cell asserts the cast half
+   *"performs exactly the casts the inserts perform"*, which is true and
+   is not the property the cell is offered for. Annotated with the
+   residue and its owed status.
+4. **`docs/coverage.md` `REV-01`** — annotated with S16.4: the manifest
+   policy's added clause is not provably liveness alone.
+
+**No coverage row FLIPS**, and the ADR-0023 D19 rule is why: a sign-off
+records what a layer proves, and nothing here proves anything new about a
+product criterion. `MNL-01`, `UXA-01` and `RLS-10` are untouched by this
+sign-off and stand as D11 left them.
+
+---
+
+### S16.8 — what is OWED to 6B after this sign-off
+
+The 6B queue gains one entry; **B1, the rasterizer swap, keeps its
+plan-bound first position** and the 6B kickoff places these alongside it.
+The slice-5B queue is **unchanged at 39 OWED**.
+
+**NEW · the approve-time payload contract's residue (S16.2, S16.3).**
+Acceptance conditions, in the D8 shape:
+
+1. **Red first, with both raw signatures quoted** —
+   `ERROR:22P02:invalid input value for enum hc.domain: "bogus"` and
+   `ERROR:22023:cannot cast jsonb string to type boolean`.
+2. **The conflict arm's `domain` cast is covered for EVERY outcome**, not
+   for `use_new` alone — and the fix is derived from *every payload-
+   derived cast expression in the function*, not from the insert arms,
+   which is the frame that produced the miss.
+3. **`064` gains a `keep_both` case.** The file has none, and that is why
+   the arm whose coverage was incomplete was the arm the suite did not
+   exercise.
+4. **`p_edits`'s top-level keys are contracted**, or the contract's bound
+   is stated where D2 states its scope. `confirm_high` is the live one;
+   `conflict_outcome` is already clean.
+5. **The enumeration is re-derived a third time.** It has now been short
+   twice — the review's by three, the round's by two — and each re-
+   derivation was worth the time.
+6. **`hc.revise_object` and the step-up path are audited against D1**,
+   which this round explicitly did not do and which this sign-off did not
+   do either. They carry their own copies of the record-table inserts.
+
+**Carried forward unchanged from D8 and D13:** F-5's six suite-repair
+conditions; R4/F-10 (Q-A) at B3; Q-G's RCP-01 app-half caution; and the
+`hc.revise_object` / step-up audit, which now appears above with the
+residue it belongs to.
+
+---
+
+### S16.9 — evidence at the sign-off head
+
+**Head: `208bda2`.** Nothing under `supabase/`, `app/`, `lib/`, `e2e/`,
+`scripts/` or `tests/` moved in this session — the sign-off's every probe
+ran inside a `ROLLBACK` — so **D14's legs bind unchanged and were
+deliberately not re-run**. Per directory, between D14's evidence head and
+this one: `supabase/` unchanged · `app/` unchanged · `lib/` unchanged ·
+`e2e/` unchanged · `scripts/` unchanged · `tests/` unchanged · `docs/`
+moved. Verified by D14's own rule —
+`git diff --name-only b324e95..HEAD -- . ':(exclude)docs'` returns
+**empty**.
+
+**Re-verified at this head by this session, from the catalog and the
+tree:** 68 migrations applied · SECURITY DEFINER in `hc` = **72** ·
+`hc_internal` policies = **103** · `git diff --name-only 31a7977..HEAD`
+touches **nothing** under `app/`, `lib/` or `e2e/` · M6's four objects
+appear in `app/`/`lib/`/`e2e/` as **two comments and zero call sites**.
+
+**CI on the runner, BOTH events, read anonymously from the public Actions
+API at this exact head** (the round-8 convention; `gh` is unauthenticated
+and device-flow is out of bounds):
+
+· **push** run **32791900459** @ `208bda2` — **success**
+· **pull_request** run **32791904586** @ `208bda2` — **success**
+
+Both `completed`; neither pending.
+
+**PR #11**, read from the public PR API at the same moment: **open**, not
+merged, base `main`, head branch `slice/6-care-inbox`, **DO NOT MERGE
+without owner sign-off** in the title.
+
+**THE LOCAL GATE IS RED and was NOT RUN.** No fourth run was ordered by
+the round and none is ordered here. `ingestion.spec.ts:361` was never
+green at this tree; `:400` has never executed at it. **CI DOES NOT RUN
+THE BROWSER GATE** — the two green runs above are not evidence about it.
+
+---
+
+### S16.10 — THE MERGE: not taken in this session
+
+**The merge is NOT authorised in this session and was NOT performed.**
+The owner is the sole merge authority (ADR-0006), authorisation was not
+given here, and the sign-off has moved a verdict — so the ratification
+the owner is being asked for is not the one ADR-0025 carried when this
+session opened.
+
+**When it is authorised it is a MERGE COMMIT, never a squash**, so all
+six red→green pairs and the docs commits stay reachable from `main`; the
+merged tree must be verified IDENTICAL to the branch head's; both parents
+and the tree hash are recorded here; CI must be confirmed green on `main`
+AT THE MERGE COMMIT before the merge is called done; PR #11 closes as
+merged; and the merge record lands here and in ADR-0024's Status line.
+
+**Nothing is production-activated by this sign-off.** Proposals rest at
+`pending`, G9 stays OPEN, `BAND_ARTIFACT_ALLOWLIST` stays EMPTY, G3/G4/G7
+still block, no credential exists in CI or the gate, and **zero
+dependencies were added** — the dev reserve is unspent through a third
+slice.

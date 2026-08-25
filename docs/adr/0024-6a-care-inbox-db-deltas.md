@@ -7,8 +7,10 @@ ADR-0025's sign-off addendum, per the ADR-0020 / ADR-0021 precedent.
 **Where this document was amended, and by whom.** Round 17 amended it in
 five places, and the original prose is preserved at every site with the
 amendment beside it (the ADR-0023 D3 rule: a record that is quietly
-rewritten stops being a record). The five, each marked **AMENDED AT
-ROUND 17** at its site:
+rewritten stops being a record). **The round-17 sign-off added a SIXTH
+(ADR-0025 D16 S16.7), against round 17's own amendment at site 1.** Each
+is marked **AMENDED AT ROUND 17** at its site; the sixth is marked
+**CORRECTED AT THE ROUND-17 SIGN-OFF**:
 
 1. **M1's property sentence and its scope** — the `23502` class was open
    on `hc.approve_proposal`'s CONFLICT arm (ADR-0025 D1, S-1).
@@ -20,6 +22,10 @@ ROUND 17** at its site:
    five carried liveness and three did not (ADR-0025 D4, from F-3).
 5. **D12's bound** — 5 of ≤ 7 becomes **6 of ≤ 7** now that M6 is spent,
    with M7 still UNCONSUMED (ADR-0025 D7, from F-7).
+6. **Site 1's own closing sentence** — *"M6 closes all six at the
+   destination"* is true of the six channels round 17 enumerated and is
+   NOT true of the class. Two more are reachable at the approve click and
+   the sign-off drove both live (ADR-0025 D16 S16.2, S16.3).
 
 **Date:** 2026-08-24
 **Scope:** Decisions made while building 6A (five migrations,
@@ -134,6 +140,30 @@ Recorded here and carried to round 17 rather than folded in silently.
 > written for the first time. `own_domain_undeclared` (P0001) stays as
 > the one NAMED-and-not-taken channel, for the reason this section gives:
 > it is a named refusal, not a raw error.
+>
+> > **CORRECTED AT THE ROUND-17 SIGN-OFF (ADR-0025 D16 S16.2, S16.3).**
+> > *"M6 closes all six"* is true. **The sentence it is offered for is
+> > not.** The enumeration above is short by two, and the sign-off drove
+> > both against the shipped database, rollback-only:
+> >
+> > · **`22P02` on the conflict arm's `domain`.** The taint math casts
+> >   `(v_payload ->> 'domain')::hc.domain` at `20260824120006:421` for
+> >   EVERY outcome; the cast half casts `domain` under `use_new` alone
+> >   (`:320-323`) and the destination half is fenced off from conflicts
+> >   (`:368`). Reachable by an edit — `domain` is an ALLOWLISTED key —
+> >   and reachable with **NO EDIT AT ALL**, because
+> >   `hc.draft_proposal`'s conflict branch (`20260824120001:125-131`)
+> >   returns before the `own_domain` cast at `:153` and never validates
+> >   a conflict payload's `domain`. That is S-1's shape one expression
+> >   over from S-1's own site.
+> > · **`22023` on `p_edits -> 'confirm_high'`** (`:500`), a top-level
+> >   caller key the D2 edit contract does not fence.
+> >
+> > Both are crash-shape: the transaction aborts, nothing is written, no
+> > privilege is crossed. **F-1's verdict moves to FIXED IN PART and the
+> > residue is OWED to 6B** (ADR-0025 D16 S16.7, S16.8). The literal
+> > `23502` sentence at the head of this section stands; the wider
+> > property does not, and this correction is what keeps the two apart.
 
 ### R4/F-10 — RECORDED, and NOT taken at this layer
 
