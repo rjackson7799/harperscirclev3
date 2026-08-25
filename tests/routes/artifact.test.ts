@@ -397,3 +397,80 @@ describe('6B B9 · ?page=N&text=1 — the machine-read sibling through the fence
     expect(order).toEqual(['log', 'fetch']);
   });
 });
+
+// ============================================================================
+// 6B close-out · F5 (ADR-0026 D18) — STORAGE THAT NEVER ANSWERS IS BOUNDED.
+//
+// Gate run r6 at 5457eaa came back 37/1. The one was
+// e2e/review.spec.ts:407 (REV-02), and the REV-02 behaviour under test was
+// CORRECT throughout: the trace shows POST /decide/submit answering 303 in
+// 4.64 s to ?refused=version&proposal=<the very proposal the leg bumped>,
+// and the redirect landing 200 in 385 ms. The leg still failed, because
+// GET /api/artifact/<id>?page=1 on the re-rendered screen NEVER ANSWERED —
+// status -1, all timings -1, outstanding for the remaining ~106 s — so the
+// page never reached `load` and waitForURL (which waits for `load` by
+// default) timed out. The route had awaited storage with no AbortSignal and
+// no timeout; it logged nothing, because it was blocked inside the await
+// rather than in either error branch.
+//
+// What a person would have seen is the thing this codebase refuses to ship:
+// a review screen spinning forever with no state and nothing said out loud.
+// §6.8's whole posture — "Couldn't read it", "Needs a password", the
+// four-state scan proof — is that the screen NAMES what went wrong. An
+// indefinite wait is the one answer it is not allowed to give.
+//
+// These are the r6 finding pinned BEFORE the fix exists. The first two fail
+// by HANGING against the unbounded route, which is precisely the defect.
+// ============================================================================
+describe('6B close-out F5 · a stalled storage read becomes a named state, never a hang', () => {
+  const RENDITION = { page_count: 2, page_exts: ['png', 'jpg'] };
+  const NEVER = () => new Promise<Response>(() => {});
+  const SENTINEL = 120_000; // the browser-gate leg's own budget
+
+  /** Answer, or the marker that the route out-waited an entire gate leg. */
+  async function answerWithin(req: Request): Promise<Response | 'HUNG'> {
+    const answered = route.GET(req, ctx);
+    const raced = Promise.race([
+      answered,
+      new Promise<'HUNG'>((r) => setTimeout(() => r('HUNG'), SENTINEL)),
+    ]);
+    await vi.advanceTimersByTimeAsync(SENTINEL);
+    return raced;
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('?page=N is BOUNDED — it answers rather than awaiting storage forever', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    fetchMock.mockImplementationOnce(NEVER);
+    expect(await answerWithin(getPage('1'))).not.toBe('HUNG');
+  });
+
+  it('the bounded answer is NAMED — storage_timeout, not a silent 404 or a rendition_page_missing it is not', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    fetchMock.mockImplementationOnce(NEVER);
+    const res = await answerWithin(getPage('1'));
+    expect(res).not.toBe('HUNG');
+    const answer = res as Response;
+    expect(answer.status).toBe(504);
+    expect(await answer.json()).toEqual({ error: 'storage_timeout', page: 1 });
+    expect(answer.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('the main byte path is bounded too, and keeps its ONE 404 shape (404 ≡ 403)', async () => {
+    fetchMock.mockImplementationOnce(NEVER);
+    const res = await answerWithin(get());
+    expect(res).not.toBe('HUNG');
+    expect((res as Response).status).toBe(404);
+  });
+
+  it('a storage read that DOES answer is not delayed and leaves no timer behind', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    fetchMock.mockResolvedValueOnce(new Response(new Uint8Array([9]), { status: 200 }));
+    const res = await route.GET(getPage('1'), ctx);
+    expect(res.status).toBe(200);
+    // A bound that outlives its own request would keep the process awake.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
