@@ -223,6 +223,19 @@ An unreproduced transient is **classified, never diagnosed**. The record:
   verified genuinely clean (69 exact; 0 circles / 0 arrivals / 0 users /
   0 proposals) before the gate ran. Infrastructure, on a memory-bounded host.
 
+- **F5 head (`7ecc81b`)** — `tests/lint/db-fence` again, on a synthetic
+  fixture F5 does not touch; 34/34 alone, 858/858 on re-run (160 s loaded vs
+  62 s clean). **Fourth occurrence, and a SECOND fence file.**
+- **Evidence head (`7496cbc`)** — a **fifth**: 876/877 on a run that took
+  **190.8 s**, then 877/877 twice at **77 s** and **124 s** at the same head,
+  no code between them. The loaded-vs-clean duration signature is the same one
+  the other four carry. **The identity of the failing test was NOT captured,
+  because I did not tee that run** — the corrective is that the full vitest
+  suite gets teed like `test:concurrency` already is, since a transient you
+  cannot name is one nobody can diagnose. Operator error, recorded rather than
+  smoothed. Five occurrences of one shape across a single slice is now well
+  past a curiosity, and it stays queued in D16.
+
 - **Close-out r4 and r5 (at `1a20671`) — CLASSIFIED AS ENVIRONMENTAL, TWICE,
   AND THAT WAS WRONG.** See D17. Both were caused by a regression in this
   slice's own close-out; the memory evidence marshalled for them was real and
