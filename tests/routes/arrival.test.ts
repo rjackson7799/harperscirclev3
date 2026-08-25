@@ -34,6 +34,7 @@ const review = {
   extractionsFor: vi.fn(),
   proposalsFor: vi.fn(),
   recentRecordChange: vi.fn(),
+  receiptFor: vi.fn(),
 };
 vi.mock('@/lib/hc/review', () => review);
 
@@ -123,6 +124,7 @@ beforeEach(() => {
   review.extractionsFor.mockResolvedValue(FACTS);
   review.proposalsFor.mockResolvedValue(PROPOSALS);
   review.recentRecordChange.mockResolvedValue(null);
+  review.receiptFor.mockResolvedValue([]);
   artifacts.readableRendition.mockResolvedValue({ page_count: 2, page_exts: ['png', 'jpg'] });
   inbox.productStates.mockResolvedValue(new Map([[ARRIVAL, 'Needs you']]));
 });
@@ -267,6 +269,151 @@ describe('6B B7 · presence, muted, never locking (§4.2.9)', () => {
     const html = await renderArrival();
     expect(html).toMatch(/record (has )?changed/i);
     expect(html).not.toMatch(/is (in|viewing)/i);
+  });
+});
+
+// ============================================================================
+// 6B B8 · §4.2.4's receipt over hc.receipt_for — what went where, with links
+// that RESOLVE for tasks and timeline (both surfaces are live) and that SAY
+// PLAINLY where a destination surface does not exist yet. Never a dead link,
+// never a silent omission — and RCP-02 stays `pending` tagged 7, because a
+// receipt that links two of four destinations is a criterion HALF met (the
+// SIG-01 precedent).
+// ============================================================================
+
+const DECIDED_PROPOSALS = PROPOSALS.map((p, i) => ({
+  ...p,
+  status: i === 0 ? 'approved' : i === 1 ? 'edited_approved' : 'rejected',
+  decided_at: '2026-08-24T12:00:00Z',
+}));
+
+const RECEIPT = [
+  {
+    proposal_id: PROPOSALS[0].id,
+    status: 'approved',
+    reject_reason: null,
+    object_type: 'task',
+    object_id: 'bbbbbbbb-0000-4000-8000-0000000000b1',
+    label: 'Call the pharmacy',
+    visible: true,
+  },
+  {
+    proposal_id: PROPOSALS[1].id,
+    status: 'edited_approved',
+    reject_reason: null,
+    object_type: 'document',
+    object_id: 'bbbbbbbb-0000-4000-8000-0000000000b2',
+    label: 'Discharge summary (corrected)',
+    visible: true,
+  },
+  {
+    proposal_id: PROPOSALS[2].id,
+    status: 'rejected',
+    reject_reason: 'already_handled',
+    object_type: null,
+    object_id: null,
+    label: null,
+    visible: false,
+  },
+];
+
+describe('6B B8 · the receipt: what went where (§4.2.4)', () => {
+  it('is NOT read while everything is still pending — the review is the screen’s business', async () => {
+    await renderArrival();
+    expect(review.receiptFor).not.toHaveBeenCalled();
+  });
+
+  it('a task destination links to the LIVE tasks surface, by name', async () => {
+    review.proposalsFor.mockResolvedValueOnce(DECIDED_PROPOSALS);
+    review.receiptFor.mockResolvedValueOnce(RECEIPT);
+    const html = await renderArrival();
+    expect(review.receiptFor).toHaveBeenCalledWith(CLAIMS, ARRIVAL);
+    expect(html).toContain('Call the pharmacy');
+    expect(html).toContain(`href="/${CIRCLE}/tasks"`);
+  });
+
+  it('a timeline destination links to the LIVE timeline surface', async () => {
+    review.proposalsFor.mockResolvedValueOnce(DECIDED_PROPOSALS);
+    review.receiptFor.mockResolvedValueOnce([
+      { ...RECEIPT[0], object_type: 'timeline_event', label: 'Cardiology visit' },
+    ]);
+    const html = await renderArrival();
+    expect(html).toContain('Cardiology visit');
+    expect(html).toContain(`href="/${CIRCLE}/timeline"`);
+  });
+
+  it('a document destination is NAMED and says plainly its surface opens later — never a dead link', async () => {
+    review.proposalsFor.mockResolvedValueOnce(DECIDED_PROPOSALS);
+    review.receiptFor.mockResolvedValueOnce(RECEIPT);
+    const html = await renderArrival();
+    expect(html).toContain('Discharge summary (corrected)');
+    expect(html).toMatch(/opens in an upcoming update/i);
+    // No link points at a surface that does not exist.
+    expect(html).not.toContain(`href="/${CIRCLE}/documents"`);
+  });
+
+  it('an edited approval SAYS the value was corrected — the receipt can say it because the commit recorded it', async () => {
+    review.proposalsFor.mockResolvedValueOnce(DECIDED_PROPOSALS);
+    review.receiptFor.mockResolvedValueOnce(RECEIPT);
+    const html = await renderArrival();
+    expect(html).toMatch(/corrected before filing/i);
+  });
+
+  it('a rejection reads as not filed, with the person’s optional reason', async () => {
+    review.proposalsFor.mockResolvedValueOnce(DECIDED_PROPOSALS);
+    review.receiptFor.mockResolvedValueOnce(RECEIPT);
+    const html = await renderArrival();
+    expect(html).toMatch(/not filed/i);
+    expect(html).toMatch(/already handled/i);
+  });
+
+  it('COUNTED, NEVER NAMED: an invisible destination is reported without name, link or id', async () => {
+    review.proposalsFor.mockResolvedValueOnce(DECIDED_PROPOSALS);
+    review.receiptFor.mockResolvedValueOnce([
+      {
+        proposal_id: PROPOSALS[0].id,
+        status: 'approved',
+        reject_reason: null,
+        object_type: 'profile_fact',
+        object_id: null,
+        label: null,
+        visible: false,
+      },
+    ]);
+    const html = await renderArrival();
+    expect(html).toMatch(/your access doesn(&#x27;|')t show/i);
+  });
+
+  it('reject-all: AC-INBOX-4’s sentence — nothing filed, the original intact and re-readable', async () => {
+    review.proposalsFor.mockResolvedValueOnce(
+      PROPOSALS.map((p) => ({ ...p, status: 'rejected', decided_at: '2026-08-24T12:00:00Z' })),
+    );
+    review.receiptFor.mockResolvedValueOnce(
+      RECEIPT.map((r) => ({
+        ...r,
+        status: 'rejected',
+        object_type: null,
+        object_id: null,
+        label: null,
+        visible: false,
+      })),
+    );
+    const html = await renderArrival();
+    expect(html).toMatch(/nothing was filed/i);
+    // The original stays re-readable — the artifact link stands.
+    expect(html).toContain(`/api/artifact/${ARRIVAL}`);
+  });
+});
+
+describe('6B B8 · the decide markers are READ and rendered (R5/F-7)', () => {
+  it('?decided=1 confirms the decision was recorded', async () => {
+    const html = await renderArrival(ARRIVAL, { decided: '1' });
+    expect(html).toMatch(/decision (was )?recorded/i);
+  });
+
+  it('?e=decide says the decision could not be recorded — honestly, with no oracle', async () => {
+    const html = await renderArrival(ARRIVAL, { e: 'decide' });
+    expect(html).toMatch(/couldn(&#x27;|')t be recorded/i);
   });
 });
 
