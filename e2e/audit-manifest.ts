@@ -56,6 +56,6 @@ export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/[circle]/senders': { leg: INBOX_LEG },
   '/[circle]/upload': { leg: INBOX_LEG },
   '/[circle]/inbox/[arrival]': {
-    leg: 'OWED: the 6B review e2e unit — audited over a live arrival in the review legs (A11Y-07/A11Y-08), which need a driven pipeline this static list cannot provision',
+    leg: 'review.spec — the review legs drive it over a live arrival: "A11Y-07: full keyboard operation…" and "A11Y-08: machine-read text…" are its accessibility halves',
   },
 };

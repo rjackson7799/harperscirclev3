@@ -83,6 +83,39 @@ the suite's own fixtures, ordering or environment):
   and produced an INVALID run whose only symptom was a product-sounding
   string. A stale server on 3000 or 8787 now fails the gate at startup.
 
+**Slice 6 (6B B7–B10) adds the REVIEW legs** — `e2e/review.spec.ts` — to
+the same gate run, the slice's centre on the live stack:
+
+- **review** — `Needs you` → open → the source renders through the
+  artifact fence → selecting a fact highlights its cited region → the
+  crop is on screen before approve activates (§6.4) → an approval lands
+  through `hc.approve_proposal` → the receipt names the destination and
+  the Tasks link RESOLVES (CIT-01, RCP-01 live halves);
+- **reject-all** — every item rejected through the surface →
+  `nothing_filed`, the AC-INBOX-4 sentence on the receipt, the original
+  intact and re-readable, zero `proposal_commits` rows (DEC-01);
+- **conflict** — §4.2.5's three outcomes offered with NO default;
+  `use_new` supersedes live: the old value retained, marked, and named
+  by its successor (CNF-02);
+- **stale** — the version moves under an open screen → the approval
+  refuses with the NAMED marker and the screen re-renders with what
+  changed said in place; nothing lands (REV-02's live half);
+- **below-cliff** — a member set to exactly summary×5 sees the row, the
+  state and ONE line: no source region, no facts, no review controls,
+  and the artifact answers the ghost 404 (AC-INBOX-8);
+- **A11Y-07** — full keyboard operation at 390 px AND desktop: Tab
+  between facts, Enter selects and MOVES FOCUS to the cited region, and
+  the region returns focus to its fact;
+- **A11Y-08** — a REAL image-only upload (glyphs drawn by the leg, never
+  real family data) grows its `p001.txt` sibling; the screen offers it
+  under §6.9's exact label, one control per page, and the transcript
+  reads what the page carries (OCR-01).
+
+The walkthrough's 11 steps, the a11y leg (grown at 6B B9 by the Care
+Inbox family and recovery-surfaces audits — the R5/F-6 pinned list's
+demand), the ingestion leg and the extraction leg stay the regression
+instrument, unchanged.
+
 **The targeted run (D8 condition 5).** After a repair to the suite, the
 two owed legs are executed BY TITLE and recorded as a **targeted run,
 never as a gate result**:
