@@ -295,6 +295,27 @@ test.describe('the 6B review legs', () => {
   test('reject-all: `Nothing filed`, the original intact and re-readable (AC-INBOX-4, DEC-01 live)', async ({
     browser,
   }) => {
+    // THE ONLY LEG IN THIS SUITE WHOSE COST SCALES WITH THE FIXTURE. It taps
+    // through EVERY pending proposal the real pipeline produced, and each tap
+    // is two full dev-mode page loads: the `goto` at the top of the loop and
+    // the redirect the click produces. Observed at 1.3 m (r3), 1.2 m (r6) and
+    // 1.4 m (r7) against Playwright's 120 s default — 60-70% of its budget on
+    // every run that ever passed, which is not a margin, it is a coin toss.
+    // At `r8` it lost: 2.1 m, and the trace shows why it was not the product —
+    // FIFTEEN `_next/static/chunks/*` requests at status -1, the page's own
+    // JavaScript never arriving, so `load` never fired and `waitForURL` timed
+    // out. The artifact route answered 200 twice in the same trace (4.4 s,
+    // 2.8 s) and F6's answer budget did not fire once in the entire run.
+    //
+    // The budget is declared HERE, on the one leg that needs it, rather than
+    // raised globally: every other leg in the gate should still fail fast.
+    // (And the `goto` at the top of the loop is NOT redundant — it clears the
+    // `?decided=1` the previous iteration landed on. Without it the next
+    // `waitForURL('**?decided=1')` matches the STALE url and returns
+    // immediately, and the leg stops waiting for the navigation it exists to
+    // check.)
+    test.setTimeout(240_000);
+
     const f = await theFounder(browser);
     const arrival = await readyArrival(f, 'rejectall');
 
