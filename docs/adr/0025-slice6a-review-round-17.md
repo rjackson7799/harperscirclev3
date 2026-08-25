@@ -1337,6 +1337,20 @@ Both `completed`; neither pending.
 merged, base `main`, head branch `slice/6-care-inbox`, **DO NOT MERGE
 without owner sign-off** in the title.
 
+**The commit that CARRIES D16 was confirmed too, so the sign-off does not
+rest on its own parent alone.** `8449812` is docs-only — it moves
+`docs/adr/0024`, `docs/adr/0025` and `docs/coverage.md` and nothing
+else — and its two runs were read at the SHA from the same public API:
+
+· **push** run **32801783514** @ `8449812` — **success**
+· **pull_request** run **32801786947** @ `8449812` — **success**
+
+*(A document cannot name its own SHA, so this section names the head it
+signed off and the commit that carried it. The one commit after `8449812`
+adds only these six lines and is docs-only by the same rule — verify with
+`git diff --name-only b324e95..HEAD -- . ':(exclude)docs'` returning
+empty, which is D14's rule and holds at every head on this branch.)*
+
 **THE LOCAL GATE IS RED and was NOT RUN.** No fourth run was ordered by
 the round and none is ordered here. `ingestion.spec.ts:361` was never
 green at this tree; `:400` has never executed at it. **CI DOES NOT RUN
