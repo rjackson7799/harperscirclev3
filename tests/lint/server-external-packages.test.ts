@@ -39,6 +39,13 @@ const EXTENSIONS = new Set(['.ts', '.tsx']);
 // is excluded by requiring the `require` suffix on the receiver.
 const RESOLVE_CALL = /\b(?:[A-Za-z_$][\w$]*)?[Rr]equire\.resolve\(\s*['"]([^'"]+)['"]/g;
 
+// Prose DESCRIBING a resolve is not a resolve. The sibling scanner
+// (tests/lint/timestamp-boundary.test.ts) carries the same carve-out for the
+// same reason: lib/pipeline/ocr.ts explains this very rewrite in a comment,
+// quoting `require.resolve('<literal>')`, and without this the scanner reads
+// its own documentation as a violation.
+const COMMENT_LINE = /^\s*(\/\/|\/\*|\*)/;
+
 /** 'tesseract.js/src/worker-script/node/index.js' -> 'tesseract.js'
  *  '@tesseract.js-data/eng/package.json'          -> '@tesseract.js-data/eng' */
 function packageOf(specifier: string): string {
@@ -104,6 +111,16 @@ describe('6B · a package resolved by path is never bundled', () => {
     expect(Array.from("path.resolve(__dirname, '../..')".matchAll(RESOLVE_CALL))).toHaveLength(0);
   });
 
+  it('prose describing a resolve is not a resolve (comment carve-out)', () => {
+    expect(COMMENT_LINE.test(" * Turbopack rewrites `require.resolve('<literal>')` to a module id.")).toBe(
+      true,
+    );
+    expect(COMMENT_LINE.test("// workerPath: nodeRequire.resolve('tesseract.js/x.js'),")).toBe(true);
+    expect(COMMENT_LINE.test("    workerPath: nodeRequire.resolve('tesseract.js/x.js'),")).toBe(
+      false,
+    );
+  });
+
   it('next.config.ts still declares the externals the renderer depends on', () => {
     const declared = declaredExternals();
     expect(declared).toContain('pdfjs-dist');
@@ -116,12 +133,17 @@ describe('6B · a package resolved by path is never bundled', () => {
 
     for (const file of firstPartyFiles()) {
       const source = readFileSync(file, 'utf8');
-      for (const hit of source.matchAll(RESOLVE_CALL)) {
-        const pkg = packageOf(hit[1]);
-        if (!external.has(pkg)) {
-          offenders.push(`${path.relative(repo, file)}  resolves '${hit[1]}'  -> ${pkg}`);
+      source.split('\n').forEach((line, i) => {
+        if (COMMENT_LINE.test(line)) return;
+        for (const hit of line.matchAll(RESOLVE_CALL)) {
+          const pkg = packageOf(hit[1]);
+          if (!external.has(pkg)) {
+            offenders.push(
+              `${path.relative(repo, file)}:${i + 1}  resolves '${hit[1]}'  -> ${pkg}`,
+            );
+          }
         }
-      }
+      });
     }
 
     expect(

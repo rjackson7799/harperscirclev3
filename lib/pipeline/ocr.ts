@@ -1,5 +1,6 @@
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import type { RenderedPage, SourceClass } from './render';
 
 /**
@@ -83,16 +84,57 @@ type TesseractWorker = {
  * engine's location is a fact of the installed tree and no bundler is
  * asked to guess it.
  */
+/**
+ * `require.resolve`, VALIDATED — because inside the bundle it does not
+ * return a path at all.
+ *
+ * Turbopack rewrites `require.resolve('<literal>')` to a module id. The
+ * close-out gate watched that id change from
+ * `"[project]/…/index.js [app-route] (ecmascript)"` to
+ * `"[externals]/…/index.js [external] (…)"` when the package was added to
+ * `serverExternalPackages` — externalising changed WHICH id came back, not
+ * that it was an id. Neither is a filesystem path, and tesseract.js refuses
+ * both ("the worker script or module filename must be an absolute path").
+ *
+ * So the resolve is attempted and then CHECKED: an absolute path that
+ * exists is used, anything else falls back to the installed tree under the
+ * project root. The fallback is what makes this independent of a particular
+ * bundler's behaviour rather than a bet on it.
+ */
+function resolveInstalled(specifier: string, ...fallbackSegments: string[]): string {
+  const nodeRequire = createRequire(import.meta.url);
+  try {
+    const resolved = nodeRequire.resolve(specifier);
+    if (isAbsolute(resolved) && existsSync(resolved)) return resolved;
+  } catch {
+    // Not resolvable from this context — the fallback below is the answer.
+  }
+  return join(process.cwd(), 'node_modules', ...fallbackSegments);
+}
+
 export function engineLocations(): { langPath: string; workerPath: string } {
-  const require = createRequire(import.meta.url);
   return {
     // The engine's own data package, resolved locally — the `4.0.0_best_int`
     // build is exactly what the library's lstmOnly CDN default names.
     langPath: join(
-      dirname(require.resolve('@tesseract.js-data/eng/package.json')),
+      dirname(
+        resolveInstalled(
+          '@tesseract.js-data/eng/package.json',
+          '@tesseract.js-data',
+          'eng',
+          'package.json',
+        ),
+      ),
       '4.0.0_best_int',
     ),
-    workerPath: require.resolve('tesseract.js/src/worker-script/node/index.js'),
+    workerPath: resolveInstalled(
+      'tesseract.js/src/worker-script/node/index.js',
+      'tesseract.js',
+      'src',
+      'worker-script',
+      'node',
+      'index.js',
+    ),
   };
 }
 
