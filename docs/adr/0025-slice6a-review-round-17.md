@@ -1305,6 +1305,46 @@ conditions; R4/F-10 (Q-A) at B3; Q-G's RCP-01 app-half caution; and the
 `hc.revise_object` / step-up audit, which now appears above with the
 residue it belongs to.
 
+> **AMENDED IMMEDIATELY AFTER THE MERGE — the six conditions above owed
+> 6B work 6B was not budgeted to do, and did not say so.** Conditions
+> 1–4 all require replacing `hc.approve_proposal`, which is a migration.
+> **Slice 6's migration bound closed at 6 of ≤ 7 with M7 UNCONSUMED**, so
+> at the moment this section was written 6B had **no slot** for the very
+> thing it was being handed. An obligation and a bound that disagree is
+> the settled-record shape this cadence exists to catch, and the sign-off
+> committed it in the act of recording what it found.
+>
+> **THE OWNER AMENDMENT, stated as one, 2026-08-25.** The plan already
+> names this mechanism for exactly this case: *"A build session that
+> finds it needs M7 anyway is finding something this gate did not
+> foresee, and that is an owner amendment with its reason stated"*
+> (`slice-6-plan.md:1234-1238`). The residue **is** something the gate
+> did not foresee — it was found at sign-off, after the gate ruled.
+>
+> **ONE migration slot is pre-authorised at 6B, NAMED and BOUNDED**, on
+> Q2's own terms — *"the over-provisioned slot is deliberate, not an
+> invitation to spend it"*:
+>
+> 1. **It is for the approve-time payload contract ONLY** — the residue
+>    at S16.2 and S16.3, plus whatever condition 6's `hc.revise_object` /
+>    step-up audit finds **in that same class**. Any other DDL at 6B is a
+>    **fresh** owner amendment, stated before a line is written.
+> 2. **It does NOT reopen M7.** M7 closed UNCONSUMED and 6A's bound
+>    stands at **6 of ≤ 7** as the record of what 6A spent. This is 6B's
+>    own first migration, numbered in 6B's sequence.
+> 3. **It lands BEFORE or WITH B8, never after.** B8 writes the first
+>    caller that can reach the channel; a caller shipped ahead of the fix
+>    would open, for one unit, exactly the window this whole finding is
+>    about. **B1 keeps its plan-bound first position** regardless.
+> 4. **It closes UNCONSUMED if condition 5's third re-derivation finds
+>    nothing needing DDL** — and that outcome is a result, not a failure.
+> 5. **The six conditions above bind it unchanged**, red leg included.
+>
+> **Nothing else about the queue moves**, and this pre-authorisation is
+> not a licence: it is the one collision the sign-off could see, resolved
+> where it will be read rather than left for a build session to meet
+> mid-slice and rationalise.
+
 ---
 
 ### S16.9 — evidence at the sign-off head
