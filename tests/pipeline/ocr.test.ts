@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createCanvas, type Canvas } from '@napi-rs/canvas';
+import { existsSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import {
   OCR_CONFIDENCE_FLOOR,
   OCR_WALL_CLOCK_MS,
+  engineLocations,
   isImageOnlySource,
   ocrRenderedPages,
 } from '@/lib/pipeline/ocr';
@@ -70,6 +73,40 @@ async function noisePage(page: number): Promise<RenderedPage> {
   }
   return pageOf(canvas, page, new Uint8Array(await canvas.encode('png')));
 }
+
+// ============================================================================
+// 6B close-out · WHERE THE ENGINE LIVES IS THIS INSTALL'S FACT.
+//
+// `langPath` was resolved through createRequire from the start; `workerPath`
+// was left to tesseract.js's own default, which computes it from ITS
+// `__dirname` (src/worker/node/defaultOptions.js). Under vitest that is a
+// real directory and every test here passed. Inside the Next server bundle
+// it is rewritten, and the close-out gate watched the worker try to spawn
+// `C:\ROOT\node_modules\tesseract.js\src\worker-script\node\index.js` — so
+// §6.9's reading aid was simply ABSENT from the running app while this
+// suite, running the real engine, stayed green.
+//
+// The axis that broke was never mocked-vs-real (B9 chose real, and was
+// right to). It was plain-Node-vs-bundled-runtime, which only an e2e leg
+// crosses. This case pins the resolution; e2e/review.spec.ts's A11Y-08 leg
+// pins the WIRING, because it is the only place the bundle is real.
+// ============================================================================
+describe('6B · the engine’s parts are resolved, never guessed by a bundler', () => {
+  it('both paths are absolute and exist in THIS install', () => {
+    const { langPath, workerPath } = engineLocations();
+    for (const [name, p] of Object.entries({ langPath, workerPath })) {
+      expect(isAbsolute(p), `${name} is absolute`).toBe(true);
+      expect(existsSync(p), `${name} exists: ${p}`).toBe(true);
+    }
+  });
+
+  it('the worker script is the node build, not a CDN or a bundler’s guess', () => {
+    const { workerPath } = engineLocations();
+    expect(workerPath).toContain('tesseract.js');
+    expect(workerPath.replace(/\\/g, '/')).toContain('worker-script/node');
+    expect(workerPath).not.toContain('ROOT');
+  });
+});
 
 describe('6B B9 · §6.9: the engine reads what a person wrote', () => {
   it(
