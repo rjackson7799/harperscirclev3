@@ -44,6 +44,7 @@ import pg from 'pg';
 import { createHash, randomUUID } from 'node:crypto';
 import { startAnthropicFixtureServer } from '../ai-fixture-server.mjs';
 import { readCorpusFile, corpusItem, corpusMime } from '@/lib/eval/corpus';
+import { INBOX_REVALIDATE_SECONDS } from '@/lib/inbox/revalidate';
 
 const DB_URL =
   process.env.HC_DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54342/postgres';
@@ -366,6 +367,12 @@ async function main(): Promise<void> {
     console.log('PRF-07 · §13.2 arrival→proposals_ready · REPORT-ONLY');
     console.log(`provider: LOCAL FIXTURE SERVER at ${fixture.url} (no provider in the path)`);
     console.log(`budget for context: ${BUDGET_MS} ms · percentile: PRF-06 nearest-rank`);
+    // PRF-08 (6B B5, Q8): the arrival-received signal's staleness bound is a
+    // NUMBER in this report, not an assertion in a plan — the Care Inbox
+    // revalidates on this interval, against the relay's 60 s tick.
+    console.log(
+      `signal staleness bound: ${INBOX_REVALIDATE_SECONDS} s (Care Inbox revalidation interval; one relay tick is 60 s)`,
+    );
     console.log('');
 
     if (mode === 'cold') {

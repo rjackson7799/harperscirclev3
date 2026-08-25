@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/shell/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { ProvenanceLine } from '@/components/ui/ProvenanceLine';
+import { InboxRevalidator } from '@/components/inbox/InboxRevalidator';
 import { FORWARDING_DOMAIN } from '@/lib/setup/steps';
 import { formatShortDate, heldExpiryLabel, pastQueueAgeBound } from '@/lib/format/dates';
 
@@ -219,6 +220,10 @@ export default async function InboxPage({
     const subjects = (subjectData ?? []) as SubjectRow[];
     return (
       <>
+        {/* The signal covers the empty state too: the first arrival must
+            APPEAR without a manual reload, or the forwarding address the
+            copy promotes leads to a surface that seems to swallow mail. */}
+        <InboxRevalidator />
         <PageHeader
           title="Care Inbox"
           context="Anything mailed or uploaded lands here first, with its progress shown honestly — nothing is filed without a person approving it."
@@ -242,6 +247,11 @@ export default async function InboxPage({
 
   return (
     <>
+      {/* 6B B5 (Q8): the surface tells the truth about itself — the page
+          revalidates on an interval bounded by one relay tick, so `Reading`
+          appears when reading begins and the cancel affordance shown is live
+          and accurate, never a control that is already dead. */}
+      <InboxRevalidator />
       <PageHeader title="Care Inbox" context="Every item shows exactly where it is." />
       <p className="meta">
         {/* 5B B8: the senders surface lives beside the thing it manages — a
