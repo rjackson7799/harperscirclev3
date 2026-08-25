@@ -844,6 +844,23 @@ only `pg` and `node:crypto` (it drives SQL directly, never through `lib/hc`),
 and pgTAP is pure SQL. Neither suite can observe a JavaScript change. The
 `bc3bc85` results stand.
 
+**And as of 2026-08-25 that argument is no longer the thing holding them up.**
+The branch was pushed on owner authority and **CI run 151 at `740e1a6`
+concluded `success`** (attempt 1, 242 s, `actions/runs/32910646071`). CI runs
+`test:db` and `test:concurrency` from a cold database — twice, counting the
+upgrade leg, whose 37 s against run 150's 1 s early-exit shows it genuinely
+rehearsed — on a code tree byte-identical to this evidence head
+(`git diff --name-only 7496cbc..740e1a6` is five files, every one under
+`docs/`). Both tee'd suite steps run under `set -o pipefail`, so their green
+is a real exit-0 and not a tee masking one. The carried claim is now a result
+produced by a machine that is not this one.
+
+**What CI does NOT cover — a gap in the pipeline, found while reading the
+workflow to report that run, and recorded rather than left to be discovered.**
+CI runs no `npm run build`. D17's defect (F4) was a *build-time* resolution
+warning, which means **CI would not have caught F4**. The zero-warning build
+claim in the table above is local-only and no CI run can upgrade it.
+
 The browser gate is a **LOCAL** gate: CI does not run it. Pending never
 counts as green, and a product failure is never re-run to green.
 

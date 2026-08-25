@@ -31,19 +31,54 @@ when the review read it). So the last row is a RULE, checkable at any head.
 | Close-out green | `7ecc81b` | F5 fixed — `lib/storage/fetch.ts` (D18) | idem |
 | Close-out red | `76d7299`, `0eb0ad1` | **F6 + F7** pinned — nine cases that fail by HANGING, and a scanner | idem |
 | Close-out green | `7373e14` | F6 + F7 fixed — `lib/http/budget.ts` (D19, D20) | idem |
-| **Evidence head** | `7496cbc` | **F8 fixed — the last commit that moved a non-docs tree.** Every number below was produced at this tree, and the gate is **38 passed (7.6 m)** on it (D21) | idem |
-| Docs head | *(this file, ADR-0026, the coverage rows, the gate-doc and design-conformance corrections)* | **docs-only** — inherits the evidence head's gate run under ADR-0015 F12 | idem |
+| **Evidence head** | `7496cbc` | **F8 fixed — the last commit that moved a non-docs tree.** Every number below was produced at this tree, and the gate is **38 passed (7.6 m)** on it (D21) | not run at this SHA; **its code was run** — see below |
+| Docs head | `740e1a6` | **docs-only** on top of the evidence head — inherits its gate run under ADR-0015 F12. `git diff --name-only 7496cbc..740e1a6` lists five files, all under `docs/` | **run 151 — SUCCESS** |
 
-### CI HAS NEVER RUN ON THIS SLICE — stated plainly
+### CI — pushed on owner authority, and GREEN; what that does and does not prove
 
-`git ls-remote --heads origin 'slice/6b*'` returns nothing. **The branch has
-never been pushed**, so no 6B commit has a CI run of any kind. Every number
-in this packet is local. Pushing is an outward-facing action and is the
-owner's call, not the build session's; it is **owed before merge**, together
-with a green CI run at the evidence head.
+Until 2026-08-25 this section read *"CI has never run on this slice"*, and it
+was true: `git ls-remote --heads origin 'slice/6b*'` returned nothing. The
+owner then authorised the push. The branch is pushed and **CI run 151 at
+`740e1a6` concluded `success` on attempt 1** (242 s,
+`actions/runs/32910646071`).
 
-This is not a defect, but it is a gap, and it is named here rather than left
-for the round to discover.
+**The run is at the docs head, not the evidence head, and that is not a
+loophole.** `git diff --name-only 7496cbc..740e1a6` lists five files, every
+one under `docs/`. The code tree CI compiled and tested is byte-identical to
+the tree every local number was produced at.
+
+**What run 151 proves** — independently of this machine: gitleaks, the
+service-role containment and exposed-schema scanners, `db:reset` from the 69
+migrations with an exact-state verify, **`test:db` (pgTAP)**,
+**`test:concurrency`**, `db:verify` with warnings fatal, `test:app` (vitest),
+the G9 corpus `--check`, the **upgrade leg** (base reset → increment apply →
+both suites again), `lint` and `typecheck`. Both tee'd suite steps run under
+`set -o pipefail`, so a green step there is a real exit-0 and not a tee
+masking one.
+
+**This retires a carry-forward argument.** `test:db` and `test:concurrency`
+were carried from `bc3bc85` un-re-run, on the stated ground that no file
+under `supabase/` or `scripts/concurrency/` had changed. CI ran both from a
+cold database anyway — twice, counting the upgrade leg. That claim is no
+longer an argument; it is a result.
+
+**What run 151 does NOT prove, stated as plainly as the old gap was.**
+
+1. **CI does not run the Playwright browser gate.** That is by design and the
+   workflow says so. The 38-leg gate, and therefore every close-out finding
+   F1–F8, remains **local evidence only**. No CI run can upgrade it.
+2. **CI does not run `npm run build`.** The zero-`<dynamic>`-warnings claim
+   is local-only — and D17's defect (F4) was a *build-time* signal. **CI
+   would not have caught F4.** This is a genuine gap in the pipeline, found
+   while reading the workflow to report this run, and it is named here rather
+   than left for the round to discover.
+
+The run is fast (242 s) next to local wall-clock. That was checked rather
+than assumed: run 150 on `main` (`b0cc2b6`, this branch's base) took 201 s,
+and the two deltas run the right way — its upgrade leg early-exited at **1 s**
+where 151's rehearsed for **37 s**, and vitest went **28 s → 43 s** on the
+larger suite. ~4 minutes is this workflow's ordinary runtime on a runner; the
+build host is the memory-bounded one (D14).
 
 ---
 
@@ -391,6 +426,10 @@ does not close it.
 
 ## Merge
 
-Owner is sole merge authority. **Merge commit, never squash.** Before merge:
-push the branch and record a green CI run at the evidence head — neither has
-happened, and neither is the build session's to do unasked.
+Owner is sole merge authority. **Merge commit, never squash.**
+
+The two things this section previously listed as owed are done: the branch is
+pushed, and **CI run 151 is green** on a code tree identical to the evidence
+head. Both happened on explicit owner authority, not on a build session's
+initiative. **The merge itself has not been made and is not the build
+session's to make.**
