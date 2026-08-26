@@ -5,6 +5,11 @@ ratifies at sign-off, which is its own session, and the merge is its own
 session after that. **Nothing here is ratified, and ADR-0027 remains
 `proposed — BLOCKED at sign-off`.**
 
+**AMENDED BY ROUND 20**, which took the re-run D8 item 4 owed and added D11 and
+D12. The gate at `1066e2d` is now **GREEN, 38/38** (D7). **That does not ratify
+anything here** — a green gate discharges an owed run; it does not turn a
+drafted disposition into a settled one, and D10 items 2 and 3 are still open.
+
 **Deciders:** the round-19 fix + dispositions session (owner ratifies at
 sign-off).
 
@@ -436,6 +441,85 @@ F-3's mechanism, not against it.
 passed **and** leg 36 passed. The cascade is confirmed as F-2's wake, and F-3
 is **CLOSED**.
 
+### The permitted re-run, taken at round 20 — `r4` INVALID, `r5` GREEN
+
+D8 item 4 owed exactly one re-run, after classification from the trace, on a
+host with headroom. Round 20 took it. **Two runs were started and only the
+second is a gate result.**
+
+**Run `r4` is INVALID and is not a tally.** Launched at `1066e2d` on
+2026-08-26T07:54:58-10:00 with **887 MB free / 90 MB Memory Compression**
+recorded in the log header *before* the first leg. The Docker engine
+(`com.docker.backend`) died within seconds of launch, taking all eight
+containers with it: the first `AuthRetryableFetchError: fetch failed` /
+`status: 0` appears on the line **immediately after leg 1's `ok`**, and every
+leg from 2 onward ran against a dead backend, most expiring at exactly the
+120 s test timeout. `playwright.config.ts` already states the doctrine for a
+run whose backend is not the config's — **such a run is INVALID, not flaky.**
+It observed nothing about the product, so it can neither raise a finding nor
+spend the permitted re-run. Preserved at `round20-r4/` as `run-INVALID.log`
+plus a `README-INVALID.md` naming why its `2 ok / 13 x` must never be cited.
+The cause was environmental and is recorded in D11.
+
+**Run `r5` is the re-run, and it is GREEN.** Taken at the same head,
+`1066e2d`, launched 2026-08-26T09:07:28-10:00 after the engine was recovered
+and `hc_clamd` revived. Pre-launch state recorded BEFORE the run:
+**747 MB free of 7931, Memory Compression 122 MB**, 8/8 containers, and
+auth · REST · Mailpit each verified **HTTP 200 through Kong** at launch. The
+launcher was written to **abort rather than run without a healthy `hc_clamd`**,
+and an engine watchdog polled every 30 s throughout.
+
+```
+  38 passed (5.1m)
+```
+
+**Four independent corroborations, because a green gate deserves more scrutiny
+than a red one, not less:**
+
+| Check | Result |
+|---|---|
+| JSON reporter (never console text — ADR-0026 D16 item 9) | 38 tests, `{"expected":38}`, `errors[] = 0` |
+| Failure marks in the log (a failed leg is `x  N`, ONE `x`) | **38 `ok`, 0 `x`** |
+| Engine watchdog across the whole run | **8/8 containers at every sample, 0 invalid markers**; free RAM oscillated 379–1052 MB |
+| Mailpit provisioning sequence | **8 recipients, strictly a11y → extract → ingest → onboarding → review** |
+
+**The Mailpit sequence is the corroboration that does not depend on reading the
+console at all.** It shows exactly **ONE** `review.founder.*` address. In `r2`
+there were **three** (21:54:48, 22:04:14, 22:06:19) — F-3's cascade
+re-provisioning after each failure. One address is proof that no leg failed and
+no worker restarted, arrived at independently of the tally.
+
+**What this SETTLES.** Legs 32 (CIT-01 / RCP-01) and 33 (AC-INBOX-4 / DEC-01)
+**passed, at 14.6 s and 37.2 s.** They were classified from their traces as the
+`r1` resource class and are now **confirmed UNREPRODUCED TRANSIENTS — they are
+not findings, and under the standing rule they are not re-run again.** They did
+not reproduce on a host **tighter than `r2`'s** (747 MB against 1004 MB), which
+strengthens the classification rather than merely failing to refute it.
+**D8 item 4 is DISCHARGED.**
+
+**What this does NOT settle, stated rather than claimed away.**
+
+- **F-1 stays OPEN.** Leg 38 passed at 7.9 s, but it has now passed in `r3` and
+  `r5` and failed in `r6`, `r7` and `r2`. D7 already ruled on exactly this
+  shape: **a leg that passes on a quieter host is not a stall that is gone.**
+  The stall is load-dependent and two passes do not close it.
+- **The new ledger never fired.** Grepping `r5` for `AnswerBudgetExceeded`, a
+  `HopCost` ledger line or a starvation message returns **zero matches** — no
+  budget was overrun anywhere in the run. That is a **null result, not a
+  confirmation.** It means the instrument D3 landed has still **not observed the
+  mechanism in the running app**, which is precisely the prerequisite D10 item 1
+  named for the product fix. The prerequisite remains **unmet**.
+- **The runtime drop is cascades, not a quiet host.** `r5` ran 5.1 m against
+  `r3`'s 18.4 m and `r2`'s 21.6 m. `r3`'s two failures each cost a 120 s timeout
+  plus a worker restart and a full founder re-provision, which accounts for the
+  gap: `r3`'s 36 passing legs took roughly what `r5`'s 38 did. **`r5` was not a
+  dramatically quieter host than `r3`** — it was a host with no cascades. The
+  difference must not be read as evidence about F-1 either way.
+
+**`1066e2d` now carries a GREEN 38-leg gate.** It is the first in the slice's
+recorded history — `r6`, `r7`, `r1`, `r2` and `r3` were all red. What that
+unlocks is a sign-off question and not this document's to answer.
+
 ---
 
 ## D8 — OWED
@@ -445,8 +529,9 @@ is **CLOSED**.
 | 1 | **Move §6.3 render and §6.9 OCR off the request process** | The product half of F-1. An architecture change to the pipeline's execution model — see D10 |
 | 2 | **The twelve PAGE gates still render an outage as a sign-in redirect** | Same harm as F-2's 401; unobserved by `r2`, and twelve page gates is wider than the finding supports (D1) |
 | 3 | **The starvation sample is one sample** | It sees only blocking that overlaps the deadline. A heartbeat across the whole window would see all of it, at the cost of a second timer per request |
-| 4 | **`r3`'s two resource failures re-run once, on a host with `r2`-level headroom** | Legs 32 and 33 are UNREPRODUCED TRANSIENTS classified from their traces (D7). The standing rule permits exactly one re-run after classification, and it was not taken in this session |
-| 5 | **Leg 38's pass re-observed under `r2`-level load** | It passed at `r3` after failing at `r6`, `r7` and `r2`. One pass on a quieter host does not close a load-dependent stall, and F-1's product fix is still owed regardless (item 1) |
+| 4 | ~~`r3`'s two resource failures re-run once~~ | **DISCHARGED at round 20.** Run `r5` is GREEN, 38/38; legs 32 and 33 passed at 14.6 s and 37.2 s on a host TIGHTER than `r2`'s. Confirmed transients, not findings, and not re-run again (D7) |
+| 5 | **Leg 38's pass re-observed under genuine load** | STILL OWED, and round 20 did not discharge it. It has now passed at `r3` and `r5` and failed at `r6`, `r7` and `r2`. Two passes do not close a load-dependent stall, and F-1's product fix is owed regardless (item 1) |
+| 5a | **The `HopCost` ledger observed firing in the running app** | NEW at round 20. `r5` overran no budget anywhere — zero `AnswerBudgetExceeded`, zero ledger lines, zero starvation messages. The instrument D3 landed has still never reported on a live stall, and D10 item 1 named exactly that as its prerequisite |
 | 6 | The ten items ADR-0027 D17 already owed | Unchanged by this round |
 | 7 | The slice-5B queue | **39 OWED**, unchanged |
 
@@ -490,3 +575,69 @@ round-19 findings.
 **4. Note that ADR-0027 is still `proposed — BLOCKED at sign-off`.** Round 19
 does not unblock it. It removes one of the three failures at its cause, proves
 a second is that failure's wake, and hands the third a correct name.
+
+---
+
+## D11 — round 20: what was put to the owner, and what was ruled
+
+**D10 item 1 was put to the owner and RULED. It is NOT PLANNED this round —
+gate first.** The build was therefore **not started**, and no line of the
+architecture change was written.
+
+This is a **recorded owner ruling on the build question**, not a ratification
+of anything in this document. **ADR-0028 remains `proposed` in full**, ADR-0027
+remains `proposed — BLOCKED at sign-off`, and the nine round-18 dispositions
+and three round-19 dispositions remain **DRAFTED, not ratified**. The ruling
+is narrower than the ADR-0006 default it displaces: the default is *unanswered
+→ NOT PLANNED*; here the question was answered.
+
+**The ruling's own reasoning is now corroborated.** D10 item 1's third stated
+reason was that building before the ledger confirms the mechanism in the
+running app would repeat round 18's mistake. `r5` overran no budget anywhere,
+so **the ledger has still never fired on a live stall** (D8 item 5a). The
+prerequisite the escalation named is unmet, and holding was the correct call on
+the evidence rather than merely a cautious one.
+
+**Items 2 and 3 of D10 were NOT put and remain open for sign-off** — the
+amendment of F-2 from instrument to product, and the overturning of the stall's
+localisation. Both are ratification questions and belong to the owner's own
+session.
+
+## D12 — the environmental defect round 20 paid for, and the trap it earns
+
+**Run `r4` was lost to a Docker engine death, and the cause was advice given in
+this build loop, not a product fault.** Reaching gate headroom on this 7.9 GB
+host meant closing applications; the closure list named Docker Desktop's window
+as safe on the reading that the engine survives it. **On Windows it does not —
+quitting Docker Desktop stops the Linux engine**, and with it all eight
+containers the gate requires. The stack was verified 8-healthy at 07:43 and was
+dead by 07:55.
+
+**The general shape, which is what makes it a trap rather than an anecdote:
+freeing memory for the gate and keeping the stack up for the gate point in
+OPPOSITE directions on this host.** `vmmemWSL` is the single largest consumer
+(2.9 GB) and is also the least closeable thing on the machine.
+
+Recovery required the documented sequence — kill Docker, `wsl --shutdown`,
+relaunch — because `docker desktop restart` does not clear the wedge, and
+`hc_clamd` had to be revived separately, both exactly as `docs/process/traps.md`
+and the cross-project notes already record.
+
+**Two mitigations were built in round 20 and both are now proven, so they
+belong in the harness rather than in a brief:**
+
+1. **The launcher waits for `hc_clamd` to report healthy and ABORTS rather than
+   starting the gate without it.** A gate that starts before the scan socket is
+   up fails ingestion legs for environmental reasons and costs a full run.
+2. **An engine watchdog polls container count and free RAM every 30 s for the
+   whole run.** `r4` took an hour to reveal itself; with the watchdog the same
+   death is caught in seconds and the run is marked INVALID at a known
+   timestamp, so which legs were observed against a live stack is never a
+   reconstruction.
+
+**Both are OWED into `scripts/` and into the traps file**, and neither is in
+this repository yet — they lived in round 20's launcher. Recorded here so the
+next session inherits them rather than re-paying for them. Note that
+`docs/process/traps.md` does not exist on `slice/6b-care-inbox-app`; it lives on
+the peer branch `chore/process-retune`, which is where the trap entry has to
+land.
