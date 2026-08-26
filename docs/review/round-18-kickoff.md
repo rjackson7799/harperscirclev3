@@ -112,11 +112,15 @@ THE TASK — the round-18 review leg, the ADR-0006 / round-8 cadence:
      §10.4, §13.4, §13.5; **AC-INBOX-2 / 3 / 4 / 8 / 9**; and the
      inherited obligations in **ADR-0025** (round 17's dispositions, and
      F-1's residue that 6B took) and **ADR-0023**'s standing queue.
-  2. **NO PR IS OPEN — do not assume one and do not open one without the
-     owner.** CI is green on the branch: runs 151/152/153, all `success`,
-     all attempt 1. **Re-confirm CI yourself on whatever head you
-     review**, public API, anonymous — `gh` is **UNAUTHENTICATED**, never
-     device-flow; **pending never counts as green**. Two API facts that
+  2. **A PR may or may not be open by the time you read this — CHECK,
+     never assume, and never open a second one.** If one is open it
+     carries `[DO NOT MERGE without owner sign-off]` in its title, as
+     every PR on this repo since #5 does; its body is committed at
+     `docs/review/round-18-pr-body.md`. **Every CI run this branch has
+     ever had concluded `success` on attempt 1** (runs 151 onward).
+     **Re-confirm CI yourself on whatever head you review**, public
+     API, anonymous — `gh` is **UNAUTHENTICATED**, never device-flow;
+     **pending never counts as green**. Two API facts that
      will cost you time otherwise: a `toomanyrequests` failure at "Start
      local Postgres" is the **ECR Public anonymous quota** on the
      runners, never a repo defect; and **artifact and log downloads 401**
