@@ -1,7 +1,38 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ESLint } from 'eslint';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+
+
+// ============================================================================
+// THE FENCE FILES DECLARE THEIR OWN BUDGET — round-18, Q4 DIAGNOSED (ADR-0027
+// D10). This is D21's shape, one suite over.
+//
+// The cases below are among the only ones in the whole vitest suite that
+// construct an `ESLint` instance and load `eslint-config-next`. That load is
+// in a different COST CLASS from every other case in the repo, and it was
+// running against the same global `testTimeout: 30_000`:
+//
+//   this file ALONE                 34 passed in 12.33 s
+//   one case in the full parallel run   85 660 ms (2026-08-25)  ← the transient
+//
+// The failure was never a logic failure. It is vitest's per-case timeout,
+// reported with the case's declaration site as the stack — which is why six
+// earlier occurrences across these two files read as "it went red once" and
+// were classified as noise. The cases drive ESLint over VIRTUAL paths with
+// INLINE source, so no change to any real file in the repo can reach them.
+//
+// So the budget is declared HERE, on the two files whose cost genuinely
+// differs, rather than raised globally — every other case in the suite should
+// still fail fast. That is exactly D21's ruling about the gate's one
+// fixture-scaled leg, and the reasoning transfers without modification.
+//
+// NO RED→GREEN PIN, DELIBERATELY, for D21's reason: the red is the recorded
+// run itself, with its duration and its message, and the proof is the
+// following full-suite run. A pin for "this file must be slow" would assert
+// the defect rather than the fix.
+// ============================================================================
+vi.setConfig({ testTimeout: 180_000 });
 
 // ============================================================================
 // A2 · The import fence (TSD §1.7): asServiceRole() is import-restricted to

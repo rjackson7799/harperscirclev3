@@ -229,6 +229,42 @@ npx playwright test --trace on
   diagnosed as broken is legitimate; stopping one because its legs are
   failing is not, and the difference is whether you can name the mechanism.
 
+### The vitest suite records itself — read the record, not your memory
+
+**Round-18 F-7.** The fence transient (`a11y-fence`, `db-fence`: the file
+fails inside the full parallel run and passes 6/6 or 34/34 alone) has now hit
+**six times across two fence files in one slice**, and the fifth could not be
+NAMED because that run was not recorded. Q4 queued the transient for
+diagnosis; a diagnosis needs data from the occurrence, and the occurrence is
+load-dependent, local, and does not reproduce on demand.
+
+So `npm run test:app` writes **`.vitest/run.json`** on every invocation —
+every case's name, its **duration**, and its failure message. Nothing to
+remember and nothing to opt into.
+
+**It is a reporter, NOT a tee, and that is deliberate.** A tee reports *tee's*
+exit status, so a red suite exits 0 — this repo has already paid for that
+lesson once (ADR-0026 D16 item 9), and the corrective for one recording gap
+must not open a worse one. The JSON reporter leaves the exit code intact:
+verified at **exit 1** on a deliberately failed case, with that case's name,
+duration and message all present in the file.
+
+**When a fence file goes red, read three things before touching anything:**
+
+1. `.vitest/run.json` → the failing case's **duration**. The signature of this
+   transient is a *duration blowout*, not a logic failure: occurrence six was
+   `db-fence` → *"an app route importing service-role reds"* at **85 660 ms**
+   while the other 65 cases passed.
+2. The same file **alone** (`npx vitest run tests/lint/db-fence.test.ts`). If
+   it is green in ~12 s, that is the recorded shape, not a defect.
+3. Whether anything you changed can reach it at all. These cases drive ESLint
+   through its API; a change to neither the ESLint config nor the fenced
+   imports cannot make one fail on logic.
+
+Then re-run **once** and record the outcome — including that it passed.
+**A transient that is never written down is a transient that is diagnosed
+from memory the sixth time.**
+
 ### After ANY interrupted run: kill the orphans first
 
 Stopping Playwright kills the parent — **its `webServer` children survive.**

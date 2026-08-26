@@ -17,7 +17,7 @@
     "test:db": "supabase test db",
     "test:concurrency": "node scripts/concurrency/run.mjs",
     "db:verify": "supabase db lint --fail-on warning",
-    "test:app": "vitest run",
+    "test:app": "vitest run --reporter=default --reporter=json --outputFile=.vitest/run.json",
     "test:e2e": "playwright test"
   },
   "dependencies": {
