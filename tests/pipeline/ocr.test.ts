@@ -8,6 +8,8 @@ import {
   engineLocations,
   isImageOnlySource,
   ocrRenderedPages,
+  realPathOr,
+  OcrEngineUnavailable,
 } from '@/lib/pipeline/ocr';
 import type { RenderedPage } from '@/lib/pipeline/render';
 
@@ -169,5 +171,108 @@ describe('6B B9 · only image-only sources are OCR’d at all (§6.9’s letter)
     expect(isImageOnlySource('photo')).toBe(true);
     expect(isImageOnlySource('born_digital_pdf')).toBe(false);
     expect(isImageOnlySource('email_text')).toBe(false);
+  });
+});
+
+// ============================================================================
+// ROUND 18 · F-2 (MAJOR) — THE VALIDATION AND THE FALLBACK ARE THE WRONG WAY
+// ROUND.
+//
+// realPathOr is:
+//
+//     try {
+//       const resolved = resolve();
+//       if (isAbsolute(resolved) && existsSync(resolved)) return resolved;
+//     } catch { }
+//     return join(process.cwd(), 'node_modules', ...fallbackSegments);
+//
+// existsSync appears EXACTLY ONCE in the module, on the resolve() result. The
+// fallback is returned UNCHECKED. And by ADR-0026's own recorded evidence,
+// inside the Next bundle require.resolve returns a MODULE ID rather than a
+// path — before and after serverExternalPackages ("externalising changed WHICH
+// id came back, not that it was an id"). So in the running app the guard fails
+// BY DESIGN and the unchecked process.cwd() fallback is the branch that
+// actually locates the engine. The module validates the branch that never
+// runs.
+//
+// That fallback carries two assumptions, neither asserted anywhere: that
+// process.cwd() is the project root, and that node_modules is flat beneath it.
+// Both are true on this host. Neither is guaranteed under pnpm, npm
+// workspaces, a monorepo, or a traced serverless bundle.
+//
+// AND WHEN THE ASSUMPTION BREAKS, NOTHING SAYS SO. bootWorker throws
+// MODULE_NOT_FOUND, which propagates out of ocrRenderedPages, and the worker
+// route absorbs it with a console.warn. That absorption is a CORRECT product
+// decision — a reading aid must never fail the answer it aids — but combined
+// with an unchecked fallback it reproduces D15 finding 3 exactly: §6.9's
+// reading aid absent from the running app, the pipeline green, and a blind
+// coordinator with an inaccessible record. Every test in the repo stays green.
+//
+// The existing two cases above pass on THIS install and would keep passing on
+// a host where the fallback is wrong, because on this host the resolve branch
+// and the fallback happen to agree. These drive the fallback directly.
+// ============================================================================
+describe('Round-18 F-2 · the branch the bundle actually takes is checked too', () => {
+  const MISSING = ['@no-such-scope', 'no-such-package', 'index.js'];
+
+  it('an unresolvable engine is a NAMED failure, not a path that does not exist', () => {
+    let caught: unknown;
+    try {
+      realPathOr(() => {
+        throw new Error('Cannot find module');
+      }, ...MISSING);
+    } catch (e) {
+      caught = e;
+    }
+    // Named explicitly rather than via toThrow(Ctor): while the export does not
+    // exist the constructor is `undefined`, and toThrow(undefined) degrades to
+    // "it threw something" — which a TypeError satisfies. A case that passes for
+    // the wrong reason is the F-5 class, in the file that argues against it.
+    expect((caught as Error)?.name).toBe('OcrEngineUnavailable');
+    expect(caught).toBeInstanceOf(OcrEngineUnavailable);
+  });
+
+  it('and the failure names BOTH candidates, so the next reader is not guessing', () => {
+    let caught: unknown;
+    try {
+      realPathOr(() => 'tesseract.js/src/worker-script/node/index.js', ...MISSING);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(OcrEngineUnavailable);
+    const msg = (caught as Error).message;
+    // what the resolve returned…
+    expect(msg).toContain('tesseract.js/src/worker-script/node/index.js');
+    // …and where the fallback looked.
+    expect(msg).toContain('no-such-package');
+  });
+
+  it('CONTROL: a MODULE ID from the bundle still falls back — this is the branch that runs in the app', () => {
+    // Not a path. isAbsolute() is false, so the guard declines it exactly as it
+    // does inside Turbopack, and the fallback answers. This is the branch D15
+    // finding 3 proved is the live one, and it must keep working.
+    const p = realPathOr(
+      () => '[project]/node_modules/tesseract.js/src/worker-script/node/index.js [app-rsc]',
+      'tesseract.js',
+      'src',
+      'worker-script',
+      'node',
+      'index.js',
+    );
+    expect(isAbsolute(p)).toBe(true);
+    expect(existsSync(p)).toBe(true);
+  });
+
+  it('CONTROL: a real absolute path is still preferred over the fallback', () => {
+    const real = engineLocations().workerPath;
+    expect(realPathOr(() => real, ...MISSING)).toBe(real);
+  });
+
+  it('THE CLASS: this module never hands back a path it has not checked', () => {
+    // The whole finding in one line. Whichever branch answers, the answer has
+    // been to the filesystem.
+    for (const p of Object.values(engineLocations())) {
+      expect(existsSync(p)).toBe(true);
+    }
   });
 });

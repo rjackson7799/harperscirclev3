@@ -503,6 +503,39 @@ describe('B4 · the §4.3 normalize exits land honest states', () => {
       expect(storage.promoteRenderedPages).toHaveBeenCalledWith(CIRCLE, ARRIVAL, LEASE);
       expect(txtStagings()).toHaveLength(0);
     });
+
+    it('ROUND-18 F-2: an absent ENGINE is a §10.4 defect signal, not the same note as an unread page', async () => {
+      // Absorbing the failure is right and stays. What was wrong is that the
+      // absorption said the SAME thing for "this page could not be read" and
+      // "there is no engine on this host" — and the second is D15 finding 3
+      // recurring silently, which is the whole of F-2. The signal follows the
+      // shape D18/R4-F-10 and R4/F-15 already established on this route.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        render.normalizeArrival.mockReturnValueOnce({
+          outcome: 'rendered',
+          sourceClass: 'scanned_pdf',
+          pageCount: 1,
+          pages: [PAGE],
+          text: null,
+        });
+        // The real class, through the same module the route imports it from —
+        // the mock spreads `actual`, so an instanceof check sees one constructor.
+        const { OcrEngineUnavailable } = await import('@/lib/pipeline/ocr');
+        ocr.ocrRenderedPages.mockRejectedValueOnce(
+          new OcrEngineUnavailable('tesseract.js/…/index.js', '/app/node_modules/…/index.js'),
+        );
+        workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+        await route.POST(req('extract'), ctx('extract'));
+
+        const lines = warn.mock.calls.map((c) => String(c[0]));
+        expect(lines.some((l) => /§10\.4/.test(l) && /engine/i.test(l))).toBe(true);
+        // and it still never fails the answer it aids
+        expect(workers.finalizeExtraction).toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    });
   });
 });
 
