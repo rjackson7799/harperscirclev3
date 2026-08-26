@@ -118,9 +118,22 @@ THE TASK — the round-18 review leg, the ADR-0006 / round-8 cadence:
      open a second one.** Its body is committed at
      `docs/review/round-18-pr-body.md`, so the text the PR carries is
      diffable in the tree. CI fires on **BOTH** events — the workflow
-     triggers on `push` for `slice/**` and on `pull_request` — and
-     **every CI run this branch has ever had concluded `success` on
-     attempt 1** (runs 151 onward, both events).
+     triggers on `push` for `slice/**` and on `pull_request`.
+     **Every run that REACHED PROJECT CODE concluded `success` on
+     attempt 1** (runs 151 onward, both events). **ONE run did not
+     reach project code, and it is left here rather than tidied away:
+     run 158 (`pull_request`) failed at "Start local Postgres" after
+     62 s with steps 9–20 SKIPPED** — while run 157 (`push`) at **the
+     very same SHA** was green across all twenty steps minutes earlier,
+     and run 156 (`pull_request`) was green at the previous head. That
+     signature — everything before `db start` green, everything after
+     skipped, **no project code executed at all** — is the **ECR Public
+     anonymous pull quota** on shared runners. It is **consistent with
+     that and NOT confirmed as it**: the log line naming
+     `toomanyrequests` requires authentication (the logs endpoint
+     returns 403 anonymously) and `gh` here has none. **Classify it
+     from the step list yourself; a run that never reached project code
+     is not evidence about the tree, in either direction.**
      **Re-confirm CI yourself on whatever head you review**, public
      API, anonymous — `gh` is **UNAUTHENTICATED**, never device-flow;
      **pending never counts as green**. Two API facts that

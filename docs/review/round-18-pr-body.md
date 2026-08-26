@@ -62,7 +62,7 @@ Every command run SOLO:
 
 ### CI — green, and what it does not cover
 
-The branch was pushed on owner authority during close-out; before that, **no 6B commit had CI of any kind.** **Every CI run this branch has ever had concluded `success` on attempt 1** (runs 151 onward — confirm the newest yourself rather than trusting this line). CI runs `test:db` and `test:concurrency` from a cold database — twice per run, counting the upgrade leg — so the carry-forward above is corroborated by a machine that is not the build host.
+The branch was pushed on owner authority during close-out; before that, **no 6B commit had CI of any kind.** **Every CI run that reached project code concluded `success` on attempt 1** (runs 151 onward, both the `push` and `pull_request` events — confirm the newest yourself rather than trusting this line). **One run never reached project code and is named here rather than omitted:** run 158 (`pull_request`) failed at "Start local Postgres" after 62 s with every subsequent step skipped, while run 157 (`push`) at the same SHA passed all twenty steps minutes earlier. That is the shape of the ECR Public anonymous pull quota on shared runners — **consistent with it, not confirmed as it**, since reading the `toomanyrequests` line needs authentication. A run that never reached project code is not evidence about the tree in either direction. CI runs `test:db` and `test:concurrency` from a cold database — twice per run, counting the upgrade leg — so the carry-forward above is corroborated by a machine that is not the build host.
 
 **Two gaps, named here rather than left to be discovered:**
 
