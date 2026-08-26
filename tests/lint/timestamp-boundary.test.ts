@@ -66,6 +66,45 @@ describe('6B · a timestamp column never becomes String(Date)', () => {
     expect(BARE_TIMESTAMP_STRING.test('return String(r.rows[0].changed_at);')).toBe(true);
   });
 
+  // ==========================================================================
+  // ROUND 18 · F-4 (MODERATE) — THE CLASS IS DEFINED BY THE VALUE THAT REACHES
+  // THE SURFACE, NOT BY THE FUNCTION THAT PRODUCED IT.
+  //
+  // D15 finding 2 records this as "fixed at the class". It is not: the scanner
+  // matched only `String(…_at)`, and a template literal and a `+ ''` produce
+  // THE SAME STRING, character for character:
+  //
+  //   String(row.received_at)   → "Tue Aug 25 2026 …"   CAUGHT
+  //   `${row.received_at}`      → byte-identical        MISSED
+  //   row.received_at + ''      → byte-identical        MISSED
+  //
+  // These are not near-misses. All three give the same .slice(0, 10) →
+  // "Tue Aug 25" → §2.7 refusal → the same render throw that took all seven
+  // review legs red. Three interchangeable spellings; one was pinned.
+  //
+  // THE SCANNER'S HONEST BOUND IS UNCHANGED and is still the naming one: a
+  // query that aliases a moment to something else hides the type from it. What
+  // changes here is only that the three spellings of ONE coercion are one rule.
+  // ==========================================================================
+  it('ROUND-18 F-4: the two BYTE-IDENTICAL spellings are the same defect and are caught too', () => {
+    expect(BARE_TIMESTAMP_STRING.test('received_at: `${row.received_at}`,')).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test('received_at: row.received_at + \'\',')).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test('decided_at: `${r.rows[0].decided_at}`,')).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test('changed_at: row.changed_at + "",')).toBe(true);
+  });
+
+  it('ROUND-18 F-4: and the widening does not swallow the sanctioned or the non-temporal', () => {
+    // The whole risk of an alternation is that it stops discriminating. A
+    // template literal is the ordinary way to build a string in this codebase,
+    // so these four must stay quiet or the rule is unusable.
+    expect(BARE_TIMESTAMP_STRING.test('const key = `circle/${circleId}/arrival/${id}`;')).toBe(
+      false,
+    );
+    expect(BARE_TIMESTAMP_STRING.test('received_at: `${isoText(row.received_at)}`,')).toBe(false);
+    expect(BARE_TIMESTAMP_STRING.test('status: `${row.status}`,')).toBe(false);
+    expect(BARE_TIMESTAMP_STRING.test('msg: `arrival ${id} at ${when}`,')).toBe(false);
+  });
+
   it('the scanner leaves the sanctioned forms alone (negative control)', () => {
     expect(BARE_TIMESTAMP_STRING.test('received_at: isoText(row.received_at),')).toBe(false);
     expect(BARE_TIMESTAMP_STRING.test('accepted_at: row.accepted_at.toISOString(),')).toBe(false);
