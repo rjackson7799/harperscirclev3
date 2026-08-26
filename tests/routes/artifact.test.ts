@@ -554,24 +554,27 @@ describe('6B close-out F6 · every await in the route is inside ONE answer budge
     session.liveSessionClaims.mockImplementationOnce(NEVER);
     const res = await answerWithin(get());
     expect(res).not.toBe('HUNG');
-    // No claims is already this route's 404 — a session it could not read in
-    // time is a session it does not have.
-    expect((res as Response).status).toBe(404);
+    // ROUND-18 F-1: it is NOT the 404 any more. A session the route could not
+    // READ in time is not a session that does not exist, and the difference is
+    // the only thing the caller needs: whether to try again.
+    expect((res as Response).status).toBe(504);
     expect(artifacts.readableArtifact).not.toHaveBeenCalled();
   });
 
-  it('a stalled RLS read is bounded — and keeps the ONE 404 shape (404 ≡ 403)', async () => {
+  it('a stalled RLS read is bounded — and is a TIMEOUT, not the absence 404 (round-18 F-1)', async () => {
     artifacts.readableArtifact.mockImplementationOnce(NEVER);
     const res = await answerWithin(get());
     expect(res).not.toBe('HUNG');
-    expect((res as Response).status).toBe(404);
+    expect((res as Response).status).toBe(504);
+    expect(await (res as Response).json()).toEqual({ error: 'read_timeout' });
   });
 
   it('a stalled MANIFEST read is bounded — the page path answers, it does not spin', async () => {
     artifacts.readableRendition.mockImplementationOnce(NEVER);
     const res = await answerWithin(getPage('1'));
     expect(res).not.toBe('HUNG');
-    expect((res as Response).status).toBe(404);
+    expect((res as Response).status).toBe(504);
+    expect(await (res as Response).json()).toEqual({ error: 'read_timeout' });
   });
 
   it('a stalled access-log write is bounded — evidence before bytes, and NO bytes move', async () => {
@@ -605,12 +608,19 @@ describe('6B close-out F6 · every await in the route is inside ONE answer budge
     expect((res as Response).status).toBe(404);
   });
 
-  it('a stalled signed-URL hop on the MACHINE-READ sibling keeps the ONE 404 — it is not manifest-promised', async () => {
+  it('a stalled signed-URL hop on the MACHINE-READ sibling is a TIMEOUT — the screen must not say "not stored" (round-18 F-1)', async () => {
     artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
     createSignedUrl.mockImplementationOnce(NEVER);
     const res = await answerWithin(getText('1'));
     expect(res).not.toBe('HUNG');
-    expect((res as Response).status).toBe(404);
+    // The sibling is not manifest-promised, so its ABSENCE is rightly the ONE
+    // 404 — and the screen renders that as "No machine-read text is stored for
+    // this page." A STALL is a different fact and must not borrow that
+    // sentence: MachineReadText maps 404 → 'absent' and every other non-ok →
+    // 'failed', which says "couldn't be loaded right now". F-1's harm is
+    // exactly the sentence, so the fix is exactly here.
+    expect((res as Response).status).toBe(504);
+    expect(await (res as Response).json()).toEqual({ error: 'storage_timeout', page: 1 });
   });
 
   it('FOUR awaits each answering inside its own bound STILL answer within the shared budget', async () => {
@@ -632,9 +642,57 @@ describe('6B close-out F6 · every await in the route is inside ONE answer budge
     expect(res).not.toBe('HUNG');
     // The budget lands mid-flight in the SECOND await — the manifest read,
     // which started at 9 s and would have returned at 18 s — so the answer is
-    // that read's named state, the ONE 404. Which await gets cut is incidental;
-    // that the route answers at all by 20 s is the whole finding.
-    expect((res as Response).status).toBe(404);
+    // that read's named state, which since round-18 F-1 is the timeout rather
+    // than the absence 404. Which await gets cut is incidental; that the route
+    // answers at all by 20 s is the whole finding.
+    expect((res as Response).status).toBe(504);
+  });
+
+  it('an overrun says READ_TIMEOUT wherever it happens — one name for one fact', async () => {
+    // The three DB/session reads gate every path, so their overrun has to
+    // carry one name rather than three shapes decided by which URL was asked.
+    for (const stall of [
+      () => session.liveSessionClaims.mockImplementationOnce(NEVER),
+      () => artifacts.readableArtifact.mockImplementationOnce(NEVER),
+    ]) {
+      vi.resetAllMocks();
+      session.liveSessionClaims.mockResolvedValue(CLAIMS);
+      artifacts.readableArtifact.mockResolvedValue(ROW);
+      artifacts.logArtifactRead.mockResolvedValue(undefined);
+      stall();
+      const res = await answerWithin(get());
+      expect(res).not.toBe('HUNG');
+      expect((res as Response).status).toBe(504);
+      expect(await (res as Response).json()).toEqual({ error: 'read_timeout' });
+      expect((res as Response).headers.get('cache-control')).toBe('private, no-store');
+    }
+  });
+
+  it('THE NO-ORACLE CONTROL: the timeout is decided by the CLOCK, so it cannot answer "does this exist?"', async () => {
+    // §1.3's 404 ≡ 403 exists so a caller learns nothing from the shape of a
+    // refusal. A timeout is not an authorization answer, and this pins that it
+    // never becomes one: the row that EXISTS and the row that does NOT answer
+    // byte-identically once the read overruns, because the read never
+    // completed and the route has nothing to be an oracle WITH.
+    const seen: string[] = [];
+    for (const row of [ROW, null]) {
+      vi.resetAllMocks();
+      session.liveSessionClaims.mockResolvedValue(CLAIMS);
+      artifacts.readableArtifact.mockImplementation(
+        () => new Promise(() => {}) as unknown as Promise<typeof row>,
+      );
+      const res = (await answerWithin(get())) as Response;
+      seen.push(`${res.status} ${await res.text()}`);
+    }
+    expect(seen[0]).toBe(seen[1]);
+  });
+
+  it('and ABSENCE still keeps the ONE 404 — the fix separates two facts, it does not merge them', async () => {
+    vi.resetAllMocks();
+    session.liveSessionClaims.mockResolvedValue(CLAIMS);
+    artifacts.readableArtifact.mockResolvedValue(null);
+    const res = await route.GET(get(), ctx);
+    expect(res.status).toBe(404);
   });
 
   it('a healthy request leaves NO timer behind — on the main byte path too', async () => {
