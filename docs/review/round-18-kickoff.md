@@ -136,12 +136,11 @@ THE TASK — the round-18 review leg, the ADR-0006 / round-8 cadence:
      is not evidence about the tree, in either direction.**
      **Re-confirm CI yourself on whatever head you review**, public
      API, anonymous — `gh` is **UNAUTHENTICATED**, never device-flow;
-     **pending never counts as green**. Two API facts that
-     will cost you time otherwise: a `toomanyrequests` failure at "Start
-     local Postgres" is the **ECR Public anonymous quota** on the
-     runners, never a repo defect; and **artifact and log downloads 401**
-     — you can read per-step conclusions and durations, you can NEVER
-     read suite tallies out of CI, so do not quote one as if you had.
+     **pending never counts as green**. One more API limit, worth
+     knowing before you go looking for evidence that is not there:
+     **artifact and log downloads require authentication** — you can
+     read per-step conclusions and durations, you can **NEVER** read
+     suite tallies out of CI, so do not quote one as if you had.
   3. Review the increment on its own terms. **The three places to attack
      hardest**, all named by the build rather than discovered late:
        · **F6's request budget** (`lib/http/budget.ts`, D20). Nine calls
