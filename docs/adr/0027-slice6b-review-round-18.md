@@ -1022,13 +1022,20 @@ was provisioned whose verification click left `email_verified_at` null.
   run began at 22:11:20, **after** `r2` had finished.
 - **The 882 MB `.next/` contaminant is CLEARED.** It was deleted, `r2`
   started clean, and `r2` still failed.
-- **D1 is NOT exonerated — its discriminator returned POSITIVE.** This section
-  said that if `r2` showed connection-shaped failures under load, then
+- **D1's discriminator returned NEGATIVE for the 504, on a checked mechanism.**
+  This section said that if `r2` showed connection-shaped failures under load,
   `connectionTimeoutMillis: 5000` was the first thing to suspect. Leg 35's 401
-  is not connection-shaped and does not implicate it. **Leg 38's 504
-  `read_timeout` is a stall under twenty minutes of accumulated load, and it
-  does.** Whether the stall's root is D1's pool bounds or the route's own
-  budget is **not yet established**, and it is the first question of round 19.
+  is not connection-shaped. **And leg 38's 504 is the route's OWN answer budget
+  — `ROUTE_ANSWER_BUDGET_MS = 15_000` — being spent, not D1's
+  `POOL_CONNECT_TIMEOUT_MS = 5_000`**: different timeout, different magnitude,
+  and a connect rejection throws rather than stalls. D1 stays live in exactly
+  one place — the **500 `unavailable`** on the `text=1` path, which is where a
+  connect rejection would surface. Round 19 owes that.
+- **Leg 38's stall is RECURRING, and F6 renamed it rather than removed it.**
+  `lib/http/budget.ts`'s header records the same leg failing in gate runs `r6`
+  and `r7` (`404 GET 17552ms`, text path never answered). This round's fix made
+  the stall honest — a named 504 instead of a 404 that lies about absence — and
+  that is a real improvement. **The stall itself survived it.**
 - **D13 is SETTLED — and more strongly than a trace sample could settle it.**
   The `if (factCount > 1)` guard in A11Y-07 **does** run: `matchItem` returns
   an item only at `bestScore >= 2`, `extractionAnswer` filters labels by that

@@ -60,12 +60,35 @@ instrument that could have caught this**, which is the argument for owing one.
 **This is a product failure.** It is not to be re-run to green. No third run
 can turn this head green.
 
-**Open question, and it is the first question of this round.** ADR-0027 D19
-named `connectionTimeoutMillis: 5000` (D1) as the change whose failure mode is
-load-dependent, and said that if `r2` showed connection-shaped failures under
-load, D1 was the first thing to suspect. **It did.** Whether the stall's root
-is D1's pool bounds or the route's own read budget is **not established** —
-both are live, and the discriminator has not been run. Do not assume either.
+**AND IT IS RECURRING — `r2` is not the first gate run leg 38 has failed this
+way.** `lib/http/budget.ts`'s own header records the same leg failing in gate
+runs `r6` and `r7`:
+
+```
+404  GET  17552ms  /api/artifact/b4cf239a…?page=1
+-1   GET       -1  /api/artifact/b4cf239a…?page=1&text=1   NEVER ANSWERED
+```
+
+Round 18's F6 fix (ADR-0026 D20) **bounded and named** that stall, which is why
+`r2` reports an honest `504 read_timeout` at the 15 s budget instead of a
+17.5 s `404` that lies about absence. **The fix corrected the REPORTING of the
+stall; it did not remove the stall**, and leg 38 still fails. That — not the
+504 itself — is the finding.
+
+**The 504's mechanism IS established, and it is not D1.** The 504 is the
+route's own answer budget being spent — `ROUTE_ANSWER_BUDGET_MS = 15_000` in
+`lib/http/budget.ts`. D1's `POOL_CONNECT_TIMEOUT_MS = 5_000` is a different
+timeout at a different magnitude, and a connect rejection *throws* rather than
+stalls, so it is **not** what produced the 504. ADR-0027 D19's suspicion of D1
+is therefore **not** confirmed by leg 38, and this document's first reading of
+it — that the discriminator had "returned positive" — **is corrected here.**
+
+**What remains open is narrower, and better localised.** `budget.ts` already
+names where the stall lives: *"the DB reads and the signed-URL hop"*. Round 19
+owes (a) what makes that path exceed 15 s under gate load when the whole leg
+costs 45.8 s in isolation, and (b) whether the **500 `unavailable`** on the
+`text=1` path is D1's 5 s connect rejection surfacing through the route's
+catch — which is the one place D1 is still live.
 
 ---
 
