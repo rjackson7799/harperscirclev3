@@ -706,6 +706,25 @@ describe('6B close-out F6 · every await in the route is inside ONE answer budge
     expect(res.status).toBe(404);
   });
 
+  it('ROUND-18 F-3: the access-log write is handed the budget’s own abandonment signal', async () => {
+    // The route cannot cancel the write — AnswerBudget deliberately does not
+    // cancel the work it races — so the only way the trail can decline to
+    // commit is if it is TOLD the caller has gone. Both call paths hand it the
+    // same signal, and it is live before the budget fires.
+    await route.GET(get(), ctx);
+    const [, signal] = artifacts.logArtifactRead.mock.calls[0];
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect((signal as AbortSignal).aborted).toBe(false);
+  });
+
+  it('ROUND-18 F-3: and that signal has FIRED by the time the budget refuses the read', async () => {
+    artifacts.logArtifactRead.mockImplementationOnce(NEVER);
+    const res = await answerWithin(get());
+    expect((res as Response).status).toBe(500);
+    const [, signal] = artifacts.logArtifactRead.mock.calls[0];
+    expect((signal as AbortSignal).aborted).toBe(true);
+  });
+
   it('a healthy request leaves NO timer behind — on the main byte path too', async () => {
     const res = await route.GET(get(), ctx);
     expect(res.status).toBe(200);

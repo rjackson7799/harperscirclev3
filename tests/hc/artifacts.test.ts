@@ -232,3 +232,68 @@ describe('5B B8 · the definer re-proves authorization in-function', () => {
     ).rejects.toThrow(/artifact_refused/);
   });
 });
+
+// ============================================================================
+// ROUND 18 · F-3 (MODERATE) — EVIDENCE BEFORE BYTES, INVERTED.
+//
+// The artifact route races the access-log write and, on overrun, returns
+// 500 unavailable and REFUSES the read. That half is right. But AnswerBudget
+// deliberately does not CANCEL the work it races (D20 says so), and
+// withRequestRole runs on to `await client.query('commit')` regardless of who
+// is still listening. So the artifact_read row LANDS after the route has
+// already refused, and §10.5's trail records a read that never happened.
+//
+// Evidence-before-bytes is designed so no bytes move without a trail. The
+// inverse is what this closes: a trail entry for bytes that never moved. In an
+// evidentiary context that is a false positive in an access log — a record
+// asserting a member viewed a document they were served a 500 for. If a family
+// or a coordinator is ever shown who has read a document, they are shown
+// something untrue.
+//
+// The route's own justification does not reach it: it argues about a write
+// that could not be CONFIRMED, and this is a write that SUCCEEDED UNOBSERVED.
+// Those are different facts.
+//
+// THE RESIDUE, RECORDED RATHER THAN CLAIMED AWAY. The check sits between the
+// insert and the commit, so a budget that expires inside the commit round-trip
+// still lands a row. That window is one round-trip wide instead of the whole
+// remaining query, and closing it entirely needs two-phase commit. It is
+// narrowed, not eliminated, and this comment is the honest statement of it.
+// ============================================================================
+describe('Round-18 F-3 · a read the route REFUSED leaves no trail claiming it happened', () => {
+  async function entries(): Promise<number> {
+    const r = await raw.query(
+      `select count(*)::int as n from public.access_log
+        where circle_id = $1 and event_type = 'artifact_read'`,
+      [circleId],
+    );
+    return r.rows[0].n;
+  }
+
+  it('a write whose caller has already given up does NOT commit', async () => {
+    const before = await entries();
+    await expect(
+      artifacts.logArtifactRead(
+        { claims: founderClaims, arrivalId: cleanArrival },
+        AbortSignal.abort(),
+      ),
+    ).rejects.toThrow(/abandoned/i);
+    expect(await entries()).toBe(before);
+  });
+
+  it('CONTROL: a signal that has NOT fired still writes the entry', async () => {
+    const before = await entries();
+    const live = new AbortController();
+    await artifacts.logArtifactRead(
+      { claims: founderClaims, arrivalId: cleanArrival },
+      live.signal,
+    );
+    expect(await entries()).toBe(before + 1);
+  });
+
+  it('CONTROL: no signal at all is unchanged — the trail is the default, not the exception', async () => {
+    const before = await entries();
+    await artifacts.logArtifactRead({ claims: founderClaims, arrivalId: cleanArrival });
+    expect(await entries()).toBe(before + 1);
+  });
+});
