@@ -1,8 +1,12 @@
 # ADR-0027 — round-18 dispositions: slice 6B, the Care Inbox app increment
 
-**Status:** **proposed** — the dispositions record for round 18. The owner
-ratifies at sign-off, which is its own session, and the merge is its own
-session after that.
+**Status:** **proposed — BLOCKED at sign-off.** The dispositions record for
+round 18. The owner ratifies at sign-off, which is its own session, and the
+merge is its own session after that. **Sign-off was attempted on 2026-08-26
+and did not proceed: the 38-leg browser gate at `4f242f5` came back RED
+(`3 failed, 35 passed`), with leg 38 failing inside this round's own
+`read_timeout` path. Nothing in this ADR is ratified.** See D19 and
+`docs/review/round-19-findings.md`.
 
 **Deciders:** the round-18 dispositions session (owner ratifies at sign-off).
 
@@ -889,7 +893,7 @@ last exit code).
 | targeted: A11Y-08 by title, against the OLD copy | **1 FAILED** — *unexpected value "Machine-read text — may contain errors"* |
 | targeted: A11Y-08 by title, against the aligned copy | **1 passed (45.8 s)** — a TARGETED run, never a gate result |
 | `db:reset` / `test:db` / `test:concurrency` | **NOT re-run, on a stated reason** — see below |
-| **browser gate (38 legs)** | **NOT ESTABLISHED — see below. This is the round's one open evidence item.** |
+| **browser gate (38 legs)** | **RED at this head — `3 failed, 35 passed (21.6m)`, run `r2`. See below.** |
 
 **`test:db` and `test:concurrency` are not re-run, and the reason is checked
 rather than asserted.** `git diff --name-only bc3bc85..HEAD` still touches
@@ -899,7 +903,7 @@ and `node:crypto` and drives SQL directly, never through `lib/hc`; pgTAP is
 pure SQL. **Neither suite can observe a JavaScript change**, and every change
 this round made is JavaScript, TypeScript, YAML or Markdown.
 
-### The browser gate: attempted, INTERRUPTED, and recorded as interrupted
+### The browser gate, run `r1`: attempted, INTERRUPTED, recorded as interrupted
 
 This round changed `app/`, `lib/`, `components/` and `e2e/`, so the branch's
 38-leg gate must be re-established at the new head. **It was attempted and it
@@ -951,18 +955,105 @@ any DB connect — but it is the one change this round made whose failure mode i
 load-dependent, and it is written down here so the next session tests it rather
 than rediscovers it.
 
-**WHAT IS OWED BEFORE SIGN-OFF, stated as a condition rather than a hope:**
+### Run `r2` — TAKEN at `4f242f5`, and RED
 
-> **A full 38-leg browser gate at the final head, on a host with enough free
-> memory to run one.** Until that exists, this round's product evidence is
-> vitest, lint, typecheck and build — which are real and are all green — plus
-> one targeted leg driven both ways. **The 38-leg gate is NOT green, NOT red,
-> and NOT pending-as-green. It has not been taken.**
+The gate was re-run at the final head with `.next/` deleted, on a host with
+**1004 MB free of 7931** (`r1` died at 148 MB). It ran to completion, single
+worker, and reported its own tally:
 
-**Two consecutive failed gate runs at one SHA would make the gate RED at that
-SHA** (flake policy), and this is **not** one of those two: an interrupted run
-is not a gate result. It is recorded as interrupted, with its mechanism named,
-which is the condition the flake policy attaches to stopping a run at all.
+```
+  3 failed
+  35 passed (21.6m)
+```
+
+**The condition this section set has been met, and the answer is RED.** The
+gate at `4f242f5` is no longer "not taken": it was taken, it produced a
+tally, and three legs failed.
+
+Artifacts are preserved **outside the repo**, at
+`…/scratchpad/gate-r2-failures-preserved/` — all three `error-context.md`,
+the screenshots, the `trace.zip`s, and the verbatim run log. That mattered: a
+peer session started its own Playwright run at **22:11:20**, ~70 seconds after
+the copy completed, and `test-results/` is wiped at the start of every run.
+**The preserved set is the only surviving record of this gate.**
+
+| Leg | Title | Classification |
+|---|---|---|
+| **38** | A11Y-08 — machine-read text (OCR-01) | **PRODUCT — this round's own new code** |
+| **35** | REV-02 — stale version under an open screen | instrument: session lifetime, via a product route |
+| **36** | AC-INBOX-8 — the below-cliff member | cascade of leg 35, not independent |
+
+**Leg 38 is a product failure and is NOT to be re-run to green.** From its
+preserved trace, with the response bodies read out of `resources/`:
+
+```
+504 GET /api/artifact/{id}?page=1         → {"error":"read_timeout"}
+500 GET /api/artifact/{id}?page=1&text=1  → unavailable
+```
+
+`read_timeout` is **the 504 this round introduced** — `app/api/artifact/[id]/route.ts`,
+the D18 signal that "a stall is no longer rendered as an absence". It fired
+under gate load; the machine-read-text path then returned 500; so
+`.review-machine-text` never rendered, which is precisely the element the leg
+reported as not found. The targeted A11Y-08 run passed at 45.8 s because
+nothing else was loading that route — **the full gate is the only instrument
+that could have caught this, which is the whole argument for owing one.**
+
+**Leg 35 never reached its REV-02 assertions.** It failed inside the shared
+upload fixture. The founder's browser context spans legs 32–35, and its four
+`POST /api/upload/token` calls read **200, 200, 200, 401**: the session went
+bad roughly six minutes after provisioning. `jwt_expiry = 3600` rules out
+plain expiry; refresh-token rotation with `refresh_token_reuse_interval = 10`
+is the leading candidate. **A 401 is not connection-shaped.**
+
+**Leg 36 is leg 35's wake, not an independent failure.** Its trace contains
+**zero** non-2xx responses. Playwright restarts the worker after a failure,
+which re-evaluates the module-level `stamp = Date.now()`, so a *fresh* founder
+was provisioned whose verification click left `email_verified_at` null.
+
+### What `r2` settles, and what it overturns
+
+- **Peer contamination during `r2`: RULED OUT, by evidence rather than by
+  assumption.** The Mailpit timeline across the run is strictly sequential —
+  a11y 21:48 → extract 21:50 → ingest 21:51 → onboarding 21:53 → review
+  21:54 — with no foreign traffic interleaved anywhere. The three
+  `review.founder.*` addresses are the one initial provision plus the two
+  worker restarts, and the third matches leg 38's own page snapshot. The peer
+  run began at 22:11:20, **after** `r2` had finished.
+- **The 882 MB `.next/` contaminant is CLEARED.** It was deleted, `r2`
+  started clean, and `r2` still failed.
+- **D1 is NOT exonerated — its discriminator returned POSITIVE.** This section
+  said that if `r2` showed connection-shaped failures under load, then
+  `connectionTimeoutMillis: 5000` was the first thing to suspect. Leg 35's 401
+  is not connection-shaped and does not implicate it. **Leg 38's 504
+  `read_timeout` is a stall under twenty minutes of accumulated load, and it
+  does.** Whether the stall's root is D1's pool bounds or the route's own
+  budget is **not yet established**, and it is the first question of round 19.
+- **D13 is SETTLED — and more strongly than a trace sample could settle it.**
+  The `if (factCount > 1)` guard in A11Y-07 **does** run: `matchItem` returns
+  an item only at `bestScore >= 2`, `extractionAnswer` filters labels by that
+  same predicate, and `dev-discharge-01` carries **10** labels — so a matched
+  fixture yields ≥ 2 facts *by construction*, and the page maps them 1:1 onto
+  `button.review-fact`. The leg's headline claim **is** exercised today.
+  **The defect is latent, not active.** It stays queued (D17 item 6) on that
+  corrected basis: the assertion is still conditional, and a future fixture
+  change could still silence it without failing.
+
+**WHAT IS OWED BEFORE SIGN-OFF, restated now that the gate has been taken:**
+
+> **A full 38-leg browser gate at the final head, GREEN.** That gate has now
+> been taken at `4f242f5` and it is **RED — `3 failed, 35 passed`**. This
+> round's other product evidence — vitest, lint, typecheck, build — remains
+> real and green, and **does not substitute for the gate**. **Sign-off does
+> not proceed on this head, and ADR-0027 stays `proposed`.**
+
+**The flake policy's two-run rule does not rescue this.** That rule makes a
+gate RED after two consecutive failed runs at one SHA; it has never made a
+single failed run green. `r1` was interrupted and counts in neither
+direction. **Leg 38 is a product failure, and a product failure is never
+re-run to green** — so no third run can turn this head green. The defect has
+to be fixed. Round 19 is opened for it:
+`docs/review/round-19-findings.md`.
 
 ---
 
@@ -985,12 +1076,14 @@ which is the condition the flake policy attaches to stopping a run at all.
    the next slice. It is the only owed item that may need DDL, and this round
    deliberately did not ask.
 
-7. **Note that the 38-leg browser gate is OWED, not taken** (D19). This round
-   changed application code, so the branch's gate must be re-established at the
-   final head before sign-off. It was attempted, it was interrupted by a
-   diagnosed host-resource failure with no leg failing on a product assertion,
-   and it is recorded as interrupted rather than counted in either direction.
-   **Pending never counts as green.**
+7. **The 38-leg browser gate has been TAKEN at `4f242f5`, and it is RED**
+   (D19): `3 failed, 35 passed (21.6m)`. Run `r1` was interrupted and counts
+   in neither direction; run `r2` ran to completion and reported a tally.
+   **Leg 38 (A11Y-08) failed inside this round's own new `read_timeout` path,
+   which makes it a product failure — and a product failure is never re-run to
+   green.** There is therefore **nothing to ratify at this head**: decisions
+   1–6 above stand as drafted, but none of them can be ratified until the gate
+   is green. **Pending never counts as green, and neither does red.**
 
 **⏸ THE GATE.** Dispositions ADR → **owner sign-off** → merge (**a MERGE
 COMMIT, never a squash**, ADR-0006) are each their own fresh session. **The
