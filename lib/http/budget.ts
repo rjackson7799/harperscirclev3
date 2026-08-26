@@ -13,6 +13,56 @@
  * upstream of the bound, and the 17.5 s 404 (a path that returns before any
  * fetch is issued) says where: the DB reads and the signed-URL hop.
  *
+ * ── ROUND-19 F-1: THAT LAST SENTENCE IS WRONG, AND BEING WRONG IS WHY THE
+ *    STALL SURVIVED THE FIX THAT "BOUNDED AND NAMED" IT. ──────────────────
+ *
+ * Gate run r2 failed leg 38 the same way again, and logged:
+ *
+ *     artifact: readableArtifact: the route's 15000 ms answer budget was spent
+ *     artifact: access-log write failed: logArtifactRead: ... budget was spent
+ *
+ * Those names were read as WHERE THE TIME WENT. They are not. This budget is
+ * SHARED and spent down across the request, so the name an overrun carries is
+ * whichever call was racing when the timer fired — a route that spends 14.9 s
+ * in hop one and 12 ms in hop two blames HOP TWO. The paragraph above made
+ * that mistake first, and ADR-0027 D19 and the round-19 findings inherited it.
+ *
+ * Round 19 MEASURED the accused hops against the live stack:
+ *
+ *     readableArtifact / readableRendition / logArtifactRead (rollback-only)
+ *         15-30 ms at rest; 239 ms WORST at fifty concurrent; zero errors;
+ *         connection acquire p50 0.0 ms — so D1's 5 s connect bound is not
+ *         live here either, and the 500 on the text path was this budget
+ *         overrunning logArtifactRead, never a connect rejection.
+ *     GET /auth/v1/user through Kong (what liveSessionClaims does, twice)
+ *         96-121 ms at rest; 532 ms p50 at twenty-five concurrent; 669 ms p50
+ *         under FULL eight-core saturation.
+ *
+ * Nothing there is fifteen seconds, and full CPU saturation moves them by
+ * 5-13x when the stall needs ~150x. The time is not being spent in the stack.
+ *
+ * WHERE IT ACTUALLY GOES. The §6.3 render pass and the §6.9 OCR pass run
+ * INLINE in app/api/worker/[stage] — the same Node process that serves the
+ * family's screens — and `@napi-rs/canvas` raster + PNG encode is a
+ * SYNCHRONOUS NATIVE CALL. Measured on this host, one fixture page:
+ *
+ *     render every page @2576 + encode   work=576ms  timer ticks during: 1
+ *     2576² raster + encode x10          work=3428ms timer ticks during: 0
+ *
+ * 99-100% of that duration, NOTHING ELSE IN THE PROCESS RUNS. Not a pg
+ * callback, not a fetch callback — AND NOT THIS BUDGET'S OWN setTimeout. That
+ * is why r2's leg-38 504 took 19.5 s against a 15 s budget: the guarantee is
+ * implemented as a timer inside the very process that gets frozen.
+ *
+ * So this file now does the two things it could not do before: it carries the
+ * LEDGER, so an overrun says where the time went rather than who was unlucky;
+ * and it reports its own LATENESS, because a timer cannot be seconds late
+ * because a socket was slow — only because nothing in this process ran.
+ *
+ * WHAT THIS STILL DOES NOT DO, stated rather than claimed away: it does not
+ * stop the blocking. Moving §6.3 render and §6.9 OCR off the request process
+ * is an architecture change, not a fix-session change, and it is OWED.
+ *
  * TWO THINGS F5 GOT WRONG, AND THIS FIXES BOTH.
  *
  * ONE — THE CLASS WAS NAMED TOO NARROWLY. It is not "unbounded fetch". It is
@@ -47,14 +97,57 @@
  */
 export const ROUTE_ANSWER_BUDGET_MS = 15_000;
 
+/**
+ * How late this budget's own timer may be before lateness stops being
+ * scheduler jitter and starts being evidence. A quarter of a second on a
+ * fifteen-second timer is not a busy event loop; it is a stopped one.
+ */
+export const STARVATION_FLOOR_MS = 250;
+
+/** What one raced call cost, and whether it ever finished. */
+export type HopCost = {
+  readonly what: string;
+  /** Wall time from the race starting to the race being decided. */
+  readonly ms: number;
+  /** False for the hop the budget caught mid-flight — it is still running. */
+  readonly finished: boolean;
+};
+
+function ledgerText(ledger: readonly HopCost[]): string {
+  return ledger
+    .map((h) => `${h.what} ${Math.round(h.ms)}ms${h.finished ? '' : ' (unfinished)'}`)
+    .join(', ');
+}
+
 /** Distinguishable at the call site, so each site can name its own state. */
 export class AnswerBudgetExceeded extends Error {
+  /** True when the budget's timer was itself starved — see STARVATION_FLOOR_MS. */
+  readonly starved: boolean;
+
   constructor(
     readonly what: string,
     readonly ms: number,
+    /**
+     * ROUND-19 F-1: every hop this request raced, in order, with its cost.
+     * `what` is only the LAST one, and reading it as the cause is the error
+     * that let this stall survive two rounds of being "named".
+     */
+    readonly ledger: readonly HopCost[] = [],
+    /** How late the timer fired. A socket cannot make a timer late; a frozen
+     *  event loop is the only thing that can. */
+    readonly lateMs: number = 0,
   ) {
-    super(`${what}: the route's ${ms} ms answer budget was spent`);
+    const starved = lateMs >= STARVATION_FLOOR_MS;
+    super(
+      `${what}: the route's ${ms} ms answer budget was spent` +
+        (ledger.length ? ` — ${ledgerText(ledger)}` : '') +
+        (starved
+          ? `; the budget's own timer fired ${Math.round(lateMs)} ms LATE, so this ` +
+            `process was BLOCKED rather than waiting — the time is not in these hops`
+          : ''),
+    );
     this.name = 'AnswerBudgetExceeded';
+    this.starved = starved;
   }
 }
 
@@ -87,6 +180,12 @@ export class AnswerBudget {
     return this.abandonment.signal;
   }
 
+  /** ROUND-19 F-1: what this request actually spent, hop by hop. */
+  private readonly spent: HopCost[] = [];
+  /** When the budget opened, so the timer can measure its OWN lateness. */
+  private readonly openedAt = Date.now();
+  private lateMs = 0;
+
   private constructor(ms: number) {
     this.ms = ms;
     let fire: (v: typeof SPENT) => void = () => {};
@@ -96,6 +195,16 @@ export class AnswerBudget {
     // RESOLVES, never rejects: a rejection nobody races is an unhandled
     // rejection, and this one is deliberately created before anyone races it.
     this.timer = setTimeout(() => {
+      // ROUND-19 F-1. A setTimeout fires late only when nothing in this
+      // process ran — the §6.3 render pass blocks the loop for 99-100% of its
+      // duration, and this timer is inside that same process. Capturing the
+      // lateness HERE is what lets an overrun distinguish "the hop was slow"
+      // from "the guarantee's own mechanism was frozen".
+      //
+      // ONE SAMPLE, and its limit is stated: it sees only blocking that
+      // overlaps the deadline. Blocking earlier in the window still shows up
+      // as inflated hop costs in the ledger, which is the other half.
+      this.lateMs = Math.max(0, Date.now() - this.openedAt - ms);
       this.abandonment.abort();
       fire(SPENT);
     }, ms);
@@ -117,10 +226,17 @@ export class AnswerBudget {
     // Once the race is decided the loser is nobody's business, but a rejection
     // with no handler is an unhandled rejection. Give it one.
     work.catch(() => {});
+    const started = Date.now();
     // `work` first: if both are already settled it wins, because work that is
     // finished should not be thrown away by a budget that expired alongside it.
     const winner = await Promise.race([work, this.expiry]);
-    if (winner === SPENT) throw new AnswerBudgetExceeded(what, this.ms);
+    // ROUND-19 F-1: recorded on BOTH outcomes. The hop the budget catches
+    // mid-flight is the one the old message named, and on its own it says
+    // nothing — its cost is meaningless without the hops that came before it.
+    this.spent.push({ what, ms: Date.now() - started, finished: winner !== SPENT });
+    if (winner === SPENT) {
+      throw new AnswerBudgetExceeded(what, this.ms, [...this.spent], this.lateMs);
+    }
     return winner as T;
   }
 
