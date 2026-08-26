@@ -130,7 +130,15 @@ type MachineTextResult =
 
 /**
  * §6.9's machine-read text, offered per page under its exact label
- * (A11Y-08; 6B B9). Fetched lazily THROUGH the artifact fence — the same
+ * (A11Y-08; 6B B9) — “machine-read — may contain errors”, character for
+ * character as PRD §4.2 (:1391) and TSD §6.9 (:2177, :2501) spell it, and as
+ * the slice-6 plan's B9 row requires “everywhere it appears”.
+ *
+ * ROUND-18 F-5: this used to read “Machine-read text — …”. The divergence
+ * survived a whole slice because the leg whose TITLE claims to pin the exact
+ * label asserted only the warning clause, so nothing ever compared the two.
+ *
+ * Fetched lazily THROUGH the artifact fence — the same
  * gated, evidence-logged route the page image rides — the first time a
  * person opens it. Poor confidence arrives as an EMPTY transcript and is
  * SAID; a source with no sibling (born-digital, email) says that instead.
@@ -164,7 +172,7 @@ function MachineReadText({ arrivalId, page }: { arrivalId: string; page: number 
         aria-expanded={expanded}
         onClick={toggle}
       >
-        Machine-read text — may contain errors
+        machine-read — may contain errors
       </button>
       {expanded && result ? (
         result.kind === 'loading' ? (
