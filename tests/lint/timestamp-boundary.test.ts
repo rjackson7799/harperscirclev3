@@ -27,10 +27,36 @@ const repo = path.resolve(__dirname, '../..');
 const TREES = ['lib/hc', 'lib/db'];
 const EXTENSIONS = new Set(['.ts']);
 
-// `String(<anything>_at)` / `String(<anything>_on)` — the bare coercion of a
-// column whose name says it is a moment. `isoText(row.received_at)` and
-// `row.x_at.toISOString()` are the sanctioned forms and do not match.
-const BARE_TIMESTAMP_STRING = /\bString\(\s*[A-Za-z_$][\w$.?[\]'"]*(?:_at|_on)\b/;
+// THE BARE COERCION OF A COLUMN WHOSE NAME SAYS IT IS A MOMENT — in all
+// THREE of its byte-identical spellings (round-18 F-4).
+//
+// `isoText(row.received_at)` and `row.x_at.toISOString()` are the sanctioned
+// forms and do not match. THE CLASS IS DEFINED BY THE VALUE THAT REACHES THE
+// SURFACE, not by the function that produced it, so all three of these are
+// one defect and are now one rule:
+//
+//   1. String(row.received_at)
+//   2. `${row.received_at}`   — an interpolation whose WHOLE expression is
+//                              the column. `${isoText(row.received_at)}` is not,
+//                              and neither is `circle/${id}/arrival/${x}`.
+//   3. row.received_at + ''  — concatenation with an empty string literal.
+//
+// All three produce the SAME STRING, character for character, so all three
+// give the same .slice(0, 10) → "Tue Aug 25" → §2.7 refusal → the same render
+// throw that took all seven review legs red at the close-out.
+//
+// Branch 2 is deliberately anchored to the WHOLE interpolation. A looser rule
+// that matched a temporal name anywhere inside a template would fire on every
+// log line and key builder in the DB layer, and a scanner nobody can leave on
+// is not a mechanism. Its negative control is as long as its positive one.
+const TEMPORAL = "[A-Za-z_$][\\w$.?[\\]'\\\"]*(?:_at|_on)";
+const BARE_TIMESTAMP_STRING = new RegExp(
+  [
+    "\\bString\\(\\s*" + TEMPORAL + "\\b",
+    "\\$\\{\\s*" + TEMPORAL + "\\s*\\}",
+    TEMPORAL + "\\s*\\+\\s*(?:''|\\\"\\\")",
+  ].join('|'),
+);
 
 // THE SCANNER'S HONEST BOUND: it reads the NAME. A query that aliases a
 // moment to something else (`select max(changed_at) as t`) hides the type
