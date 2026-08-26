@@ -76,13 +76,53 @@ function storageTimeout(page: number): Response {
 }
 
 /**
- * 6B close-out F6 (ADR-0026 D20): a budget overrun on a read whose EMPTY answer
- * is already this route's 404. Collapsing the two is the right shape here — a
- * session or a row this route could not read in time is one it does not have,
- * and the caller learns nothing either way, so the ONE 404 stays one 404.
+ * ROUND-18 F-1 (ADR-0027 D2): a read that did not answer in time is not a read
+ * that answered NOTHING, and the difference is the only thing the caller needs
+ * — WHETHER TO TRY AGAIN.
  *
+ * D20 collapsed an overrun on the session and row reads into this route's ONE
+ * 404, arguing that "the caller learns nothing either way". Under the systemic
+ * stall F-1 describes, that tells a member their documents are NOT FOUND during
+ * an availability incident — an outage rendered as data loss, to a family,
+ * about a record they cannot afford to believe is gone. This route's own
+ * standard already rejects it: D18 split storage_timeout (504) from
+ * rendition_page_missing (503) so the screen would never say "page 3 is
+ * missing" about a page that is not missing, and the comment above notFound()
+ * says THIS ROUTE DOES NOT GUESS.
+ *
+ * AND §1.3 DOES NOT REACH IT. 404 ≡ 403 exists so a refusal is not an oracle —
+ * no-session, nonexistent, unauthorized and not-clean are all AUTHORIZATION
+ * answers, and they must be indistinguishable. A timeout is not one. It is
+ * decided by the clock and not by the row, so it answers identically for a row
+ * that exists and a row that does not, and it cannot be an oracle at all. The
+ * route test pins that directly rather than asserting it.
+ */
+function readTimeout(): Response {
+  return Response.json(
+    { error: 'read_timeout' },
+    { status: 504, headers: { 'cache-control': 'private, no-store' } },
+  );
+}
+
+/** The overrun, distinguished from a real error and from an empty answer. */
+const OVERRAN = Symbol('answer budget overrun');
+
+/**
  * Anything that is NOT an overrun is a real error and is left to propagate
  * exactly as it did before: this bounds the wait, it does not swallow faults.
+ */
+function overrun(err: unknown): typeof OVERRAN {
+  if (!(err instanceof AnswerBudgetExceeded)) throw err;
+  console.error(`artifact: ${err.message}`);
+  return OVERRAN;
+}
+
+/**
+ * The MAIN BYTE PATH keeps its ONE 404 on a stalled signed-URL hop, and that
+ * is deliberate rather than an oversight of the above. D18 argued that path's
+ * shape explicitly, round 18 does not attack it, and it renders no sentence to
+ * anybody — a broken image is a broken image at either status. The paths that
+ * moved are the ones a person READS.
  */
 function noneOnOverrun(err: unknown): null {
   if (!(err instanceof AnswerBudgetExceeded)) throw err;
@@ -114,13 +154,15 @@ async function answer(req: Request, id: string, budget: AnswerBudget): Promise<R
   // this route does — so the first thing that can fail to answer.
   const claims = await budget
     .race(liveSessionClaims(supabase), 'liveSessionClaims')
-    .catch(noneOnOverrun);
+    .catch(overrun);
+  if (claims === OVERRAN) return readTimeout();
   if (!claims?.sub) return notFound();
 
   // Steps 1+2 — one RLS-true query; zero rows is the one shape.
   const artifact = await budget
     .race(readableArtifact(claims, id), 'readableArtifact')
-    .catch(noneOnOverrun);
+    .catch(overrun);
+  if (artifact === OVERRAN) return readTimeout();
   if (!artifact) return notFound();
 
   // Step 3 — the independent clean gate (AC-INBOX-15).
@@ -229,7 +271,8 @@ async function servePage(
 
   const rendition = await budget
     .race(readableRendition(claims, arrivalId), 'readableRendition')
-    .catch(noneOnOverrun);
+    .catch(overrun);
+  if (rendition === OVERRAN) return readTimeout();
   if (!rendition || pageNo > rendition.page_count) return notFound();
   const ext = rendition.page_exts[pageNo - 1] as PageExt | undefined;
   if (ext !== 'png' && ext !== 'jpg') return notFound();
@@ -259,7 +302,14 @@ async function servePage(
     // the manifest names a page storage does not hold — permanent, repairable,
     // 503. This means the hop did not answer in time — transient, retryable —
     // so it takes F5's named 504, one call earlier than F5 reached.
-    return wantText ? notFound() : storageTimeout(pageNo);
+    //
+    // ROUND-18 F-1: the SIBLING takes it too, and this is the line that
+    // changed. Its absence is rightly the ONE 404 and the screen renders that
+    // as "No machine-read text is stored for this page." A stall is a
+    // different fact and must not borrow that sentence — MachineReadText maps
+    // 404 to 'absent' and every other non-ok to 'failed', which says
+    // "couldn't be loaded right now." That sentence IS the finding.
+    return storageTimeout(pageNo);
   }
   const { data, error } = signed;
   if (error || !data?.signedUrl) {
@@ -273,10 +323,11 @@ async function servePage(
   try {
     upstream = await budget.race(fetchStorageWithin(data.signedUrl), 'storage read');
   } catch (err) {
-    // F5: the machine-read sibling is not manifest-promised, so its failure
-    // stays the ordinary 404 — one shape, as everywhere else on this route.
-    // The PAGE, which the manifest does promise, gets the named state.
-    if (wantText) return notFound();
+    // ROUND-18 F-1: the sibling is not manifest-promised, so its ABSENCE stays
+    // the ordinary 404 (below, where storage actually answers "not there").
+    // A read that never answered is not an absence, and telling a person their
+    // machine-read text is "not stored" because a socket stalled is the harm
+    // this finding is about. Both paths take the named, retryable state.
     console.error(
       `artifact: promoted page ${pageNo} of ${arrivalId}: ${(err as Error).message}`,
     );

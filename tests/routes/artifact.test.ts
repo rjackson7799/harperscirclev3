@@ -648,6 +648,17 @@ describe('6B close-out F6 · every await in the route is inside ONE answer budge
     expect((res as Response).status).toBe(504);
   });
 
+  it('a stalled storage READ on the machine-read sibling is a timeout too — the same sentence, the same fix', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    fetchMock.mockImplementationOnce(NEVER);
+    const res = await answerWithin(getText('1'));
+    expect(res).not.toBe('HUNG');
+    // The signed-URL hop and the byte read are the same fact to a person: the
+    // text did not arrive because a read stalled, NOT because none is stored.
+    expect((res as Response).status).toBe(504);
+    expect(await (res as Response).json()).toEqual({ error: 'storage_timeout', page: 1 });
+  });
+
   it('an overrun says READ_TIMEOUT wherever it happens — one name for one fact', async () => {
     // The three DB/session reads gate every path, so their overrun has to
     // carry one name rather than three shapes decided by which URL was asked.
