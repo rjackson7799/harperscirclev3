@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // fails, live).
 // ============================================================================
 
-const session = { liveSessionClaims: vi.fn() };
+const session = { liveSessionClaims: vi.fn(), readLiveSession: vi.fn() };
 vi.mock('@/lib/auth/session', () => session);
 vi.mock('@/lib/db/user', () => ({
   asUser: vi.fn(async () => ({}) as unknown),
@@ -44,6 +44,8 @@ vi.mock('@/lib/db/service-role', () => ({
 }));
 
 const CLAIMS = { sub: '33333333-0000-4000-8000-000000000003', role: 'authenticated' };
+/** ROUND-19 F-2: the gate has three outcomes now, and this is the live one. */
+const SIGNED_IN = { kind: 'signed-in', claims: CLAIMS };
 const ARRIVAL = '55555555-0000-4000-8000-000000000005';
 const ROW = {
   circle_id: '11111111-0000-4000-8000-000000000001',
@@ -72,6 +74,7 @@ const ctx = { params: Promise.resolve({ id: ARRIVAL }) };
 beforeEach(async () => {
   vi.resetAllMocks();
   session.liveSessionClaims.mockResolvedValue(CLAIMS);
+  session.readLiveSession.mockResolvedValue(SIGNED_IN);
   artifacts.readableArtifact.mockResolvedValue(ROW);
   artifacts.readableRendition.mockResolvedValue(null);
   artifacts.logArtifactRead.mockResolvedValue(undefined);
@@ -98,7 +101,7 @@ describe('B7 · one 404, byte-identical — 404 ≡ 403 (AC-PERM-2; RLS-10)', ()
     const bodies: string[] = [];
     const statuses: number[] = [];
 
-    session.liveSessionClaims.mockResolvedValueOnce(null);
+    session.readLiveSession.mockResolvedValueOnce({ kind: 'signed-out' });
     let res = await route.GET(get(), ctx);
     statuses.push(res.status);
     bodies.push(await res.text());
@@ -551,7 +554,7 @@ describe('6B close-out F6 · every await in the route is inside ONE answer budge
   afterEach(() => vi.useRealTimers());
 
   it('a stalled SESSION read is bounded — the route answers before it knows who is asking', async () => {
-    session.liveSessionClaims.mockImplementationOnce(NEVER);
+    session.readLiveSession.mockImplementationOnce(NEVER);
     const res = await answerWithin(get());
     expect(res).not.toBe('HUNG');
     // ROUND-18 F-1: it is NOT the 404 any more. A session the route could not
@@ -663,11 +666,11 @@ describe('6B close-out F6 · every await in the route is inside ONE answer budge
     // The three DB/session reads gate every path, so their overrun has to
     // carry one name rather than three shapes decided by which URL was asked.
     for (const stall of [
-      () => session.liveSessionClaims.mockImplementationOnce(NEVER),
+      () => session.readLiveSession.mockImplementationOnce(NEVER),
       () => artifacts.readableArtifact.mockImplementationOnce(NEVER),
     ]) {
       vi.resetAllMocks();
-      session.liveSessionClaims.mockResolvedValue(CLAIMS);
+      session.readLiveSession.mockResolvedValue(SIGNED_IN);
       artifacts.readableArtifact.mockResolvedValue(ROW);
       artifacts.logArtifactRead.mockResolvedValue(undefined);
       stall();
@@ -688,7 +691,7 @@ describe('6B close-out F6 · every await in the route is inside ONE answer budge
     const seen: string[] = [];
     for (const row of [ROW, null]) {
       vi.resetAllMocks();
-      session.liveSessionClaims.mockResolvedValue(CLAIMS);
+      session.readLiveSession.mockResolvedValue(SIGNED_IN);
       // The row IS configured on both passes — it simply arrives long after the
       // budget. That is what makes this a control rather than a tautology: the
       // route HAD a different answer available in each case and gave the same
@@ -704,10 +707,58 @@ describe('6B close-out F6 · every await in the route is inside ONE answer budge
 
   it('and ABSENCE still keeps the ONE 404 — the fix separates two facts, it does not merge them', async () => {
     vi.resetAllMocks();
-    session.liveSessionClaims.mockResolvedValue(CLAIMS);
+    session.readLiveSession.mockResolvedValue(SIGNED_IN);
     artifacts.readableArtifact.mockResolvedValue(null);
     const res = await route.GET(get(), ctx);
     expect(res.status).toBe(404);
+  });
+
+  // ==========================================================================
+  // ROUND-19 F-2 · the THIRD session outcome — a read that FAULTED rather than
+  // stalled. D2 bounded the wait and named the overrun, but a getUser() that
+  // fails FAST — a refused socket, a 502 from Kong, a 429 — never reached the
+  // budget at all: it returned null, and null was this route's ONE 404. So an
+  // auth-server incident told a family their documents were NOT FOUND, which
+  // is the exact harm D2 exists to prevent, arriving through the one door D2
+  // left open.
+  // ==========================================================================
+  it('a session read that FAULTED is 503 session_unavailable — not the ONE 404, not read_timeout', async () => {
+    vi.resetAllMocks();
+    session.readLiveSession.mockResolvedValue({
+      kind: 'unavailable',
+      why: 'AuthRetryableFetchError: fetch failed',
+    });
+    const res = await route.GET(get(), ctx);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'session_unavailable' });
+    expect(res.headers.get('retry-after')).toBe('5');
+    // Nothing downstream was touched: the route refuses exactly as early as it
+    // did when this was a 404.
+    expect(artifacts.readableArtifact).not.toHaveBeenCalled();
+  });
+
+  it('THE NO-ORACLE CONTROL for it: the fault is decided by the AUTH SERVER, never by the row', async () => {
+    // The same argument D2 made for the clock. A session read that faulted
+    // answers identically for a row that exists and one that does not, because
+    // the route refuses before it ever looks — so this status cannot become
+    // the oracle §1.3's 404 ≡ 403 exists to prevent.
+    const seen: string[] = [];
+    for (const row of [ROW, null]) {
+      vi.resetAllMocks();
+      session.readLiveSession.mockResolvedValue({ kind: 'unavailable', why: 'AuthApiError 502: bad gateway' });
+      artifacts.readableArtifact.mockResolvedValue(row);
+      const res = await route.GET(get(), ctx);
+      seen.push(`${res.status} ${await res.text()}`);
+    }
+    expect(seen[0]).toBe(seen[1]);
+  });
+
+  it('SIGNED-OUT is still the ONE 404 — the fix separates the fault, it does not soften the refusal', async () => {
+    vi.resetAllMocks();
+    session.readLiveSession.mockResolvedValue({ kind: 'signed-out' });
+    const res = await route.GET(get(), ctx);
+    expect(res.status).toBe(404);
+    expect(artifacts.readableArtifact).not.toHaveBeenCalled();
   });
 
   it('ROUND-18 F-3: the access-log write is handed the budget’s own abandonment signal', async () => {

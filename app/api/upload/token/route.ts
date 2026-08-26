@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { asUser } from '@/lib/db/user';
-import { liveSessionClaims } from '@/lib/auth/session';
+import { readLiveSession } from '@/lib/auth/session';
+import { sessionUnavailable } from '@/lib/http/session-unavailable';
 import { canIngestForSubject } from '@/lib/hc/upload';
 import { mintUploadGrant, uploadStagingKey } from '@/lib/storage/artifacts';
 
@@ -20,8 +21,18 @@ import { mintUploadGrant, uploadStagingKey } from '@/lib/storage/artifacts';
  */
 export async function POST(req: Request): Promise<Response> {
   const supabase = await asUser();
-  const claims = await liveSessionClaims(supabase);
-  if (!claims?.sub) return new Response('sign in first', { status: 401 });
+  // ROUND-19 F-2: three outcomes, not two. A session that could not be READ is
+  // not a session that does not exist — r2 refused this founder with `401 sign
+  // in first` 24.3 s after asking, about a session that had rendered a
+  // signed-in page six seconds earlier. The 401 stays exactly as strict for
+  // the answer it is actually for.
+  const read = await readLiveSession(supabase);
+  if (read.kind === 'unavailable') {
+    console.error(`upload/token: ${read.why}`);
+    return sessionUnavailable();
+  }
+  if (read.kind !== 'signed-in') return new Response('sign in first', { status: 401 });
+  const claims = read.claims;
 
   let subjectId: string;
   try {

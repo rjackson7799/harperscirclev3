@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // tests/hc/upload.test.ts; resume-under-interruption is the B9 browser leg.
 // ============================================================================
 
-const session = { liveSessionClaims: vi.fn() };
+const session = { liveSessionClaims: vi.fn(), readLiveSession: vi.fn() };
 vi.mock('@/lib/auth/session', () => session);
 vi.mock('@/lib/db/user', () => ({ asUser: vi.fn(async () => ({}) as unknown) }));
 
@@ -87,6 +87,7 @@ beforeEach(async () => {
   vi.resetAllMocks();
   afterCallbacks.length = 0;
   session.liveSessionClaims.mockResolvedValue(CLAIMS);
+  session.readLiveSession.mockResolvedValue({ kind: 'signed-in', claims: CLAIMS });
   upload.canIngestForSubject.mockResolvedValue({ circle_id: CIRCLE });
   upload.createUploadArrival.mockResolvedValue({ arrivalId: 'a-up-1' });
   storageIO.downloadObject.mockResolvedValue({
@@ -118,10 +119,38 @@ afterEach(() => {
 
 describe('B3 · the mint route — subject-scoped, right-to-ingest checked FIRST', () => {
   it('no live session ⇒ 401; nothing probed, nothing minted', async () => {
-    session.liveSessionClaims.mockResolvedValueOnce(null);
+    session.readLiveSession.mockResolvedValueOnce({ kind: 'signed-out' });
     const res = await tokenRoute.POST(post('/api/upload/token', { subject_id: SUBJECT }));
     expect(res.status).toBe(401);
     expect(upload.canIngestForSubject).not.toHaveBeenCalled();
+  });
+
+  // ==========================================================================
+  // ROUND-19 F-2. This is the leg-35 refusal, at its cause.
+  //
+  // r2's founder was told `401 sign in first` by THIS route, 24.3 s after it
+  // asked and six seconds after the same session rendered a signed-in page.
+  // The session was live; reading it failed. A 401 says the caller is not who
+  // they say they are, which is a statement about THEM, and it is false.
+  // ==========================================================================
+  it('the session could not be READ ⇒ 503 session_unavailable, NEVER 401', async () => {
+    session.readLiveSession.mockResolvedValueOnce({
+      kind: 'unavailable',
+      why: 'AuthRetryableFetchError: fetch failed',
+    });
+    const res = await tokenRoute.POST(post('/api/upload/token', { subject_id: SUBJECT }));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'session_unavailable' });
+    // Nothing is probed and nothing is minted: this refuses exactly as hard as
+    // the 401 did. What changes is the SENTENCE, not the authority.
+    expect(upload.canIngestForSubject).not.toHaveBeenCalled();
+  });
+
+  it('the unavailable answer is retryable and says so — a person is told to wait, not to sign in', async () => {
+    session.readLiveSession.mockResolvedValueOnce({ kind: 'unavailable', why: 'AuthApiError 502: bad gateway' });
+    const res = await tokenRoute.POST(post('/api/upload/token', { subject_id: SUBJECT }));
+    expect(res.headers.get('retry-after')).toBe('5');
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
   });
 
   it('nonexistent and unauthorized subjects answer ONE 404 shape (DEF-10), token never minted', async () => {
@@ -320,9 +349,23 @@ describe('B3 · the completion route — rights re-checked, target reconciled, b
   }
 
   it('no live session ⇒ 401', async () => {
-    session.liveSessionClaims.mockResolvedValueOnce(null);
+    session.readLiveSession.mockResolvedValueOnce({ kind: 'signed-out' });
     const res = await completeRoute.POST(post('/api/upload/complete', completeBody()));
     expect(res.status).toBe(401);
+  });
+
+  // F-2, the second half of the same flow: completion runs MINUTES after the
+  // mint, with the bytes already staged. Telling a person to sign in there
+  // loses an upload that actually succeeded.
+  it('the session could not be READ ⇒ 503 session_unavailable, NEVER 401', async () => {
+    session.readLiveSession.mockResolvedValueOnce({
+      kind: 'unavailable',
+      why: 'AuthRetryableFetchError: fetch failed',
+    });
+    const res = await completeRoute.POST(post('/api/upload/complete', completeBody()));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'session_unavailable' });
+    expect(upload.createUploadArrival).not.toHaveBeenCalled();
   });
 
   it('rights are RE-CHECKED at completion (a grant lowered mid-upload bites)', async () => {

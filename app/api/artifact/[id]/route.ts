@@ -1,5 +1,6 @@
 import { asUser } from '@/lib/db/user';
-import { liveSessionClaims } from '@/lib/auth/session';
+import { readLiveSession } from '@/lib/auth/session';
+import { sessionUnavailable } from '@/lib/http/session-unavailable';
 import { logArtifactRead, readableArtifact, readableRendition } from '@/lib/hc/artifacts';
 import { asServiceRole } from '@/lib/db/service-role';
 import { promotedPageKey, promotedPageTextKey, type PageExt } from '@/lib/pipeline/page-keys';
@@ -152,11 +153,25 @@ async function answer(req: Request, id: string, budget: AnswerBudget): Promise<R
   const supabase = await asUser();
   // Two auth-server round-trips (getUser, then getClaims), and the first thing
   // this route does — so the first thing that can fail to answer.
-  const claims = await budget
-    .race(liveSessionClaims(supabase), 'liveSessionClaims')
-    .catch(overrun);
-  if (claims === OVERRAN) return readTimeout();
-  if (!claims?.sub) return notFound();
+  const read = await budget.race(readLiveSession(supabase), 'readLiveSession').catch(overrun);
+  if (read === OVERRAN) return readTimeout();
+  // ROUND-19 F-2. D2 bounded this read and named the OVERRUN, and that is the
+  // whole of what it could name: a getUser() that fails FAST — a refused
+  // socket, a 502 from Kong, a 429 on token_refresh — never reaches the budget
+  // at all. It came back null, and null was the ONE 404. So an auth-server
+  // incident told a family their documents were NOT FOUND, which is the exact
+  // harm D2 exists to prevent, arriving through the one door D2 left open.
+  //
+  // It is no more an oracle than the timeout is: the fault is decided by the
+  // auth server's health and never by the row, so it answers identically for a
+  // row that exists and one that does not — the route refuses before it looks.
+  // The route test pins that with its own control rather than asserting it.
+  if (read.kind === 'unavailable') {
+    console.error(`artifact: the live session could not be READ — ${read.why}`);
+    return sessionUnavailable();
+  }
+  if (read.kind !== 'signed-in') return notFound();
+  const claims = read.claims;
 
   // Steps 1+2 — one RLS-true query; zero rows is the one shape.
   const artifact = await budget

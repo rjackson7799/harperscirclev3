@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { after } from 'next/server';
 import { asUser } from '@/lib/db/user';
-import { liveSessionClaims } from '@/lib/auth/session';
+import { readLiveSession } from '@/lib/auth/session';
+import { sessionUnavailable } from '@/lib/http/session-unavailable';
 import { canIngestForSubject, createUploadArrival } from '@/lib/hc/upload';
 import { enqueuePipeline } from '@/lib/hc/ingest';
 import {
@@ -33,8 +34,16 @@ const FILE_BYTES_MAX = 52428800;
  */
 export async function POST(req: Request): Promise<Response> {
   const supabase = await asUser();
-  const claims = await liveSessionClaims(supabase);
-  if (!claims?.sub) return new Response('sign in first', { status: 401 });
+  // ROUND-19 F-2. Completion runs after the bytes are already staged, so a
+  // false "sign in first" here throws away an upload that SUCCEEDED — the
+  // person is sent to a sign-in screen holding a document the server has.
+  const read = await readLiveSession(supabase);
+  if (read.kind === 'unavailable') {
+    console.error(`upload/complete: ${read.why}`);
+    return sessionUnavailable();
+  }
+  if (read.kind !== 'signed-in') return new Response('sign in first', { status: 401 });
+  const claims = read.claims;
 
   let subjectId: string;
   let token: string;
