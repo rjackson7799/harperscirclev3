@@ -57,6 +57,59 @@ export interface RequestRoleQuery {
 // dev and the walkthrough run with production's blast-radius shape.
 const LOCAL_DEFAULT = 'postgresql://hc_runtime_login:postgres@127.0.0.1:54342/postgres';
 
+/**
+ * THE CHANNEL’S TWO BOUNDS — round-18 F-1 (MAJOR), ADR-0027 D1.
+ *
+ * D20 bounded the artifact route at fifteen seconds and recorded the pool as
+ * a LIMITATION: "the budget protects THE PERSON, not the pool." It is the
+ * load-bearing half. A raced-out read keeps running and holds its connection;
+ * this pool is process-wide and shared by every lib/hc wrapper — the inbox
+ * list, the review screen, the decide route, senders, invites, throttle,
+ * upload, step-up; and exactly ONE route in the repo has an answer budget. So
+ * the hardened route stayed responsive by spending the resource every other
+ * family surface blocks on, and `connect()` had NO connectionTimeoutMillis —
+ * whose pg default is 0, which is not "a long time" but WAIT FOREVER. The
+ * eleventh request, a member opening their Care Inbox, hung with no bound and
+ * no named state: the F5/F6 mode reappearing wherever the budget is not.
+ *
+ * Both numbers are DERIVED from the answer budget, and
+ * tests/db/request-role.test.ts asserts the derivation so neither can drift
+ * into a magic number. They are spelled here rather than imported so the DB
+ * layer keeps no dependency on the HTTP layer; the test imports both and is
+ * where the two are tied together.
+ */
+
+/**
+ * Five seconds — ROUTE_ANSWER_BUDGET_MS / 3. A connection wait at or above
+ * the budget is dead weight: the budget would expire before the pool ever
+ * answered, and the wait would bound nothing. A connection this pool cannot
+ * hand over in five seconds is a pool under a systemic stall, and the honest
+ * answer to the caller is a prompt, named failure rather than a hang.
+ */
+export const POOL_CONNECT_TIMEOUT_MS = 5_000;
+
+/**
+ * Thirty seconds — 2 × ROUTE_ANSWER_BUDGET_MS. This is what actually RETURNS
+ * a leaked connection: the server kills the abandoned query instead of running
+ * it to completion. Without it the connect bound only converts hanging forever
+ * into failing forever.
+ *
+ * The value is derived from both ends. A query the route is STILL WAITING ON
+ * must never be killed under it, so it sits strictly above the budget; and a
+ * query still running at twice the budget has already blown a fifteen-second
+ * guarantee twice over and is serving nobody.
+ *
+ * SET LOCAL, like the role and the claims: a bound that outlived its own
+ * transaction would silently govern whatever ran next on that pooled session.
+ */
+export const REQUEST_ROLE_STATEMENT_TIMEOUT_MS = 30_000;
+
+/** The pool’s options, exported so the bound is pinnable rather than buried
+ *  in a constructor call. getPool() is BUILT from this. */
+export function poolConfig(): { max: number; connectionTimeoutMillis: number } {
+  return { max: 10, connectionTimeoutMillis: POOL_CONNECT_TIMEOUT_MS };
+}
+
 let pool: Pool | undefined;
 
 function getPool(): Pool {
@@ -67,7 +120,7 @@ function getPool(): Pool {
     if (!url) {
       throw new Error('request-role channel: HC_DB_URL is not set');
     }
-    pool = new Pool({ connectionString: url, max: 10 });
+    pool = new Pool({ connectionString: url, ...poolConfig() });
   }
   return pool;
 }
@@ -83,6 +136,12 @@ export async function withRequestRole<T>(
   const client: PoolClient = await getPool().connect();
   try {
     await client.query('begin');
+    // Round-18 F-1: the server-side half of the bound, set BEFORE the role
+    // switch so it is established by the connection identity, and SET LOCAL so
+    // it dies with the transaction. This is what returns a connection whose
+    // caller has already given up — the answer budget deliberately does not
+    // cancel the work it races.
+    await client.query(`set local statement_timeout = ${REQUEST_ROLE_STATEMENT_TIMEOUT_MS}`);
     // `role` is one of two literals from the check above — never input.
     await client.query(`set local role ${role}`);
     await client.query(`select set_config('request.jwt.claims', $1, true)`, [
