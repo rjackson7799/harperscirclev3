@@ -112,12 +112,15 @@ THE TASK — the round-18 review leg, the ADR-0006 / round-8 cadence:
      §10.4, §13.4, §13.5; **AC-INBOX-2 / 3 / 4 / 8 / 9**; and the
      inherited obligations in **ADR-0025** (round 17's dispositions, and
      F-1's residue that 6B took) and **ADR-0023**'s standing queue.
-  2. **A PR may or may not be open by the time you read this — CHECK,
-     never assume, and never open a second one.** If one is open it
-     carries `[DO NOT MERGE without owner sign-off]` in its title, as
-     every PR on this repo since #5 does; its body is committed at
-     `docs/review/round-18-pr-body.md`. **Every CI run this branch has
-     ever had concluded `success` on attempt 1** (runs 151 onward).
+  2. **THE PR IS ALREADY OPEN: #12** — base `main`, head
+     `slice/6b-care-inbox-app`, `[DO NOT MERGE without owner sign-off]`
+     in the title, as every PR on this repo since #5 carries. **Do NOT
+     open a second one.** Its body is committed at
+     `docs/review/round-18-pr-body.md`, so the text the PR carries is
+     diffable in the tree. CI fires on **BOTH** events — the workflow
+     triggers on `push` for `slice/**` and on `pull_request` — and
+     **every CI run this branch has ever had concluded `success` on
+     attempt 1** (runs 151 onward, both events).
      **Re-confirm CI yourself on whatever head you review**, public
      API, anonymous — `gh` is **UNAUTHENTICATED**, never device-flow;
      **pending never counts as green**. Two API facts that
