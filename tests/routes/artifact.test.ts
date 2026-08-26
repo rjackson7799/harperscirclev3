@@ -689,8 +689,12 @@ describe('6B close-out F6 · every await in the route is inside ONE answer budge
     for (const row of [ROW, null]) {
       vi.resetAllMocks();
       session.liveSessionClaims.mockResolvedValue(CLAIMS);
+      // The row IS configured on both passes — it simply arrives long after the
+      // budget. That is what makes this a control rather than a tautology: the
+      // route HAD a different answer available in each case and gave the same
+      // one, because it never got to look.
       artifacts.readableArtifact.mockImplementation(
-        () => new Promise(() => {}) as unknown as Promise<typeof row>,
+        () => new Promise((r) => setTimeout(() => r(row), 60_000)),
       );
       const res = (await answerWithin(get())) as Response;
       seen.push(`${res.status} ${await res.text()}`);
