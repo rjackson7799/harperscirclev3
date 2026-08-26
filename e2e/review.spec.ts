@@ -580,6 +580,14 @@ test.describe('the 6B review legs', () => {
     }
   });
 
+  /**
+   * §6.9's label, character for character, from PRD §4.2 (docs/PRD.md:1391)
+   * and TSD §6.9 (docs/TSD.md:2177, :2501) — all three say the same string.
+   * Stated HERE rather than imported from the component: a test that reads its
+   * expectation out of the code under test pins nothing.
+   */
+  const MACHINE_READ_LABEL = 'machine-read — may contain errors';
+
   test('A11Y-08: machine-read text — §6.9’s exact label, per page, readable where native text is not (OCR-01 live)', async ({
     browser,
   }) => {
@@ -615,7 +623,12 @@ test.describe('the 6B review legs', () => {
     const toggles = f.page.locator('button.review-machine-text-toggle');
     const pages = await f.page.locator('.review-page').count();
     expect(await toggles.count()).toBe(pages);
-    await expect(toggles.first()).toContainText('may contain errors');
+    // ROUND-18 F-5: this used to read toContainText('may contain errors') — a
+    // substring of the WARNING CLAUSE ONLY, which never checked "machine-read"
+    // at all. A regression renaming the control to "AI transcript — may contain
+    // errors" kept this leg green while breaking the one thing its title says
+    // it exists to protect. The exact string, from the spec, is the assertion.
+    await expect(toggles.first()).toHaveText(MACHINE_READ_LABEL);
 
     // …and opening it reads the words the page actually carries — the
     // machine-read text navigable exactly where the native text would be.
