@@ -13,9 +13,17 @@ that has no text layer. Every cell of the 6A/6B seam said the same thing —
 been shown any of it." This ADR is the record of showing it.
 
 It is also, honestly, the record of what showing it *cost*: the close-out
-gate found three product defects, all of them in code that no browser had
-ever executed. That is D15, and it is the most useful thing in this
-document.
+gate found **eight** product defects across **nine gate runs**. The FIRST
+run found three, all of them in code that no browser had ever executed —
+that is D15. The other five were found by the runs that were meant to
+CONFIRM each fix, and they are D17–D21. Together they are the most useful
+thing in this document.
+
+*(Round-18 F-8: this paragraph and the packet's opening both said "three",
+which is D15's count rather than the close-out's, while their own bodies,
+the PR body and the kickoff all said eight. Corrected here rather than left
+for a future session to carry away — the opening paragraph is what a reader
+reaches first. ADR-0027 D8.)*
 
 ---
 
@@ -600,9 +608,24 @@ two `fetch` calls, which is what `r6` had found. `r7` failed leg 38 with the
 same symptom one call earlier. F5 is not presented here as closed: it is the
 first half of a fix whose second half is D20.
 
-Still unbounded and **OWED**: seven outbound `fetch` calls in `app/` and
-`lib/` (postmark inbound, `upload/complete`, the two TUS proxy hops, outbound
-mail, and the two client-side upload calls).
+Still unbounded and **OWED**: **nine** outbound `fetch` call sites in `app/`
+and `lib/`, of which **seven are the ones a person waits on** — postmark
+inbound, `upload/complete`, the two TUS proxy hops, outbound mail, and the two
+client-side upload calls.
+
+The other **two are the eager fires** — `app/api/worker/relay/route.ts:116`
+and `app/api/worker/[stage]/route.ts:108`, both `void fetch(…).catch(…)`.
+**They are excluded on a stated ground rather than omitted:** nobody awaits
+them, so they fall outside D20's corrected class ("a route a person is waiting
+on"). They are still unbounded outbound calls with no signal, and this D18's
+own text says undici's ~300 s floor *"is not a bound"* — so they remain a
+resource question even though no person waits, and they are named here so the
+count is a count.
+
+*(Round-18 F-9(a): this read "seven" as a total in the document whose D20
+records that this very class was scoped too narrowly the first time. ADR-0027
+D9. The same tally stood in `lib/storage/fetch.ts`'s header — a third site the
+review did not name — and is corrected there too.)*
 
 ---
 

@@ -6,10 +6,16 @@ F12), and every evidence leg below was produced at ONE declared head rather
 than at a run three commits behind it (R7/F-8).
 
 **The headline, stated before anything else: the close-out gate was RED, and
-it was red for three real product defects.** They are fixed, the gate is
-green at the final head, and the whole sequence is in ADR-0026 D15 — including
-two fixes that were wrong before the third was right. Nothing here was
-re-run to green.
+it was red for EIGHT real product defects across NINE gate runs.** The first
+run found three, all in code no browser had ever executed (ADR-0026 D15); the
+other five were found by the runs that were meant to confirm each previous fix
+(D17–D21). They are fixed, the gate is green at the final head — including two
+OCR fixes that were wrong before the third was right. Nothing here was re-run
+to green.
+
+*(Round-18 F-8: this paragraph said "three", which is D15's count rather than
+the close-out's, while this packet's own red→green table runs F5, F6, F7, F8
+and the PR body and kickoff both say eight. Corrected. ADR-0027 D8.)*
 
 ---
 
@@ -141,10 +147,12 @@ table for the full list; the close-out sequence is:
 
 ---
 
-## The defects the gate found
+## The first three defects the gate found
 
-Full narrative in ADR-0026 D15. In brief, and all three in code no browser
-had ever executed:
+Full narrative in ADR-0026 D15. These are the three the FIRST gate run
+returned — the close-out found eight in all, and the remaining five are D17
+(below) and D18–D21. In brief, and all three in code no browser had ever
+executed:
 
 1. **`input[type='file']` carried no touch floor** — `/upload`'s control
    measured 253×21 at 390px. It was the one visible input type

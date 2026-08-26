@@ -19,10 +19,18 @@
  * and "no answer" is one of the answers it can give.
  *
  * Scope, recorded honestly: this bounds the artifact route's two reads,
- * which is what the gate found. Seven other outbound `fetch` calls in
- * `app/` and `lib/` are still unbounded (postmark inbound, upload/complete,
- * the two TUS proxy hops, outbound mail, and the two client-side upload
- * calls). They are OWED, not fixed — see ADR-0026 D18.
+ * which is what the gate found. NINE other outbound `fetch` call sites in
+ * `app/` and `lib/` are still unbounded. SEVEN are ones a person waits on
+ * (postmark inbound, upload/complete, the two TUS proxy hops, outbound mail,
+ * and the two client-side upload calls); TWO are the eager fires
+ * (`worker/relay/route.ts`, `worker/[stage]/route.ts`), which nobody awaits
+ * and which are therefore outside D20's corrected class — excluded on that
+ * stated ground rather than left out of the count. All nine are OWED, not
+ * fixed — see ADR-0026 D18.
+ *
+ * (Round-18 F-9(a) corrected "seven" to nine here. This header was the THIRD
+ * site of that tally and the one the review did not name; a number stated in
+ * three places goes stale in three places.)
  *
  * AND THAT SCOPE WAS DRAWN IN THE WRONG PLACE — gate run r7 said so, one
  * commit later. The route's other seven awaits are network calls too, and
