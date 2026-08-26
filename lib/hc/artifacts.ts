@@ -108,9 +108,41 @@ export type ArtifactReadLog = {
  * own checks are no longer the only gate; a caller who reached this wrapper
  * around them writes nothing, rather than a real entry naming themselves.
  */
-export async function logArtifactRead(log: ArtifactReadLog): Promise<void> {
+/**
+ * Thrown between the insert and the commit when the caller has already given
+ * up. Distinguishable so a route can tell "the trail failed" from "the trail
+ * was not wanted" — both refuse the read, but only one is a fault.
+ */
+export class ArtifactReadAbandoned extends Error {
+  constructor() {
+    super('logArtifactRead: the caller abandoned the read; the trail is not written');
+    this.name = 'ArtifactReadAbandoned';
+  }
+}
+
+/**
+ * ROUND-18 F-3 (ADR-0027 D3): `abandoned` is the answer budget's signal, and
+ * it is checked AFTER the insert and BEFORE the commit. If the route has
+ * already refused the read, the transaction rolls back and §10.5 records
+ * nothing — because the alternative is an access-log entry asserting that a
+ * member viewed a document they were served a 500 for.
+ *
+ * THE RESIDUE, STATED RATHER THAN CLAIMED AWAY: the check cannot cover the
+ * commit round-trip itself. A budget that expires inside it still lands a row.
+ * The window is one round-trip wide instead of the whole remaining query;
+ * closing it completely needs two-phase commit. Narrowed, not eliminated.
+ *
+ * With no signal, or a signal that has not fired, this is byte-for-byte the
+ * call it always was — the trail is the DEFAULT and declining it is the narrow
+ * exception. Both controls in tests/hc/artifacts.test.ts exist to keep it so.
+ */
+export async function logArtifactRead(
+  log: ArtifactReadLog,
+  abandoned?: AbortSignal,
+): Promise<void> {
   if (!log.claims.sub) throw new Error('logArtifactRead: no actor');
   await withRequestRole('authenticated', log.claims, async (q) => {
     await q.query('select hc.log_artifact_read($1)', [log.arrivalId]);
+    if (abandoned?.aborted) throw new ArtifactReadAbandoned();
   });
 }

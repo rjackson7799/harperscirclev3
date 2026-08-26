@@ -188,7 +188,10 @@ async function answer(req: Request, id: string, budget: AnswerBudget): Promise<R
   // this same catch and refuses the read exactly as a failed write does — a
   // trail that could not be CONFIRMED is not a trail.
   try {
-    await budget.race(logArtifactRead({ claims, arrivalId: id }), 'logArtifactRead');
+    await budget.race(
+      logArtifactRead({ claims, arrivalId: id }, budget.abandoned),
+      'logArtifactRead',
+    );
   } catch (err) {
     console.error(`artifact: access-log write failed: ${(err as Error).message}`);
     return new Response('unavailable', { status: 500 });
@@ -280,7 +283,10 @@ async function servePage(
   // Evidence before bytes — the same §1.3 step 6 the original rides, budget
   // and all: a trail that could not be confirmed refuses the read.
   try {
-    await budget.race(logArtifactRead({ claims, arrivalId }), 'logArtifactRead');
+    await budget.race(
+      logArtifactRead({ claims, arrivalId }, budget.abandoned),
+      'logArtifactRead',
+    );
   } catch (err) {
     console.error(`artifact: access-log write failed: ${(err as Error).message}`);
     return new Response('unavailable', { status: 500 });

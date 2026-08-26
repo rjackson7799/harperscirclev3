@@ -65,6 +65,27 @@ export class AnswerBudget {
   private readonly ms: number;
   private readonly expiry: Promise<typeof SPENT>;
   private readonly timer: ReturnType<typeof setTimeout>;
+  private readonly abandonment = new AbortController();
+
+  /**
+   * ROUND-18 F-3 (ADR-0027 D3). This budget deliberately does NOT cancel the
+   * work it races — that is the guarantee, and it holds against a transport
+   * that ignores cancellation. The cost is that raced-out work runs to
+   * completion with nobody listening, and for a WRITE that means it commits:
+   * the §10.5 trail could record a read the route had already refused with a
+   * 500. Evidence before bytes, inverted — a trail entry for bytes that never
+   * moved.
+   *
+   * So the budget says out loud when it has given up, and a write that cares
+   * can decline to commit. This is NOT cancellation: nothing is aborted, the
+   * work is still allowed to finish, and a caller that ignores the signal
+   * behaves exactly as before. It is the difference between a write that could
+   * not be CONFIRMED and a write that SUCCEEDED UNOBSERVED, which the route
+   * was treating as one fact.
+   */
+  get abandoned(): AbortSignal {
+    return this.abandonment.signal;
+  }
 
   private constructor(ms: number) {
     this.ms = ms;
@@ -74,7 +95,10 @@ export class AnswerBudget {
     });
     // RESOLVES, never rejects: a rejection nobody races is an unhandled
     // rejection, and this one is deliberately created before anyone races it.
-    this.timer = setTimeout(() => fire(SPENT), ms);
+    this.timer = setTimeout(() => {
+      this.abandonment.abort();
+      fire(SPENT);
+    }, ms);
   }
 
   /** Open a budget for one request. Pair EVERY path with `clear()`. */
