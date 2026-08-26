@@ -236,6 +236,29 @@ An unreproduced transient is **classified, never diagnosed**. The record:
   smoothed. Five occurrences of one shape across a single slice is now well
   past a curiosity, and it stays queued in D16.
 
+- **CI run 158 (`pull_request`, head `260edbe`) — the first CI transient this
+  slice has had, and the first that is not local at all.** Failed at step 8,
+  `Start local Postgres (Supabase, pinned CLI)`, after 62 s; steps 9–20
+  SKIPPED. Secret scanning, service-role containment and the exposed-schema
+  pin all passed before it, so **no project code executed**. The corroboration
+  is positive rather than inferential: **run 157 (`push`) at the SAME SHA was
+  green across all twenty steps minutes earlier**, run 156 (`pull_request`)
+  was green at the previous head, and both events went green again at the very
+  next head (159 / 160) with no CI change in between. The signature —
+  everything before `db start` green, everything after skipped — is the **ECR
+  Public anonymous pull quota** on shared runners, a known transient for this
+  repo. **Consistent with it, NOT confirmed as it:** the `toomanyrequests`
+  line lives in the run log, and the logs endpoint returns **403**
+  anonymously. Not re-run — re-running is authenticated, and a failure whose
+  log cannot be read is not one to make disappear. **A run that never reached
+  project code is not evidence about the tree in either direction.** The
+  hardening candidate already on record — authenticate the ECR Public pull, or
+  cache the image in `ci.yml` — is a process commit, not a 6B one.
+
+  *Recorded here because the round-18 packet body and kickoff both name this
+  failure, and the slice's own transient list must not be the one document
+  that omits it.*
+
 - **Close-out r4 and r5 (at `1a20671`) — CLASSIFIED AS ENVIRONMENTAL, TWICE,
   AND THAT WAS WRONG.** See D17. Both were caused by a regression in this
   slice's own close-out; the memory evidence marshalled for them was real and
