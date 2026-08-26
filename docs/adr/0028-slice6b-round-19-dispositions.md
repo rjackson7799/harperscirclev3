@@ -531,7 +531,7 @@ unlocks is a sign-off question and not this document's to answer.
 | 3 | **The starvation sample is one sample** | It sees only blocking that overlaps the deadline. A heartbeat across the whole window would see all of it, at the cost of a second timer per request |
 | 4 | ~~`r3`'s two resource failures re-run once~~ | **DISCHARGED at round 20.** Run `r5` is GREEN, 38/38; legs 32 and 33 passed at 14.6 s and 37.2 s on a host TIGHTER than `r2`'s. Confirmed transients, not findings, and not re-run again (D7) |
 | 5 | **Leg 38's pass re-observed under genuine load** | STILL OWED, and round 20 did not discharge it. It has now passed at `r3` and `r5` and failed at `r6`, `r7` and `r2`. Two passes do not close a load-dependent stall, and F-1's product fix is owed regardless (item 1) |
-| 5a | **The `HopCost` ledger observed firing in the running app** | NEW at round 20. `r5` overran no budget anywhere — zero `AnswerBudgetExceeded`, zero ledger lines, zero starvation messages. The instrument D3 landed has still never reported on a live stall, and D10 item 1 named exactly that as its prerequisite |
+| 5a | **The `HopCost` ledger observed firing in the running app** | NEW at round 20, **ATTEMPTED IN THREE EXPERIMENTS AND STILL OWED — but the reproduction condition is now NAMED rather than guessed. See D13.** The instrument D3 landed has still never reported on a live stall, and D10 item 1 named exactly that as its prerequisite |
 | 6 | The ten items ADR-0027 D17 already owed | Unchanged by this round |
 | 7 | The slice-5B queue | **39 OWED**, unchanged |
 
@@ -641,3 +641,91 @@ next session inherits them rather than re-paying for them. Note that
 `docs/process/traps.md` does not exist on `slice/6b-care-inbox-app`; it lives on
 the peer branch `chore/process-retune`, which is where the trap entry has to
 land.
+
+---
+
+## D13 — round 20: three attempts to make the ledger fire, and what they NARROWED
+
+D8 item 5a is **still owed**. It is owed with more information than it started
+with, and the information changes what the next attempt should be — which is
+the only reason a failed experiment earns a section.
+
+**None of this is a gate result.** All three were targeted runs, and a targeted
+run is never a gate result. The gate of record remains `r5`, GREEN at
+`1066e2d`. No product code was changed; the harnesses lived in a scratchpad.
+
+### The three attempts
+
+| # | Driver | Outcome | What it taught |
+|---|---|---|---|
+| 1 | `e2e/extraction.spec.ts` + an unauthenticated probe at 7/sec | 5 passed, **0 ledger lines** | **Wrong driver AND a probe that cannot work** — see below |
+| 2 | `e2e/review.spec.ts` (holds leg 38, the OCR leg) | 7 passed (4.3 m), **0 ledger lines**, leg 38 **11.7 s** | The stall is real and scales with load, but stayed inside the budget |
+| 3 | `e2e/review.spec.ts` under D5's 8-thread bounded CPU burner | stopped at leg 4; legs slowed up to **4.7×**, **0 ledger lines, 0 app-level errors** | **External CPU load is the WRONG load model** — see below |
+
+### What attempt 1 established about the instrument itself
+
+**An unauthenticated artifact request can never observe starvation.** It
+returns the ONE 404 in about 50 ms and `budget.clear()` runs immediately, so
+its fifteen-second timer never gets the chance to be late.
+
+The general form, which is a property of the instrument and not of this
+experiment: **the budget must still be OPEN when a block spans its deadline.**
+That needs either a block of fifteen seconds or more starting within the
+request's first moments, or a genuinely slow request whose hops are still
+pending at the fifteen-second mark. Only an authenticated read through
+`readableArtifact` → `readableRendition` → `logArtifactRead` is slow enough to
+qualify. **A cheap probe cannot substitute for a real one here.**
+
+*(The harness's realness check caught its own confound, in the D5 tradition:
+the first probe took 25.7 s, which is Next.js dev-mode route compilation and
+not route execution. The 404 is what proves `budget.race(readLiveSession)`
+actually ran.)*
+
+### What attempt 3 established, and it is the useful one
+
+**Saturating the host's cores does not reproduce F-1, and the reason is
+structural.** Under an 8-thread burner the browser legs timed out at Playwright's
+120 s ceiling **while the artifact route never overran its 15 s budget** —
+zero 504s, zero `AnswerBudgetExceeded`, zero app-level errors. External CPU
+contention slows *everything*, so the bottleneck moves to the CLIENT and the
+run dies at the browser before the server's guarantee is ever tested.
+
+**F-1's mechanism is not CPU scarcity. It is event-loop blocking INSIDE the app
+process, from the synchronous `@napi-rs/canvas` raster and PNG encode** (D3).
+External load cannot manufacture that, and D5's burner — correct for measuring
+the *auth hop's* degradation, which is what D5 used it for — is the wrong
+instrument for this.
+
+### The reproduction condition, now named
+
+**Concurrent, IN-PROCESS §6.3 render and §6.9 OCR, overlapping an authenticated
+artifact read.** That is what a full 38-leg gate produces and what a single
+7-leg spec does not: several arrivals being worked while screens are served.
+
+It also explains the pattern without special pleading. Leg 38 failed in `r2` —
+a gate with three failures, and each failure re-provisions a founder (F-3's
+cascade, D2), which piles overlapping pipeline work onto the same process. It
+passed in `r3` and `r5`, both of which had fewer or no cascades. **The
+cascade is not just noise in the tally; it is part of the load that produces
+the stall.**
+
+Leg 38's duration tracks this cleanly:
+
+| Run | Condition | Leg 38 |
+|---|---|---|
+| `r5` | quiet host, no cascades | **7.9 s** |
+| round-20 attempt 2 | loaded host, no cascades | **11.7 s** (78 % of budget) |
+| `r2` | full gate, three cascading failures | **19.5 s → 504** |
+
+### What the next attempt should be
+
+A harness that drives **several concurrent worker-stage renders directly**
+(`HC_WORKER_KEY` from `playwright.config.ts`'s `webServer` block, never
+`.env.local`, which leaves it EMPTY and yields `503 worker disabled`) against a
+dev server it controls, while issuing an **authenticated** artifact read. That
+is the smallest thing that reproduces the mechanism without a twenty-minute
+gate. It needs arrivals in a renderable state, which is the part this session
+did not build.
+
+**Until then D10 item 1's prerequisite is unmet, and the owner's round-20
+ruling to hold stands on stronger evidence than when it was made.**
