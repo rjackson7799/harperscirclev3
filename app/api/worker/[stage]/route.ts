@@ -34,7 +34,7 @@ import { scanBytes } from '@/lib/scan/scanner';
 import { sniffMime } from '@/lib/pipeline/mime';
 import { normalizeArrival, type NormalizeResult } from '@/lib/pipeline/render';
 import { extFor, renderStagingKey, renderStagingTextKey } from '@/lib/pipeline/page-keys';
-import { isImageOnlySource, ocrRenderedPages } from '@/lib/pipeline/ocr';
+import { isImageOnlySource, OcrEngineUnavailable, ocrRenderedPages } from '@/lib/pipeline/ocr';
 import { extractFromArrival } from '@/lib/ai/extract';
 import { interpretArrival, type DraftProposal } from '@/lib/ai/interpret';
 import {
@@ -372,9 +372,22 @@ async function processExtract(
         );
       }
     } catch (err) {
-      console.warn(
-        `extract: machine-read text unavailable for ${msg.arrival_id}: ${(err as Error).message}`,
-      );
+      // ROUND-18 F-2: absorbing this is CORRECT and stays — a reading aid must
+      // never fail the answer it aids. What was wrong is that it said the same
+      // thing for "this page could not be read" and "there is no engine on this
+      // host". The second is D15 finding 3 recurring, silently, with every test
+      // green — so it takes a §10.4 defect signal of its own, in the shape this
+      // route already uses at the interpret gate and for answer.dropped.
+      if (err instanceof OcrEngineUnavailable) {
+        console.warn(
+          `extract: §10.4 signal — the §6.9 OCR ENGINE is unavailable on this host, so ` +
+            `NO arrival will be machine-read until it is fixed: ${err.message}`,
+        );
+      } else {
+        console.warn(
+          `extract: machine-read text unavailable for ${msg.arrival_id}: ${(err as Error).message}`,
+        );
+      }
     }
   }
 

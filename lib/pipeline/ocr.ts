@@ -120,14 +120,61 @@ type TesseractWorker = {
  * used and anything else falls back to the installed tree under the project
  * root.
  */
-function realPathOr(resolve: () => string, ...fallbackSegments: string[]): string {
+/**
+ * ROUND-18 F-2 (ADR-0027 D4). The engine could not be located. NAMED, because
+ * the alternative was a MODULE_NOT_FOUND raised from inside createWorker three
+ * frames down, absorbed by the worker route's console.warn, and
+ * indistinguishable there from "this page could not be read".
+ *
+ * Both candidates are in the message on purpose: the next person to read this
+ * needs to know what the resolve returned AND where the fallback looked, which
+ * is exactly the information D15 finding 3 cost four attempts to recover.
+ */
+export class OcrEngineUnavailable extends Error {
+  constructor(
+    readonly resolved: string,
+    readonly fallback: string,
+  ) {
+    super(
+      `§6.9 OCR engine unavailable: require.resolve gave "${resolved}" and the ` +
+        `installed-tree fallback "${fallback}" does not exist`,
+    );
+    this.name = 'OcrEngineUnavailable';
+  }
+}
+
+/**
+ * ROUND-18 F-2: THE VALIDATION AND THE FALLBACK WERE THE WRONG WAY ROUND.
+ *
+ * `existsSync` used to appear exactly once in this module, on the resolve()
+ * result — and by D15/D17's own recorded evidence the resolve returns a MODULE
+ * ID inside the bundle, before and after `serverExternalPackages`. So the
+ * guard failed BY DESIGN in the running app and the UNCHECKED
+ * `process.cwd()` fallback was the branch that actually located the engine.
+ * The module validated the branch that never runs.
+ *
+ * The fallback carries two assumptions that are true on the build host and are
+ * guaranteed nowhere: that `process.cwd()` is the project root, and that
+ * `node_modules` is flat beneath it. Neither holds under pnpm, npm workspaces,
+ * a monorepo, or a traced serverless bundle.
+ *
+ * So the fallback gets the SAME check the resolve branch gets, and an engine
+ * that is nowhere is a named failure rather than a plausible-looking wrong
+ * path handed to createWorker. This is ADR-0026's own second rule — WHERE A
+ * VALUE CROSSES A BOUNDARY THE BUILD DOES NOT CONTROL, RESOLVE IT AND THEN
+ * CHECK THE ANSWER — applied to the answer this helper itself produces.
+ */
+export function realPathOr(resolve: () => string, ...fallbackSegments: string[]): string {
+  let resolved = '(threw)';
   try {
-    const resolved = resolve();
+    resolved = resolve();
     if (isAbsolute(resolved) && existsSync(resolved)) return resolved;
   } catch {
     // Not resolvable from this context — the fallback below is the answer.
   }
-  return join(process.cwd(), 'node_modules', ...fallbackSegments);
+  const fallback = join(process.cwd(), 'node_modules', ...fallbackSegments);
+  if (!existsSync(fallback)) throw new OcrEngineUnavailable(resolved, fallback);
+  return fallback;
 }
 
 export function engineLocations(): { langPath: string; workerPath: string } {
