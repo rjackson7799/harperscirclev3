@@ -1,9 +1,30 @@
 # ADR-0029 — round-21 dispositions: 31 stale `OWED` verdicts, re-verified and PUT for ruling
 
-**Status: PUT, NOT RULED.** The rulings below are proposed on evidence and
-await owner sign-off. **No verdict in ADR-0023 D17 has moved.** They move
-in a second commit, after sign-off, each carrying a pointer back here —
-the ADR-0025 D6 precedent.
+**Status: RULED — OWNER SIGN-OFF 2026-08-27. All three ballot items
+RATIFIED AS PUT.**
+
+The verdicts have moved. **32 rows** in ADR-0023 D17 were rewritten in the
+commit that stamps this line — the 31 `OWED` → `FIXED` of D2, and R7/F-4
+`OWED/OWNER` → `OWED` of D3 — each carrying a pointer back here so the two
+records agree about who made the change stick (the ADR-0025 D6 precedent).
+
+The post-ruling tally was **re-derived from the rewritten table**, not
+asserted from D5's prediction, and lands where D5 said it would:
+
+> 59 FIXED · 21 NOTED · 19 ACCEPTED-NOTE · 8 OWED · 3 OWNER · 2 ACCEPTED ·
+> 1 DECLINED-and-ACCEPTED = **113**
+
+with the residue exactly **R2/F-2 · R2/F-3 · R2/F-4 · R2/F-6 · R2/F-12 ·
+R4/F-12 · R7/F-5 · R7/F-4**, and the `OWED/OWNER` class now empty. The
+self-check in D5 is therefore satisfied by measurement rather than by
+intent.
+
+*(The paragraph below is the ballot as it was PUT, preserved unaltered.)*
+
+~~**Status: PUT, NOT RULED.**~~ The rulings below are proposed on evidence
+and await owner sign-off. **No verdict in ADR-0023 D17 has moved.** They
+move in a second commit, after sign-off, each carrying a pointer back here
+— the ADR-0025 D6 precedent.
 
 **Head:** `main` = `1bfad9e`. **Branch:** `docs/round-21-dispositions`.
 
