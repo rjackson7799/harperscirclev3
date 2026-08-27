@@ -218,6 +218,52 @@ both documents within ADR-0027. **The ambiguity has now propagated one document
 forward.** Every cross-reference must be resolved to its true document before
 the claim behind it is checked.
 
+### DEFECT 5 — D7's *"FIXED for the syntactic class"* is narrowed, not fixed at the class
+
+The rule at `tests/lint/timestamp-boundary.test.ts:52-59` is an alternation of
+three branches over one shared `TEMPORAL` pattern. Its own comment (`:44-46`)
+states the class:
+
+> *"All three produce the SAME STRING, character for character, so all three
+> give the same `.slice(0, 10)` → `"Tue Aug 25"` → §2.7 refusal → the same
+> render throw that took all seven review legs red at the close-out."*
+
+**That reasoning is correct, and it does not stop at three.** The regex was
+reproduced verbatim from the source and probed:
+
+| Spelling | Result | Same string? |
+|---|---|---|
+| `String(row.received_at)` | **CAUGHT** | — |
+| `` `${row.received_at}` `` | **CAUGHT** | — |
+| `row.received_at + ''` | **CAUGHT** | — |
+| `'' + row.received_at` | **MISSED** | **identical** |
+| `row.received_at.toString()` | **MISSED** | **identical** |
+| `[row.received_at].join('')` | **MISSED** | **identical** |
+| `''.concat(row.received_at)` | **MISSED** | **identical** |
+| `` row.received_at + `` `` | **MISSED** | identical |
+| `` `${row.received_at ?? ''}` `` | **MISSED** | identical |
+
+All five marked *identical* were evaluated, not reasoned about: each returns
+`"Tue Aug 25 2026 02:00:00 GMT-1000 (…)"`, whose first ten characters are
+`"Tue Aug 25"` — **the exact input the file's own comment says produces the
+§2.7 refusal.** Branch 3 is operand-ordered, so merely reversing it escapes.
+
+**Scope stated honestly, because it bears on verdict impact.** This is a defect
+in the **CLAIM**, not in current behaviour: the corpus scan comes back empty
+and no shipped site uses a missed spelling. The rule is a good rule that holds
+the corpus today. What is wrong is *"FIXED for the syntactic class"* — the
+class has at least eight members and the rule closes three.
+
+The file **does** declare an honest bound, but a different one: *"it reads the
+NAME. A query that aliases a moment to something else hides the type from it."*
+That is the aliasing bound. **The incompleteness of the alternation across
+spellings it does not name is nowhere acknowledged.**
+
+**This compounds DEFECT 2.** D15 counts F-4 inside "9 FIXED"; D7's own heading
+already says "FIXED **in part**"; and now the *"syntactic class"* half of even
+that partial claim is itself narrowed rather than closed. The honest phrasing
+is the one D3 uses about F-3: **narrowed, not closed.**
+
 ---
 
 ## 3. CONFIRMED CONTRADICTION
@@ -262,9 +308,6 @@ Named so the un-attacked surface is visible rather than implied:
 - **D5's OCR label** across PRD:1391, TSD:2177, TSD:2501, the plan's B9 row,
   the rendered constant and the leg's literal — **byte-exact comparison; the
   em-dash is the trap**
-- **D7's timestamp alternation** — `'' + row.received_at` (reversed operands)
-  and `.toString()` produce identical output and appear to match no branch. If
-  they slip through, *"FIXED for the syntactic class"* is narrowed-not-fixed
 - **D10's ESLint cost-class claim** — the basis on which Q4 moved QUEUED →
   DIAGNOSED
 - **D12/RULING 5's nine pgTAP citations**, and the tension between D12 citing
