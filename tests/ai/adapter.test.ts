@@ -274,6 +274,61 @@ describe('B3 · §6.6 — the record-context prefix sits behind a cache breakpoi
   });
 });
 
+// ============================================================================
+// Round 21 · R4/F-12 — a `profile_fact` proposal must not be able to reach
+// approval carrying a NOT NULL column as null.
+//
+// `public.profile_facts` declares BOTH `field text not null` and `value jsonb
+// not null`. Such a proposal DRAFTS cleanly and then raises a raw `23502`
+// inside `hc.approve_proposal` — in front of a person, at the instant they
+// click approve. The finding named `field`; `value` is the same defect on the
+// sibling column and is covered here too.
+//
+// The `domain` guard beside it had NO test at all. It has one now: an
+// untested guard is one a refactor can invert, and these two now stand or
+// fall together.
+// ============================================================================
+describe('Round 21 · a profile_fact cannot carry a NOT NULL column as null (R4/F-12)', () => {
+  const interpret = (documentText: string) =>
+    interpretArrival({
+      recordContext: { profile_facts: { rows: [] } },
+      facts: [],
+      documentText,
+      operatorNotes: [],
+      deadlineIso: new Date(Date.now() + 240_000).toISOString(),
+    });
+
+  it('a null `field`/`value` profile_fact is DROPPED, and counted — never published', async () => {
+    const result = await interpret('HC-FIXTURE-NULLFIELD marker');
+    if (result.outcome !== 'ok') throw new Error(result.outcome);
+
+    // The shape the fixture emits must not survive into the published set...
+    const offending = result.data.proposals.filter(
+      (p) => p.kind === 'profile_fact' && (p.field === null || p.value === null),
+    );
+    expect(offending).toEqual([]);
+
+    // ...and its refusal is a COUNTED drop, not silence and not a throw:
+    // the whole publication must survive one bad proposal.
+    expect(result.dropped).toBeGreaterThan(0);
+  });
+
+  it('the surviving proposals are otherwise untouched — the guard drops one, not the batch', async () => {
+    const result = await interpret('HC-FIXTURE-NULLFIELD marker');
+    if (result.outcome !== 'ok') throw new Error(result.outcome);
+    // The fixture always emits a `document` proposal; it must still be there.
+    expect(result.data.proposals.some((p) => p.kind === 'document')).toBe(true);
+  });
+
+  it('the `domain` guard beside it still holds — every published profile_fact has a domain', async () => {
+    const result = await interpret('a plain document with no marker');
+    if (result.outcome !== 'ok') throw new Error(result.outcome);
+    for (const p of result.data.proposals) {
+      if (p.kind === 'profile_fact') expect(p.domain).toBeTruthy();
+    }
+  });
+});
+
 describe('B3 · the client timeout lives INSIDE the lease deadline (§1.9)', () => {
   it('the budget is the remaining lease, minus a reserve for finalize', () => {
     const now = Date.now();

@@ -145,10 +145,21 @@ export async function interpretArrival(
       continue;
     }
     const domain = str(p.domain, 40);
-    if (kind === 'profile_fact' && (!domain || !DOMAINS.has(domain))) {
+    const field = str(p.field, 120);
+    const value = str(p.value, 4000);
+    if (kind === 'profile_fact' && (!domain || !DOMAINS.has(domain) || !field || !value)) {
       // hc.draft_proposal refuses a profile_fact without a domain; refusing
       // it here keeps the failure a counted drop rather than a raised
       // exception that costs the whole publication.
+      //
+      // Round 21 (R4/F-12): `field` and `value` join it, for the same reason
+      // one step later. `public.profile_facts` declares BOTH `field text not
+      // null` and `value jsonb not null`, so a profile_fact carrying either
+      // as null drafts cleanly and then raises a raw `23502` inside
+      // `hc.approve_proposal` — in front of a person, at the moment they
+      // click approve. The finding named `field`; `value` is the identical
+      // defect on the sibling column and is guarded here rather than left
+      // to be rediscovered.
       dropped++;
       continue;
     }
@@ -159,8 +170,8 @@ export async function interpretArrival(
       summary: str(p.summary, 600) ?? '',
       domain: domain && DOMAINS.has(domain) ? domain : null,
       category: category && CATEGORIES.has(category) ? category : null,
-      field: str(p.field, 120),
-      value: str(p.value, 4000),
+      field,
+      value,
       dueOn: str(p.due_on, 40),
       occurredOn: str(p.occurred_on, 40),
       conflictsWithFactId: kind === 'conflict' ? conflictsWith : null,
