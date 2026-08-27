@@ -930,7 +930,7 @@ condition, because an owed item without one is a wish.
    runtime has been looked at. No local instrument can close this.
 9. **RCP-02 stays pending, tagged 7.** Documents and People & roles do not
    exist.
-10. **The slice-5B queue stays 39 OWED**, unchanged by this round.
+10. **The slice-5B queue stays 39 OWED**, unchanged by this round. **[AMENDED 2026-08-27 → ADR-0023 D25: this "39" is the strict-`OWED` row count at `9682081`; at `main` = `4f7a9d7` it is **38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4)**. Prose preserved.]**
 
 ---
 
@@ -944,7 +944,7 @@ dispositions round is exactly where they would be forgotten.
 - **`BAND_ARTIFACT_ALLOWLIST` stays EMPTY.**
 - **SIG-01 is explicitly NOT absorbed.**
 - **RCP-02 stays pending, tagged 7.**
-- **The slice-5B queue stays 39 OWED.**
+- **The slice-5B queue stays 39 OWED.** **[AMENDED 2026-08-27 → ADR-0023 D25: this "39" is the strict-`OWED` row count at `9682081`; at `main` = `4f7a9d7` it is **38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4)**. Prose preserved.]**
 - **The migration budget is 7 of ≤ 7 SPENT.** No DDL was written, none was
   needed, and **69 migrations exact** is unchanged — nothing under `supabase/`
   has moved since `bc3bc85`.
@@ -1268,6 +1268,14 @@ SPENT** · `docs/coverage.md` untouched — **no row flipped, UXA-03 still
 `pending`** · `main` unmoved at `b0cc2b6` · PR #12 open, **NOT merged** · no
 real family data · **NOTHING IS PRODUCTION-ACTIVATED.**
 
+**AMENDED (5B-queue reconciliation, 2026-08-27 — see ADR-0023 D25).** This
+"39" is the strict-`OWED` row count of ADR-0023 D17 **as it stood at
+`9682081`**. `R8/F-1` moved `OWED` → `FIXED` at `e0186ce` and the tally was
+never re-derived. At `main` = `4f7a9d7` the table holds **38 strict `OWED`**;
+the queue is **38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4) = 39 rows carrying
+owed work**, that 1 owner-blocked. The integer is unchanged — **its referent
+is not.** The prose above is preserved exactly as written.
+
 
 ---
 
@@ -1393,6 +1401,14 @@ slice 7 — and nothing here is adopted from it.
   `BAND_ARTIFACT_ALLOWLIST` EMPTY · slice-5B queue **39 OWED** · RCP-02
   pending tagged 7 · SIG-01 NOT absorbed · no real family data ·
   **NOTHING IS PRODUCTION-ACTIVATED.**
+
+**AMENDED (5B-queue reconciliation, 2026-08-27 — see ADR-0023 D25).** This
+"39" is the strict-`OWED` row count of ADR-0023 D17 **as it stood at
+`9682081`**. `R8/F-1` moved `OWED` → `FIXED` at `e0186ce` and the tally was
+never re-derived. At `main` = `4f7a9d7` the table holds **38 strict `OWED`**;
+the queue is **38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4) = 39 rows carrying
+owed work**, that 1 owner-blocked. The integer is unchanged — **its referent
+is not.** The prose above is preserved exactly as written.
 
 **Effectiveness.** Ratification is effective on **CI green at the head that
 carries this section, on both the `push` and `pull_request` events.** CI

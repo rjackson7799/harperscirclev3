@@ -905,7 +905,7 @@ says so in the argument.
 
 | # | Sev | Verdict | Argument |
 |---|---|---|---|
-| F-1 | MAJOR | **FIXED** | D14 — the fourth seam row, held with the product decision and RELEASED by it. **Corrected at the 6A build session, 2026-08-24:** this row read OWED while D24 ruling 3 records the same work as done, which is the THIRD instance of the defect the sign-off itself caught twice (R3/F-9, R6/F-6) — a verdict column disagreeing with the prose four hundred lines below it. All three sites re-verified at `main` before the flip: `app/api/worker/[stage]/route.ts:240-247` records the ruling rather than a gap; `tests/routes/worker-stage.test.ts:284` reads "the extract fire is HELD (ADR-0023 D24)"; `tests/routes/relay.test.ts:145-152` carries R8/F-5's honest limit. **The OWED tally stays 39** — that is D24's own count, taken with this work already treated as done, so correcting the row changes no arithmetic. **RATIFIED AT ROUND 17 (ADR-0025 D6, from R17/F-6):** the correction is right — the round re-read all three sites again — but a build session had no authority to move a settled verdict, and this row now rests on the round's. The rule ADR-0025 D6 sets: a build session that finds a settled dispositions record wrong RECORDS the discrepancy where it will be read and leaves the verdict alone; the next round rules. |
+| F-1 | MAJOR | **FIXED** | D14 — the fourth seam row, held with the product decision and RELEASED by it. **Corrected at the 6A build session, 2026-08-24:** this row read OWED while D24 ruling 3 records the same work as done, which is the THIRD instance of the defect the sign-off itself caught twice (R3/F-9, R6/F-6) — a verdict column disagreeing with the prose four hundred lines below it. All three sites re-verified at `main` before the flip: `app/api/worker/[stage]/route.ts:240-247` records the ruling rather than a gap; `tests/routes/worker-stage.test.ts:284` reads "the extract fire is HELD (ADR-0023 D24)"; `tests/routes/relay.test.ts:145-152` carries R8/F-5's honest limit. **The OWED tally stays 39** — that is D24's own count, taken with this work already treated as done, so correcting the row changes no arithmetic. **RATIFIED AT ROUND 17 (ADR-0025 D6, from R17/F-6):** the correction is right — the round re-read all three sites again — but a build session had no authority to move a settled verdict, and this row now rests on the round's. The rule ADR-0025 D6 sets: a build session that finds a settled dispositions record wrong RECORDS the discrepancy where it will be read and leaves the verdict alone; the next round rules. | **[AMENDED 2026-08-27 → ADR-0023 D25: "The OWED tally stays 39" is FALSE.** That 39 is a ROW COUNT over this table's Verdict column and **this row was one of the 39** — flipping it to FIXED necessarily took the strict count to **38, at `e0186ce`**. This sentence is the single named source of the figure ADR-0025, ADR-0027 and ADR-0028 then inherited. **The verdict flip and its round-17 ratification STAND**; only this sentence's arithmetic is corrected, and the sentence itself is preserved above.]**
 | F-2 | MAJOR | **ACCEPTED** | D14 — verified here: `fireWorker` fires for scan, gate, interpret and never extract. |
 | F-3 | MAJOR | **OWNER** | D14 — the product finding. |
 | F-4 | MINOR | **ACCEPTED-NOTE** | The dropped circle-wide count is a real trade and a harmless one: `hc.cancel_arrival` updates a single id, so collateral cancellation is structurally impossible. Restoring it costs nothing and is worth doing with D14. |
@@ -1267,6 +1267,17 @@ DECLINED-and-ACCEPTED · 1 OWED/OWNER = 113.** The kickoff's "25 FIXED,
 a small thing; a slice-6 kickoff carrying two queue entries that are
 already done is not.
 
+**AMENDED (5B-queue reconciliation, 2026-08-27 — see D25).** **This tally was
+mechanically exact when it was written, and it is now stale by one row.** Its
+eight cells reproduce the table at `9682081` precisely — the 27 FIXED
+included, which counts R7/F-11 (*"**FIXED** (the title) / **ACCEPTED** (the
+count)"*) as FIXED. **That is the counting rule, and D25 now states it.** One
+commit later, at `e0186ce`, `R8/F-1` moved `OWED` → `FIXED`, and nothing
+re-derived the tally. **At `main` = `4f7a9d7` it reads 28 FIXED · 38 OWED · 3
+OWNER · 19 ACCEPTED-NOTE · 21 NOTED · 2 ACCEPTED · 1 DECLINED-and-ACCEPTED ·
+1 OWED/OWNER = 113.** The prose above is preserved exactly as written and
+remains true of the head it names.
+
 ### ADR-0022's amendment list was SHORT BY FOUR
 
 The "Status of ADR-0022" paragraph named five falsified claims. The
@@ -1348,6 +1359,14 @@ should carry first:
    multi-page fixture, and nothing anywhere scores whether a bbox lands
    on its value).
 
+**AMENDED (5B-queue reconciliation, 2026-08-27 — see ADR-0023 D25).** This
+"39" is the strict-`OWED` row count of ADR-0023 D17 **as it stood at
+`9682081`**. `R8/F-1` moved `OWED` → `FIXED` at `e0186ce` and the tally was
+never re-derived. At `main` = `4f7a9d7` the table holds **38 strict `OWED`**;
+the queue is **38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4) = 39 rows carrying
+owed work**, that 1 owner-blocked. The integer is unchanged — **its referent
+is not.** The prose above is preserved exactly as written.
+
 ---
 
 ### The merge — stamped after the fact, per the 4A `95dab27` pattern
@@ -1383,6 +1402,125 @@ slice 6's, the G9 gate is OPEN, `BAND_ARTIFACT_ALLOWLIST` is EMPTY, and
 G3/G9/G4/G7 all still block.
 
 ---
+
+---
+## D25 — the counting rule, STATED; and the tally re-derived at `main`
+
+**Written 2026-08-27 at `main` = `4f7a9d7`, after slice 6B merged.** This
+section adds no disposition and moves no verdict. It states the rule D24's
+tally was computed with, re-derives the tally at the current head, and marks
+every site that inherited the old figure. **No prose anywhere is rewritten;
+every amended sentence is preserved where it stands.**
+
+### The rule
+
+> **Owed is counted by ROW over D17's Verdict column, at a NAMED HEAD.**
+>
+> 1. **The unit is the row.** One finding is one row. D17 holds **113** rows
+>    and every count partitions those 113 — a tally that does not sum to 113
+>    is wrong by construction.
+> 2. **A row joins exactly ONE class**, named by the **operative** token in
+>    its Verdict cell: the token saying what happened to the code or to the
+>    record. A compound cell is never counted twice.
+> 3. **`OWED/OWNER` IS owed.** R7/F-4 is the only such row, and D12's own
+>    heading reads *"ACCEPTED, owed, not fixed"*. It is owed work that is
+>    **blocked on an owner decision**, so it is reported as `38 + 1` and
+>    never folded into a single integer.
+> 4. **Compound and bare-`ACCEPTED` rows are NOT owed.** R7/F-11 is
+>    operatively **FIXED** (`36a4735` retitled the leg); R7/F-6 is
+>    operatively **DECLINED** (D10); R7/F-10 was fixed in the coverage flip;
+>    R8/F-2 is a verification with no residual work.
+> 5. **Every published count carries the head it was derived at**, because
+>    the table is amendable and has in fact been amended since D24.
+
+Rule 4 is **not invented here.** It is recovered from D24's own arithmetic: at
+`9682081` the table held 26 bare-`FIXED` rows plus R7/F-11, and D24 published
+**27 FIXED**. All eight of D24's cells reproduce exactly, and only under this
+rule. The rule was always in use — it was simply never written down, which is
+the whole of the defect.
+
+### The tally, re-derived at `main` = `4f7a9d7`
+
+| Class | Count |
+|---|---|
+| **FIXED** (27 bare + R7/F-11) | **28** |
+| **OWED** (strict) | **38** |
+| NOTED | 21 |
+| ACCEPTED-NOTE | 19 |
+| OWNER | 3 |
+| ACCEPTED | 2 |
+| DECLINED-and-ACCEPTED (R7/F-6) | 1 |
+| **OWED/OWNER** (R7/F-4) | **1** |
+| **Total** | **113** |
+
+**The owed queue is 38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4) = 39 rows
+carrying owed work**, of which that 1 is owner-blocked. Severity of the 38:
+**18 MAJOR · 16 MINOR · 4 OBS**; with R7/F-4, **19 MAJOR**.
+
+### What actually happened to the number
+
+| Head | What it did | FIXED | strict OWED |
+|---|---|---|---|
+| `9682081` | ADR-0023 RATIFIED as amended — D24's tally written here | 26 +R7/F-11 = **27** | **39** |
+| `234a07f` `b80ab32` `00c29f1` | sign-off corrections, merge SHA stamped | unchanged | **39** |
+| `e0186ce` | *"one owed verdict corrected"* — R8/F-1 `OWED`→`FIXED` | 27 +R7/F-11 = **28** | **38** |
+| `f291a01` … `4f7a9d7` | round 17 onward | unchanged | **38** |
+
+**D24's tally was mechanically exact when it was written.** It went stale one
+commit later, at `e0186ce`, and was never re-derived. Established by tallying
+the D17 table out of the blob at every commit that has touched this file —
+R8/F-1 is the only verdict that has moved since the sign-off.
+
+### Why four rounds did not catch it
+
+**Because the integer never moved.** Three different sets were all called 39:
+
+| Claimed by | The 39 it means | Has R8/F-1 | Has R7/F-4 |
+|---|---|---|---|
+| D24, at `9682081` | strict `OWED` rows | **yes** | no |
+| `docs/review/slice-6-plan.md:734-749` | rows carrying owed work | no | **yes** |
+| ADR-0025 · ADR-0027 · ADR-0028 | inherited, never re-derived | — | — |
+
+The slice-6 plan counted **40**, subtracted the stale R8/F-1, reached 39, and
+recorded that this was *"what D24's own tally says."* **It was not.** The plan
+had landed on the same integer over a set differing from D24's by two rows.
+Two sessions counted different things, both reported "mechanical", and agreed.
+
+The propagation has one named source: **R8/F-1's own correction note**, which
+asserts *"The OWED tally stays 39 — that is D24's own count, taken with this
+work already treated as done, so correcting the row changes no arithmetic."*
+Under the row rule that produced the 39 this is false: the row **was** one of
+the 39. ADR-0025 D6 and its RULING 6 inherited the sentence while ratifying
+the flip, and ADR-0027 and ADR-0028 carried it forward verbatim.
+
+### This NARROWS round 20's §1.11 — it does not overturn it
+
+`docs/review/round-20-signoff-attack.md:206` ruled the queue's "39 OWED"
+**internally consistent**, on the ground that *"no contradiction among the
+binding documents"* exists. **That ruling is correct and it stands.** There is
+no contradiction: every binding document carries the same integer, because
+each copied it from the last. §1.11 tested the documents **against each
+other**; it did not re-derive the integer **from the table**, which is the
+check that fails. Consistency was never the property in question.
+
+§1.11 also records `chore/process-retune`'s tier-2 claim that the 39 *"may be
+stale — that nothing ever wrote back to ADR-0023's table."* **That claim is
+right in its conclusion and wrong in its mechanism**: something *did* write
+back to the table (`e0186ce`). What never happened is the **tally** being
+re-derived afterwards. That branch stays unmerged and non-binding, and this
+section does not adopt it.
+
+### Sites amended
+
+D17's R8/F-1 row · D24's tally paragraph · D24's *"39 findings remain OWED"* ·
+ADR-0025 `361`, `737`, `1200`, `1278` · ADR-0027 `933`, `947`, `1265`, `1393` ·
+ADR-0028 `618`, `625`, `947`. The `docs/review/*` files are records of their
+own moment and are left as written.
+
+**Nothing else moves.** No verdict changes, no coverage row flips, no `pending`
+row moves, no DDL. G4 and G7 block · G9 OPEN · `BAND_ARTIFACT_ALLOWLIST` EMPTY
+· RCP-02 pending tagged 7 · SIG-01 NOT absorbed · migrations **69 exact**,
+budget **7 of ≤ 7 SPENT** · **NOTHING IS PRODUCTION-ACTIVATED.**
 
 ## Consequences
 

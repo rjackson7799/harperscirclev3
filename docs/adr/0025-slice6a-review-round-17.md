@@ -362,6 +362,17 @@ unchanged at 39, it was argued in place, and it was disclosed in the
 commit subject and in the packet's "documents that moved after the
 evidence head" list. Everything about how it was done is exemplary.
 
+**AMENDED (5B-queue reconciliation, 2026-08-27 — see ADR-0023 D25).** *"the
+OWED tally is unchanged at 39"* **is false under the rule that produced the
+39.** That 39 is a ROW COUNT over ADR-0023 D17's Verdict column and `R8/F-1`
+was one of its 39 rows — flipping it to `FIXED` necessarily took the strict
+count to **38**. The sentence was inherited from R8/F-1's own correction note
+(*"The OWED tally stays 39"*), which claimed the same thing for the same
+reason. **The ratification of the flip itself STANDS**; only the arithmetic
+claim attached to it is corrected. At `main` = `4f7a9d7` the queue is **38
+strict `OWED` + 1 `OWED/OWNER` (R7/F-4)**. The prose above is preserved
+exactly as written.
+
 **None of that supplies the authority, and the review is right to say
 so.** ADR-0023 is a settled dispositions record. Under ADR-0006's cadence
 dispositions are their own session with owner sign-off, and the precedent
@@ -737,6 +748,14 @@ recorded).**
 **The slice-5B queue is unchanged at 39 OWED**; nothing in this round
 moves it. F-5 and Q-G's RCP-01 note are added to the **6B** queue, along
 with R4/F-10 (Q-A), which was already there.
+
+**AMENDED (5B-queue reconciliation, 2026-08-27 — see ADR-0023 D25).** This
+"39" is the strict-`OWED` row count of ADR-0023 D17 **as it stood at
+`9682081`**. `R8/F-1` moved `OWED` → `FIXED` at `e0186ce` and the tally was
+never re-derived. At `main` = `4f7a9d7` the table holds **38 strict `OWED`**;
+the queue is **38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4) = 39 rows carrying
+owed work**, that 1 owner-blocked. The integer is unchanged — **its referent
+is not.** The prose above is preserved exactly as written.
 
 ---
 
@@ -1199,6 +1218,17 @@ ADR-0023's D17 R8/F-1 row is **RATIFIED on this round's authority**, its
 three sites having been re-read by the review, by the round and once more
 here; the OWED tally is unchanged at 39.*
 
+**AMENDED (5B-queue reconciliation, 2026-08-27 — see ADR-0023 D25).** *"the
+OWED tally is unchanged at 39"* **is false under the rule that produced the
+39.** That 39 is a ROW COUNT over ADR-0023 D17's Verdict column and `R8/F-1`
+was one of its 39 rows — flipping it to `FIXED` necessarily took the strict
+count to **38**. The sentence was inherited from R8/F-1's own correction note
+(*"The OWED tally stays 39"*), which claimed the same thing for the same
+reason. **The ratification of the flip itself STANDS**; only the arithmetic
+claim attached to it is corrected. At `main` = `4f7a9d7` the queue is **38
+strict `OWED` + 1 `OWED/OWNER` (R7/F-4)**. The prose above is preserved
+exactly as written.
+
 **RULING 6 — on Q-E's NOTED pattern departure.**
 *Q-E's retirement of `arrival_transitions_stage_fkey` is **RATIFIED**,
 and the pattern departure is **NOTED, not repaid now**, with the
@@ -1276,6 +1306,14 @@ sign-off and stand as D11 left them.
 The 6B queue gains one entry; **B1, the rasterizer swap, keeps its
 plan-bound first position** and the 6B kickoff places these alongside it.
 The slice-5B queue is **unchanged at 39 OWED**.
+
+**AMENDED (5B-queue reconciliation, 2026-08-27 — see ADR-0023 D25).** This
+"39" is the strict-`OWED` row count of ADR-0023 D17 **as it stood at
+`9682081`**. `R8/F-1` moved `OWED` → `FIXED` at `e0186ce` and the tally was
+never re-derived. At `main` = `4f7a9d7` the table holds **38 strict `OWED`**;
+the queue is **38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4) = 39 rows carrying
+owed work**, that 1 owner-blocked. The integer is unchanged — **its referent
+is not.** The prose above is preserved exactly as written.
 
 **NEW · the approve-time payload contract's residue (S16.2, S16.3).**
 Acceptance conditions, in the D8 shape:
