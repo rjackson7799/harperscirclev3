@@ -57,6 +57,15 @@ are already fixed.
 rows**, re-derived against `main` out of the blob, in D25's method. Its
 output is a round's input, not a session's ruling.
 
+> **MARKER (2026-08-27) — TASK 0 IS DONE.** Executed the same day, in
+> `slice-5b-queue-staleness-pass.md`. Result: **31 of the 39 rows are
+> already FIXED at `main`**, each with a 6B attribution at the site and, in
+> almost every case, a test named for the finding. The live queue is **8
+> rows / 7 distinct items, 5 MAJOR · 2 MINOR** — R2/F-2, R2/F-3, R2/F-4
+> (narrowed), R2/F-6 = R7/F-5, R2/F-12, R4/F-12, R7/F-4. **Six of the
+> eleven clusters are entirely spent: C1, C4, C5, C6, C8, C10.** No verdict
+> moved. The prose above is preserved as written.
+
 **No verdict moves in this document.** Not one.
 
 ---
@@ -71,6 +80,12 @@ output is a round's input, not a session's ruling.
       = 35 actionable
       − 2 collapsed   (R3/F-3 = R4/F-4, "fix once" · R2/F-6 = R7/F-5, unread `usage`)
       = 33 distinct items
+
+> **MARKER (2026-08-27).** This arithmetic is the queue as D17 *records*
+> it, and it stays correct as a statement about the table. It is **not**
+> the work remaining: the staleness pass found **31 of the 39 already
+> fixed at `main`**, leaving **8 rows / 7 distinct items**. Read
+> `slice-5b-queue-staleness-pass.md` before scheduling anything off the 33.
 
 **On the 4 blocked rows — their blocks have LIFTED, and a round must say
 so.** R7/F-4's owner half is answered by D26. The three blocked on G9
@@ -127,6 +142,14 @@ PERSON now READS"** comes first.
    *reporting* success.
 
 Then, in any order the session finds efficient: C11's remainder, C9, C10,
+
+> **MARKER (2026-08-27).** This order is **superseded** — correct reasoning
+> applied to stale inputs, which is exactly why task 0 runs before
+> scheduling rather than after. Of the five items sequenced above, **C8,
+> C5, C1 and R3/F-8 are fixed at `main`**; only **R4/F-12** and **R2/F-2**
+> survive. The revised order over the 7 live items is in
+> `slice-5b-queue-staleness-pass.md`. The prose above is preserved as
+> written.
 C2, C3, C4, C6.
 
 **C4 is flagged for the staleness pass first.** Both rows describe `mupdf`
