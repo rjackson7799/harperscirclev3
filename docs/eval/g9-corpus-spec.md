@@ -82,6 +82,17 @@ Max recall's arithmetic is thereby 1.0 for every banded field: the §6
 floors are REACHABLE at last, and what keeps G9 closed is the gate
 itself — a completed blind run, §6.A's rule, and the owner's signature.
 
+> **MARKER (2026-08-27, ADR-0023 D26).** True of RECALL, and only of
+> recall. The citation half added in the same increment (R3/F-7) has a
+> ceiling of its own: the six email items' labels are line-fraction boxes
+> (`[0, i / lines.length, 1, 1 / lines.length]`) that the §6.3 rendition
+> never paints — it draws line *i* at `y = (96 + 40i) / 1568` with height
+> `0.0255`. Measured: a perfect reader lands **0 of 23** email citations,
+> capping `provider` at 0.8519 and `appointment_date` / `appointment_time`
+> at 0.7500, all below `CITATION_FLOOR` 0.90. **For those three fields the
+> arithmetic, not the gate, is what keeps G9 closed.** The prose above is
+> preserved as written; the fix is OWED at ADR-0023 D26.
+
 ---
 
 ## 2. The two partitions, and why the split is structural
@@ -195,6 +206,15 @@ completed blind run over this corpus, §6.A's mechanical rule, and the
 owner's signature on the result. `BAND_ARTIFACT_ALLOWLIST` stays EMPTY
 until that happens, and every field ships all-high-risk (§6.5).
 
+> **MARKER (2026-08-27, ADR-0023 D26).** The §4 minimums are MET exactly as
+> stated — this marker is about a different axis. §6.A also requires
+> citation accuracy ≥ 0.90, and on that axis three banded fields cannot
+> reach the floor whatever a reader does: `provider` 0.8519,
+> `appointment_date` 0.7500, `appointment_time` 0.7500, because 20 blind
+> email labels carry boxes the rendition never paints. "The GATE, not the
+> arithmetic" is true of recall and false of citation for those three. Fix
+> OWED — see ADR-0023 D26.
+
 **The honest statistical reading stands.** Twelve to twenty-seven
 supporting labels put a real interval around a measured number — that
 is what the purchase bought — but a measured 1.00 at n = 12 is still
@@ -256,6 +276,14 @@ mechanical rule by which a run's numbers earn a signable row.
 | `appointment_date` | high | 0.95 | 0.90 | 1.0 | yes — unsigned |
 | `appointment_time` | high | 0.95 | 0.90 | 1.0 | yes — unsigned |
 | `document_date` | standard | 0.95 | 0.95 | 1.0 | yes — unsigned |
+
+> **MARKER (2026-08-27, ADR-0023 D26).** The `Reachable?` column is the
+> RECALL ceiling and is correct as written. It is not the whole signing
+> test: §6.A also requires citation accuracy ≥ 0.90, and on that axis
+> `provider` (0.8519), `appointment_date` (0.7500) and `appointment_time`
+> (0.7500) are **UNREACHABLE as the corpus stands** — the email labels'
+> boxes are not where the rendition puts the glyphs. No row above moves;
+> the fix is OWED at ADR-0023 D26.
 
 ### 6.A The threshold rule — how a measured number becomes a band (R6/F-4)
 

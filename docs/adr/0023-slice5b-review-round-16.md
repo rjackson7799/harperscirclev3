@@ -566,6 +566,18 @@ in neither the delivered set nor the named-exclusion set.
 corpus spec row — and it composes with D11, which the owner must answer
 first. RND-01's coverage cell must stop reading "the table row by row"
 until it is settled; see D13.
+> **MARKER (2026-08-27, D26).** All three consequences above were measured
+> at `main` = `4f7a9d7`, and two are no longer true of the tree. **1 is
+> SPENT**: Q6 settled on RENDER at 6B B2 (`441f610`), so no path returns
+> `pageCount` 0 and every email fact now cites a rendition that exists.
+> **3 is SPENT**: 6B B10 (`9c33e0c`) bought §7 row 1 and the BLIND
+> partition gained five email items. **2 is LIVE and larger**: the
+> line-fraction convention was carried into all five new blind items, and a
+> perfect reader lands **0 of 23** email citations — which now costs three
+> banded fields their signability. D26 rules item 5 and states the
+> arithmetic. **The prose above is preserved as written, and no verdict
+> moves: R7/F-4 stays `OWED/OWNER`.**
+
 
 ---
 ## D13 — OWNER DECISION: `mupdf` is AGPL-3.0-or-later, and no governance document says so (R7/F-1)
@@ -928,7 +940,7 @@ blocks something.
 | 2 | **`mupdf` is AGPL-3.0-or-later** and unrecorded. | Nothing in the tree; everything about the product's distribution posture | **Decide before slice 6 builds more on `render.ts`.** Independently: the dependency bound gains a licence column. |
 | 3 | **The G9 corpus cannot pass its own gate.** 8 of 12 blind items carry no rendition of their labels; no proposed floor is arithmetically reachable. | The G9 gate; signing any band | **Restate §4/§6 against the readable set now** (an honest n=2 beats a stated n=6 that is really n=2), then buy §7 row 1 or row 2 deliberately. |
 | 4 | **§4.5's cancel window is ~35 s** on a non-refreshing surface, and the only arrival email fires when it closes. | Nothing today (nothing is production-activated) | **Rule on it before anyone adds the missing `gate → extract` eager fire**, which is an obvious latency win that would silently collapse the window further. |
-| 5 | **§6.3's email row** was truncated in the as-built record; email facts cite a rendering that is never produced, and the blind partition has no email item. | Slice 6's crop for email arrivals; G9 covering the primary intake channel | **Settle the row** (render the message as a second source, or amend the TSD) with decision 3, since they compose. |
+| 5 | **§6.3's email row** was truncated in the as-built record; email facts cite a rendering that is never produced, and the blind partition has no email item. | Slice 6's crop for email arrivals; G9 covering the primary intake channel | **Settle the row** (render the message as a second source, or amend the TSD) with decision 3, since they compose. **— RULED at D26 (2026-08-27): parts 1–3 SUPERSEDED, delivered unruled by 6B B1/B2/B10; part 4 RESTATED with its arithmetic. This row's "never produced" and "no email item" are SPENT — see D26.** |
 
 ---
 
@@ -1522,6 +1534,123 @@ row moves, no DDL. G4 and G7 block · G9 OPEN · `BAND_ARTIFACT_ALLOWLIST` EMPTY
 · RCP-02 pending tagged 7 · SIG-01 NOT absorbed · migrations **69 exact**,
 budget **7 of ≤ 7 SPENT** · **NOTHING IS PRODUCTION-ACTIVATED.**
 
+## D26 — D18 ITEM 5, RULED: three parts superseded by 6B, the fourth restated with its arithmetic
+
+**Ruled by the owner on 2026-08-27.** D18 escalated five items; D20 ruled
+three of them on 2026-08-23, and D24's sign-off ruled `mupdf`, the G9
+corpus, the cancel window and ratification. **Item 5 was never taken.**
+D18 recommended settling it "with decision 3, since they compose" —
+decision 3 was ruled, and item 5 did not ride along.
+
+**The interval is the finding.** Between D18 and this ruling, slice 6B
+built three of item 5's four parts without a ruling ever being taken, and
+the fourth grew a consequence it did not have when it was written. What
+follows is measured at `main` = `4f7a9d7`, out of the tree, not inherited.
+
+### The four parts, measured
+
+| Part | The standing recommendation | At `main` |
+|---|---|---|
+| 1 | Amend TSD §6.3 row 4 to the as-built truth (text only, no rendered second source), and restore `render.ts`'s truncated docstring as a NAMED GAP. | **INVERTED — do not do this.** Q6 settled on **RENDER** at 6B B2 (`441f610`). `lib/pipeline/render.ts:331` reads "§6.3 row 4 AS WRITTEN", the docstring reproduces the full clause, and `renderEmailMessage` paints it. The row is TRUE as written; amending it to "text only" would falsify a true document. |
+| 2 | `validateFacts` must stop requiring a bbox when `pageCount === 0` — the part named as "false provenance on the primary intake channel, being stored right now". | **SPENT.** No path returns 0: `renderEmailMessage` returns `pages.length` ≥ 1, the PDF path refuses `< 1` as `unsupported_type`, the image path returns 1. `Math.max(1, pageCount)` at `lib/ai/extract.ts:79` is defensive only. No email fact carries a fictional box today. |
+| 3 | Make "render the message as a second source" a named slice-7 item, sequenced AFTER the rasterizer swap. | **DONE, in that order.** The swap landed at 6B B1 (`ae697a8`: `mupdf` out, `pdfjs-dist` + `@napi-rs/canvas` in); the rendition at B2 (`441f610`). Both precede the round-20 sign-off. |
+| 4 | `dev-email-01`'s line-fraction bboxes are labels against an absent rendering — remove or restate as text offsets. | **LIVE, and larger than written.** Not one item but **six**, carrying **23 labels**, **20 of them in the BLIND partition** — added by 6B B10 under the same convention, which `scripts/fixtures/g9-build.mjs` names in its own comment: "the `dev-email-01` approximation carried into a shared helper". |
+
+**Parts 1–3 are SUPERSEDED.** They were delivered while the item sat
+unruled, which is the process fact worth recording: an owner item can be
+built past rather than answered, and nothing in the round machinery
+noticed. Part 4 is the only live residue, and it is RESTATED below on its
+own argument rather than carried forward on the old one.
+
+### Part 4, restated: the labels are boxes the rendition never paints
+
+The generator computes an email label's geometry as
+`[0, i / lines.length, 1, 1 / lines.length]` — line *i* of *n*, full
+width, as though the page WERE the text block. §6.3's rendition is not
+that page. It is 1212 × 1568 with a 96 px margin and a 40 px line box, so
+line *i* occupies `y = (96 + 40i) / 1568` with height `40 / 1568 =
+0.0255` — every line inside the top quarter of the page, never spanning
+it.
+
+`citationLands` (`lib/eval/score.ts`) requires the intersection to be at
+least half the smaller box. **Measured against the renderer's own
+constants: 0 of 23 email labels land.** Not a near miss — on every one of
+them the label band and the painted band are disjoint.
+
+### Why that is not cosmetic: a SECOND arithmetic ceiling
+
+6B B10 answered R3/F-7 in the SAME commit that bought the corpus
+(`9c33e0c`): citation correctness became SCORED, with `CITATION_FLOOR` =
+0.90 — at least nine of ten value-hits must land their box or the field
+cannot sign. Because a perfect reader lands none of the email labels,
+each banded field's citation accuracy is capped at
+`(support − emailLabels) / support`:
+
+| Field | Readable support | Email labels | Max citation accuracy | Signable at 0.90 |
+|---|---|---|---|---|
+| `provider` | 27 | 4 | **0.8519** | **NO** |
+| `appointment_date` | 12 | 3 | **0.7500** | **NO** |
+| `appointment_time` | 12 | 3 | **0.7500** | **NO** |
+| `document_date` | 25 | 2 | 0.9200 | yes |
+| `medication_name`, `medication_dose`, `medication_frequency` | 14 | 1 | 0.9286 | yes |
+| `allergy_substance` | 13 | 1 | 0.9231 | yes |
+| `amount`, `policy_number`, `member_id`, `coverage_determination` | 12 | 1 | 0.9167 | yes |
+
+**Three banded fields are arithmetically unsignable** — the exact shape
+of D11's recall ceiling, on the citation axis, introduced by the same
+increment that cleared the recall one. The spec says in three places, and
+`tests/eval/corpus.test.ts` says in a fourth, that what keeps G9 closed
+is "the GATE, not the arithmetic". That is TRUE of recall and FALSE of
+citation for `provider`, `appointment_date` and `appointment_time`. Every
+such site is marked; none is rewritten.
+
+### The fix, NAMED but NOT TAKEN
+
+**Regenerate the email labels from the renderer's own geometry.**
+`emailFixture` in `scripts/fixtures/g9-build.mjs` computes the box from
+the same constants `renderEmailMessage` draws with; `fixtures/g9/corpus.json`
+and its hashes regenerate; and a new leg pins the labels against
+`normalizeArrival`, so the convention can never drift from the renderer
+again — the technique B10 already used to stop `rendered` being a
+declaration.
+
+**Not taken here: this entry is docs-only.** The change is CODE and
+touches the corpus manifest, so it needs a code session and a browser-gate
+re-run (38 legs). It carries **NO DDL** — migrations stay **69 exact**,
+budget **7 of ≤ 7 SPENT**.
+
+### What does NOT move
+
+**No verdict moves. R7/F-4 stays `OWED/OWNER`**, and D17's tally is
+untouched: 28 FIXED · 38 OWED · 21 NOTED · 19 ACCEPTED-NOTE · 3 OWNER ·
+2 ACCEPTED · 1 DECLINED-and-ACCEPTED · 1 `OWED/OWNER` = 113. ADR-0025 D6's
+standing rule governs — a session records the discrepancy where it will be
+read and LEAVES THE VERDICT ALONE; the next round rules. The owner half of
+R7/F-4 is answered by this entry; the residue is ordinary owed work, and
+the row moves `OWED/OWNER` → `OWED` when a round rules it, **not here**.
+
+**A question D24 deferred is CLOSED, and was not open when this session
+began:** §7's purchase. Row 1 was **BOUGHT** at 6B B10 (blind 12 → 40,
+five of them email); row 2 (photographed synthetic documents) was
+deliberately kept out and remains an owner decision at the gate. §7 of the
+spec records both already. It should not be carried forward as an open
+item again.
+
+### Sites marked
+
+| Document | Site | What the marker says |
+|---|---|---|
+| ADR-0023 | D12 | Consequences 1 and 3 are spent; consequence 2 is live and larger |
+| ADR-0023 | D18, item 5 row | RULED at D26 |
+| ADR-0026 | D10 | The landing predicate now books the corpus's own boxes as misses |
+| `g9-corpus-spec.md` | §1, §4.2, §6 | "the GATE, not the arithmetic" is true of recall, false of citation for three fields |
+
+**Three sites are CODE and are therefore NOT marked here — they are part
+of the owed fix:** `tests/eval/corpus.test.ts`'s §4 block prose,
+`scripts/fixtures/g9-build.mjs`'s `emailFixture`, and the 23 email labels
+in `fixtures/g9/corpus.json`.
+
+---
 ## Consequences
 
 - **EIGHT of the ten BLOCKERs are fixed on the branch** — corrected at
