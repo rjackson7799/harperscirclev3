@@ -1,12 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { CORPUS_ROOT, corpusManifest } from '@/lib/eval/manifest';
-import { corpusMime, developmentCorpus, readCorpusFile, type CorpusItem } from '@/lib/eval/corpus';
+import { developmentCorpus, readCorpusFile, type CorpusItem } from '@/lib/eval/corpus';
 import { blindCorpus } from '@/lib/eval/blind';
 import { isKnownField, riskClassFor } from '@/lib/extraction/fields';
 import { normalizeArrival } from '@/lib/pipeline/render';
+import { sniffMime } from '@/lib/pipeline/mime';
 
 // ============================================================================
 // B1 · The G9 corpus (slice-5 plan B1, Q5 SETTLED; TSD §6.10; PRD §6.4,
@@ -209,93 +210,158 @@ describe('B1 · the corpus spec is MEASURED, not merely written down', () => {
 });
 
 // ============================================================================
-// §4 RESTATED AT THE ROUND-16 SIGN-OFF — support is a RENDITION, not a label
-// (owner ruling 2026-08-23; the finding is ADR-0023 D11, the ruling is D24).
+// §4 RESTATED AT THE Q10 PURCHASE (6B B10; §7 row 1 BOUGHT: blind 12 → 40,
+// including email items). The round-16 block this replaces went RED on the
+// growth exactly as designed, and these are its re-pins — moved in the same
+// commit as the corpus change, never loosened.
 //
-// A label records what an item IS. It does not establish that the item
-// CONTAINS a rendition of that value — and for eight of the twelve blind
-// items it does not: the photo-class encoder in scripts/fixtures/g9-build.mjs
-// never renders a glyph, because paintRows uses a row's text only to SIZE a
-// rectangle. So `Elmwood Drug` lives in corpus.json and in no byte the model
-// is given, and a flawless reader scores a miss on it.
-//
-// Every number the spec's §4 used to state was therefore larger than anything
-// a run could demonstrate, and no floor in §6 was arithmetically reachable.
-// This block MEASURES the real support, through the pipeline's own
-// normalizeArrival, so the spec cannot drift back into aspiration. It is
-// written to go RED the moment the corpus grows (§7 row 1 or row 2) — and that
-// red is the signal to re-pin these numbers in the same commit as the ADR
-// recording the corpus change, never to loosen them.
+// D11'S LETTER IS NOW ENCODED IN THE MANIFEST: a label records what the item
+// IS, and `rendered` records whether the MATERIAL carries a rendition of it
+// (the photo/scanned classes never paint a glyph — paintRows uses text only
+// to SIZE a rectangle). The flag is MEASURED here through the pipeline's own
+// normalizeArrival, never trusted: a rendered:true label whose value is not
+// in the rendition text, or a rendered:false label whose value is, fails
+// this suite. The scorer excludes unrendered labels from recall (a flawless
+// reader cannot return them) and books a production that "matches" one as a
+// false positive — the hallucination those items exist to catch.
 // ============================================================================
 
-describe('B1 · §4.2 — readable support, measured through the pipeline itself', () => {
-  const renditionOf = (item: CorpusItem): string => {
-    const result = normalizeArrival(readCorpusFile(item), corpusMime(item));
-    return result.outcome === 'rendered' ? (result.text ?? '').toLowerCase() : '';
-  };
-  const renditions = new Map(blind.map((i) => [i.id, renditionOf(i)]));
+describe('B10 · §4.2 — readable support, measured through the pipeline itself', () => {
+  // Populated once before the cases. R3/F-12 rides the re-pin: the
+  // measurement now normalises with the SNIFFED mime, exactly as the worker
+  // does — content, never declaration.
+  const renditions = new Map<string, string>();
+  const pageCounts = new Map<string, number>();
+  beforeAll(async () => {
+    for (const item of blind) {
+      const bytes = readCorpusFile(item);
+      const result = await normalizeArrival(bytes, sniffMime(bytes));
+      renditions.set(
+        item.id,
+        result.outcome === 'rendered' ? (result.text ?? '').toLowerCase() : '',
+      );
+      pageCounts.set(item.id, result.outcome === 'rendered' ? result.pages.length : 0);
+    }
+  }, 240_000);
   const readable = (item: CorpusItem, field: string): boolean =>
     item.labels.some(
       (l) => l.field === field && renditions.get(item.id)!.includes(String(l.value).toLowerCase()),
     );
 
-  it('exactly four blind items carry a rendition of anything they are labelled with', () => {
+  it('the `rendered` flag is MEASURED, label by label — never a declaration', () => {
+    for (const item of blind) {
+      const text = renditions.get(item.id)!;
+      for (const l of item.labels) {
+        const inText = text.includes(String(l.value).toLowerCase());
+        expect(
+          l.rendered,
+          `${item.id}:${l.field} says rendered=${String(l.rendered)} and the rendition says ${inText}`,
+        ).toBe(inText);
+      }
+    }
+  });
+
+  it('twenty-eight blind items carry renditions — born-digital AND email, the second readable source type', () => {
     const carrying = blind
       .filter((i) => i.labels.some((l) => readable(i, l.field)))
       .map((i) => i.id)
       .sort();
-    expect(carrying).toEqual([
-      'blind-discharge-01',
-      'blind-discharge-02',
-      'blind-eob-01',
-      'blind-eob-02',
-    ]);
-    // All four are the same source type, which is why §4.2's second column is
-    // 1 for every banded field: §4's ≥ 2 source-type minimum is met by
-    // NOTHING once the unreadable items stop counting.
-    expect(
-      new Set(blind.filter((i) => carrying.includes(i.id)).map((i) => i.source_type)),
-    ).toEqual(new Set(['born_digital_pdf']));
+    expect(carrying).toEqual(
+      [
+        'blind-discharge-01',
+        'blind-discharge-02',
+        'blind-discharge-04',
+        'blind-discharge-05',
+        'blind-discharge-06',
+        'blind-discharge-07',
+        'blind-discharge-08',
+        'blind-discharge-09',
+        'blind-discharge-10',
+        'blind-discharge-11',
+        'blind-discharge-multimed-01',
+        'blind-discharge-multipage-01',
+        'blind-eob-01',
+        'blind-eob-02',
+        'blind-eob-04',
+        'blind-eob-05',
+        'blind-eob-06',
+        'blind-eob-07',
+        'blind-eob-08',
+        'blind-eob-09',
+        'blind-eob-10',
+        'blind-eob-11',
+        'blind-eob-12',
+        'blind-email-01',
+        'blind-email-02',
+        'blind-email-03',
+        'blind-email-04',
+        'blind-email-05',
+      ].sort(),
+    );
+    expect(new Set(blind.filter((i) => carrying.includes(i.id)).map((i) => i.source_type))).toEqual(
+      new Set(['born_digital_pdf', 'email_text']),
+    );
   });
 
-  it('the other eight carry NOTHING — not a partial rendition, none at all', () => {
+  it('the twelve photo/scanned items still carry NOTHING — pure hallucination catchers now', () => {
     const unreadable = blind.filter((i) => renditions.get(i.id)!.length === 0);
-    expect(unreadable.length).toBe(8);
+    expect(unreadable.map((i) => i.id).sort()).toEqual([
+      'blind-angled-01',
+      'blind-angled-02',
+      'blind-angled-03',
+      'blind-discharge-03',
+      'blind-eob-03',
+      'blind-note-01',
+      'blind-note-02',
+      'blind-note-03',
+      'blind-pill-01',
+      'blind-pill-02',
+      'blind-pill-03',
+      'blind-scanned-01',
+    ]);
     for (const item of unreadable) {
       expect(item.labels.length, `${item.id} is labelled`).toBeGreaterThan(0);
-      for (const label of item.labels) {
-        expect(readable(item, label.field), `${item.id}:${label.field}`).toBe(false);
+      for (const l of item.labels) {
+        expect(l.rendered, `${item.id}:${l.field} rendered`).toBe(false);
       }
     }
   });
 
   it('readable support per banded field is what the spec §4.2 states', () => {
-    // [readable support, distinct readable source types] — pinned exactly. A
-    // number moving here means the corpus moved, and the spec table moves with
-    // it in the same commit.
+    // [readable support in LABELS, distinct readable source types] — pinned
+    // exactly. Support counts labels, not items (R6/F-10): the multi-med
+    // discharge contributes two to each medication field.
     const expected: Record<string, [number, number]> = {
-      document_date: [4, 1],
-      provider: [4, 1],
-      amount: [2, 1],
-      policy_number: [2, 1],
-      member_id: [2, 1],
-      coverage_determination: [2, 1],
-      medication_name: [2, 1],
-      medication_dose: [2, 1],
-      medication_frequency: [2, 1],
-      allergy_substance: [2, 1],
-      appointment_date: [1, 1],
-      appointment_time: [1, 1],
+      document_date: [25, 2],
+      provider: [27, 2],
+      amount: [12, 2],
+      policy_number: [12, 2],
+      member_id: [12, 2],
+      coverage_determination: [12, 2],
+      medication_name: [14, 2],
+      medication_dose: [14, 2],
+      medication_frequency: [14, 2],
+      allergy_substance: [13, 2],
+      appointment_date: [12, 2],
+      appointment_time: [12, 2],
     };
     const measured: Record<string, [number, number]> = {};
     for (const field of manifest.band_fields) {
       const supporting = blind.filter((i) => readable(i, field));
-      measured[field] = [supporting.length, new Set(supporting.map((i) => i.source_type)).size];
+      const labels = supporting.reduce(
+        (n, i) =>
+          n +
+          i.labels.filter(
+            (l) => l.field === field && renditions.get(i.id)!.includes(String(l.value).toLowerCase()),
+          ).length,
+        0,
+      );
+      measured[field] = [labels, new Set(supporting.map((i) => i.source_type)).size];
     }
     expect(measured).toEqual(expected);
   });
 
-  it('the §4 minimums are NOT met on that set — which is what keeps G9 closed', () => {
+  it('the §4 minimums are MET on the readable set — G9 stays closed by the GATE, not by shortfall', () => {
     const shortfalls: string[] = [];
     for (const field of manifest.band_fields) {
       const supporting = blind.filter((i) => readable(i, field));
@@ -308,23 +374,67 @@ describe('B1 · §4.2 — readable support, measured through the pipeline itself
       ) {
         shortfalls.push(`${field}:source_types`);
       }
+      const negatives = blind.filter(
+        (i) => renditions.get(i.id)!.length > 0 && i.absent_fields.includes(field),
+      );
+      if (negatives.length < manifest.minimums.blind_negatives_per_field) {
+        shortfalls.push(`${field}:readable_negatives`);
+      }
     }
-    // TEN of twelve fields miss the support minimum; ALL TWELVE miss the
-    // source-type minimum. Asserting the SHORTFALL rather than compliance is
-    // deliberate: this is the fact that keeps the G9 gate closed, and if it
-    // ever stops being true, that is a corpus change someone has to record.
-    expect(shortfalls.length).toBe(22);
-    expect(shortfalls).toContain('appointment_date:support');
-    expect(shortfalls).toContain('document_date:source_types');
+    expect(shortfalls).toEqual([]);
 
-    // The arithmetic §6 now carries beside every floor: max recall is
-    // readable / labelled, because the rest contain nothing to read. The
-    // highest any banded field reaches is 0.50 against a LOWEST floor of 0.85,
-    // so no row is signable and none may be argued into being signed.
-    const ceilings = manifest.band_fields.map((field) => {
-      const labelled = blind.filter((i) => i.labels.some((l) => l.field === field)).length;
-      return blind.filter((i) => readable(i, field)).length / labelled;
-    });
-    expect(Math.max(...ceilings)).toBeLessThanOrEqual(0.5);
+    // The ceiling arithmetic after D11's encoding: recall's denominator is
+    // RENDERED labels (the scorer excludes what no reader could return), so
+    // every field's max recall is 1.0 and the §6 floors are REACHABLE at
+    // last. What keeps G9 closed now is the gate itself: a completed BLIND
+    // run, the threshold rule, and the owner's signature — never arithmetic.
+    for (const field of manifest.band_fields) {
+      const rendered = blind.reduce(
+        (n, i) => n + i.labels.filter((l) => l.field === field && l.rendered).length,
+        0,
+      );
+      const unrendered = blind.reduce(
+        (n, i) => n + i.labels.filter((l) => l.field === field && !l.rendered).length,
+        0,
+      );
+      expect(rendered, `${field} rendered labels`).toBeGreaterThanOrEqual(
+        manifest.minimums.blind_support_per_field,
+      );
+      expect(unrendered, `${field} unrendered labels still exist as catchers`).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('R3/F-6: a MULTI-PAGE blind item exercises citation.page beyond 1, and its page-2 value renders', () => {
+    const multi = blind.find((i) => i.id === 'blind-discharge-multipage-01')!;
+    expect(multi).toBeTruthy();
+    expect(pageCounts.get(multi.id)).toBe(2);
+    const onPage2 = multi.labels.filter((l) => l.page === 2);
+    expect(onPage2.length).toBeGreaterThan(0);
+    for (const l of onPage2) {
+      expect(l.rendered, `${l.field} on page 2 renders`).toBe(true);
+      expect(renditions.get(multi.id)!).toContain(String(l.value).toLowerCase());
+    }
+  });
+
+  it('R6/F-10: a MULTI-VALUED blind item carries two medications, both rendered', () => {
+    const multi = blind.find((i) => i.id === 'blind-discharge-multimed-01')!;
+    expect(multi).toBeTruthy();
+    const names = multi.labels.filter((l) => l.field === 'medication_name');
+    expect(names).toHaveLength(2);
+    expect(new Set(names.map((n) => n.value)).size).toBe(2);
+    for (const n of names) expect(n.rendered).toBe(true);
+  });
+
+  it('Q10’s letter: the blind partition carries EMAIL items, and they read', () => {
+    const emails = blind.filter((i) => i.source_type === 'email_text');
+    expect(emails.length).toBeGreaterThanOrEqual(1);
+    for (const e of emails) {
+      expect(renditions.get(e.id)!.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('the purchased size: forty blind items, sixteen development', () => {
+    expect(blind).toHaveLength(40);
+    expect(dev).toHaveLength(16);
   });
 });

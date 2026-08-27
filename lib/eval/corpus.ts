@@ -45,6 +45,15 @@ export type CorpusLabel = {
   /** [x, y, w, h] in normalised page coordinates (0–1), against the page
    *  AS DISPLAYED — EXIF orientation already applied. */
   bbox: [number, number, number, number];
+  /**
+   * D11's letter, encoded (6B B10): a label records what the item IS;
+   * `rendered` records whether the MATERIAL carries a rendition of the
+   * value (the photo/scanned classes never paint a glyph). MEASURED by
+   * tests/eval/corpus.test.ts through the pipeline's own normalizeArrival,
+   * never trusted. The scorer excludes `rendered: false` labels from
+   * recall and books a production matching one as a false positive.
+   */
+  rendered?: boolean;
 };
 
 export type AmbiguousLabel = {

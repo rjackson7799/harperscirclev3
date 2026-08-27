@@ -1,5 +1,6 @@
 import 'server-only';
 import { withRequestRole, type RequestClaims } from '@/lib/db/request-role';
+import { isoText } from './rows';
 
 /**
  * The Care Inbox's member operations (slice-4 plan B6; UXA-01's Q6
@@ -115,10 +116,13 @@ export async function listKnownSenders(
     // R5/F-1 — a Date reached the page and every non-empty list threw).
     // Normalising at the boundary is what keeps the declared type honest for
     // every future consumer, not just the one that happened to break.
+    //
+    // 6B close-out: that next consumer arrived (lib/hc/review.ts, three
+    // sites, the whole review screen), so the inline form moved to the one
+    // named helper `tests/lint/timestamp-boundary.test.ts` can require.
     return r.rows.map((row: Record<string, unknown>) => ({
       ...row,
-      accepted_at:
-        row.accepted_at instanceof Date ? row.accepted_at.toISOString() : String(row.accepted_at),
+      accepted_at: isoText(row.accepted_at),
     })) as KnownSender[];
   });
 }

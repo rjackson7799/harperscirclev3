@@ -37,7 +37,9 @@ export function predictionFor(
   const { facts, dropped } = validateFacts(parsed.facts, pageCount);
   return {
     itemId,
-    facts: facts.map((f) => ({ field: f.field, value: f.value })),
+    // 6B B10 (R3/F-7): the citation rides through — the box is part of the
+    // answer, and the scorer measures whether it lands on its value.
+    facts: facts.map((f) => ({ field: f.field, value: f.value, citation: f.citation })),
     dropped,
   };
 }

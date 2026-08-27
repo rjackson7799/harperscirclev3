@@ -52,8 +52,28 @@ const LEADING = 24;
  *  Used only to size the label rectangle a citation points at. */
 const AVG_ADVANCE = 0.5;
 
+/**
+ * 6B B10 (round-16 R6/F-17): the PDF writer emits latin1 buffers with a
+ * WinAnsi font, so a code point above 0xFF would be TRUNCATED to its low
+ * byte — the next non-Latin-1 label would be a silent mislabel instead of a
+ * build failure. Refuse it LOUDLY at build time; Latin-1 diacritics (é, ñ)
+ * pass, and blind-discharge-11's "Muñoz" is the standing proof they do.
+ */
+function assertLatin1(text) {
+  for (const ch of text) {
+    if (ch.codePointAt(0) > 0xff) {
+      throw new Error(
+        `non-Latin-1 character "${ch}" (U+${ch.codePointAt(0).toString(16)}) in PDF text ` +
+          `"${text}" — the PDF writer emits WinAnsi and would silently mislabel; ` +
+          `transliterate the value or extend the writer first`,
+      );
+    }
+  }
+  return text;
+}
+
 function esc(text) {
-  return text.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  return assertLatin1(text).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 }
 
 function assemblePdf(bodyObjects, trailerExtra = '') {
@@ -176,7 +196,8 @@ function buildEncryptedPdf() {
 
 /** A PDF cut off mid-object: no xref, no trailer. Must refuse cleanly. */
 function buildTruncatedPdf() {
-  const { bytes } = buildTextPdf([[{ text: 'Truncated fixture — the bytes stop mid-object.' }]]);
+  // (Second guard catch on the first run: the em-dash was also truncating.)
+  const { bytes } = buildTextPdf([[{ text: 'Truncated fixture - the bytes stop mid-object.' }]]);
   return bytes.subarray(0, Math.floor(bytes.length * 0.55));
 }
 
@@ -498,6 +519,27 @@ function eobLines(o) {
   ];
 }
 
+/**
+ * An email body fixture (Q10: the blind partition gains the product's
+ * primary intake channel). Plain UTF-8 text; labels are line-positioned,
+ * the dev-email-01 approximation carried into a shared helper.
+ */
+function emailFixture(lines, labelSpecs) {
+  const body = lines.join('\n');
+  const bytes = Buffer.from(body, 'utf8');
+  const labelFor = (prefix, field) => {
+    const i = lines.findIndex((l) => l.startsWith(prefix));
+    if (i < 0) throw new Error(`email fixture: no line starts with "${prefix}"`);
+    return {
+      field,
+      value: lines[i].slice(prefix.length).trim(),
+      page: 1,
+      bbox: round4([0, i / lines.length, 1, 1 / lines.length]),
+    };
+  };
+  return { bytes, labels: labelSpecs.map(([prefix, field]) => labelFor(prefix, field)) };
+}
+
 function eobRows(o) {
   return [
     { text: 'EXPLANATION OF BENEFITS' },
@@ -615,7 +657,11 @@ const SPEC = [
             label: L('provider', 'Riverbend Community Hospital'),
           },
           { text: 'Discharged: 2026-03-14', label: L('document_date', '2026-03-14') },
-          { text: 'Re-issued at the family’s request.' },
+          // R6/F-17's guard caught this line on its FIRST run: the original
+          // curly apostrophe (U+2019) was being silently truncated to byte
+          // 0x19 in the shipped fixture — the exact class the finding named,
+          // already live. Transliterated; the guard keeps it out.
+          { text: "Re-issued at the family's request." },
           { text: 'Medication: Amoxicillin', label: L('medication_name', 'Amoxicillin') },
           { text: 'Dose: 500 mg', label: L('medication_dose', '500 mg') },
           {
@@ -1174,6 +1220,366 @@ const SPEC = [
       ],
     },
   },
+
+  // ==== BLIND, THE Q10 PURCHASE (6B B10; §7 row 1 BOUGHT) ====================
+  // Twenty-eight more rows: born-digital and email — the classes whose values
+  // are actually RENDERED — carry the readable support to §4's minimums;
+  // four more photo/scanned items keep the class balance and stand as pure
+  // hallucination catchers (their labels are rendered: false).
+  ...[
+    // Values are chosen to co-occur with AT MOST ONE development-item label
+    // value apiece: the fixture server's matcher needs two hits to answer,
+    // and tests/lint/db-fence.test.ts drives every blind item's own labels
+    // through the real matcher to prove none can (round-16 R7/F-2).
+    ['blind-discharge-04', 'Maple Grove Medical Center', '2026-01-12', 'Riley Sample', 'Rivaroxaban', '15 mg', 'once daily with the evening meal', 'Peanuts', '2026-01-26', '9:30 AM'],
+    ['blind-discharge-05', 'Harborview Clinic', '2026-02-08', 'Casey Sample', 'Metoprolol', '50 mg', 'twice daily', 'Latex', '2026-02-22', '2:15 PM'],
+    ['blind-discharge-06', 'Stonebridge Hospital', '2026-03-19', 'Devon Sample', 'Omeprazole', '20 mg', 'once daily before breakfast', 'Eggs', '2026-04-02', '11:45 AM'],
+    ['blind-discharge-07', 'Fairview Rehabilitation', '2026-04-05', 'Morgan Sample', 'Gabapentin', '300 mg', 'every eight hours', 'Tramadol', '2026-04-19', '3:30 PM'],
+    ['blind-discharge-08', 'Willow Creek Medical Group', '2026-05-11', 'Quinn Sample', 'Hydrochlorothiazide', '25 mg', 'once daily in the morning', 'Bee stings', '2026-05-25', '8:00 AM'],
+    ['blind-discharge-09', 'Northshore General', '2026-06-07', 'Avery Sample', 'Prednisone', '5 mg', 'once daily with food', 'Cephalexin', '2026-06-21', '1:00 PM'],
+    ['blind-discharge-10', 'Eastgate Community Hospital', '2026-07-14', 'Reese Sample', 'Clopidogrel', '75 mg', 'once daily', 'Ragweed', null, null],
+    // Muñoz: a Latin-1 diacritic ON PURPOSE — the standing proof that the
+    // R6/F-17 guard refuses what the writer cannot emit and passes what it can.
+    ['blind-discharge-11', 'Muñoz Family Clinic', '2026-08-03', 'Skyler Sample', 'Insulin glargine', '10 units', 'at bedtime', 'Adhesive tape', null, null],
+  ].map(([id, provider, date, patient, med, dose, freq, allergy, followUpDate, followUpTime]) => ({
+    id,
+    partition: 'blind',
+    document_class: 'discharge_summary',
+    source_type: 'born_digital_pdf',
+    category: 'medical',
+    ext: 'pdf',
+    notes: 'Scored only (Q10 purchase).',
+    make: () =>
+      buildTextPdf(
+        dischargeLines({
+          provider,
+          date,
+          patient,
+          med,
+          dose,
+          freq,
+          route: 'by mouth',
+          allergy,
+          ...(followUpDate ? { followUpDate, followUpTime } : {}),
+        }),
+      ),
+  })),
+  {
+    id: 'blind-discharge-multipage-01',
+    partition: 'blind',
+    document_class: 'discharge_summary',
+    source_type: 'born_digital_pdf',
+    category: 'medical',
+    ext: 'pdf',
+    notes:
+      'Scored only (Q10 purchase). TWO PAGES with the medications on page 2 — R3/F-6: citation.page is finally exercised past 1, and the image-order↔page-number correspondence is tested rather than assumed.',
+    make: () =>
+      buildTextPdf([
+        [
+          { text: 'DISCHARGE SUMMARY', size: 16 },
+          { text: 'Facility: Cedar Falls Surgical Center', label: L('provider', 'Cedar Falls Surgical Center') },
+          { text: 'Date of discharge: 2026-02-25', label: L('document_date', '2026-02-25') },
+          { text: 'Patient: Jamie Sample', label: L('patient_name', 'Jamie Sample') },
+          { text: '' },
+          { text: 'Continued on the next page.' },
+        ],
+        [
+          { text: 'MEDICATIONS ON DISCHARGE (page 2)' },
+          { text: 'Medication: Celecoxib', label: L('medication_name', 'Celecoxib') },
+          { text: 'Dose: 200 mg', label: L('medication_dose', '200 mg') },
+          { text: 'Frequency: twice daily with food', label: L('medication_frequency', 'twice daily with food') },
+          { text: 'Allergy: Sulfa drugs', label: L('allergy_substance', 'Sulfa drugs') },
+          { text: '' },
+          { text: 'FOLLOW UP' },
+          { text: 'Appointment date: 2026-03-11', label: L('appointment_date', '2026-03-11') },
+          { text: 'Appointment time: 10:00 AM', label: L('appointment_time', '10:00 AM') },
+        ],
+      ]),
+  },
+  {
+    id: 'blind-discharge-multimed-01',
+    partition: 'blind',
+    document_class: 'discharge_summary',
+    source_type: 'born_digital_pdf',
+    category: 'medical',
+    ext: 'pdf',
+    notes:
+      'Scored only (Q10 purchase). TWO MEDICATIONS — R6/F-10: labels are a multiset, support counts labels, and the scorer that collapsed last-wins would have halved this item.',
+    make: () =>
+      buildTextPdf([
+        [
+          { text: 'DISCHARGE SUMMARY', size: 16 },
+          { text: 'Facility: Ridgeline Medical Center', label: L('provider', 'Ridgeline Medical Center') },
+          { text: 'Date of discharge: 2026-05-02', label: L('document_date', '2026-05-02') },
+          { text: 'Patient: Drew Sample', label: L('patient_name', 'Drew Sample') },
+          { text: '' },
+          { text: 'MEDICATIONS ON DISCHARGE' },
+          { text: 'Medication: Atenolol', label: L('medication_name', 'Atenolol') },
+          { text: 'Dose: 25 mg', label: L('medication_dose', '25 mg') },
+          { text: 'Frequency: once daily', label: L('medication_frequency', 'once daily') },
+          { text: 'Medication: Simvastatin', label: L('medication_name', 'Simvastatin') },
+          { text: 'Dose: 20 mg', label: L('medication_dose', '20 mg') },
+          { text: 'Frequency: at bedtime', label: L('medication_frequency', 'at bedtime') },
+          { text: '' },
+          { text: 'Allergy: Penicillin', label: L('allergy_substance', 'Penicillin') },
+          { text: 'FOLLOW UP' },
+          { text: 'Appointment date: 2026-05-16', label: L('appointment_date', '2026-05-16') },
+          { text: 'Appointment time: 4:45 PM', label: L('appointment_time', '4:45 PM') },
+        ],
+      ]),
+  },
+  ...[
+    ['blind-eob-04', 'Brightwater Physical Therapy', '2026-01-15', 'PN-5521-09', 'MB-77105', 'CLM-2026-000208', 'Covered in network', '$85.50'],
+    ['blind-eob-05', 'Oakdale Laboratory Services', '2026-02-11', 'PN-9034-77', 'MB-21562', 'CLM-2026-000341', 'Applied to deductible', '$142.00'],
+    ['blind-eob-06', 'Pinecrest Urgent Care', '2026-03-06', 'PN-1287-45', 'MB-88317', 'CLM-2026-000456', 'Covered in network', '$37.25'],
+    ['blind-eob-07', 'Silver Lake Radiology', '2026-04-17', 'PN-6650-12', 'MB-45209', 'CLM-2026-000534', 'Partially covered', '$268.75'],
+    ['blind-eob-08', 'Grandview Dermatology', '2026-05-21', 'PN-3418-66', 'MB-90441', 'CLM-2026-000629', 'Denied, out of network', '$310.40'],
+    ['blind-eob-09', 'Lakeshore Behavioral Health', '2026-06-13', 'PN-8802-31', 'MB-13664', 'CLM-2026-000717', 'Covered in network', '$20.00'],
+    ['blind-eob-10', 'Crestwood Podiatry', '2026-07-09', 'PN-4477-58', 'MB-52930', 'CLM-2026-000802', 'Applied to deductible', '$96.10'],
+    ['blind-eob-11', 'Ashford Eye Associates', '2026-08-11', 'PN-2160-84', 'MB-68475', 'CLM-2026-000915', 'Partially covered', '$54.60'],
+    ['blind-eob-12', 'Beacon Hill Physicians', '2026-08-19', 'PN-7391-20', 'MB-30188', 'CLM-2026-001003', 'Covered in network', '$118.35'],
+  ].map(([id, provider, date, policy, member, claim, coverage, amount]) => ({
+    id,
+    partition: 'blind',
+    document_class: 'eob',
+    source_type: 'born_digital_pdf',
+    category: 'insurance',
+    ext: 'pdf',
+    notes: 'Scored only (Q10 purchase).',
+    make: () => buildTextPdf(eobLines({ provider, date, policy, member, claim, coverage, amount })),
+  })),
+  {
+    id: 'blind-scanned-01',
+    partition: 'blind',
+    document_class: 'discharge_summary',
+    source_type: 'scanned_pdf',
+    category: 'medical',
+    ext: 'pdf',
+    notes: 'Scored only (Q10 purchase). Scanned, no text layer — a hallucination catcher.',
+    scanned: {
+      width: PHOTO_W,
+      height: PHOTO_H,
+      rows: [
+        { text: 'DISCHARGE SUMMARY' },
+        { text: 'Facility Hillcrest Nursing Facility', label: L('provider', 'Hillcrest Nursing Facility') },
+        { text: 'Discharged 2026-04-28', label: L('document_date', '2026-04-28') },
+        { text: 'Medication Donepezil', label: L('medication_name', 'Donepezil') },
+        { text: 'Dose 10 mg', label: L('medication_dose', '10 mg') },
+        { text: 'Frequency at bedtime', label: L('medication_frequency', 'at bedtime') },
+        { text: 'Allergy Codeine', label: L('allergy_substance', 'Codeine') },
+      ],
+    },
+  },
+  {
+    id: 'blind-pill-03',
+    partition: 'blind',
+    document_class: 'pill_bottle',
+    source_type: 'photo_jpeg',
+    category: 'medications',
+    ext: 'jpg',
+    notes: 'Scored only (Q10 purchase). A hallucination catcher.',
+    photo: {
+      width: PHOTO_W,
+      height: PHOTO_H,
+      rows: pillRows({
+        provider: 'Riverside Pharmacy',
+        date: '2026-06-30',
+        med: 'Escitalopram',
+        dose: '15 mg',
+        freq: 'once daily in the morning',
+      }),
+    },
+  },
+  {
+    id: 'blind-note-03',
+    partition: 'blind',
+    document_class: 'handwritten_note',
+    source_type: 'photo_jpeg',
+    category: 'medical',
+    ext: 'jpg',
+    notes: 'Scored only (Q10 purchase). A hallucination catcher.',
+    photo: {
+      width: PHOTO_W,
+      height: PHOTO_H,
+      rows: noteRows({
+        date: '2026-07-22',
+        provider: 'Dr Ibarra',
+        apptDate: '2026-08-05',
+        apptTime: '10:30 AM',
+        allergy: 'Nickel',
+      }),
+    },
+  },
+  {
+    id: 'blind-angled-03',
+    partition: 'blind',
+    document_class: 'phone_photo_angled',
+    source_type: 'photo_jpeg',
+    category: 'insurance',
+    ext: 'jpg',
+    notes: 'Scored only (Q10 purchase). EXIF orientation 6; a hallucination catcher.',
+    photo: {
+      width: ANGLED_W,
+      height: ANGLED_H,
+      orientation: 6,
+      rows: eobRows({
+        provider: 'Cypress Point Imaging',
+        date: '2026-08-15',
+        policy: 'PN-9915-42',
+        member: 'MB-71007',
+        coverage: 'Covered in network',
+        amount: '$63.90',
+      }),
+    },
+  },
+  {
+    id: 'blind-email-01',
+    partition: 'blind',
+    document_class: 'email_body',
+    source_type: 'email_text',
+    category: 'other',
+    ext: 'txt',
+    notes: 'Scored only (Q10: the primary intake channel joins the blind partition).',
+    make: () =>
+      emailFixture(
+        [
+          'From: scheduling@stonebridge.example',
+          'Subject: Your follow-up visit',
+          '',
+          'Hello,',
+          '',
+          'Provider: Stonebridge Hospital',
+          'Appointment date: 2026-09-04',
+          'Appointment time: 9:30 AM',
+          '',
+          'Please bring your medication list.',
+        ],
+        [
+          ['Provider:', 'provider'],
+          ['Appointment date:', 'appointment_date'],
+          ['Appointment time:', 'appointment_time'],
+        ],
+      ),
+  },
+  {
+    id: 'blind-email-02',
+    partition: 'blind',
+    document_class: 'email_body',
+    source_type: 'email_text',
+    category: 'other',
+    ext: 'txt',
+    notes: 'Scored only (Q10 purchase).',
+    make: () =>
+      emailFixture(
+        [
+          'From: frontdesk@fairview.example',
+          'Subject: Rescheduled appointment',
+          '',
+          'Provider: Fairview Rehabilitation',
+          'Appointment date: 2026-09-12',
+          'Appointment time: 1:45 PM',
+          '',
+          'Call us if this time no longer works.',
+        ],
+        [
+          ['Provider:', 'provider'],
+          ['Appointment date:', 'appointment_date'],
+          ['Appointment time:', 'appointment_time'],
+        ],
+      ),
+  },
+  {
+    id: 'blind-email-03',
+    partition: 'blind',
+    document_class: 'email_body',
+    source_type: 'email_text',
+    category: 'medications',
+    ext: 'txt',
+    notes: 'Scored only (Q10 purchase). A pharmacy email: the medication family through the email channel.',
+    make: () =>
+      emailFixture(
+        [
+          'From: refills@cornerpharmacy.example',
+          'Subject: Your refill is ready',
+          '',
+          'Provider: Corner Pharmacy',
+          'Filled on: 2026-08-20',
+          'Medication: Rosuvastatin',
+          'Dose: 20 mg',
+          'Frequency: once daily at bedtime',
+          'Allergy on file: Penicillin',
+          '',
+          'Ready for pickup until 2026-08-27.',
+        ],
+        [
+          ['Provider:', 'provider'],
+          ['Filled on:', 'document_date'],
+          ['Medication:', 'medication_name'],
+          ['Dose:', 'medication_dose'],
+          ['Frequency:', 'medication_frequency'],
+          ['Allergy on file:', 'allergy_substance'],
+        ],
+      ),
+  },
+  {
+    id: 'blind-email-04',
+    partition: 'blind',
+    document_class: 'email_body',
+    source_type: 'email_text',
+    category: 'insurance',
+    ext: 'txt',
+    notes: 'Scored only (Q10 purchase). The insurance family through the email channel.',
+    make: () =>
+      emailFixture(
+        [
+          'From: claims@brightpath.example',
+          'Subject: Claim processed',
+          '',
+          'Provider: Silver Lake Radiology',
+          'Statement date: 2026-08-14',
+          'Policy number: PN-5083-27',
+          'Member ID: MB-62114',
+          'Coverage determination: Partially covered',
+          'Amount you may owe: $41.20',
+          '',
+          'This is not a bill.',
+        ],
+        [
+          ['Provider:', 'provider'],
+          ['Statement date:', 'document_date'],
+          ['Policy number:', 'policy_number'],
+          ['Member ID:', 'member_id'],
+          ['Coverage determination:', 'coverage_determination'],
+          ['Amount you may owe:', 'amount'],
+        ],
+      ),
+  },
+  {
+    id: 'blind-email-05',
+    partition: 'blind',
+    document_class: 'email_body',
+    source_type: 'email_text',
+    category: 'other',
+    ext: 'txt',
+    notes:
+      'Scored only (Q10 purchase). NO provider named — the readable negative for provider, in the channel a reminder service actually is anonymous in.',
+    make: () =>
+      emailFixture(
+        [
+          'From: noreply@clinicreminders.example',
+          'Subject: Appointment reminder',
+          '',
+          'Appointment date: 2026-09-18',
+          'Appointment time: 8:15 AM',
+          '',
+          'Reply to this message to confirm.',
+        ],
+        [
+          ['Appointment date:', 'appointment_date'],
+          ['Appointment time:', 'appointment_time'],
+        ],
+      ),
+  },
 ];
 
 // ----------------------------------------------------------------------------
@@ -1221,6 +1627,13 @@ for (const spec of SPEC) {
   const file = `${spec.partition}/${spec.id}.${spec.ext}`;
   const outcome = spec.expected_outcome ?? 'extracted';
   const labelled = labels.map((l) => l.field);
+  // 6B B10 — D11's letter, encoded: `rendered` records whether the MATERIAL
+  // carries a rendition of the value. The photo/scanned encoder never paints
+  // a glyph (paintRows sizes rectangles from text and draws blocks), so those
+  // labels are rendered: false — recall excluded, hallucination catchers. The
+  // PDF text layer and the email body carry their values verbatim: true.
+  // tests/eval/corpus.test.ts MEASURES this flag through normalizeArrival.
+  const rendered = !(spec.photo || spec.scanned);
   const item = {
     id: spec.id,
     partition: spec.partition,
@@ -1231,7 +1644,10 @@ for (const spec of SPEC) {
     file,
     bytes: bytes.length,
     sha256: createHash('sha256').update(bytes).digest('hex'),
-    labels: outcome === 'extracted' ? labels.map((l) => ({ ...l, risk_class: riskOf(l) })) : [],
+    labels:
+      outcome === 'extracted'
+        ? labels.map((l) => ({ ...l, risk_class: riskOf(l), rendered }))
+        : [],
     absent_fields: outcome === 'extracted' ? absentBandFields(labelled) : [],
     notes: spec.notes,
   };

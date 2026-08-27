@@ -63,11 +63,19 @@ export type AdapterFailure =
   /** §6.8: HTTP 200 with `stop_reason: "refusal"`. The honest terminal path —
    *  never "unsafe" copy, and never presented to a family as a judgement. */
   | { outcome: 'refusal'; category: string | null; modelId: string; promptVersion: string }
-  /** §6.1's truncation trap fired: reported, never parsed from a fragment. */
-  | { outcome: 'truncated'; modelId: string; promptVersion: string }
+  /** §6.1's truncation trap fired (`max_tokens`), or the document outgrew the
+   *  context window (`detail: 'model_context_window_exceeded'`, 6B B4/R2-F9)
+   *  — reported as what it is, never parsed from a fragment and never
+   *  mislabelled "no text content". */
+  | { outcome: 'truncated'; detail?: string; modelId: string; promptVersion: string }
   | { outcome: 'invalid_output'; detail: string; modelId: string; promptVersion: string }
   /** An outage or a timeout. Retried by the machinery, never finalized early. */
-  | { outcome: 'unavailable'; detail: string; modelId: string; promptVersion: string };
+  | { outcome: 'unavailable'; detail: string; modelId: string; promptVersion: string }
+  /** 6B B4 (R2/F-5): a PERMANENT request refusal — HTTP 400. Retrying the
+   *  identical bytes cannot succeed, so the worker terminalizes honestly
+   *  instead of burning three durable attempts over ~15 minutes and then
+   *  labelling the result "budget exhausted" to a family. */
+  | { outcome: 'permanent'; detail: string; modelId: string; promptVersion: string };
 
 export type AdapterResult<T> = AdapterOk<T> | AdapterFailure;
 
@@ -145,12 +153,45 @@ export type ProviderCall = {
   timeoutMs: number;
 };
 
+/** How much dispatch room must remain AFTER honouring a retry-after for the
+ *  in-attempt wait to be worth taking; below it, the lease machinery is the
+ *  honest counter (6B B4/R2-F5). */
+const RATE_LIMIT_DISPATCH_FLOOR_MS = 10_000;
+
+/** The retry-after a 429 carries, in milliseconds — null when absent or
+ *  unreadable (SDK versions differ on the headers container's shape). */
+function rateLimitWaitMs(err: unknown): number | null {
+  if (!(err instanceof Anthropic.RateLimitError)) return null;
+  const headers = err.headers as unknown;
+  let value: string | null = null;
+  if (headers && typeof (headers as Headers).get === 'function') {
+    value = (headers as Headers).get('retry-after');
+  } else if (headers && typeof headers === 'object') {
+    const record = headers as Record<string, string | undefined>;
+    value = record['retry-after'] ?? record['Retry-After'] ?? null;
+  }
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return Math.round(seconds * 1000);
+}
+
 /**
  * One Messages request, with `stop_reason` checked FIRST.
  *
  * The ordering is the point (§6.8): a declined request returns HTTP 200 with
  * an empty content array, so code that reads `content[0]` unconditionally
  * breaks on exactly the case that most needs handling well.
+ *
+ * 6B B4 — the STATUS-AWARE arm (R2/F-5, F-14), because slice 6 is the first
+ * slice in which a person READS the resulting label:
+ *   · HTTP 400 is PERMANENT: identical bytes cannot succeed on a retry, so
+ *     the outcome says so and the worker terminalizes honestly.
+ *   · HTTP 429 with a `retry-after` that FITS the remaining lease budget is
+ *     waited out ONCE, inside the same attempt — the lease stays the ONLY
+ *     durable counter; this is status-awareness, not a retry loop. A
+ *     retry-after that does not fit stays `unavailable` for the machinery.
+ *   · An overload is HTTP 529 (F-14 corrected the fixture) and every 5xx
+ *     stays `unavailable` — the machinery's to retry, never finalized early.
  */
 export async function callProvider(call: ProviderCall): Promise<AdapterResult<unknown>> {
   const modelId = assertAllowedModel(call.model);
@@ -162,24 +203,46 @@ export async function callProvider(call: ProviderCall): Promise<AdapterResult<un
     return { outcome: 'unavailable', detail: 'no provider budget inside the lease', ...stamp };
   }
 
+  const startedAt = Date.now();
+  let waitedForRateLimit = false;
   let message: Anthropic.Message;
-  try {
-    message = await client().messages.create(
-      {
-        model: modelId,
-        max_tokens: MAX_TOKENS,
-        thinking: { type: 'adaptive' },
-        output_config: {
-          effort: call.effort,
-          format: { type: 'json_schema', schema: call.schema },
+  for (;;) {
+    const remainingMs = call.timeoutMs - (Date.now() - startedAt);
+    if (remainingMs <= 0) {
+      return { outcome: 'unavailable', detail: 'lease budget exhausted before dispatch', ...stamp };
+    }
+    try {
+      message = await client().messages.create(
+        {
+          model: modelId,
+          max_tokens: MAX_TOKENS,
+          thinking: { type: 'adaptive' },
+          output_config: {
+            effort: call.effort,
+            format: { type: 'json_schema', schema: call.schema },
+          },
+          system: call.system,
+          messages: call.messages,
         },
-        system: call.system,
-        messages: call.messages,
-      },
-      { timeout: call.timeoutMs },
-    );
-  } catch (err) {
-    return { outcome: 'unavailable', detail: (err as Error).message, ...stamp };
+        { timeout: remainingMs },
+      );
+      break;
+    } catch (err) {
+      if (err instanceof Anthropic.BadRequestError) {
+        return { outcome: 'permanent', detail: err.message, ...stamp };
+      }
+      const waitMs = rateLimitWaitMs(err);
+      if (
+        waitMs !== null &&
+        !waitedForRateLimit &&
+        waitMs + RATE_LIMIT_DISPATCH_FLOOR_MS <= call.timeoutMs - (Date.now() - startedAt)
+      ) {
+        waitedForRateLimit = true;
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        continue;
+      }
+      return { outcome: 'unavailable', detail: (err as Error).message, ...stamp };
+    }
   }
 
   if (message.stop_reason === 'refusal') {
@@ -192,6 +255,13 @@ export async function callProvider(call: ProviderCall): Promise<AdapterResult<un
   }
   if (message.stop_reason === 'max_tokens') {
     return { outcome: 'truncated', ...stamp };
+  }
+  // 6B B4 (R2/F-9): in the SDK's own StopReason union and previously
+  // unhandled — it fell through to "no text content" → provider_error. At
+  // 200 pages × ~4784 tokens the state is reachable by a document PRD §13.3
+  // permits, and the mapping should say what happened.
+  if (message.stop_reason === 'model_context_window_exceeded') {
+    return { outcome: 'truncated', detail: 'model_context_window_exceeded', ...stamp };
   }
 
   const text = message.content

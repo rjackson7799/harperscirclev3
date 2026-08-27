@@ -33,7 +33,8 @@ import {
 import { scanBytes } from '@/lib/scan/scanner';
 import { sniffMime } from '@/lib/pipeline/mime';
 import { normalizeArrival, type NormalizeResult } from '@/lib/pipeline/render';
-import { extFor, renderStagingKey } from '@/lib/pipeline/page-keys';
+import { extFor, renderStagingKey, renderStagingTextKey } from '@/lib/pipeline/page-keys';
+import { isImageOnlySource, OcrEngineUnavailable, ocrRenderedPages } from '@/lib/pipeline/ocr';
 import { extractFromArrival } from '@/lib/ai/extract';
 import { interpretArrival, type DraftProposal } from '@/lib/ai/interpret';
 import {
@@ -205,7 +206,7 @@ async function processScan(msg: PipelineMessage, origin: string, key: string): P
   return `${outcome.verdict}:${r}`;
 }
 
-async function processGate(msg: PipelineMessage): Promise<string> {
+async function processGate(msg: PipelineMessage, origin: string, key: string): Promise<string> {
   const claim = await claimStage(msg.arrival_id, 'gate');
   if (claim.result !== 'claimed') {
     if (claim.result === 'invalid_state') {
@@ -237,20 +238,23 @@ async function processGate(msg: PipelineMessage): Promise<string> {
 
   const r = await advanceArrival(msg.arrival_id, 'scanned', to, claim.leaseId!, reason);
   if (r === 'advanced' && to === 'extracting') {
-    // The Q7 seam: enqueued for the extract worker, and DELIBERATELY NOT
-    // fired. `gate → extract` is the one hand-off in the pipeline with no
-    // eager fire, and at round-16 sign-off that became a RULING rather than
-    // an oversight: firing it collapses §4.5's cancel window — median ~35 s,
-    // most of it relay dead time — to seconds, while nothing yet tells a
-    // family that Reading has begun. The arrival-received signal lands
-    // FIRST; the eager fire follows it. Owner ruling 2026-08-23; the
-    // finding is ADR-0023 D14 (R8/F-2), the ruling is D24.
+    // 6B B5: the LAST hand-off joins scan and gate. The eager fire was HELD
+    // by owner ruling (ADR-0023 D14/D24 ruling 3) until an arrival-received
+    // signal existed, because collapsing §4.5's ~35 s cancel window to
+    // seconds while a member watched a stale snapshot would make PRD
+    // §4.2.2's promise false at the moment it was made. The signal shipped
+    // FIRST (the Care Inbox revalidates — InboxRevalidator, bounded by one
+    // relay tick), the fire follows it, and the ORDER is enforced by the
+    // fire's own test asserting the signal's presence
+    // (tests/routes/worker-stage.test.ts). PRF-07 reports the new median
+    // rather than this comment asserting it.
     await sendPipelineWork({
       circle_id: msg.circle_id,
       arrival_id: msg.arrival_id,
       stage: 'extract',
       channel,
     });
+    fireWorker(origin, 'extract', key);
   }
   return `${to}:${r}`;
 }
@@ -323,7 +327,11 @@ async function processExtract(
 
   // §4.6: content, never declaration. The store stage recorded a sniffed
   // type; sniffing again here needs no read privilege and cannot be stale.
-  const normalized = normalizeArrival(bytes, sniffMime(bytes));
+  // The CHANNEL rides along (6B B2, Q6): it is what distinguishes the email
+  // body's JSON envelope from a member-uploaded .json file.
+  const normalized = await normalizeArrival(bytes, sniffMime(bytes), {
+    channel: msg.channel ?? (await lookupChannel(msg.arrival_id)),
+  });
   const exit = normalizeExit(normalized);
   if (exit) {
     // Refused BEFORE any provider dispatch — the whole point of §6.3's bounds
@@ -342,6 +350,45 @@ async function processExtract(
       page.bytes,
       page.mime,
     );
+  }
+
+  // 6B B9 · §6.9: an IMAGE-ONLY source's pages are machine-read and staged
+  // as the pNNN.txt siblings the slice-5 exit assertion reserved — the SAME
+  // attempt prefix, so the promotion below carries them by name with no
+  // second path and no manifest change. Every page gets its sibling: a
+  // below-floor or out-of-budget page lands EMPTY, which the screen renders
+  // as the honest sentence rather than garbage. A born-digital PDF has a
+  // text layer and an email body IS text — neither is machine-read at all.
+  // An engine failure is warned and absorbed: a reading aid must never fail
+  // the answer it aids.
+  if (isImageOnlySource(normalized.sourceClass)) {
+    try {
+      const transcripts = await ocrRenderedPages(normalized.pages);
+      for (const t of transcripts) {
+        await writeRenderStaging(
+          renderStagingTextKey(circleId, msg.arrival_id, lease, t.page),
+          new TextEncoder().encode(t.text),
+          'text/plain; charset=utf-8',
+        );
+      }
+    } catch (err) {
+      // ROUND-18 F-2: absorbing this is CORRECT and stays — a reading aid must
+      // never fail the answer it aids. What was wrong is that it said the same
+      // thing for "this page could not be read" and "there is no engine on this
+      // host". The second is D15 finding 3 recurring, silently, with every test
+      // green — so it takes a §10.4 defect signal of its own, in the shape this
+      // route already uses at the interpret gate and for answer.dropped.
+      if (err instanceof OcrEngineUnavailable) {
+        console.warn(
+          `extract: §10.4 signal — the §6.9 OCR ENGINE is unavailable on this host, so ` +
+            `NO arrival will be machine-read until it is fixed: ${err.message}`,
+        );
+      } else {
+        console.warn(
+          `extract: machine-read text unavailable for ${msg.arrival_id}: ${(err as Error).message}`,
+        );
+      }
+    }
   }
 
   const answer = await extractFromArrival({
@@ -398,7 +445,15 @@ async function processExtract(
     },
   ];
 
-  const r = await finalizeExtraction(msg.arrival_id, lease, facts, proposals);
+  // 6A M4's fifth parameter, supplied (6B B2): the manifest derives from the
+  // SAME pages the staging writes above and the promotion copies below, so
+  // the recorded extension can never disagree with the stored object
+  // (R3/F-8) and partial promotion becomes detectable (R4/F-6).
+  const rendition = {
+    page_count: normalized.pages.length,
+    page_exts: normalized.pages.map((page) => extFor(page.mime)),
+  };
+  const r = await finalizeExtraction(msg.arrival_id, lease, facts, proposals, rendition);
   if (r !== 'advanced') {
     await gcRenderStaging(circleId, msg.arrival_id, lease);
     return r;
@@ -560,12 +615,53 @@ function draftPayloads(
   return drafted;
 }
 
+/**
+ * 6B B3 (R4/F-11): the queue message is trusted input to nobody. `msg.facts`
+ * is validated at RUNTIME — a non-array, and any element without the carried
+ * shape, is treated as ABSENT, which fails CLOSED into the re-read path (the
+ * document itself plus the operator note) instead of riding garbage to the
+ * provider while skipping both — the thin-answer-that-looks-normal D6 rules
+ * out.
+ */
+function carriedFacts(raw: unknown): CarriedFact[] {
+  if (!Array.isArray(raw)) return [];
+  const valid: CarriedFact[] = [];
+  for (const f of raw) {
+    const c = f as Partial<CarriedFact> | null;
+    if (
+      c &&
+      typeof c.field === 'string' &&
+      typeof c.value === 'string' &&
+      typeof c.confidence === 'number' &&
+      c.citation !== null &&
+      typeof c.citation === 'object'
+    ) {
+      valid.push(c as CarriedFact);
+    }
+  }
+  // Partially-valid is still not a normal hand-off: keep only a set that
+  // survived WHOLE, so a mangled message never masquerades as a thin one.
+  return valid.length === raw.length ? valid : [];
+}
+
 async function processInterpret(msg: PipelineMessage): Promise<string> {
   // ING-07: the in-flight transition (extracted → interpreting) happens AT
   // the claim, so one lease spans the stage. M3 REFUSES the run identity off
   // the extract stage — no stage borrows an identity it does not record.
   const claim = await claimStage(msg.arrival_id, 'interpret');
-  if (claim.result !== 'claimed') return claim.result;
+  if (claim.result !== 'claimed') {
+    if (claim.result === 'invalid_state') {
+      // 6B B3 (R4/F-10, Q-A CONFIRMED at round 17): the §4.2 defect signal,
+      // processGate's shape. A stage-2 suspect's speculative message lands
+      // here BY DESIGN — the wait is the machinery's answer (pgTAP 055:453)
+      // — and the signal says so out loud instead of returning silently.
+      console.warn(
+        `worker/interpret: arrival ${msg.arrival_id} is not at the interpret entry — ` +
+          `a stage-2 suspect waits for a person; message absorbed`,
+      );
+    }
+    return claim.result;
+  }
   const lease = claim.leaseId!;
 
   // §3.10's one narrow window. The signature cannot express another subject
@@ -573,7 +669,7 @@ async function processInterpret(msg: PipelineMessage): Promise<string> {
   // rather than prompted.
   const context = await recordContextFor(msg.arrival_id);
 
-  const carried = msg.facts ?? [];
+  const carried = carriedFacts(msg.facts);
   const operatorNotes: string[] = [];
   let documentText: string | null = null;
 
@@ -586,7 +682,9 @@ async function processInterpret(msg: PipelineMessage): Promise<string> {
     const circleId = await resolveCircle(msg);
     const bytes = circleId ? await readArtifactBytes(circleId, msg.arrival_id) : null;
     if (bytes) {
-      const normalized = normalizeArrival(bytes, sniffMime(bytes));
+      const normalized = await normalizeArrival(bytes, sniffMime(bytes), {
+        channel: msg.channel ?? (await lookupChannel(msg.arrival_id)),
+      });
       if (normalized.outcome === 'rendered') documentText = normalized.text;
     }
     operatorNotes.push(
@@ -623,12 +721,24 @@ async function processInterpret(msg: PipelineMessage): Promise<string> {
       configurationHash: configurationHash(),
     },
   });
+  // 6B B3 (R4/F-15): the drop counter is READ. Under round-16 D1's defect
+  // every conflict was dropped and the counter that would have said so was
+  // never printed — a §10.4 defect signal, not a struct field to garbage-
+  // collect.
+  if (answer.dropped > 0) {
+    console.warn(
+      `worker/interpret: ${answer.dropped} item(s) dropped during validation for arrival ` +
+        `${msg.arrival_id} (§10.4 signal)`,
+    );
+  }
   const drafted = draftPayloads(answer.data.proposals, context, answer.data.anomalies, bands);
   const r = await finalizeInterpretation(msg.arrival_id, lease, drafted);
   // The exit seam (Q7): proposals REST at `pending`. Nothing is enqueued —
   // the review screen, item-level approval and the receipt are slice 6's, so
   // `Needs you` labels a true state whose acting surface is one slice away.
-  return r + ':' + drafted.length + 'p';
+  return (
+    r + ':' + drafted.length + 'p' + (answer.dropped ? '/' + answer.dropped + 'dropped' : '')
+  );
 }
 
 export async function POST(
@@ -670,7 +780,7 @@ export async function POST(
       else if (msg.stage === 'scan') outcome = await processScan(msg, origin, key);
       else if (msg.stage === 'extract') outcome = await processExtract(msg, origin, key);
       else if (msg.stage === 'interpret') outcome = await processInterpret(msg);
-      else outcome = await processGate(msg);
+      else outcome = await processGate(msg, origin, key);
       await archivePipelineWork(work.msg_id);
       processed.push({ arrival_id: msg.arrival_id, stage: msg.stage, outcome });
     } catch (err) {

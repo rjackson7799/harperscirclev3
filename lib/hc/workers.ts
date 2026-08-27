@@ -40,8 +40,10 @@ export type PipelineStage = 'store' | 'scan' | 'gate' | 'extract' | 'interpret';
  * Their ABSENCE is not a different quality of answer. A re-queued interpret
  * (a resolved stage-2 duplicate, a sweeper rescue) carries no facts, and the
  * worker re-normalises the artifact and sends the document itself — the same
- * source material extraction saw. Recorded as a 5B delta, with a definer
- * (`hc.extractions_for`) offered to the owner for the next DB-opening slice.
+ * source material extraction saw. (The definer that 5B offered shipped at
+ * 6A M2 as `hc.extractions_for` — gated for MEMBERS at the arrival's
+ * view×5, not for hc_pipeline, so the hand-off here stays the pipeline's
+ * only channel, §3.10 unchanged.)
  */
 export type CarriedFact = {
   field: string;
@@ -134,21 +136,35 @@ export async function finalizeScan(
   return r.rows[0].r as AdvanceResult;
 }
 
+/** 6A M4's manifest shape, supplied by the worker at 6B B2: the rendered
+ *  page count and the per-page extension, derived from the SAME pages the
+ *  staging writes and the promotion copies — never from a default. */
+export type RenditionManifest = { page_count: number; page_exts: string[] };
+
 /**
  * hc.finalize_extraction — §4.5's one transaction: the conditional transition
  * runs FIRST and gates everything below it, so a lost CAS publishes nothing.
  * M5's stage-2 detection runs inside it, which is why 'advanced' can mean
- * either `extracted` or `duplicate_suspected_stage2`.
+ * either `extracted` or `duplicate_suspected_stage2`. 6A M4 added the fifth
+ * parameter (the rendition manifest, written on the won transition); 6B B2
+ * supplies it — the seam 062 case 10 pinned, closed from the app side.
  */
 export async function finalizeExtraction(
   arrivalId: string,
   leaseId: string,
   facts: unknown[],
   proposals: unknown[],
+  rendition: RenditionManifest | null = null,
 ): Promise<AdvanceResult> {
   const r = await asPipeline().query(
-    'select hc.finalize_extraction($1, $2, $3::jsonb, $4::jsonb) as r',
-    [arrivalId, leaseId, JSON.stringify(facts), JSON.stringify(proposals)],
+    'select hc.finalize_extraction($1, $2, $3::jsonb, $4::jsonb, $5::jsonb) as r',
+    [
+      arrivalId,
+      leaseId,
+      JSON.stringify(facts),
+      JSON.stringify(proposals),
+      rendition === null ? null : JSON.stringify(rendition),
+    ],
   );
   return r.rows[0].r as AdvanceResult;
 }
@@ -217,7 +233,22 @@ export async function advanceArrival(
 }
 
 const QUEUE = 'pipeline_work';
-const READ_VT_SECONDS = 120;
+
+/** §4.3's longest stage wall clock — extract's 300 s. The visibility window
+ *  is DERIVED from it, never set beside it. */
+const LONGEST_STAGE_SECONDS = 300;
+
+/**
+ * 6B B3 (R4/F-7): the read visibility window OUTLIVES the longest stage.
+ * At 120 s it sat under extract's 300 s clock, so for any extract that
+ * actually worked, mid-flight redelivery was the NORMAL case — a second
+ * reader received the in-flight message, its claim answered stale_lease,
+ * and it archived the message unconditionally while the first still held
+ * the lease. Correctness never depended on the window (claim-before-work),
+ * but the queue's shape made the exceptional path the routine one. The
+ * margin covers claim, render and finalize around the provider call.
+ */
+export const READ_VT_SECONDS = LONGEST_STAGE_SECONDS + 60;
 
 /** pgmq.read — claim up to qty work items for one visibility window. */
 export async function readPipelineWork(qty: number): Promise<QueuedWork[]> {
@@ -281,16 +312,18 @@ export async function deferPipelineWork(msgId: number, seconds = 3600): Promise<
  *
  * And only messages hidden FAR into the future. pgmq gives an in-flight read
  * and a deliberate deferral exactly the same shape: a `vt` in the future. The
- * two are separated by HOW far — a read hides for READ_VT_SECONDS (120 s),
- * D13 deferred for an hour — so the threshold sits well above the read window
- * and comfortably below the deferral. Without it, a release could hand a
- * message another worker is holding to a second reader.
+ * two are separated by HOW far — a read hides for READ_VT_SECONDS (derived
+ * above the longest stage clock; R4/F-7), D13 deferred for an hour — so the
+ * threshold is DERIVED from the read window (raise one and the other moves,
+ * R4/F-13, pinned by tests/hc/queue-contract.test.ts) and sits comfortably
+ * below the deferral. Without it, a release could hand a message another
+ * worker is holding to a second reader.
  *
  * Even then nothing could go wrong twice: claim-before-work means a second
  * reader's hc.claim_stage answers `stale_lease` before any external call. The
  * threshold buys the wasted claim, not the correctness.
  */
-const DEFERRAL_THRESHOLD_SECONDS = READ_VT_SECONDS + 180;
+export const DEFERRAL_THRESHOLD_SECONDS = READ_VT_SECONDS + 180;
 
 export async function releaseDeferredWork(limit = 200): Promise<number> {
   const r = await asPipeline().query(

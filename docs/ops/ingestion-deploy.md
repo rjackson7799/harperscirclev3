@@ -28,6 +28,7 @@ referenced here, not duplicated.
 | pgmq | The `pipeline_work` queue ships in M2 (migration, not provisioning) — nothing to create at deploy | `select count(*) from pgmq.q_pipeline_work` runs |
 | hc_runtime flip | The 4B B8 unit: provision `hc_runtime_login`, flip `HC_DB_URL`, verify the role flags — the full table is in `runtime-db-credentials.md` | That table's three probes |
 | **Quarantine byte purge (§11.5; ADR-0018 F2)** | The nightly route purges quarantined BYTES at 7 days (hash + verdict retained forever in `scan_results` — the X1 safety-monotonic row). Owner: `/api/worker/nightly` → `purgeQuarantineOlderThan(7)`. If the platform grows a bucket-lifecycle rule, it may replace the sweep — remove the sweep only WITH the rule in place | After a quarantined test object ages past 7 days, the nightly response counts it purged; `scan_results` still holds the infected row |
+| **Render-staging sweep (6B B3; ADR-0023 R3/F-3 + R4/F-4)** | The nightly route sweeps abandoned `render/attempt/**` files at 24 h BY PREFIX AGE — a non-graceful worker exit leaves staging under a lease id that existed only in the dead invocation's stack, so the orphan is unreachable for any lease-keyed GC. Owner: `/api/worker/nightly` → `sweepRenderStaging(24)`. NOT a substitute for the DEL-01 cascade (promoted pages are the cascade's); remove only with a bucket-lifecycle rule in place | The nightly response's `render_staging_swept` counts a day-old staged test object; a fresh in-flight attempt's staging is untouched |
 
 ## Monitoring rows
 

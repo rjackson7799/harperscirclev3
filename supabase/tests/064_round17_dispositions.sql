@@ -106,7 +106,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(20);
+select plan(32);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 013/059 pattern: role switch inside, message part of the pin).
@@ -498,6 +498,203 @@ select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
   gen_random_uuid())),
   'ERROR:P0001:approval_refused',
   'DEF-10 holds across the whole disposition: a payload that cannot satisfy its destination, an edit outside the contract, a soft-deleted source and a proposal that does not exist are ONE word — the guards narrow what is refused, never what is disclosed');
+
+-- ============================================================================
+-- 21-32 · THE PAYLOAD CONTRACT'S RESIDUE (ADR-0025 D16 S16.8; the
+-- pre-authorised 6B slot). The sign-off found the round's enumeration short
+-- by two and drove both; the 6B build's THIRD re-derivation — from EVERY
+-- payload-derived cast expression in the function, not from the insert arms
+-- (the frame that produced the miss twice) — confirmed both, REFUTED one
+-- candidate (a scalar p_edits refuses honestly as high_risk_unconfirmed
+-- today — checked, not assumed), found approve's top-level p_edits keys
+-- uncontracted (an unknown key is silently ignored), and the condition-6
+-- audit of hc.revise_object found the SAME classes at ITS click: 23502 on a
+-- {key: null} patch, 22007 through the due_on cast, 23514 through the due
+-- pair. The step-up path is CLEAN (the token is digested, never cast) and
+-- hc.reject_proposal is CLEAN (it authorizes on the row's own taint and
+-- consumes no payload).
+--
+-- The keep_both arm gets its cases at last (S16.8 condition 3): the one arm
+-- whose cast coverage was incomplete was the one arm this file did not
+-- exercise.
+-- ============================================================================
+do $fx2$
+declare
+  c1 uuid := current_setting('t.c1')::uuid;
+  s1 uuid := current_setting('t.s1')::uuid;
+  a1 uuid := current_setting('t.a1')::uuid;
+  u1 uuid := current_setting('t.u1')::uuid;
+begin
+  perform set_config('t.p_cf_dom', gen_random_uuid()::text, true);
+  perform set_config('t.p_cf_ok',  gen_random_uuid()::text, true);
+  perform set_config('t.p_hi',     gen_random_uuid()::text, true);
+  perform set_config('t.rv_task',  gen_random_uuid()::text, true);
+  perform set_config('t.rv_doc',   gen_random_uuid()::text, true);
+
+  insert into public.proposals (id, arrival_id, circle_id, subject_id, kind, payload, taint) values
+    -- the S16.2 shape: a DRAFTED conflict with a malformed domain —
+    -- draft_proposal's conflict branch returns before the own_domain cast
+    -- and never validates it, so this rests at pending with no edit involved
+    (current_setting('t.p_cf_dom')::uuid, a1, c1, s1, 'conflict',
+     jsonb_build_object('field', 'medication_dose', 'value', '500 mg',
+                        'risk_class', 'high', 'domain', 'bogus',
+                        'task', jsonb_build_object('title', 'Reconcile the dose')),
+     '{health}'),
+    -- a WELL-FORMED conflict for the keep_both control
+    (current_setting('t.p_cf_ok')::uuid, a1, c1, s1, 'conflict',
+     jsonb_build_object('field', 'medication_dose', 'value', '500 mg',
+                        'risk_class', 'high', 'domain', 'health',
+                        'task', jsonb_build_object('title', 'Reconcile the dose')),
+     '{health}'),
+    -- a high-risk profile_fact for the p_edits top-level contract cases
+    (current_setting('t.p_hi')::uuid, a1, c1, s1, 'profile_fact',
+     jsonb_build_object('field', 'allergy_substance', 'value', 'penicillin',
+                        'risk_class', 'high', 'domain', 'health'), '{health}');
+
+end $fx2$;
+
+-- Record rows for the revise_object cases. Direct inserts step around the
+-- §4.9 claim trigger under replica role — the e2e fixtureInsert technique; a
+-- FIXTURE concession inside a transaction that only ever rolls back. The SET
+-- must be TOP-LEVEL: supautils admits the privileged role through the utility
+-- hook, and set_config() inside plpgsql bypasses that hook into the vanilla
+-- superuser check, which the supabase image's postgres role fails.
+set local session_replication_role = replica;
+insert into public.tasks (id, circle_id, subject_id, title,
+                          approved_by, approved_at, approver_display_name, taint)
+values (current_setting('t.rv_task')::uuid, current_setting('t.c1')::uuid,
+        current_setting('t.s1')::uuid, 'Call the pharmacy',
+        current_setting('t.u1')::uuid, now(), 'Rosa', '{schedule}');
+insert into public.documents (id, circle_id, subject_id, title, category, summary_text,
+                              artifact_arrival_id, filed_at,
+                              approved_by, approved_at, approver_display_name, taint)
+values (current_setting('t.rv_doc')::uuid, current_setting('t.c1')::uuid,
+        current_setting('t.s1')::uuid, 'Discharge summary', 'medical', 'A summary.',
+        current_setting('t.a1')::uuid, now(),
+        current_setting('t.u1')::uuid, now(), 'Rosa', '{health}');
+set local session_replication_role = default;
+
+-- ----------------------------------------------------------------------------
+-- 21 · S16.2 at `keep`: the taint math casts the payload's domain for EVERY
+--      outcome (:421) while the cast half covered use_new alone. NO EDIT.
+-- ----------------------------------------------------------------------------
+select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
+  $$ select hc.approve_proposal(%L::uuid, 1, 'k-s168-21',
+       '{"conflict_outcome":"keep"}'::jsonb)::text $$,
+  current_setting('t.p_cf_dom'))),
+  'ERROR:P0001:approval_refused',
+  'S16.8: a drafted conflict with a malformed domain refuses under KEEP instead of raising 22P02 in the taint math — reachable with no edit at all, because draft_proposal''s conflict branch never validates a conflict payload''s domain');
+
+-- ----------------------------------------------------------------------------
+-- 22 · S16.2 at `keep_both` — condition 3's arm, exercised at last.
+-- ----------------------------------------------------------------------------
+select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
+  $$ select hc.approve_proposal(%L::uuid, 1, 'k-s168-22',
+       '{"conflict_outcome":"keep_both"}'::jsonb)::text $$,
+  current_setting('t.p_cf_dom'))),
+  'ERROR:P0001:approval_refused',
+  'S16.8 condition 3: keep_both refuses the same malformed domain the same way — the arm whose cast coverage was incomplete was the arm this file did not exercise, and now it does');
+
+-- ----------------------------------------------------------------------------
+-- 23 · S16.3: confirm_high is a top-level caller key the edit contract did
+--      not fence, cast jsonb→boolean at :500.
+-- ----------------------------------------------------------------------------
+select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
+  $$ select hc.approve_proposal(%L::uuid, 1, 'k-s168-23',
+       '{"confirm_high":"yes"}'::jsonb)::text $$,
+  current_setting('t.p_hi'))),
+  'ERROR:P0001:approval_refused',
+  'S16.8: confirm_high that is not a boolean refuses instead of raising 22023 (cannot cast jsonb string to type boolean) — the p_edits TOP-LEVEL contract, D2''s fail-closed posture extended one level up');
+
+-- ----------------------------------------------------------------------------
+-- 24 · The shape itself: a SCALAR p_edits. (Refuted as a crash by the third
+--      re-derivation — today it lands high_risk_unconfirmed — and contracted
+--      anyway: a malformed shape should be named as one, not answered as an
+--      unconfirmed high-risk value.)
+-- ----------------------------------------------------------------------------
+select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
+  $$ select hc.approve_proposal(%L::uuid, 1, 'k-s168-24',
+       '"just-a-string"'::jsonb)::text $$,
+  current_setting('t.p_hi'))),
+  'ERROR:P0001:approval_refused',
+  'S16.8 condition 4: p_edits that is not an object refuses AS a contract violation — not as high_risk_unconfirmed, which answers a different question about a well-formed request');
+
+-- ----------------------------------------------------------------------------
+-- 25 · An UNKNOWN top-level key. Today it is silently ignored — the same
+--      fail-open posture D2 closed for `fields`, one level up.
+-- ----------------------------------------------------------------------------
+select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
+  $$ select hc.approve_proposal(%L::uuid, 1, 'k-s168-25',
+       '{"confirm_high":true,"fields_":{"value":"smuggled"}}'::jsonb)::text $$,
+  current_setting('t.p_hi'))),
+  'ERROR:P0001:approval_refused',
+  'S16.8 condition 4: an unknown top-level p_edits key refuses fail-closed — a typo''d or future key must never be silently ignored on the one function that writes the record');
+
+-- ----------------------------------------------------------------------------
+-- 26 · CONTROL: the well-formed keep_both still commits its task — the
+--      cast joins the guard without narrowing an approval.
+-- ----------------------------------------------------------------------------
+select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
+  $$ select (hc.approve_proposal(%L::uuid, 1, 'k-s168-26',
+       '{"conflict_outcome":"keep_both"}'::jsonb)) ->> 'outcome' $$,
+  current_setting('t.p_cf_ok'))),
+  'keep_both',
+  'S16.8 CONTROL: a well-formed conflict resolved keep_both still commits the reconciliation task as the approval''s one object — the residue''s fix narrows crashes, never approvals');
+
+-- ----------------------------------------------------------------------------
+-- 27 · CONTROL: a proper boolean confirm_high still approves the high-risk
+--      item — the contract admits exactly the shape the screen sends.
+-- ----------------------------------------------------------------------------
+select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
+  $$ select (hc.approve_proposal(%L::uuid, 1, 'k-s168-27',
+       '{"confirm_high":true}'::jsonb)) ->> 'status' $$,
+  current_setting('t.p_hi'))),
+  'approved',
+  'S16.8 CONTROL: confirm_high true (a real boolean) approves the high-risk item — PRD §6.4''s confirmation channel is untouched by the fence around its shape');
+
+-- ----------------------------------------------------------------------------
+-- 28-30 · THE CONDITION-6 AUDIT'S FINDINGS: hc.revise_object carries its own
+--         copies of the record-table writes, and the same classes were open
+--         at ITS click. All three driven live at the 6B build (rollback-only)
+--         before this file pinned them.
+-- ----------------------------------------------------------------------------
+select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
+  $$ select hc.revise_object('task'::hc.object_type, %L::uuid,
+       '{"title": null}'::jsonb)::text $$,
+  current_setting('t.rv_task'))),
+  'ERROR:P0001:revise_invalid_field',
+  'S16.8 condition 6: a {title: null} patch refuses instead of raising 23502 — the M1 class, at revise_object''s own click, for every NOT NULL column its allowlists name');
+
+select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
+  $$ select hc.revise_object('task'::hc.object_type, %L::uuid,
+       '{"due_on": "not-a-date"}'::jsonb)::text $$,
+  current_setting('t.rv_task'))),
+  'ERROR:P0001:revise_invalid_field',
+  'S16.8 condition 6: a due_on that is not a date refuses instead of raising 22007 — the D1 cast class, at the one payload-derived cast revise_object performs');
+
+select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
+  $$ select hc.revise_object('task'::hc.object_type, %L::uuid,
+       '{"due_on": "2026-09-01"}'::jsonb)::text $$,
+  current_setting('t.rv_task'))),
+  'ERROR:P0001:revise_invalid_field',
+  'S16.8 condition 6: due_on patched without its zone onto a task holding neither refuses instead of raising 23514 tasks_check — the destination class, mirrored from the shipped constraint exactly as D1 did it');
+
+-- ----------------------------------------------------------------------------
+-- 31-32 · CONTROLS: revise still revises, and the complete pair still lands.
+-- ----------------------------------------------------------------------------
+select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
+  $$ select (hc.revise_object('document'::hc.object_type, %L::uuid,
+       '{"title": "Discharge summary (corrected)"}'::jsonb)) ->> 'revision_no' $$,
+  current_setting('t.rv_doc'))),
+  '1',
+  'S16.8 CONTROL: a well-formed revision still revises and still numbers itself — the guards narrow crashes, never corrections');
+
+select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
+  $$ select (hc.revise_object('task'::hc.object_type, %L::uuid,
+       '{"due_on": "2026-09-01", "due_zone": "America/New_York"}'::jsonb)) ->> 'revision_no' $$,
+  current_setting('t.rv_task'))),
+  '1',
+  'S16.8 CONTROL: the COMPLETE due pair patches cleanly — the constraint guard admits exactly what the constraint admits');
 
 select * from finish();
 

@@ -117,10 +117,21 @@ h2 {
 }
 
 /* Inputs (§5) — white fill, 9–10px radius; the 2px green focus ring the
-   spec requires the build to add (§8). */
+   spec requires the build to add (§8).
+
+   6B close-out: `input[type='file']` JOINED this list. It was the one
+   visible input type the rule never enumerated, so the upload form's
+   control inherited no box and no floor — the native widget measured
+   253×21 at 390px, well under §8.7's 44. Nothing had caught it because
+   nothing had ever LOOKED: /upload got its first browser audit from the
+   R5/F-6 pinned-manifest legs (a11y.spec.ts:344), which failed on it
+   immediately. An enumerated floor silently exempts whatever nobody
+   listed, so the CI half now pins the SELECTOR LIST, not just the
+   declaration (tests/design/touch-targets.test.ts). */
 input[type='text'],
 input[type='email'],
 input[type='password'],
+input[type='file'],
 select,
 textarea {
   width: 100%;
@@ -880,6 +891,144 @@ a:focus-visible {
 }
 .kb {
   animation: kb 18s linear infinite alternate;
+}
+
+/* ==========================================================================
+   The review screen (6B B7; PRD §4.2.3's three regions). Layout only —
+   every control composes the §8.4 primitives above. 390px is the primary
+   review device (§8.8, PRD §13.4): the three regions STACK there, source
+   first, in one column.
+   ========================================================================== */
+.review-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.1fr;
+  gap: 18px;
+  align-items: start;
+  margin-top: 14px;
+}
+@container (max-width: 899px) {
+  .review-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.review-grid h2 {
+  font-size: 17px;
+  margin-bottom: 8px;
+}
+.review-page {
+  position: relative;
+  margin-bottom: 12px;
+}
+.review-page img {
+  display: block;
+  width: 100%;
+  background: var(--white);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-card);
+}
+.review-region-highlight {
+  position: absolute;
+  outline: 2px solid var(--terracotta);
+  outline-offset: 2px;
+  border-radius: 3px;
+  cursor: pointer;
+  /* It renders as a BUTTON (the region is operable); the box is the
+     citation, so the control chrome is stripped. */
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.review-region-highlight:focus-visible {
+  outline: 2px solid var(--green);
+}
+.review-fact-item {
+  margin-bottom: 8px;
+}
+.review-fact {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-row);
+  padding: 10px 13px;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  min-height: 44px; /* §8.7's touch floor */
+}
+.review-fact[aria-pressed='true'] {
+  border-color: var(--green);
+  outline: 1px solid var(--green);
+}
+.review-fact-value {
+  display: block;
+  color: var(--ink-2);
+}
+.review-proposal {
+  margin-bottom: 12px;
+}
+.review-show-evidence {
+  margin: 8px 0;
+}
+.review-crop-frame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-control);
+  background: var(--white);
+  min-height: 56px;
+  margin-bottom: 8px;
+}
+.review-crop-frame img {
+  display: block;
+  max-width: none;
+}
+.review-conflict {
+  border: 0;
+  margin: 8px 0;
+}
+.review-conflict label {
+  display: block;
+  padding: 6px 0;
+  min-height: 44px; /* §8.7 */
+}
+.review-decision-buttons {
+  margin-top: 8px;
+}
+/* §6.9's machine-read text (6B B9): one disclosure per page, the transcript
+   readable and bounded — never a wall of unscrollable output. */
+.review-machine-text-block {
+  margin: 8px 0 16px;
+}
+.review-machine-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--cream);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  padding: 12px;
+  font-size: 14px;
+  margin: 8px 0 0;
+}
+/* §4.2.4's receipt (6B B8): a quiet closing block under the three regions. */
+.review-receipt {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.review-receipt h2 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+.review-receipt ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+.review-receipt li {
+  padding: 4px 0;
 }
 
 /* The §8.7 reduced-motion query — written ONCE against the animation

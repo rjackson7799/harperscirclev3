@@ -1,0 +1,8 @@
+From: frontdesk@fairview.example
+Subject: Rescheduled appointment
+
+Provider: Fairview Rehabilitation
+Appointment date: 2026-09-12
+Appointment time: 1:45 PM
+
+Call us if this time no longer works.

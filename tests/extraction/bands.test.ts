@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -6,9 +6,11 @@ import path from 'node:path';
 import {
   ALL_HIGH,
   BAND_ARTIFACT_ALLOWLIST,
+  confidenceBand,
   effectiveRiskClass,
   loadBands,
   type BandArtifact,
+  type BandMode,
 } from '@/lib/extraction/bands';
 import { BAND_FIELDS } from '@/lib/extraction/fields';
 
@@ -151,6 +153,124 @@ describe('B4 · a complete, matching, allowlisted artifact calibrates — and on
     if (result.mode !== 'calibrated') return;
     for (const field of BAND_FIELDS) {
       expect(result.bands[field]).toEqual({ high: 0.85, medium: 0.6 });
+    }
+  });
+});
+
+// ============================================================================
+// 6B B4 · Q4 SETTLED as code, and the loader's untested branches tested.
+//
+// Q4: `confidenceBand` returns a DISCRIMINATED result — `all_high` (no band
+// exists for anything, by design) · `banded` · `uncalibrated` (this field was
+// never calibrated while its neighbours were, R6/F-11's reachable state) —
+// so a caller cannot collapse what the function knows into one nullable.
+// The band is computed at RENDER time from the run's (model_id,
+// prompt_version) pair and never stored on the fact.
+//
+// R1/F-4: `typeof null === 'object'`, so `fields: null` passed the shape
+// guard and THREW at the field loop — the one malformed shape that did not
+// fail closed, and in the worker that throw is an unacked-redelivery poison
+// loop. R1/F-7: `artifact_partial` had five rejection conditions and ONE
+// test — in the file the packet called "must not be wrong", an untested
+// branch is one a refactor can invert. R1/F-6: an owner can complete every
+// G9 step and still run all-high forever with no log line saying so.
+// ============================================================================
+
+function calibratedMode(): BandMode {
+  const { file, sha256 } = tempArtifact(completeArtifact());
+  return loadBands({ running: RUNNING, allowlist: [sha256], artifactPath: file });
+}
+
+describe('6B B4 · confidenceBand returns THREE states (Q4)', () => {
+  it('all-high is its OWN state — global by design, never a nullable collapse', () => {
+    expect(confidenceBand('medication_dose', 0.99, ALL_HIGH)).toEqual({ kind: 'all_high' });
+  });
+
+  it('a calibrated field bands by its thresholds', () => {
+    const mode = calibratedMode();
+    expect(confidenceBand('medication_dose', 0.9, mode)).toEqual({ kind: 'banded', band: 'high' });
+    expect(confidenceBand('medication_dose', 0.7, mode)).toEqual({
+      kind: 'banded',
+      band: 'medium',
+    });
+    expect(confidenceBand('medication_dose', 0.2, mode)).toEqual({ kind: 'banded', band: 'low' });
+  });
+
+  it('a field the run never calibrated is UNCALIBRATED — honestly, never an unremarkable low (R6/F-11)', () => {
+    const mode = calibratedMode();
+    expect(confidenceBand('provider_phone_number', 0.9, mode)).toEqual({ kind: 'uncalibrated' });
+  });
+});
+
+describe('6B B4 · fields: null fails CLOSED (R1/F-4)', () => {
+  it('typeof null === "object" must not walk the shape guard into the field loop', () => {
+    const { file, sha256 } = tempArtifact(
+      completeArtifact({ fields: null as unknown as BandArtifact['fields'] }),
+    );
+    const result = loadBands({ running: RUNNING, allowlist: [sha256], artifactPath: file });
+    expect(result).toEqual({ mode: 'all_high', reason: 'artifact_unreadable' });
+  });
+});
+
+describe('6B B4 · artifact_partial: EVERY rejection condition has its test (R1/F-7)', () => {
+  function partialWith(mutate: (fields: BandArtifact['fields']) => void): BandMode {
+    const artifact = completeArtifact();
+    mutate(artifact.fields);
+    const { file, sha256 } = tempArtifact(artifact);
+    return loadBands({ running: RUNNING, allowlist: [sha256], artifactPath: file });
+  }
+  const PARTIAL = { mode: 'all_high', reason: 'artifact_partial' };
+  const FIELD = BAND_FIELDS[0];
+
+  it('a banded field MISSING from the artifact', () => {
+    expect(partialWith((f) => delete f[FIELD])).toEqual(PARTIAL);
+  });
+  it('`high` not a number', () => {
+    expect(
+      partialWith((f) => (f[FIELD].high = 'high' as unknown as number)),
+    ).toEqual(PARTIAL);
+  });
+  it('`medium` not a number', () => {
+    expect(
+      partialWith((f) => (f[FIELD].medium = null as unknown as number)),
+    ).toEqual(PARTIAL);
+  });
+  it('`high` not strictly above `medium`', () => {
+    expect(
+      partialWith((f) => {
+        f[FIELD].high = 0.6;
+        f[FIELD].medium = 0.6;
+      }),
+    ).toEqual(PARTIAL);
+  });
+  it('`medium` below zero', () => {
+    expect(partialWith((f) => (f[FIELD].medium = -0.1))).toEqual(PARTIAL);
+  });
+  it('`high` above one', () => {
+    expect(partialWith((f) => (f[FIELD].high = 1.2))).toEqual(PARTIAL);
+  });
+});
+
+describe('6B B4 · a NON-DEFAULT all-high is logged (R1/F-6)', () => {
+  it('a configured-but-refused artifact says so out loud instead of silently shipping all-high', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      loadBands({
+        running: RUNNING,
+        allowlist: ['0'.repeat(64)],
+        artifactPath: path.join(tmpdir(), 'hc-bands-not-there.json'),
+      });
+      expect(
+        warn.mock.calls.some((c) => String(c[0]).includes('artifact_missing')),
+      ).toBe(true);
+
+      // …and the SHIPPING DEFAULT stays quiet: all-high with nothing signed
+      // and nothing configured is the mode, not an event.
+      warn.mockClear();
+      loadBands({ running: RUNNING, allowlist: [] });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
     }
   });
 });

@@ -37,6 +37,15 @@ const inbox = {
 };
 vi.mock('@/lib/hc/inbox', () => inbox);
 
+// 6B B5: the revalidator is a CLIENT component (useRouter) and this file
+// renders the page with renderToStaticMarkup, where no app router exists.
+// Stubbed to nothing here — its behaviour has its own suite
+// (tests/app/inbox-revalidator.test.tsx) and its presence on the page is
+// pinned by source there and by the fire's precondition test.
+vi.mock('@/components/inbox/InboxRevalidator', () => ({
+  InboxRevalidator: () => null,
+}));
+
 const CIRCLE = '11111111-0000-4000-8000-000000000001';
 const CLAIMS = { sub: '33333333-0000-4000-8000-000000000003', role: 'authenticated' };
 
@@ -49,8 +58,8 @@ let children: Row[] = [];
 let subjects: Row[] = [];
 let documents: Row[] = [];
 
-function chain(result: Row[]) {
-  const p = Promise.resolve({ data: result, error: null });
+function chain(result: Row[], error: { message: string } | null = null) {
+  const p = Promise.resolve(error ? { data: null, error } : { data: result, error: null });
   const proxy: Record<string, unknown> = {};
   for (const m of ['select', 'eq', 'is', 'in', 'order', 'limit']) {
     proxy[m] = vi.fn(() => proxy);
@@ -60,6 +69,10 @@ function chain(result: Row[]) {
   return proxy;
 }
 
+/** 6B B6 (R5/F-2): per-read error injection — a refused query must never
+ *  render as an empty world. */
+let readErrors: { parents?: string; children?: string; subjects?: string } = {};
+
 beforeEach(() => {
   vi.clearAllMocks();
   session.liveSessionClaims.mockResolvedValue(CLAIMS);
@@ -68,22 +81,34 @@ beforeEach(() => {
   children = [];
   subjects = [];
   documents = [];
+  readErrors = {};
   from.mockImplementation((table: string) => {
-    if (table === 'subjects') return chain(subjects);
+    if (table === 'subjects') {
+      return chain(subjects, readErrors.subjects ? { message: readErrors.subjects } : null);
+    }
     if (table === 'documents') return chain(documents);
     if (table === 'arrivals') {
       // first arrivals call = parents, second = children
       const call = from.mock.calls.filter((c) => c[0] === 'arrivals').length;
-      return chain(call <= 1 ? parents : children);
+      if (call <= 1) {
+        return chain(parents, readErrors.parents ? { message: readErrors.parents } : null);
+      }
+      return chain(children, readErrors.children ? { message: readErrors.children } : null);
     }
     return chain([]);
   });
 });
 
-async function renderInbox(): Promise<string> {
+async function renderInbox(
+  circle: string = CIRCLE,
+  searchParams: Record<string, string> = {},
+): Promise<string> {
   const { default: Page } = await import('@/app/(app)/[circle]/inbox/page');
   return renderToStaticMarkup(
-    await Page({ params: Promise.resolve({ circle: CIRCLE }) }),
+    await Page({
+      params: Promise.resolve({ circle }),
+      searchParams: Promise.resolve(searchParams),
+    }),
   );
 }
 
@@ -509,13 +534,19 @@ describe('5B B6 · the stage-2 duplicate cites the document it matched', () => {
   });
 
   it('the affordance never depends on naming the match', async () => {
-    // The contract, not a fixture case: whatever a caller can or cannot see
-    // of the matched document, the QUESTION is always answerable. The copy
-    // degrades; the affordance does not.
-    parents = [stage2Parent()];
+    // SHARPENED at 6B B6 (R5/F-13's last residue): the old form asserted the
+    // same two substrings as "both resolutions are offered" against the SAME
+    // fixture — a comment, not a test. This drives the DEGRADED case: the
+    // pointer is SET and the document is unreadable, and the question is
+    // still answerable with the honest generic line. (F-13's dead `documents`
+    // scaffolding is dead no longer — the Q-A grant made the read live, and
+    // the mock serves it above.)
+    parents = [stage2Parent({ duplicate_of_document_id: 'ffffffff-0000-4000-8000-0000000000ff' })];
+    documents = []; // the pointer names a document this caller cannot read
     const html = await renderInbox();
     expect(html).toContain('value="same_thing"');
     expect(html).toContain('value="different"');
+    expect(html).toContain('something already filed');
   });
 
   it('stage 1 keeps its own copy — the two questions are not the same question', async () => {
@@ -625,5 +656,102 @@ describe('Q-A/R5-F5 · the stage-2 copy names the matched document', () => {
     // provider / amount / policy_number. Naming `provider` as a conjunct is a
     // claim the detector does not make.
     expect(html).not.toMatch(/type, date and provider/);
+  });
+});
+
+// ============================================================================
+// 6B B6 · the list surface this slice inherits stops lying (ADR-0023 R5/F-2,
+// R5/F-7, R5/F-8), and each row opens the door B7 walks through.
+//
+// R5/F-2 is the amplifier behind ADR-0022 D15: three `{ data }` destructures
+// drop `error`, so a non-UUID circle segment returns 200 with a BLANK Care
+// Inbox today, and a DB blip shows a forty-item family its first-run empty
+// state. An error is an ERROR STATE, never an empty one — "you may not see
+// this" and "there is nothing here" are different sentences, and "something
+// broke" is a third.
+// ============================================================================
+
+const OK_PARENT = {
+  id: 'a-ok',
+  state: 'extracting',
+  channel: 'email',
+  sender_address: 'front-desk@cardiology.org',
+  sender_display_name: 'Front Desk',
+  auth_result: 'authenticated',
+  scan_verdict: 'clean',
+  received_at: new Date(Date.now() - HOURS).toISOString(),
+};
+
+describe('6B B6 · an error is an error state, never an empty one (R5/F-2)', () => {
+  it('a failed parents read renders the honest error, not the first-run empty state', async () => {
+    readErrors.parents = 'permission denied for column';
+    const html = await renderInbox();
+    expect(html).toContain('couldn&#x27;t load the Care Inbox');
+    expect(html).not.toContain('forwarding address');
+  });
+
+  it('a failed children read is an error state too — a degraded list could hide a held item&#x27;s only affordance', async () => {
+    parents = [{ ...OK_PARENT }];
+    readErrors.children = 'connection reset';
+    const html = await renderInbox();
+    expect(html).toContain('couldn&#x27;t load the Care Inbox');
+  });
+
+  it('a failed subjects read on an empty inbox is an error, never the empty state', async () => {
+    readErrors.subjects = 'timeout';
+    const html = await renderInbox();
+    expect(html).toContain('couldn&#x27;t load the Care Inbox');
+    expect(html).not.toContain('forwarding address');
+  });
+
+  it('a NON-UUID circle segment is a 404, never a 200 with a blank inbox', async () => {
+    await expect(renderInbox('not-a-uuid')).rejects.toThrow();
+  });
+});
+
+describe('6B B6 · every marker the submit routes emit is READ and rendered (R5/F-7)', () => {
+  it('the three ?e= refusals render their honest lines', async () => {
+    parents = [{ ...OK_PARENT }];
+    for (const [marker, needle] of [
+      ['cancel', 'couldn&#x27;t be stopped'],
+      ['accept', 'couldn&#x27;t be accepted'],
+      ['resolve', 'couldn&#x27;t be saved'],
+    ] as const) {
+      const html = await renderInbox(CIRCLE, { e: marker });
+      expect(html, `?e=${marker}`).toContain(needle);
+    }
+  });
+
+  it('the three confirmations render too', async () => {
+    parents = [{ ...OK_PARENT }];
+    for (const [marker, needle] of [
+      ['cancelled', 'Stopped'],
+      ['accepted', 'Sender accepted'],
+      ['resolved', 'moved it along'],
+    ] as const) {
+      const html = await renderInbox(CIRCLE, { [marker]: '1' });
+      expect(html, `?${marker}=1`).toContain(needle);
+    }
+  });
+});
+
+describe('6B B6 · the door and the path to it', () => {
+  it('the Known senders link renders in the EMPTY branch too (R5/F-8)', async () => {
+    subjects = [
+      {
+        id: 's-1',
+        first_name: 'Nell',
+        forwarding_local_part: 'nell.abc123',
+        forwarding_active_at: new Date().toISOString(),
+      },
+    ];
+    const html = await renderInbox();
+    expect(html).toContain(`/${CIRCLE}/senders`);
+  });
+
+  it('each row links to its review route — the door B7 walks through', async () => {
+    parents = [{ ...OK_PARENT }];
+    const html = await renderInbox();
+    expect(html).toContain(`href="/${CIRCLE}/inbox/a-ok"`);
   });
 });

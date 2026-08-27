@@ -49,4 +49,22 @@ describe('D7 · every control class carries the 44px floor', () => {
   it('choice rows keep the floor the seed already had', () => {
     expect(block('.choice-list label')).toContain('min-height: 44px');
   });
+
+  // 6B close-out · the CI half must pin the SELECTOR LIST, not just the
+  // declaration. `input[type='file']` was the one visible input type the
+  // shared rule never enumerated, so the upload form's control carried no
+  // floor at all and the native box measured 253×21 at 390px — found the
+  // first time a browser ever visited /upload (the R5/F-6 audit legs,
+  // a11y.spec.ts:344). A floor that silently exempts whichever type nobody
+  // listed is not a floor.
+  it('every visible input type the app uses is IN the shared rule', () => {
+    const m = /input\[type='text'\][^{]*\{/.exec(sheet);
+    expect(m, 'the shared input rule').not.toBeNull();
+    const selectors = m![0];
+    for (const type of ['text', 'email', 'password', 'file']) {
+      expect(selectors, `input[type='${type}'] carries the touch floor`).toContain(
+        `input[type='${type}']`,
+      );
+    }
+  });
 });

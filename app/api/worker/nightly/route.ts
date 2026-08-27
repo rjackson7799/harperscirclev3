@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { expireHeldMail, expireScanResults, runTaintSweep } from '@/lib/hc/workers';
-import { purgeQuarantineOlderThan } from '@/lib/storage/artifacts';
+import { purgeQuarantineOlderThan, sweepRenderStaging } from '@/lib/storage/artifacts';
 
 /**
  * /api/worker/nightly — the scheduler family's daily legs (RLY-01;
@@ -15,6 +15,10 @@ import { purgeQuarantineOlderThan } from '@/lib/storage/artifacts';
  *      stranger mail, warned in the inbox first.
  *   4. The §11.5 quarantine BYTE purge (ADR-0018 F2's named owner):
  *      quarantined malware bytes out at 7 days; hash + verdict retained.
+ *   5. 6B B3: the render-staging sweep (R3/F-3 + R4/F-4) — abandoned
+ *      `render/attempt/**` files out at 24 h BY PREFIX AGE, which needs
+ *      no lease id and therefore reaches the orphan a dead invocation's
+ *      stack made unreachable. Not a substitute for the DEL-01 cascade.
  *
  * Auth: the security-actions posture (GET = Vercel cron with
  * CRON_SECRET; POST = operational with HC_WORKER_KEY; unset ⇒ 503).
@@ -62,6 +66,14 @@ async function nightlyPass(): Promise<Response> {
     console.error(`worker/nightly: quarantine byte purge failed: ${(err as Error).message}`);
   }
 
+  let stagingSwept: number | null = null;
+  try {
+    stagingSwept = (await sweepRenderStaging(24)).removed;
+  } catch (err) {
+    errors.push('render_staging_sweep');
+    console.error(`worker/nightly: render-staging sweep failed: ${(err as Error).message}`);
+  }
+
   if (taint !== null && taint > 0) {
     console.error(`worker/nightly: TAINT SWEEP FINDINGS: ${taint} (page-worthy, OPS-01)`);
   }
@@ -71,6 +83,7 @@ async function nightlyPass(): Promise<Response> {
     scan_cache_removed: scanCacheRemoved,
     held_expired: heldExpired,
     quarantine_bytes_purged: quarantinePurged,
+    render_staging_swept: stagingSwept,
     errors,
   });
 }

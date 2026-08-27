@@ -364,6 +364,54 @@ export async function removeStagedObject(circleId: string, arrivalId: string): P
 }
 
 /**
+ * 6B B3 — the render-staging sweep (R3/F-3 + R4/F-4, fixed ONCE).
+ *
+ * Attempt staging leaks on EVERY non-graceful exit: a worker killed
+ * mid-render, a platform timeout, a crash after `writeRenderStaging` — each
+ * leaves `render/attempt/<circle>/<arrival>/<lease>/pNNN.*` behind, and the
+ * prefix is keyed by a lease id that existed only in the dead invocation's
+ * stack, so the orphan is UNREACHABLE BY CONSTRUCTION for any lease-keyed
+ * GC (`gcRenderStaging` needs the id the crash took with it). Up to 64 MB
+ * of a family's rendered medical pages, outside any future DEL-01 cascade.
+ *
+ * The sweep needs NO lease id: it walks `render/attempt/**` and removes
+ * FILES OLDER THAN THE CUTOFF. Age is the whole predicate — a live attempt's
+ * staging is minutes old (a lease is bounded by the stage clock; retries
+ * span hours at most), so anything a day old belongs to no live attempt.
+ * Best-effort like the lease-keyed GC: a sweep that throws is a named
+ * nightly error, never a blocked pass. This sweep is NOT a substitute for
+ * the DEL-01 cascade and does not pretend to be — it reaps abandoned
+ * attempt staging; promoted pages are the cascade's to reach.
+ */
+export async function sweepRenderStaging(hours: number): Promise<{ removed: number }> {
+  const store = asStoragePlane();
+  const cutoff = Date.now() - hours * 60 * 60 * 1000;
+  const staleKeys: string[] = [];
+
+  async function walk(prefix: string, depth: number): Promise<void> {
+    const { data, error } = await store
+      .from(ARTIFACTS)
+      .list(prefix, { limit: 1000, sortBy: { column: 'name', order: 'asc' } });
+    if (error) throw new Error(`sweepRenderStaging list: ${error.message}`);
+    for (const entry of data ?? []) {
+      const path = `${prefix}/${entry.name}`;
+      if (entry.id === null && depth < 5) {
+        await walk(path, depth + 1); // a folder: circle → arrival → lease
+      } else if (entry.created_at && new Date(entry.created_at).getTime() < cutoff) {
+        staleKeys.push(path);
+      }
+    }
+  }
+
+  await walk('render/attempt', 0);
+  if (staleKeys.length > 0) {
+    const { error } = await store.from(ARTIFACTS).remove(staleKeys);
+    if (error) throw new Error(`sweepRenderStaging remove: ${error.message}`);
+  }
+  return { removed: staleKeys.length };
+}
+
+/**
  * The §11.5 quarantine BYTE purge (ADR-0018 F2's named owner — B5's
  * scheduler family): quarantined malware BYTES are removed at 7 days;
  * the hash + verdict stay forever in scan_results (the X1

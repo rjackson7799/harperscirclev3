@@ -60,7 +60,19 @@ export function UploadForm({
         body: JSON.stringify({ subject_id: subjectId }),
       });
       if (!minted.ok) {
-        setPhase({ kind: 'failed', message: 'Uploading is not available for this person.' });
+        // ROUND-19 F-2: an OUTAGE is not a REFUSAL, and the two sentences say
+        // opposite things about what to do next. "Not available for this
+        // person" is about permission and the honest response to it is to stop
+        // trying; r2's founder read it during an auth-server fault that lasted
+        // seconds. 503 is the server saying it could not read the session —
+        // nothing about the subject, and worth trying again.
+        setPhase({
+          kind: 'failed',
+          message:
+            minted.status === 503
+              ? 'We couldn’t reach your account just now. Try again in a moment.'
+              : 'Uploading is not available for this person.',
+        });
         return;
       }
       const { upload } = (await minted.json()) as {
@@ -119,7 +131,16 @@ export function UploadForm({
         body: JSON.stringify({ subject_id: subjectId, token: signedTarget }),
       });
       if (!completed.ok) {
-        setPhase({ kind: 'failed', message: 'The upload could not be finished. Try again.' });
+        // F-2, and here the distinction is load-bearing: the BYTES ARE ALREADY
+        // STAGED. "Try again" is right either way, but a 503 must not read as
+        // though the upload itself failed — choosing the same file resumes it.
+        setPhase({
+          kind: 'failed',
+          message:
+            completed.status === 503
+              ? 'We couldn’t reach your account just now. Choose the same file to finish it.'
+              : 'The upload could not be finished. Try again.',
+        });
         return;
       }
       setPhase({ kind: 'done', fileName: file.name });

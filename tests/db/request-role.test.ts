@@ -132,3 +132,93 @@ describe('A2 · withRequestRole assumes the request role for one transaction', (
     ).rejects.toThrow(/request role/i);
   });
 });
+
+// ============================================================================
+// ROUND 18 · F-1 (MAJOR) — THE CHANNEL'S OWN TWO BOUNDS.
+//
+// D20 bounded the artifact route at fifteen seconds and recorded the pool as
+// a LIMITATION: "the budget protects THE PERSON, not the pool." Round 18
+// found that this is the load-bearing half rather than a footnote, and the
+// finding is right. A raced-out read keeps its pooled connection until it
+// finishes; the pool is a process-wide `max: 10` shared by 35 call sites
+// across 12 lib/hc modules; and `connect()` was called with NO
+// `connectionTimeoutMillis`, whose pg default is 0 — WAIT FOREVER. So the
+// one route that has a budget stays responsive by exhausting the resource
+// on which every other family surface — the Care Inbox, the review screen,
+// senders, invites — then hangs with no bound and no named state. That is
+// the F5/F6 failure mode reappearing everywhere the budget is not.
+//
+// Two bounds close it, and they are complementary:
+//   · connectionTimeoutMillis turns an unbounded WAIT into a prompt, named
+//     failure. It changes nothing while the pool has room.
+//   · statement_timeout is what actually RETURNS the leaked connection: the
+//     server kills the abandoned query instead of running it to completion.
+//     Without it the first bound only converts hanging forever into failing
+//     forever.
+//
+// Both numbers are DERIVED from the answer budget rather than picked, and
+// the derivation is asserted below so it cannot drift into a magic number.
+//
+// What this file pins is that the CHANNEL sets them, transaction-locally.
+// That a statement_timeout kills is Postgres's own contract and is not
+// re-proven here — pinning it would cost a thirty-second test to observe
+// behaviour the server guarantees.
+// ============================================================================
+describe('Round-18 F-1 · the request-role channel is bounded at both ends', () => {
+  it('the connection wait is bounded — pg defaults to 0, which is "forever"', async () => {
+    const { poolConfig, POOL_CONNECT_TIMEOUT_MS } = await import('@/lib/db/request-role');
+    expect(POOL_CONNECT_TIMEOUT_MS).toBeGreaterThan(0);
+    // The pool is BUILT from this, so removing the bound reds here.
+    expect(poolConfig().connectionTimeoutMillis).toBe(POOL_CONNECT_TIMEOUT_MS);
+    expect(poolConfig().max).toBeGreaterThan(0);
+  });
+
+  it('statement_timeout is IN FORCE inside the transaction, at the channel\u2019s value', async () => {
+    const { REQUEST_ROLE_STATEMENT_TIMEOUT_MS } = await import('@/lib/db/request-role');
+    const shown = await withRequestRole(
+      'authenticated',
+      { sub: '00000000-0000-4000-8000-00000000002d', role: 'authenticated' },
+      async (q) => (await q.query('show statement_timeout')).rows[0].statement_timeout,
+    );
+    // Postgres renders the interval; compare in milliseconds, not in spelling.
+    const ms = await withRequestRole('anon', null, async (q) =>
+      Number(
+        (await q.query('select extract(epoch from $1::interval) * 1000 as ms', [shown])).rows[0].ms,
+      ),
+    );
+    expect(ms).toBe(REQUEST_ROLE_STATEMENT_TIMEOUT_MS);
+  });
+
+  it('and it is SET LOCAL: the bound leaves no residue on the pooled session', async () => {
+    // Same shape as the claims-residue case above — a bound that outlived its
+    // transaction would silently govern whatever ran next on that connection.
+    await withRequestRole('anon', null, (q) => q.query('select 1'));
+    const raw = new pg.Client({ connectionString: DB_URL });
+    await raw.connect();
+    try {
+      const dflt = (await raw.query('show statement_timeout')).rows[0].statement_timeout;
+      const after = await withRequestRole('anon', null, async (q) => {
+        await q.query('rollback'); // leave the transaction, keep the session
+        return (await q.query('show statement_timeout')).rows[0].statement_timeout;
+      });
+      expect(after).toBe(dflt);
+    } finally {
+      await raw.end();
+    }
+  });
+
+  it('both bounds are DERIVED from the answer budget, not picked', async () => {
+    const { POOL_CONNECT_TIMEOUT_MS, REQUEST_ROLE_STATEMENT_TIMEOUT_MS } = await import(
+      '@/lib/db/request-role'
+    );
+    const { ROUTE_ANSWER_BUDGET_MS } = await import('@/lib/http/budget');
+    // A query the route is STILL WAITING ON must never be killed under it, so
+    // the statement bound sits strictly above the budget; a query still
+    // running at twice the budget is serving nobody.
+    expect(REQUEST_ROLE_STATEMENT_TIMEOUT_MS).toBe(2 * ROUTE_ANSWER_BUDGET_MS);
+    // A connection wait at or above the budget is dead weight: the budget
+    // would expire before the pool ever answered.
+    expect(POOL_CONNECT_TIMEOUT_MS).toBe(ROUTE_ANSWER_BUDGET_MS / 3);
+    expect(POOL_CONNECT_TIMEOUT_MS).toBeLessThan(ROUTE_ANSWER_BUDGET_MS);
+  });
+});

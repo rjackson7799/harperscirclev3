@@ -19,18 +19,26 @@ describe('B9 · next.config allows the gate origin in dev', () => {
 });
 
 // ============================================================================
-// 5B B2 · mupdf is opted OUT of Server Components bundling. It is a WASM
-// build that resolves its own .wasm asset through Node's require/fs at
-// runtime; bundled into the RSC graph that resolution breaks, and the
-// extract worker's very first render would fail in production while every
-// local test stayed green. `pg` rides Next's own built-in external list;
-// mupdf is not on it, so the opt-out is named here and pinned here.
+// 6B B1 · the rasterizer pair is opted OUT of Server Components bundling
+// (the 5B B2 pin, re-pinned for the replacement engines — D24 ruling 1).
+// `@napi-rs/canvas` is a native N-API addon that resolves its own .node
+// binary through require at runtime, and `pdfjs-dist` resolves its font,
+// cmap and wasm resource directories relative to its own installed files;
+// bundled into the RSC graph both resolutions break, and the extract
+// worker's very first render would fail in production while every local
+// test stayed green. `pg` rides Next's own built-in external list; these
+// two do not, so the opt-out is named here and pinned here. `mupdf`
+// (AGPL-3.0-or-later) is REMOVED, so its opt-out must be gone with it —
+// a lingering external for an absent package would be the last trace of
+// the dependency the ruling removed.
 // ============================================================================
 
-describe('5B B2 · the rasterizer is a native require, not a bundle', () => {
-  it('serverExternalPackages names mupdf', () => {
+describe('6B B1 · the rasterizer is a native require, not a bundle', () => {
+  it('serverExternalPackages names the replacement pair and no longer names mupdf', () => {
     const external =
       (nextConfig as { serverExternalPackages?: string[] }).serverExternalPackages ?? [];
-    expect(external).toContain('mupdf');
+    expect(external).toContain('pdfjs-dist');
+    expect(external).toContain('@napi-rs/canvas');
+    expect(external).not.toContain('mupdf');
   });
 });

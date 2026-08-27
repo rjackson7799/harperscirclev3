@@ -21,7 +21,7 @@ import { predictionFor } from '@/scripts/eval/predict';
 describe('R6/F-6 · the scored prediction is the published prediction', () => {
   const CITE = { page: 1, bbox: [0.1, 0.1, 0.2, 0.05] };
 
-  it('keeps a well-formed fact', () => {
+  it('keeps a well-formed fact — WITH its citation (6B B10, R3/F-7: the box is part of the answer)', () => {
     const p = predictionFor(
       'blind-eob-01',
       JSON.stringify({
@@ -29,7 +29,10 @@ describe('R6/F-6 · the scored prediction is the published prediction', () => {
       }),
       1,
     );
-    expect(p.facts).toEqual([{ field: 'amount', value: '$64.25' }]);
+    // The pin moved WITH the change that forced it: the scorer now measures
+    // whether the bbox lands on its value, so predictionFor must stop
+    // discarding the citation validateFacts already validated.
+    expect(p.facts).toEqual([{ field: 'amount', value: '$64.25', citation: CITE }]);
     expect(p.dropped).toBe(0);
   });
 

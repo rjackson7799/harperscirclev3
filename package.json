@@ -17,19 +17,22 @@
     "test:db": "supabase test db",
     "test:concurrency": "node scripts/concurrency/run.mjs",
     "db:verify": "supabase db lint --fail-on warning",
-    "test:app": "vitest run",
+    "test:app": "vitest run --reporter=default --reporter=json --outputFile=.vitest/run.json",
     "test:e2e": "playwright test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.120.0",
+    "@napi-rs/canvas": "1.0.8",
     "@supabase/ssr": "0.12.4",
     "@supabase/supabase-js": "2.112.3",
-    "mupdf": "1.28.0",
+    "@tesseract.js-data/eng": "1.0.0",
     "next": "16.3.1",
+    "pdfjs-dist": "6.2.108",
     "pg": "8.16.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "0.0.1",
+    "tesseract.js": "7.0.0",
     "tus-js-client": "4.3.1"
   },
   "devDependencies": {

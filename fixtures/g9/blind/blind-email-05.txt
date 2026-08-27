@@ -1,0 +1,7 @@
+From: noreply@clinicreminders.example
+Subject: Appointment reminder
+
+Appointment date: 2026-09-18
+Appointment time: 8:15 AM
+
+Reply to this message to confirm.

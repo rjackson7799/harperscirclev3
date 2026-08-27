@@ -1,0 +1,10 @@
+From: scheduling@stonebridge.example
+Subject: Your follow-up visit
+
+Hello,
+
+Provider: Stonebridge Hospital
+Appointment date: 2026-09-04
+Appointment time: 9:30 AM
+
+Please bring your medication list.

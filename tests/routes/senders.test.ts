@@ -50,10 +50,22 @@ beforeEach(() => {
   inbox.revokeSender.mockResolvedValue({ revoked: true });
 });
 
-async function renderSenders(): Promise<string> {
+async function renderSenders(searchParams: Record<string, string> = {}): Promise<string> {
   const { default: Page } = await import('@/app/(app)/[circle]/senders/page');
-  return renderToStaticMarkup(await Page({ params: Promise.resolve({ circle: CIRCLE }) }));
+  return renderToStaticMarkup(
+    await Page({
+      params: Promise.resolve({ circle: CIRCLE }),
+      searchParams: Promise.resolve(searchParams),
+    }),
+  );
 }
+
+describe('6B B6 · the ?e=revoke marker is READ and rendered (R5/F-7)', () => {
+  it('a refused revocation says so instead of silently re-listing', async () => {
+    const html = await renderSenders({ e: 'revoke' });
+    expect(html).toContain('couldn&#x27;t be removed');
+  });
+});
 
 describe('5B B8 · the list says who accepted each sender, and when', () => {
   it('renders the address, the accepting member and the date', async () => {

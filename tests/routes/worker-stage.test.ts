@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { INBOX_REVALIDATE_SECONDS } from '@/lib/inbox/revalidate';
 
 // ============================================================================
 // B4 · /api/worker/[stage] — store · scan · gate, each the §4.3 sequence
@@ -281,7 +284,7 @@ describe('B4 · scan — cache first, four exits, quarantine moves bytes', () =>
 });
 
 describe('B4 · gate — the SND-01 machinery; uploads pass, strangers hold', () => {
-  it('recognised email advances to extracting and enqueues the extract seam — the extract fire is HELD (ADR-0023 D24)', async () => {
+  it('recognised email advances to extracting, enqueues extract, and FIRES it (6B B5)', async () => {
     workers.readPipelineWork.mockResolvedValueOnce([msg('gate')]);
     workers.senderRecognised.mockResolvedValueOnce(true);
     await route.POST(req('gate'), ctx('gate'));
@@ -294,15 +297,44 @@ describe('B4 · gate — the SND-01 machinery; uploads pass, strangers hold', ()
     );
     const [sent] = workers.sendPipelineWork.mock.calls[0];
     expect(sent).toMatchObject({ stage: 'extract' });
-    // AMENDED at round-16 sign-off (R8/F-1). The old title said "nothing
-    // consumes yet" and the old comment said "no consumer to fire"; both were
-    // false at HEAD — scan, gate and interpret all fire eagerly. Extract is
-    // the one hand-off that does not, and it is HELD BY OWNER RULING rather
-    // than missing: the eager fire would collapse §4.5's ~35 s cancel window
-    // to seconds while nothing yet tells a family Reading has begun
-    // (ADR-0023 D14 for the finding, D24 for the ruling). The assertion is
-    // UNCHANGED — what changed is that it now pins a decision, not a gap.
-    expect(fetchMock).not.toHaveBeenCalled();
+    // AMENDED at 6B B5, the third life of this assertion, each on the
+    // record: 4B said "nothing consumes yet" (falsified at the round-16
+    // sign-off, R8/F-1); the sign-off corrected it to HELD BY OWNER RULING
+    // (D14/D24 — the fire would collapse §4.5's ~35 s cancel window while
+    // nothing told a family Reading had begun); and now the hold is LIFTED,
+    // because its stated precondition shipped — the Care Inbox revalidates
+    // (the arrival-received signal, one commit before this one). The fire's
+    // own precondition test above pins the signal's presence, so the order
+    // cannot silently un-happen.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ==========================================================================
+  // 6B B5 · THE FIRE, behind its signal (Q8 SETTLED; D24 ruling 3: the
+  // signal, THEN the fire, never the reverse). The eager fire collapses
+  // §4.5's ~35 s cancel window — median relay dead time — to seconds; taking
+  // it before a surface tells a family that Reading has begun would make
+  // PRD §4.2.2's promise false at the moment it is made. The ORDERING IS
+  // ENFORCED HERE, not intended: the fire's own test asserts the signal is
+  // present, so a refactor that removes the signal fails THIS test rather
+  // than silently restoring the gap.
+  // ==========================================================================
+  it('the fire’s precondition: the arrival-received signal is PRESENT and bounded by one relay tick', () => {
+    const page = readFileSync(
+      join(process.cwd(), 'app', '(app)', '[circle]', 'inbox', 'page.tsx'),
+      'utf8',
+    );
+    expect(page).toContain('InboxRevalidator');
+    expect(INBOX_REVALIDATE_SECONDS).toBeGreaterThan(0);
+    expect(INBOX_REVALIDATE_SECONDS).toBeLessThanOrEqual(60);
+  });
+
+  it('gate → extracting FIRES the extract worker eagerly — the seam’s last hand-off joins scan and gate', async () => {
+    workers.readPipelineWork.mockResolvedValueOnce([msg('gate')]);
+    workers.senderRecognised.mockResolvedValueOnce(true);
+    await route.POST(req('gate'), ctx('gate'));
+    const fired = fetchMock.mock.calls.map((c) => String((c as unknown as [string])[0]));
+    expect(fired).toContain('http://local.test/api/worker/extract');
   });
 
   it('an unknown sender holds — AC-INBOX-7: the gate precedes extracting', async () => {

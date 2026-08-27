@@ -241,6 +241,72 @@ describe('B5 · §3.10 — the record is reached through ONE narrow window', () 
   });
 });
 
+// ============================================================================
+// 6B B3 · the pipeline owed batch, interpret arm (ADR-0023 R4/F-10, R4/F-11,
+// R4/F-15 — findings whose failure a PERSON now reads).
+// ============================================================================
+describe('6B B3 · the owed batch — the interpret arm', () => {
+  it('a NON-ARRAY msg.facts fails CLOSED: the document is re-read and the operator channel says so (R4/F-11)', async () => {
+    // The queue message is trusted input to nobody: a corrupted `facts`
+    // must not ride to the provider as-is, and — the finding's sharp edge —
+    // must not skip BOTH the artifact re-read and the operator note, which
+    // is the thin-answer-that-looks-normal D6 rules out.
+    workers.readPipelineWork.mockResolvedValueOnce([msg({ facts: 'not-an-array' })]);
+    await route.POST(req(), ctx);
+    const input = interpretMod.interpretArrival.mock.calls[0][0];
+    expect(input.facts).toEqual([]);
+    expect(storage.readArtifactBytes).toHaveBeenCalled();
+    expect(input.documentText).toBe('Dose: 500 mg');
+    expect(input.operatorNotes.length).toBeGreaterThan(0);
+  });
+
+  it('the drop counter is READ — a lossy validation pass is a logged §10.4 signal, never silence (R4/F-15)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      interpretMod.interpretArrival.mockResolvedValueOnce({
+        ...okInterpret([
+          { kind: 'document', title: 'File it', summary: 'A summary', ...BLANK, category: 'medical' },
+        ]),
+        dropped: 3,
+      });
+      workers.readPipelineWork.mockResolvedValueOnce([msg()]);
+      await route.POST(req(), ctx);
+      expect(
+        warn.mock.calls.some((c) => String(c[0]).includes('dropped') && String(c[0]).includes('3')),
+      ).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('a stage-2 suspect reaching interpret raises the §4.2 defect signal — warned like processGate, absorbed like it (R4/F-10)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      workers.claimStage.mockResolvedValueOnce({
+        result: 'invalid_state',
+        leaseId: null,
+        attemptNo: null,
+        deadline: null,
+      });
+      workers.readPipelineWork.mockResolvedValueOnce([msg()]);
+      await route.POST(req(), ctx);
+      // The signal (the finding's letter) …
+      expect(
+        warn.mock.calls.some(
+          (c) => String(c[0]).includes('interpret') && String(c[0]).includes('absorbed'),
+        ),
+      ).toBe(true);
+      // … and the absorption unchanged: the wait is the machinery's answer
+      // (pgTAP 055:453's pin; the DB half was declined at 6A M1, Q-A
+      // CONFIRMED at round 17).
+      expect(workers.recordContextFor).not.toHaveBeenCalled();
+      expect(interpretMod.interpretArrival).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 describe('B5 · §4.10 defence 1 — the worst outcome is a proposal a person reads', () => {
   it('an injected instruction proposal still only reaches finalize_interpretation', async () => {
     interpretMod.interpretArrival.mockResolvedValueOnce(

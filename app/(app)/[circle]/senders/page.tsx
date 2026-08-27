@@ -30,13 +30,19 @@ import { formatShortDate } from '@/lib/format/dates';
  */
 export default async function SendersPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ circle: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { circle } = await params;
   const supabase = await asUser();
   const claims = await liveSessionClaims(supabase);
   if (!claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/senders`)}`);
+
+  // 6B B6 (R5/F-7): the ?e=revoke marker the submit route emits is READ.
+  const sp = await searchParams;
+  const revokeFailed = sp.e === 'revoke';
 
   let senders: KnownSender[] = [];
   try {
@@ -52,6 +58,11 @@ export default async function SendersPage({
         title="Known senders"
         context="Mail from these addresses reaches the Care Inbox without being held. Anyone here was accepted by a person in this circle."
       />
+      {revokeFailed ? (
+        <p className="field-help" role="alert">
+          That sender couldn&apos;t be removed just now. Please try again.
+        </p>
+      ) : null}
       {senders.length === 0 ? (
         <EmptyState>You have not accepted any senders yet.</EmptyState>
       ) : (

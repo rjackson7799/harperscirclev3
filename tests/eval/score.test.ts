@@ -39,8 +39,15 @@ function item(over: Partial<CorpusItem> = {}): CorpusItem {
   } as CorpusItem;
 }
 
-function label(field: string, value: string) {
-  return { field, value, risk_class: 'high' as const, page: 1, bbox: [0, 0, 1, 1] as [number, number, number, number] };
+function label(field: string, value: string, over: Record<string, unknown> = {}) {
+  return {
+    field,
+    value,
+    risk_class: 'high' as const,
+    page: 1,
+    bbox: [0, 0, 1, 1] as [number, number, number, number],
+    ...over,
+  };
 }
 
 function prediction(itemId: string, facts: Array<[string, string]>): Prediction {
@@ -118,6 +125,84 @@ describe('B9 · per-field precision and recall', () => {
     expect(result.unscored).toEqual(['x1']);
   });
 
+  // ==========================================================================
+  // 6B B10 · R6/F-10: MULTI-VALUED support. The old scorer collapsed expected
+  // labels last-wins, took predictions first-wins, and counted support once
+  // per ITEM — so the first item with two medications silently halved its
+  // claimed support and scored whichever value the collapse happened to keep.
+  // Labels are a MULTISET; each label may be satisfied by at most one
+  // produced fact; support counts LABELS.
+  // ==========================================================================
+  it('R6/F-10: an item with TWO medications scores both — support counts LABELS, not items', () => {
+    const result = scoreRun(
+      [
+        item({
+          labels: [label('medication_name', 'Amoxicillin'), label('medication_name', 'Warfarin')],
+        }),
+      ],
+      [
+        prediction('x1', [
+          ['medication_name', 'Warfarin'],
+          ['medication_name', 'Amoxicillin'],
+        ]),
+      ],
+    );
+    const name = result.fields.find((f) => f.field === 'medication_name')!;
+    expect(name).toMatchObject({ tp: 2, fp: 0, fn: 0, support: 2, precision: 1, recall: 1 });
+  });
+
+  it('R6/F-10: each label is satisfied AT MOST ONCE — a duplicate production is a false positive', () => {
+    const result = scoreRun(
+      [item({ labels: [label('medication_name', 'Amoxicillin')] })],
+      [
+        prediction('x1', [
+          ['medication_name', 'Amoxicillin'],
+          ['medication_name', 'Amoxicillin'],
+        ]),
+      ],
+    );
+    const name = result.fields.find((f) => f.field === 'medication_name')!;
+    expect(name).toMatchObject({ tp: 1, fp: 1, fn: 0, support: 1 });
+  });
+
+  it('R6/F-10: one of two labels missed is one fn beside one tp, never an average', () => {
+    const result = scoreRun(
+      [
+        item({
+          labels: [label('medication_name', 'Amoxicillin'), label('medication_name', 'Warfarin')],
+        }),
+      ],
+      [prediction('x1', [['medication_name', 'Amoxicillin']])],
+    );
+    const name = result.fields.find((f) => f.field === 'medication_name')!;
+    expect(name).toMatchObject({ tp: 1, fp: 0, fn: 1, support: 2, recall: 0.5 });
+  });
+
+  // ==========================================================================
+  // 6B B10 · D11's letter, encoded: a label records what the item IS;
+  // `rendered: false` records that the material carries NO rendition of it
+  // (the photo classes never paint a glyph). An unrendered label is EXCLUDED
+  // from recall — a flawless reader cannot return it — and a production that
+  // "matches" one can only be a hallucination or a leak: a false positive.
+  // ==========================================================================
+  it('an UNRENDERED label is no recall target — and producing its value anyway is a false positive', () => {
+    const result = scoreRun(
+      [item({ labels: [label('provider', 'Elmwood Drug', { rendered: false })] })],
+      [prediction('x1', [['provider', 'Elmwood Drug']])],
+    );
+    const provider = result.fields.find((f) => f.field === 'provider')!;
+    expect(provider).toMatchObject({ tp: 0, fp: 1, fn: 0, support: 0 });
+  });
+
+  it('an unrendered label NOT produced scores nothing at all — the honest non-event', () => {
+    const result = scoreRun(
+      [item({ labels: [label('provider', 'Elmwood Drug', { rendered: false })] })],
+      [prediction('x1', [])],
+    );
+    const provider = result.fields.find((f) => f.field === 'provider')!;
+    expect(provider).toMatchObject({ tp: 0, fp: 0, fn: 0, support: 0 });
+  });
+
   it('scores are keyed per field across MANY items, and never averaged into one number', () => {
     const items = [
       item({ id: 'a', labels: [label('provider', 'A'), label('amount', '$1.00')] }),
@@ -133,5 +218,95 @@ describe('B9 · per-field precision and recall', () => {
     expect(amount.precision).toBe(0.5);
     // No global precision is emitted: §6.10 says per-field, not one number.
     expect(result).not.toHaveProperty('precision');
+  });
+});
+
+// ============================================================================
+// 6B B10 · R3/F-7: CITATION CORRECTNESS IS MEASURED. The harness used to
+// discard the citation before scoring — Prediction was {field, value} only —
+// so nothing anywhere measured whether a bbox lands on its value, and a
+// model with perfect values and uniformly wrong boxes scored 1.00. Boxes are
+// what this slice RENDERS (the crop a person must see before approving), so
+// the box is part of the answer.
+//
+// The measurement is separate from precision/recall on purpose: reading and
+// citing are different failures with different fixes. What stops the
+// perfect-values-wrong-boxes run from signing is the THRESHOLD RULE
+// (lib/eval/thresholds.ts): a field whose citation accuracy misses its floor
+// is unsignable no matter what its value columns say.
+//
+// LANDING: same page, and the intersection covers at least HALF THE SMALLER
+// of the two boxes — tolerant of a tighter or looser crop, intolerant of a
+// box that is mostly somewhere else.
+// ============================================================================
+describe('6B B10 · the citation half: does the bbox land on its value? (R3/F-7)', () => {
+  const cited = (
+    itemId: string,
+    facts: Array<[string, string, { page: number; bbox: [number, number, number, number] }?]>,
+  ): Prediction => ({
+    itemId,
+    facts: facts.map(([field, value, citation]) => ({ field, value, citation })),
+  });
+
+  const LABEL_BOX = { page: 1, bbox: [0.1, 0.2, 0.3, 0.05] as [number, number, number, number] };
+
+  it('a value hit whose box overlaps the labelled region is a citation HIT', () => {
+    const result = scoreRun(
+      [item({ labels: [label('medication_dose', '500 mg', LABEL_BOX)] })],
+      [
+        cited('x1', [
+          ['medication_dose', '500 mg', { page: 1, bbox: [0.12, 0.21, 0.2, 0.04] }],
+        ]),
+      ],
+    );
+    const dose = result.fields.find((f) => f.field === 'medication_dose')!;
+    expect(dose).toMatchObject({ tp: 1, citation_hits: 1, citation_misses: 0 });
+    expect(dose.citation_accuracy).toBe(1);
+  });
+
+  it('a PERFECT value cited somewhere else entirely is a citation MISS — 1.00 stops being clean', () => {
+    const result = scoreRun(
+      [item({ labels: [label('medication_dose', '500 mg', LABEL_BOX)] })],
+      [
+        cited('x1', [
+          ['medication_dose', '500 mg', { page: 1, bbox: [0.7, 0.8, 0.2, 0.05] }],
+        ]),
+      ],
+    );
+    const dose = result.fields.find((f) => f.field === 'medication_dose')!;
+    expect(dose.precision).toBe(1); // the value IS right…
+    expect(dose).toMatchObject({ citation_hits: 0, citation_misses: 1 });
+    expect(dose.citation_accuracy).toBe(0); // …and the evidence points nowhere.
+  });
+
+  it('the RIGHT box on the WRONG page is a miss — page is part of the citation', () => {
+    const result = scoreRun(
+      [item({ labels: [label('medication_dose', '500 mg', { page: 2, bbox: [0.1, 0.2, 0.3, 0.05] })] })],
+      [
+        cited('x1', [
+          ['medication_dose', '500 mg', { page: 1, bbox: [0.1, 0.2, 0.3, 0.05] }],
+        ]),
+      ],
+    );
+    const dose = result.fields.find((f) => f.field === 'medication_dose')!;
+    expect(dose).toMatchObject({ citation_hits: 0, citation_misses: 1 });
+  });
+
+  it('a hit with NO citation at all is a miss — evidence a person cannot see is not evidence', () => {
+    const result = scoreRun(
+      [item({ labels: [label('medication_dose', '500 mg', LABEL_BOX)] })],
+      [prediction('x1', [['medication_dose', '500 mg']])],
+    );
+    const dose = result.fields.find((f) => f.field === 'medication_dose')!;
+    expect(dose).toMatchObject({ citation_hits: 0, citation_misses: 1 });
+  });
+
+  it('a field with NO measurable hits reads null, never 1.0 — the scorer’s own zero-over-zero rule', () => {
+    const result = scoreRun(
+      [item({ labels: [label('medication_dose', '500 mg', LABEL_BOX)] })],
+      [prediction('x1', [])],
+    );
+    const dose = result.fields.find((f) => f.field === 'medication_dose')!;
+    expect(dose.citation_accuracy).toBeNull();
   });
 });

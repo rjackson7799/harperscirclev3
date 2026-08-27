@@ -1,0 +1,11 @@
+From: refills@cornerpharmacy.example
+Subject: Your refill is ready
+
+Provider: Corner Pharmacy
+Filled on: 2026-08-20
+Medication: Rosuvastatin
+Dose: 20 mg
+Frequency: once daily at bedtime
+Allergy on file: Penicillin
+
+Ready for pickup until 2026-08-27.

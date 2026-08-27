@@ -28,11 +28,24 @@
 // world" Q5 refused, wearing a different hat.
 //
 // Markers a fixture's text can carry to drive the §6.8 exits:
-//   HC-FIXTURE-REFUSAL   → HTTP 200, stop_reason "refusal" (+ stop_details)
-//   HC-FIXTURE-TRUNCATE  → stop_reason "max_tokens", partial content
-//   HC-FIXTURE-GARBAGE   → end_turn with unparseable content
-//   HC-FIXTURE-503       → an overloaded_error, the provider-outage shape
-//   HC-FIXTURE-HANG      → no response at all, so OUR timeout is what cuts
+//   HC-FIXTURE-REFUSAL     → HTTP 200, stop_reason "refusal" (+ stop_details)
+//   HC-FIXTURE-TRUNCATE    → stop_reason "max_tokens", partial content
+//   HC-FIXTURE-GARBAGE     → end_turn with unparseable content
+//   HC-FIXTURE-OVERLOAD    → HTTP 529 overloaded_error — the status the
+//                            provider ACTUALLY sends (6B B4/R2-F14; the old
+//                            HC-FIXTURE-503 answered 503, so once the arm
+//                            became status-aware the fixture exercised the
+//                            wrong branch)
+//   HC-FIXTURE-400         → HTTP 400 invalid_request_error, the PERMANENT
+//                            class (R2/F-5)
+//   HC-FIXTURE-429-ONCE    → HTTP 429 + retry-after: 1 on the FIRST sight
+//                            of the marker since reset(), then the normal
+//                            answer — drives the one in-attempt wait
+//   HC-FIXTURE-429-ALWAYS  → HTTP 429 + retry-after: 120, every time —
+//                            drives the does-not-fit-the-lease branch
+//   HC-FIXTURE-CONTEXT     → HTTP 200, stop_reason
+//                            "model_context_window_exceeded" (R2/F-9)
+//   HC-FIXTURE-HANG        → no response at all, so OUR timeout is what cuts
 // ============================================================================
 
 import http from 'node:http';
@@ -280,8 +293,9 @@ export async function startAnthropicFixtureServer(options = {}) {
         // this off, inside the lease deadline (§1.9).
         return;
       }
-      if (text.includes('HC-FIXTURE-503')) {
-        res.writeHead(503, { 'content-type': 'application/json' });
+      if (text.includes('HC-FIXTURE-OVERLOAD')) {
+        // 529, not 503: the provider's overloaded_error status (R2/F-14).
+        res.writeHead(529, { 'content-type': 'application/json' });
         res.end(
           JSON.stringify({
             type: 'error',
@@ -289,6 +303,42 @@ export async function startAnthropicFixtureServer(options = {}) {
           }),
         );
         return;
+      }
+      if (text.includes('HC-FIXTURE-400')) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            type: 'error',
+            error: { type: 'invalid_request_error', message: 'fixture: permanently invalid' },
+          }),
+        );
+        return;
+      }
+      if (text.includes('HC-FIXTURE-429-ALWAYS')) {
+        res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '120' });
+        res.end(
+          JSON.stringify({
+            type: 'error',
+            error: { type: 'rate_limit_error', message: 'fixture: rate limited (always)' },
+          }),
+        );
+        return;
+      }
+      if (text.includes('HC-FIXTURE-429-ONCE')) {
+        // Stateful by design: the FIRST sight since reset() rate-limits with
+        // a short retry-after; the retry gets the normal answer — the shape
+        // of a transient limit the in-attempt wait is meant to survive.
+        const seen = requests.filter((r) => r.raw.includes('HC-FIXTURE-429-ONCE')).length;
+        if (seen <= 1) {
+          res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '1' });
+          res.end(
+            JSON.stringify({
+              type: 'error',
+              error: { type: 'rate_limit_error', message: 'fixture: rate limited (once)' },
+            }),
+          );
+          return;
+        }
       }
 
       let payload;
@@ -309,6 +359,13 @@ export async function startAnthropicFixtureServer(options = {}) {
         });
       } else if (text.includes('HC-FIXTURE-GARBAGE')) {
         payload = messageEnvelope(model, 'I am not JSON, and never was.');
+      } else if (text.includes('HC-FIXTURE-CONTEXT')) {
+        // The document outgrew the context window: a 200 whose stop_reason
+        // says so, with no text content — exactly the shape that used to
+        // fall through to "no text content" (R2/F-9).
+        payload = messageEnvelope(model, null, {
+          stop_reason: 'model_context_window_exceeded',
+        });
       } else {
         const answer = text.includes('<subject_record>')
           ? interpretationAnswer(text)
