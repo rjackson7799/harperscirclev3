@@ -1,9 +1,22 @@
 # ADR-0028 — round-19 dispositions: the three findings from the 6B browser gate
 
-**Status:** **proposed.** The dispositions record for round 19. The owner
-ratifies at sign-off, which is its own session, and the merge is its own
-session after that. **Nothing here is ratified, and ADR-0027 remains
-`proposed — BLOCKED at sign-off`.**
+**Status:** **ACCEPTED AS CORRECTED at owner sign-off** — round 20, ruled
+2026-08-27 at head `90c99ae`; every ruling recorded in **D15**. The
+dispositions record for round 19, ratified with **F-2's enumeration CORRECTED**
+from *"twenty call sites … twelve pages … eight routes"* to **21 call sites in
+five behavioural classes**, and **F-2's disposition MOVED** from
+`ACCEPTED … FIXED` to `ACCEPTED … FIXED IN PART`. D10 item 1 was ruled
+**NOT PLANNED this round, gate first** (D11) and is not reopened; D10 items 2–4
+are ruled in D15. **Ratification is effective on CI green at the head that
+carries D15, on both the `push` and `pull_request` events.**
+
+> **SUPERSEDED AT THE ROUND-20 SIGN-OFF — the Status as it stood before,
+> preserved verbatim:**
+>
+> **proposed.** The dispositions record for round 19. The owner ratifies at
+> sign-off, which is its own session, and the merge is its own session after
+> that. **Nothing here is ratified, and ADR-0027 remains
+> `proposed — BLOCKED at sign-off`.**
 
 **AMENDED BY ROUND 20**, which took the re-run D8 item 4 owed and added D11 and
 D12. The gate at `1066e2d` is now **GREEN, 38/38** (D7). **That does not ratify
@@ -103,6 +116,18 @@ context a gate runs), and anything unclassifiable. `getClaims()`'s error was
 discarded outright. **Twenty call sites read that null as the signed-out
 answer** — twelve pages redirect to `/sign-in`, eight routes refuse.
 
+> **CORRECTED AT THE ROUND-20 SIGN-OFF (D15, ruling on D10 item 2).** The
+> sentence above is preserved as written and its **enumeration is wrong**. The
+> 21-site behavioural matrix (`docs/review/round-20-signoff-packet.md` §1.3)
+> settles it: **21 call sites, not twenty — 3 refuse with a status · 5 form
+> routes redirect exactly as pages do · 2 do not gate at all · 1 layout
+> degrades · 10 pages redirect.** **The mechanism is untouched and the finding
+> is stronger for it:** 18 of the 21 read an auth-server fault as a sign-out,
+> and **not one of them is a fixture** — which is the ground D1 amended the
+> classification on. **A wrong enumeration of a correct mechanism is a record
+> defect, not a defect in the fix.** The same wrong sentence is in product code
+> at `lib/auth/session.ts:32-33` and is **OWED** — see D15.
+
 **This round already settled the principle one layer up.** ADR-0027 D2:
 *"a session the route could not READ in time is not a session that does not
 exist, and the difference is the only thing the caller needs: WHETHER TO TRY
@@ -161,6 +186,15 @@ decision where it belongs.
 outage as a sign-in redirect. Same harm; the r2 gate did not observe it, and
 changing twelve page gates on an unobserved inference is wider than the finding
 supports. Recorded in `lib/auth/session.ts` at its site, and in D8.
+
+> **RE-SCOPED AT THE ROUND-20 SIGN-OFF (D15, ruling on D10 item 2).**
+> Preserved as written. The remainder is **larger than "the twelve PAGE
+> gates"**: it is the **eighteen two-outcome sites in five behavioural
+> classes**. Five of them discard a decision a person already made; one loses a
+> one-shot lifecycle side effect with no signal; and the two sites that *were*
+> fixed remain unbounded. **This changes the size and shape of an OWED item**
+> — the one place where the enumeration defect has substantive rather than
+> clerical effect.
 
 ---
 
@@ -357,12 +391,44 @@ stack** — no `db:reset`, no writes, no gate.
 | **F-2** | MODERATE → **PRODUCT** | the gate founder's session becomes 401 | **ACCEPTED, mechanism AMENDED, candidate REFUTED, FIXED** — D1 |
 | **F-3** | MINOR | a failed leg re-provisions the founder | **ACCEPTED as F-2's cascade. No separate fix, and CLOSED** — `r3` resolved the prediction on its first branch: legs 35 **and** 36 both passed (D2, D7) |
 
+> **CORRECTED AT THE ROUND-20 SIGN-OFF (D15, ruling on D10 item 2 and on the
+> F-2 disposition).** The table above is preserved as written. **`ADR-0028
+> F-2`'s row moves from `ACCEPTED, mechanism AMENDED, candidate REFUTED,
+> FIXED` to `ACCEPTED, mechanism AMENDED, candidate REFUTED, **FIXED IN
+> PART**`.** — with the remainder corrected from *"the twelve PAGE gates"* to
+> **the eighteen two-outcome sites in five behavioural classes**.
+>
+> **The ground is CONSISTENCY, not the count.** ADR-0027's F-1, F-3 and F-4 are
+> demoted to FIXED IN PART at the same sign-off for carrying a declared
+> remainder of their own fix. `ADR-0028 F-2` carries a declared remainder of
+> its own fix, in the same shape, stated in the same document that claims the
+> fix (D1's own OWED paragraph). **It would be incoherent to demote three
+> findings for that shape and leave a fourth at FIXED.**
+>
+> **The finding itself is UPHELD IN FULL and its amendment RATIFIED** — F-2 is
+> a **PRODUCT** defect, and the refutation of `enable_refresh_token_rotation`
+> stands untouched on both its independent grounds (a signed-in shell served
+> `200` six seconds before the `401`, and the refused call took 24.3 s, which
+> is not how a revocation answers). **`ADR-0028 F-1` and `F-3` are unchanged.**
+> **Note the collision hazard: `ADR-0027 F-2` is the OCR helper and a
+> DIFFERENT finding with the same name.**
+
 ---
 
 ## D7 — evidence at ONE declared head
 
 Every command run **SOLO** (ADR-0027 D5: PowerShell `;` chaining reports only
 the last exit code).
+
+> **CORRECTED AT THE ROUND-20 SIGN-OFF (D15, ruling on D20 item 4 of
+> ADR-0027).** Preserved as written. **The citation is wrong: the PowerShell
+> lesson is `ADR-0026 D5`, not `ADR-0027 D5`.** This is a structural hazard
+> rather than a slip — ten section numbers collide between ADR-0026 and
+> ADR-0027, and `D5`, `D15` and `D17` are each used for both documents
+> *within* ADR-0027. **The convention ADOPTED at this sign-off: every
+> cross-ADR citation carries its document number — `ADR-0026 D5`, never a
+> bare `D5`.** It binds new text; the bare citations already inside ADR-0027
+> are preserved unchanged under the amendment rule.
 
 | Check | Result |
 |---|---|
@@ -442,6 +508,10 @@ unreproduced resource failures, and **the 6B slice does not merge.**
 > different reason: the owner is sole merge authority, the round-20 sign-off
 > ballot is **OPEN**, and merge is its own session and a **MERGE COMMIT,
 > never a squash** (ADR-0006). See D14.
+>
+> **AND THE BALLOT HAS SINCE CLOSED (D15, 2026-08-27).** D10 items 2–4 are
+> **RULED**. The slice is now held only by the merge itself, which remains the
+> owner's separate session.
 
 **And two failures here are at most ONE independent defect.** Leg 32 precedes
 leg 33, and F-3's mechanism (D2) means leg 32's failure restarts the worker and
@@ -752,6 +822,13 @@ D11 records the one round-20 ruling this document carries — D10 item 1, **NOT
 PLANNED this round, gate first**. The sign-off ballot is a different question,
 and it got a different answer: none.
 
+> **SUPERSEDED AT THE ROUND-20 SIGN-OFF (D15).** True when written, and
+> preserved as written. **The sign-off ballot has since been held: the owner
+> ruled D10 items 2–4 on 2026-08-27 at head `90c99ae`.** Every
+> "PUT · NOT RULED" in the table below is now **RULED** — see **D15**. D10
+> item 1 is unchanged and remains **NOT PLANNED this round, gate first**
+> (D11).
+
 | Item | Status at the close of round 20 |
 |---|---|
 | D10 item 1 — authorise moving §6.3 render and §6.9 OCR off the request process | **RULED at round 20 — NOT PLANNED, gate first.** See D11. Unchanged here, and no line of it exists |
@@ -786,3 +863,88 @@ ratifies nothing.**
 **D8 is unchanged and still OWED in full**, item 5a included: the `HopCost`
 ledger has still never fired on a live stall (D13). That is why D11's ruling to
 hold on D10 item 1 stands on stronger evidence now than when it was made.
+
+
+---
+
+## D15 — ROUND-20 OWNER SIGN-OFF: the rulings on D10 items 2–4
+
+**Ruled by the owner on 2026-08-27, against head `90c99ae`.** The reasoning
+the rulings adopted is in `docs/review/round-20-signoff-packet.md` §1 and §2.2,
+which remains a **proposal**. **D10 item 1 is untouched and remains NOT
+PLANNED this round, gate first** (D11); no line of that architecture change
+exists.
+
+| # | D10 item | **RULING** |
+|---|---|---|
+| 1 | Move §6.3 render and §6.9 OCR off the request process | **NOT PLANNED this round, gate first** — ruled at round 20, D11. Unchanged |
+| 2 | The F-2 amendment from instrument to product, and the rotation refutation | **RATIFIED AS CORRECTED** — and the **disposition MOVES to FIXED IN PART** |
+| 3 | The overturning of the stall's localisation (D3) | **RATIFIED AS AMENDED** |
+| 4 | The note that ADR-0027 is still `proposed — BLOCKED at sign-off` | **RATIFIED AS SHIPPED**, condition **DISCHARGED** |
+
+**Item 2 — RATIFIED AS CORRECTED; disposition MOVED.**
+
+- **The amendment is RATIFIED.** `ADR-0028 F-2` is a **PRODUCT** defect, not
+  an instrument defect. The 21-site matrix strengthens the ground it rested on:
+  **18 of 21 sites** read an auth-server fault as a sign-out and **not one is a
+  fixture**. Any family, on any auth-server hiccup, is told they are signed out
+  of their own record.
+- **The refutation of refresh-token rotation is RATIFIED**, untouched, on both
+  independent grounds from the preserved `r2` trace.
+- **The enumeration is CORRECTED** — marked at `ADR-0028` D1's site and at D8
+  item 2 — to **21 call sites: 3 refuse with a status · 5 form routes redirect
+  exactly as pages do · 2 do not gate at all · 1 layout degrades · 10 pages
+  redirect.**
+- **The disposition MOVES**, `FIXED` → **`FIXED IN PART`**, on the
+  **consistency** ground: three ADR-0027 findings are demoted at this same
+  sign-off for carrying a declared remainder of their own fix, and F-2 carries
+  one in the same shape, declared in the same document that claims the fix.
+  Marked at D6's table.
+
+**Item 3 — RATIFIED AS AMENDED.** The overturning is ratified **as a
+localisation claim about the mechanism** — the stall is not the DB reads, not
+the signed-URL hop, and not F-2 — with two amendments recorded at the front
+rather than buried:
+
+1. **It remains UNCONFIRMED IN THE RUNNING APP.** The `HopCost` ledger built
+   for exactly this purpose **has still never fired on a live stall** (D8 item
+   5a; three attempts at round 20 narrowed the reproduction condition without
+   discharging it). **Ratifying the overturning ratifies the best available
+   reading of the evidence, not a confirmed mechanism**, and it is recorded in
+   those words.
+2. **The contradicted sentence in `lib/http/budget.ts` is to be MARKED, never
+   rewritten.** That is product code; this sign-off does not touch it. **OWED.**
+
+**Not reproduced, and named rather than smuggled past:** D3's measurements are
+not reproduced anywhere in round 20. Any future attempt that cannot control
+service versions, warm-up, sample count, concurrency, pool-state reset and
+variance must report **"method corroborated"**, never *"measurement
+reproduced."*
+
+**Item 4 — RATIFIED AS SHIPPED, condition DISCHARGED.** The note is true of
+round 19 exactly as written and ratifies as the document carries it. What
+changed is its **condition**, not the sentence — the GREEN 38/38 gate at
+`1066e2d` (run `r5`) discharged it. All three affected sites carry **a marker
+with the original prose preserved**: ADR-0027's Status line, ADR-0027 D20
+item 7, and this document's line in D5.
+
+### OWED as a direct consequence of these rulings
+
+Each needs product or test code touched, and touching it voids the docs-only
+claim that makes the green gate at `1066e2d` evidence for this head. **Each
+therefore needs a session that can re-run the 38-leg gate, or an explicit owner
+ruling that a comment-only edit is acceptable without one.**
+
+| # | Item | Verified at the site |
+|---|---|---|
+| 1 | `lib/auth/session.ts:32-33` carries the same wrong enumeration in product code | Confirmed verbatim: *"Twenty call sites read it that way: twelve pages redirect to /sign-in and eight routes refuse"* |
+| 2 | `lib/http/budget.ts`'s contradicted sentence must be **MARKED** | Item 3's amendment 2 |
+| 3 | `tests/lint/timestamp-boundary.test.ts` closes **3** of **≥ 8** spellings | Confirmed: the regex is an alternation of exactly three branches |
+| 4 | `app/(auth)/confirm/route.ts:45` silently loses a one-shot lifecycle side effect on `unavailable` | Surfaced by the matrix; no document in the round carried it |
+| 5 | `api/upload/token` and `api/upload/complete` classify correctly but are **unbounded** | The 24.3 s call in the `r2` trace was `upload/token` |
+
+**D8 is otherwise unchanged and still OWED in full**, item 5a included.
+**The slice-5B queue stays at 39 OWED.**
+
+**Effectiveness.** Ratification is effective on **CI green at the head that
+carries this section, on both the `push` and `pull_request` events.**

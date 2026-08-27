@@ -367,6 +367,11 @@ only once CI is confirmed.
 > rather than taking the `HEAD == base` early exit. **This discharges the
 > observation, not the ratification:** item 5’s proposed verdict remains a
 > proposal and is **NOT RULED**.
+>
+> **RULED 2026-08-27 (ADR-0027 D22): UPHELD IN FULL.** Item 5's proposed
+> verdict is now the owner's ruling. This packet nonetheless remains a
+> **proposal document** throughout — the rulings live in ADR-0027 D22 and
+> ADR-0028 D15, not here.
 
 #### Item 6 — whether ADR-0027 D17 item 4 warrants a migration-budget amendment
 

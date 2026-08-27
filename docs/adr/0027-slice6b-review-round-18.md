@@ -1,12 +1,25 @@
 # ADR-0027 — round-18 dispositions: slice 6B, the Care Inbox app increment
 
-**Status:** **proposed — BLOCKED at sign-off.** The dispositions record for
-round 18. The owner ratifies at sign-off, which is its own session, and the
-merge is its own session after that. **Sign-off was attempted on 2026-08-26
-and did not proceed: the 38-leg browser gate at `4f242f5` came back RED
-(`3 failed, 35 passed`), with leg 38 failing inside this round's own
-`read_timeout` path. Nothing in this ADR is ratified.** See D19 and
-`docs/review/round-19-findings.md`.
+**Status:** **ACCEPTED AS CORRECTED at owner sign-off** — round 20, ruled
+2026-08-27 at head `90c99ae`; every ruling recorded in **D22**. The
+dispositions record for round 18, ratified with the D15 **tally CORRECTED** to
+**6 FIXED · 3 FIXED IN PART = 9** (all 9 ACCEPTED · 0 DECLINED),
+**Q3/UXA-03's "the row MOVES" AMENDED away** — it *passes*, and the coverage
+cell stays `pending` — and the **migration-budget amendment REJECTED at this
+sign-off and TAKEN as a slice-7 scoping question**. D20 items 1–6 are each
+ruled in D22. **Ratification is effective on CI green at the head that carries
+D22, on both the `push` and `pull_request` events.**
+
+> **SUPERSEDED AT THE ROUND-20 SIGN-OFF — the Status as it stood before,
+> true of `4f242f5`, preserved verbatim:**
+>
+> **proposed — BLOCKED at sign-off.** The dispositions record for round 18.
+> The owner ratifies at sign-off, which is its own session, and the merge is
+> its own session after that. **Sign-off was attempted on 2026-08-26 and did
+> not proceed: the 38-leg browser gate at `4f242f5` came back RED
+> (`3 failed, 35 passed`), with leg 38 failing inside this round's own
+> `read_timeout` path. Nothing in this ADR is ratified.** See D19 and
+> `docs/review/round-19-findings.md`.
 
 > **AMENDED AT ROUND 20 — THE CONDITION IS DISCHARGED; THE STATUS IS NOT.**
 > The paragraph above is true of `4f242f5` and is preserved exactly as
@@ -18,6 +31,10 @@ and did not proceed: the 38-leg browser gate at `4f242f5` came back RED
 > left standing as written, because the block has not been lifted by a
 > ruling: D20 items 1–6 were put to the owner at round 20 and **NOT RULED**.
 > **Discharging a condition is not ratification.** See D21.
+>
+> **AND THE RULING HAS SINCE COME (D22, 2026-08-27).** The clause above —
+> *"the block has not been lifted by a ruling"* — was true when written and is
+> now spent: **D20 items 1–6 are RULED and the Status line above IS stamped.**
 
 **Deciders:** the round-18 dispositions session (owner ratifies at sign-off).
 
@@ -419,6 +436,19 @@ as *"fixed at the class"*.
 branches over one shared `TEMPORAL` pattern, built with `new RegExp` so the
 branches read one per line.
 
+> **CORRECTED AT THE ROUND-20 SIGN-OFF (D22, ruling on the corrected tally).**
+> Preserved as written. **"FIXED for the syntactic class" OVERSTATES even the
+> partial claim.** The rule at `tests/lint/timestamp-boundary.test.ts:52-59`
+> is an alternation of **three** branches and closes **three** spellings; at
+> least **five more** were evaluated and produce the byte-identical string this
+> file's own comment says causes the §2.7 refusal — `'' + x`, `x.toString()`,
+> `[x].join('')`, `''.concat(x)`, `\`${x ?? ''}\``.
+> **Ruled wording: "FIXED for three named spellings; the class has at least
+> eight members" — narrowed, not closed**, the same phrasing D3 already uses of
+> F-3. **F-4 is not demoted below FIXED IN PART:** the corpus scan is empty, no
+> shipped site uses a missed spelling, and the rule holds the corpus today.
+> **The defect is in the CLAIM, not in the behaviour.**
+
 **Branch 2 is anchored to the WHOLE interpolation, and that is the design
 decision.** A looser rule matching a temporal name anywhere inside a template
 would fire on every log line and key builder in the DB layer, and **a scanner
@@ -667,6 +697,14 @@ everything except the §6.9 label string, and says it would keep the row pending
 (D5), so the condition the review attached is satisfied and UXA-03 passes on
 this round's authority.**
 
+> **AMENDED AT THE ROUND-20 SIGN-OFF (D22, ruling on D20 item 2).** The prose
+> above is preserved as written. **"and the row MOVES" is STRUCK; "UXA-03
+> passes" STANDS.** The exit condition the review attached is met and the pass
+> is real — but no coverage row flips at a sign-off (ADR-0025 S16.7) and a
+> `pending` row cannot move at all. **UXA-03's cell at `docs/coverage.md:491`
+> remains `pending`,** which is what D16 said all along; D12 and D15 were the
+> documents in error, and this is the audit's one confirmed contradiction.
+
 **Q4 — the transient: DIAGNOSED, not queued.** See D10. The review's own
 finding was narrower than the question — it is about the corrective, not the
 transient — and it is by fixing the corrective that the transient got named.
@@ -781,6 +819,28 @@ starts from evidence rather than from a promise to look.**
 remainder** (F-3's commit-round-trip residue; F-4's row-boundary typing) and
 **1 fixed with its recommendation amended** (F-7).
 
+> **CORRECTED AT THE ROUND-20 SIGN-OFF (D22, rulings on D20 item 1 and on the
+> corrected tally).** The sentence above is preserved as written and is
+> **wrong in both halves.** Four rows carry a declared remainder, not two —
+> and the count of two included F-4's `OWED` remainder while excluding F-1's
+> identically-labelled one, so it was not 2 under *either* reading.
+> Separately, `9 FIXED` counted F-4, whose own D7 heading reads *"ACCEPTED
+> and **FIXED in part, OWED in part**."*
+>
+> **The distinction the count needed, now ruled:** a **fix remainder** (part
+> of the fix was never built) → **FIXED IN PART**; a **verification
+> remainder** (the fix is whole, its consequence unobserved) → **FIXED**, with
+> the observation OWED.
+>
+> **CORRECTED TALLY: 6 FIXED · 3 FIXED IN PART = 9. All 9 ACCEPTED ·
+> 0 DECLINED.** F-1, F-3 and F-4 move to **FIXED IN PART** (fix remainders).
+> **F-2 stays FIXED** — D17 item 8's remainder is a verification remainder
+> (*"Done when: a hosted runtime has been looked at"*); nothing is unbuilt,
+> something is unseen. F-5, F-6, F-8, F-9 unchanged; **F-7 keeps its amended
+> recommendation.** 6 + 3 = 9 = the finding count = the ACCEPTED count, and
+> each of the four remainders already has an acceptance condition in D17 —
+> items 3, 8, 4 and 2 respectively. **No finding is wholly OWED.**
+
 **Nothing was DECLINED, and that deserves a sentence rather than silence.**
 Three things were nonetheless refused, each with its argument at the site:
 F-7's recommendation as literally written (a tee inside `test:app`, D10); the
@@ -794,6 +854,12 @@ moves**. Q4 → **diagnosed**. Q5 → **agreed, stays open**. The suite → **gr
 accepted as product evidence, not as instrument trust**, with a one-time
 leg-integrity pass and explicitly **no scanner**. The CI build gap → **ours**,
 fixed as the step **plus** the zero-warning assertion.
+
+> **AMENDED AT THE ROUND-20 SIGN-OFF (D22, ruling on D20 item 2).** Preserved
+> as written. In the Q3/UXA-03 entry above, **"and the row moves" is STRUCK**
+> for the reason given at D12's site: the row does not move, and cannot.
+> **"passes" stands.** Every other ruling in this paragraph is RATIFIED AS
+> WRITTEN.
 
 ---
 
@@ -1114,6 +1180,12 @@ to be fixed. Round 19 is opened for it:
 > head" no longer holds — and yet nothing is ratified**, because decisions
 > 1–6 were put to the owner at round 20 and came back **NOT RULED**. The
 > gate stopped being the obstacle; the ruling is now the obstacle. See D21.
+>
+> **AND THE RULING HAS SINCE COME (D22, 2026-08-27).** *"Nothing is
+> ratified"* was true when written. **Items 1–6 are now ratified** — as
+> CORRECTED, as AMENDED, as WRITTEN, as CORRECTED, UPHELD, and REJECTED-here /
+> TAKEN-for-slice-7 respectively. **The ruling is no longer the obstacle
+> either; only the merge remains, and it is the owner's own session.**
 
 **⏸ THE GATE.** Dispositions ADR → **owner sign-off** → merge (**a MERGE
 COMMIT, never a squash**, ADR-0006) are each their own fresh session. **The
@@ -1151,6 +1223,14 @@ F-2 disposition move (§1.7(b)) and the corrected tally (§3).
 
 **The owner did not rule on any of them. The ballot is OPEN.**
 
+> **SUPERSEDED AT THE ROUND-20 SIGN-OFF (D22).** True when written, and
+> preserved as written. **The ballot is now CLOSED: the owner ruled all eleven
+> items on 2026-08-27 at head `90c99ae`.** Every "PUT · NOT RULED" in the
+> table below is now **RULED** — see **D22** for ADR-0027's six and
+> `ADR-0028` **D15** for ADR-0028's three. The paragraph below about
+> ADR-0006's default is likewise spent: the default was never invoked because
+> the questions were, in the end, answered.
+
 | Item | Status at the close of round 20 |
 |---|---|
 | D20 item 1 — the nine dispositions in D15 | **PUT · NOT RULED** |
@@ -1187,3 +1267,134 @@ tagged 7 · SIG-01 NOT absorbed · migrations **69 exact**, budget **7 of ≤ 7
 SPENT** · `docs/coverage.md` untouched — **no row flipped, UXA-03 still
 `pending`** · `main` unmoved at `b0cc2b6` · PR #12 open, **NOT merged** · no
 real family data · **NOTHING IS PRODUCTION-ACTIVATED.**
+
+
+---
+
+## D22 — ROUND-20 OWNER SIGN-OFF: the rulings on D20 items 1–6
+
+**Ruled by the owner on 2026-08-27, against head `90c99ae`.** This section is
+the record of what was decided. It is not a proposal and it does not argue —
+the arguments are in `docs/review/round-20-signoff-packet.md` §2 and §3, which
+remain **proposals** and are cited here only as the reasoning the rulings
+adopted.
+
+**How the ruling was taken, stated plainly.** The owner ruled the six
+bookkeeping items (D20 items 1–5, and ADR-0028 D10 items 2–4) **as a block**,
+on the explicit basis of trusting the round-20 audit's independent verification
+of the arithmetic; and ruled **D20 item 6** and **the corrected tally** as
+separate, individually-stated decisions. **Every ruling matched the packet's
+proposed verdict — but a proposal is not self-ratifying, and none of these was
+in force until it was ruled.**
+
+### The rulings
+
+| # | D20 item | **RULING** |
+|---|---|---|
+| 1 | The nine dispositions in D15 | **RATIFIED AS CORRECTED** |
+| 2 | RULING 5 and the Q1–Q5 rulings in D12 | **RATIFIED AS AMENDED** |
+| 3 | The suite disposition in D13 | **RATIFIED AS WRITTEN**, one consequence recorded |
+| 4 | ADR-0026 as corrected by D8 and D9 | **RATIFIED AS CORRECTED**, and a convention **ADOPTED** |
+| 5 | That D10 and D11 exceed what was asked | **UPHELD IN FULL** — neither reversed |
+| 6 | Whether D17 item 4 warrants a migration-budget amendment | **REJECTED** at this sign-off · **TAKEN** as a slice-7 scoping question |
+| 7 | *"nothing to ratify at this head"* | Not a decision item. **Condition DISCHARGED**, marked at its site |
+
+**Item 1 — RATIFIED AS CORRECTED.** The nine dispositions stand: **9 ACCEPTED ·
+0 DECLINED** is exactly right, the F-n → D-section map is correct in all nine,
+and the severity distribution reconciles at 2 + 5 + 2. **The tally sentence
+does not stand** and is corrected at its site in D15. No finding's *substance*
+moves and nothing that was fixed becomes unfixed.
+
+**Item 2 — RATIFIED AS AMENDED.** RULING 5 (ADR-0025's F-1 → FIXED) and
+Q1, Q2, Q4 and Q5 are **RATIFIED AS WRITTEN**. **Q3/UXA-03 is AMENDED**: the
+words *"and the row MOVES"* / *"and the row moves"* are **STRUCK** at both
+sites; **"UXA-03 passes" STANDS.** D16 was right and D12 and D15 were wrong.
+**UXA-03's cell at `docs/coverage.md:491` stays `pending`** — no row flips at
+a sign-off and a `pending` row cannot move at all (ADR-0025 S16.7).
+
+**Item 3 — RATIFIED AS WRITTEN, with one consequence recorded.** The 38-leg
+denominator rests on **discovery** (`playwright test --list` → *Total: 38 tests
+in 5 files*), so every ratio in D13 is sound. The green gate is **product
+evidence, not instrument trust**; the one-time leg-integrity pass remains a
+standing obligation; there is explicitly **no scanner**; 7 of 38 legs read,
+**31 remaining**. **The consequence, now executed:** the GREEN 38/38 gate at
+`1066e2d` upgrades exactly two *"the full-gate result stays owed"* clauses —
+**UXA-01 and RLS-10** — from targeted-run evidence to **gate evidence**,
+annotated at both cells in `docs/coverage.md`. **No row flipped and no cell
+changed colour.**
+
+**Item 4 — RATIFIED AS CORRECTED, and a convention ADOPTED.** D9's correction
+is the round's strongest-verified number: **nine fetch call sites, seven
+awaited and two eager**, at the exact cited lines, with the two
+`lib/storage/fetch.ts` occurrences correctly excluded. D8's correction of both
+documents' understated headlines holds. **ADOPTED: every cross-ADR citation
+carries its document number** — `ADR-0026 D5`, never a bare `D5`. The
+mis-cite at `ADR-0028` D7's opening is marked at its site. **The bare
+citations already inside ADR-0027 are NOT rewritten** — the convention binds
+new text.
+
+**Item 5 — UPHELD IN FULL.** Neither D10 nor D11 is reversed. D10's diagnosis
+verifies at the granularity it was claimed at — **two test files construct an
+`ESLint` instance and load `eslint-config-next`, with 6 and 34 cases** — a
+file-level check nearly produced a false finding against it, and did not.
+**D11's honesty note is now spent:** the CI step it added, `Build, and ZERO
+resolution warnings`, **has run and passed — 17 s on each event, step 19 of
+21, at `c92877b` and again at `90c99ae`.** Its green-on-arrival is no longer
+predicted; it is observed.
+
+**Item 6 — REJECTED at this sign-off; TAKEN as a slice-7 scoping question.**
+No migration-budget amendment is granted. **The budget stays 7 of ≤ 7 SPENT
+and migrations stay 69 exact.** Three reasons, and the owner ruled with all
+three stated: the **zero-DDL exit has never been evaluated** — D17 item 4
+offers two exits and only one needs DDL, and *"a ruling records that a
+one-round-trip window is accepted"* costs no budget; granting headroom at a
+sign-off would reopen a closed budget in the session least equipped to scope
+it; and D20 item 6's own wording — *"this round deliberately did not ask"* —
+records that the round declined to make the case. **This forecloses nothing:**
+the question is live at slice 7, where it can be decided by someone who has
+scoped what the DDL would actually be.
+
+### The corrected tally — RULED
+
+> **Tally: 6 FIXED · 3 FIXED IN PART = 9. All 9 ACCEPTED · 0 DECLINED.**
+>
+> **Four rows carry a declared remainder** — F-1, F-2, F-3, F-4 — of which
+> **three are fix remainders** (F-1, F-3, F-4, each now **FIXED IN PART**) and
+> **one is a verification remainder** (F-2, which **stays FIXED** because the
+> fix is whole and only its consequence is unobserved).
+>
+> **One fixed with its recommendation amended** (F-7).
+
+The distinction this rests on — **fix remainder → FIXED IN PART**,
+**verification remainder → FIXED with the observation OWED** — is stated
+nowhere in the original document and is **ADOPTED at this sign-off**, because
+the corrected tally cannot be written without it. Collapsing the two is what
+produced the wrong count. **F-4's claim is additionally narrowed** to *"FIXED
+for three named spellings; the class has at least eight members"* — marked at
+D7's site.
+
+**The re-tally shape is borrowed VOLUNTARILY** from the ratified ADR-0025
+precedent on this branch. `chore/process-retune` is **UNMERGED and NOT
+BINDING** — its own ledger says so and its `slice.md` says it is in force from
+slice 7 — and nothing here is adopted from it.
+
+### What this sign-off did NOT do
+
+- **No coverage row flipped and no cell changed colour.** UXA-03 stays
+  `pending`. UXA-01 and RLS-10 gained a ROUND-20 evidence annotation only.
+- **No DDL.** Migrations **69 exact**, budget **7 of ≤ 7 SPENT**.
+- **No product, test, config, migration or gate-harness code was touched** —
+  which is what keeps the GREEN 38/38 gate at `1066e2d` valid for this head.
+  Three OWED items are owed *because* of this constraint (see D15 of ADR-0028).
+- **No merge.** The owner is sole merge authority and merge is its own session
+  — **a MERGE COMMIT, never a squash** (ADR-0006). `main` is unmoved at
+  `b0cc2b6`, so git will offer a fast-forward; **`--no-ff` is what stops it.**
+- **No standing gate moved:** G4 and G7 still block · G9 STAYS OPEN ·
+  `BAND_ARTIFACT_ALLOWLIST` EMPTY · slice-5B queue **39 OWED** · RCP-02
+  pending tagged 7 · SIG-01 NOT absorbed · no real family data ·
+  **NOTHING IS PRODUCTION-ACTIVATED.**
+
+**Effectiveness.** Ratification is effective on **CI green at the head that
+carries this section, on both the `push` and `pull_request` events.** CI
+cannot be green at a head the ruling commit has not yet created, and
+*"docs-only"* is not *"cannot affect CI"* — process lint reads documentation.
