@@ -355,6 +355,19 @@ is *predicted* from a local `build`, not observed. **That observation is the
 owner's very next leg** (§5), and it is the reason ratification is effective
 only once CI is confirmed.
 
+> **AMENDED AT ROUND 20 — "NEVER RUN" WAS TRUE WHEN WRITTEN AND IS NOW
+> FALSE.** The honesty note above is preserved exactly as written; it was
+> true at the head that carried this packet. The branch has since been
+> **pushed** (`origin/slice/6b-care-inbox-app` == `c92877b`) and CI has run
+> at that SHA on both events — **#165 `push` and #166 `pull_request`, both
+> `success`**. ADR-0027 D11’s step, `Build, and ZERO resolution warnings`,
+> **executed for the first time and passed, 17 s on each event** (step 19 of
+> 21). Its green-on-arrival is no longer *predicted* — it is **observed**.
+> The upgrade leg ran 39 s / 38 s, so it genuinely rehearsed the increment
+> rather than taking the `HEAD == base` early exit. **This discharges the
+> observation, not the ratification:** item 5’s proposed verdict remains a
+> proposal and is **NOT RULED**.
+
 #### Item 6 — whether ADR-0027 D17 item 4 warrants a migration-budget amendment
 
 > F-3's residue: close the commit round-trip window with two-phase commit or a

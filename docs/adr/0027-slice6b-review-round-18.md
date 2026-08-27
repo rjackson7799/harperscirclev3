@@ -8,6 +8,17 @@ and did not proceed: the 38-leg browser gate at `4f242f5` came back RED
 `read_timeout` path. Nothing in this ADR is ratified.** See D19 and
 `docs/review/round-19-findings.md`.
 
+> **AMENDED AT ROUND 20 — THE CONDITION IS DISCHARGED; THE STATUS IS NOT.**
+> The paragraph above is true of `4f242f5` and is preserved exactly as
+> written. The gate has since been re-taken at `1066e2d` and is **GREEN,
+> 38/38** (run `r5`; run `r4` is INVALID and is not a tally), and CI is green
+> at `c92877b` on **both** events — run #165 `push` and run #166
+> `pull_request`, each `completed` / `success`. **The blocking condition this
+> Status line names is therefore discharged.** The Status line is nonetheless
+> left standing as written, because the block has not been lifted by a
+> ruling: D20 items 1–6 were put to the owner at round 20 and **NOT RULED**.
+> **Discharging a condition is not ratification.** See D21.
+
 **Deciders:** the round-18 dispositions session (owner ratifies at sign-off).
 
 **Date:** 2026-08-25
@@ -1092,7 +1103,87 @@ to be fixed. Round 19 is opened for it:
    1–6 above stand as drafted, but none of them can be ratified until the gate
    is green. **Pending never counts as green, and neither does red.**
 
+> **AMENDED AT ROUND 20 — THE GATE IS GREEN AND ITEM 7’S CONDITION IS
+> DISCHARGED.** Item 7 is preserved exactly as written and is true of
+> `4f242f5`. The permitted re-run was taken at round 20 at `1066e2d`: run
+> `r4` died with the Docker engine within seconds of launch and is
+> **INVALID** — its `2 ok / 13 x` is not a tally and must never be cited —
+> and run `r5` is the re-run, **GREEN, `38 passed (5.1m)`**, corroborated
+> four ways (ADR-0028 D7). Only `docs/` has changed between `1066e2d` and
+> this head, so the green proves this head. **"Nothing to ratify at this
+> head" no longer holds — and yet nothing is ratified**, because decisions
+> 1–6 were put to the owner at round 20 and came back **NOT RULED**. The
+> gate stopped being the obstacle; the ruling is now the obstacle. See D21.
+
 **⏸ THE GATE.** Dispositions ADR → **owner sign-off** → merge (**a MERGE
 COMMIT, never a squash**, ADR-0006) are each their own fresh session. **The
 owner is sole merge authority.** `main` is unmoved at `b0cc2b6`, so git will
 offer a fast-forward — **`--no-ff` is what stops it.**
+
+
+---
+
+## D21 — round 20: what was PUT to the owner, and what was NOT ruled
+
+**Nothing in this ADR is ratified.** The Status line above is unchanged and
+still reads `proposed — BLOCKED at sign-off`. This section records what round
+20 changed and what it did not, so that the markers in this document point
+somewhere.
+
+### What changed — evidence, and only evidence
+
+| Fact | Verified at round 20 |
+|---|---|
+| The 38-leg browser gate | **GREEN, `38 passed (5.1m)`** at `1066e2d`, run `r5`. Run `r4` is INVALID — the Docker engine died mid-run — and its `2 ok / 13 x` is not a tally and must never be cited (ADR-0028 D7) |
+| Does that green prove this head? | **Yes.** `git diff --name-only 1066e2d HEAD` outside `docs/` is **EMPTY** |
+| The branch | **PUSHED.** `origin/slice/6b-care-inbox-app` == `c92877b` |
+| CI | **GREEN at `c92877b` on BOTH events** — run #165 `push`, run #166 `pull_request`, each `status=completed` / `conclusion=success`, read anonymously |
+| **D11's CI step** | `Build, and ZERO resolution warnings` **RAN FOR THE FIRST TIME AND PASSED — 17 s on each event** (step 19 of 21). Green-on-arrival is now observed, not predicted |
+| The upgrade leg | **39 s** (`push`) / **38 s** (`pull_request`) — it genuinely rehearsed the increment rather than taking the ~1 s `HEAD == base` early exit |
+
+**Every row above is an observation. Not one of them is a ratification.**
+
+### What was PUT — and what came back
+
+D20 items 1–6 were put to the owner at round 20, together with two separable
+consequences argued in `docs/review/round-20-signoff-packet.md`: the ADR-0028
+F-2 disposition move (§1.7(b)) and the corrected tally (§3).
+
+**The owner did not rule on any of them. The ballot is OPEN.**
+
+| Item | Status at the close of round 20 |
+|---|---|
+| D20 item 1 — the nine dispositions in D15 | **PUT · NOT RULED** |
+| D20 item 2 — RULING 5 and Q1–Q5 in D12 | **PUT · NOT RULED** |
+| D20 item 3 — the suite disposition in D13 | **PUT · NOT RULED** |
+| D20 item 4 — ADR-0026 as corrected by D8 and D9 | **PUT · NOT RULED** |
+| D20 item 5 — that D10 and D11 exceed what was asked | **PUT · NOT RULED** |
+| D20 item 6 — D17 item 4 and the migration budget | **PUT · NOT RULED** |
+| D20 item 7 — *"nothing to ratify at this head"* | **CONDITION DISCHARGED** by `r5`, marked at its site. Never a decision item |
+
+**The §2 verdicts in the round-20 packet are PROPOSALS written by that session
+and they remain proposals.** None has been adopted, by default or otherwise.
+Recording a proposal as a ruling would be a false historical record, which is
+the exact failure this procedure exists to prevent.
+
+### Why ADR-0006's default was NOT invoked
+
+ADR-0006's default is *unanswered → NOT PLANNED*. It is deliberately **not**
+applied here, because applying it would **close** a sign-off that was never
+held: it would convert six open questions into six settled negatives on the
+strength of nobody having answered them. **This section closes nothing.** The
+default remains available to whoever does close the sign-off.
+
+### What the obstacle now is
+
+The gate was the obstacle at round 19. It is not the obstacle now. **The
+obstacle is the ruling.** A plain-language statement of each open item, written
+for a reader who does not carry this round's context, is at
+`docs/review/round-20-owner-brief.md`.
+
+**Unchanged and standing:** G4 and G7 block · G9 OPEN ·
+`BAND_ARTIFACT_ALLOWLIST` EMPTY · slice-5B queue **39 OWED** · RCP-02 pending
+tagged 7 · SIG-01 NOT absorbed · migrations **69 exact**, budget **7 of ≤ 7
+SPENT** · `docs/coverage.md` untouched — **no row flipped, UXA-03 still
+`pending`** · `main` unmoved at `b0cc2b6` · PR #12 open, **NOT merged** · no
+real family data · **NOTHING IS PRODUCTION-ACTIVATED.**

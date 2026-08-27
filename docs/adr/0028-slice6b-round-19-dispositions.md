@@ -431,6 +431,18 @@ classification from the trace; that re-run is **OWED**, on a host with
 `r2`-level headroom. Until it is taken, `r3` is a RED gate with two
 unreproduced resource failures, and **the 6B slice does not merge.**
 
+> **AMENDED AT ROUND 20 — THE RE-RUN WAS TAKEN AND THIS SENTENCE’S
+> CONDITION IS DISCHARGED.** The paragraph above is true of `r3` and is
+> preserved exactly as written. The permitted re-run was taken at `1066e2d`:
+> `r4` is INVALID (the Docker engine died mid-run) and `r5` is **GREEN,
+> 38/38**, with legs 32 and 33 passing at 14.6 s and 37.2 s on a host
+> **tighter** than `r2`’s — which confirms both as transients rather than
+> findings (D7, D8 item 4). **`r3` is no longer the standing gate result,
+> and the slice is no longer held by a red gate.** It remains unmerged for a
+> different reason: the owner is sole merge authority, the round-20 sign-off
+> ballot is **OPEN**, and merge is its own session and a **MERGE COMMIT,
+> never a squash** (ADR-0006). See D14.
+
 **And two failures here are at most ONE independent defect.** Leg 32 precedes
 leg 33, and F-3's mechanism (D2) means leg 32's failure restarts the worker and
 re-provisions the founder for leg 33 — so leg 33 may be leg 32's wake. That the
@@ -729,3 +741,48 @@ did not build.
 
 **Until then D10 item 1's prerequisite is unmet, and the owner's round-20
 ruling to hold stands on stronger evidence than when it was made.**
+
+
+---
+
+## D14 — round 20 sign-off: what was PUT to the owner, and what was NOT ruled
+
+**ADR-0028 remains `proposed` in full.** The Status line above is unchanged.
+D11 records the one round-20 ruling this document carries — D10 item 1, **NOT
+PLANNED this round, gate first**. The sign-off ballot is a different question,
+and it got a different answer: none.
+
+| Item | Status at the close of round 20 |
+|---|---|
+| D10 item 1 — authorise moving §6.3 render and §6.9 OCR off the request process | **RULED at round 20 — NOT PLANNED, gate first.** See D11. Unchanged here, and no line of it exists |
+| D10 item 2 — the F-2 amendment from instrument to product, and the rotation refutation | **PUT · NOT RULED** |
+| D10 item 3 — the overturning of the stall's localisation (D3) | **PUT · NOT RULED** |
+| D10 item 4 — the note that ADR-0027 is still `proposed — BLOCKED at sign-off` | **PUT · NOT RULED.** Its *condition* is discharged and marked at its site |
+
+### D6's F-2 row is UNCHANGED
+
+The round-20 packet proposes at §1.7(b) that **`ADR-0028 F-2`** — the session
+gate, **not** `ADR-0027 F-2`, which is the OCR helper and a different finding
+with the same name — move from `ACCEPTED … FIXED` to
+`ACCEPTED … FIXED IN PART` on a consistency ground. It also proposes
+correcting the enumeration at `ADR-0028:103` and in D8 item 2 from *"twenty
+call sites … twelve pages redirect, eight routes refuse"* to **21 call sites:
+3 refuse with a status · 5 form routes redirect exactly as pages do · 2 do not
+gate at all · 1 layout degrades · 10 pages redirect.**
+
+**Neither is executed.** D6's F-2 row still reads `ACCEPTED … FIXED`;
+`ADR-0028:103` and D8 item 2 still carry the original enumeration. Both are
+proposals awaiting an owner ruling. The 21-site behavioural matrix that
+supports them is at `docs/review/round-20-signoff-packet.md` §1.3.
+
+### What the evidence moved, and what it did not
+
+`r5` is GREEN, 38/38 at `1066e2d`; the branch is pushed; CI is green at
+`c92877b` on both `push` (#165) and `pull_request` (#166). That discharges
+the conditions attached to D10 item 4 and to the sentence at line 432 — both
+now carry a marker at their site with the original prose preserved. **It
+ratifies nothing.**
+
+**D8 is unchanged and still OWED in full**, item 5a included: the `HopCost`
+ledger has still never fired on a live stall (D13). That is why D11's ruling to
+hold on D10 item 1 stands on stronger evidence now than when it was made.
