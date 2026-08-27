@@ -22,8 +22,14 @@ MINOR · 4 OBS**, matching D25 exactly.
 D25 re-derived the queue's **count**. It did not re-derive the queue's
 **contents**, and the contents have moved.
 
-**33 of the 39 rows are cited by name somewhere in `lib/`, `scripts/`,
-`tests/`, `app/` or ADR-0026.** A citation is not a fix — it may be a
+**32 of the 39 rows are cited by name somewhere in `lib/`, `scripts/`,
+`tests/`, `app/` or ADR-0026.** The seven that are not: R2/F-2, R2/F-3,
+R2/F-4, R2/F-6, R2/F-12, R4/F-12, R7/F-5. (Thirty-two, *not* the 33 of
+§1 — that is the count of distinct actionable items, a different number
+that happens to sit one away. They are not related, and conflating them
+is precisely the move D25 exists to prevent.)
+
+A citation is not a fix — it may be a
 comment naming a known gap, a test pinning current behaviour, or the code
 that caused the finding. This triage does **not** classify all 33. It
 establishes something narrower and sufficient: **the row texts cannot be
