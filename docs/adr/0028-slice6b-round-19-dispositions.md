@@ -615,7 +615,7 @@ unlocks is a sign-off question and not this document's to answer.
 | 5 | **Leg 38's pass re-observed under genuine load** | STILL OWED, and round 20 did not discharge it. It has now passed at `r3` and `r5` and failed at `r6`, `r7` and `r2`. Two passes do not close a load-dependent stall, and F-1's product fix is owed regardless (item 1) |
 | 5a | **The `HopCost` ledger observed firing in the running app** | NEW at round 20, **ATTEMPTED IN THREE EXPERIMENTS AND STILL OWED — but the reproduction condition is now NAMED rather than guessed. See D13.** The instrument D3 landed has still never reported on a live stall, and D10 item 1 named exactly that as its prerequisite |
 | 6 | The ten items ADR-0027 D17 already owed | Unchanged by this round |
-| 7 | The slice-5B queue | **39 OWED**, unchanged |
+| 7 | The slice-5B queue | **39 OWED**, unchanged **[AMENDED 2026-08-27 → ADR-0023 D25: this "39" is the strict-`OWED` row count at `9682081`; at `main` = `4f7a9d7` it is **38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4)**. Prose preserved.]** |
 
 ---
 
@@ -625,6 +625,14 @@ unlocks is a sign-off question and not this document's to answer.
 stays EMPTY. The slice-5B queue stays 39 OWED. RCP-02 stays pending tagged 7.
 SIG-01 is NOT absorbed. No real family data anywhere. Migrations 69 exact,
 budget 7 of ≤ 7 spent. NOTHING IS PRODUCTION-ACTIVATED.**
+
+**AMENDED (5B-queue reconciliation, 2026-08-27 — see ADR-0023 D25).** This
+"39" is the strict-`OWED` row count of ADR-0023 D17 **as it stood at
+`9682081`**. `R8/F-1` moved `OWED` → `FIXED` at `e0186ce` and the tally was
+never re-derived. At `main` = `4f7a9d7` the table holds **38 strict `OWED`**;
+the queue is **38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4) = 39 rows carrying
+owed work**, that 1 owner-blocked. The integer is unchanged — **its referent
+is not.** The prose above is preserved exactly as written.
 
 ---
 
@@ -945,6 +953,14 @@ ruling that a comment-only edit is acceptable without one.**
 
 **D8 is otherwise unchanged and still OWED in full**, item 5a included.
 **The slice-5B queue stays at 39 OWED.**
+
+**AMENDED (5B-queue reconciliation, 2026-08-27 — see ADR-0023 D25).** This
+"39" is the strict-`OWED` row count of ADR-0023 D17 **as it stood at
+`9682081`**. `R8/F-1` moved `OWED` → `FIXED` at `e0186ce` and the tally was
+never re-derived. At `main` = `4f7a9d7` the table holds **38 strict `OWED`**;
+the queue is **38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4) = 39 rows carrying
+owed work**, that 1 owner-blocked. The integer is unchanged — **its referent
+is not.** The prose above is preserved exactly as written.
 
 **Effectiveness.** Ratification is effective on **CI green at the head that
 carries this section, on both the `push` and `pull_request` events.**

@@ -172,6 +172,15 @@ honest: multiset scoring, a citation-landing predicate, §6.A's threshold
 rule written down (R6/F-4), citation correctness SCORED so a model with
 perfect values and wrong boxes can no longer score 1.00 (R3/F-7).
 
+> **MARKER (2026-08-27, ADR-0023 D26).** True — and it now bites the corpus
+> itself. The five blind email items this increment added carry
+> line-fraction boxes (`[0, i / lines.length, 1, 1 / lines.length]`) that
+> §6.3's rendition never paints, so the landing predicate books a CORRECT
+> reader's boxes as misses. Measured at `main`: **0 of 23** email labels
+> land, which caps `provider` at 0.8519 and `appointment_date` /
+> `appointment_time` at 0.7500 — all below `CITATION_FLOOR` 0.90. The prose
+> above is preserved; the fix is OWED at ADR-0023 D26.
+
 **FLAGGED FOR ROUND-18 RATIFICATION.** Blind labels gained a measured
 `rendered` flag; unrendered items are excluded from recall, matching
 production's behaviour as a false positive. This **reinterprets what a blind
