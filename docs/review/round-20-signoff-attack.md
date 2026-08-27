@@ -1,4 +1,4 @@
-# Round 20 — the sign-off ATTACK on ADR-0027 and ADR-0028: first pass
+# Round 20 — the sign-off ATTACK on ADR-0027 and ADR-0028: COMPLETE
 
 **THIS DOCUMENT CONTAINS NO RULINGS AND RATIFIES NOTHING.** It is preparation
 for an owner sign-off, not the sign-off. ADR-0027 remains
@@ -125,6 +125,94 @@ nine matches D15's `Where` column. Severity distribution reconciles:
 D10's `897/898` is the **first** run under the new reporter — the run in which
 the transient finally carried a name. D19's `898/898` is the evidence after it
 was budgeted. 897 passed + 1 failed = 898. **Not a contradiction.**
+
+### 1.6 D5's OCR label is byte-exact across every site, and the fix is sound
+
+The strongest single verification in this pass, and it is the finding whose own
+subject is a test asserting a fragment.
+
+All three cited spec line numbers are **correct**, and the label is
+**byte-identical** at every site — `hex 6d616368696e652d7265616420e28094…`,
+where `e28094` is UTF-8 U+2014 EM DASH. **The dash trap does not bite.**
+
+| Site | |
+|---|---|
+| `docs/PRD.md:1391` · `docs/TSD.md:2177` · `docs/TSD.md:2501` | identical |
+| `docs/review/slice-6-plan.md:976, :1087` | identical |
+| `components/review/ReviewScreen.tsx:133, :175` (what the app renders) | identical |
+| `e2e/review.spec.ts:589` (the leg's own literal) | identical |
+
+The fix's two structural claims also hold: the assertion is
+**`toHaveText`** on the full string (`e2e/review.spec.ts:631`), not the old
+`toContainText`; and the string is **typed out in the leg** at `:589` — the leg
+imports **nothing** from `components/`, so it genuinely does not read its
+expectation out of the code under test.
+
+*"Four documents"* reconciles as PRD + TSD + slice-6 plan + `coverage.md`,
+which quotes it at `:325` and `:488`.
+
+### 1.7 The gate is 38 legs, proven by DISCOVERY rather than by counting strings
+
+`npx playwright test --list` returns **`Total: 38 tests in 5 files`**, matching
+the textual count (7 + 5 + 8 + 11 + 7). Every ratio in D13 — 3/38, 7/38, 31
+remaining — rests on this, and it is sound. The listing independently confirms
+A11Y-08 at `:591`, A11Y-07 at `:524`, REV-02 at `:428` and AC-INBOX-8 at `:462`.
+
+### 1.8 RULING 5's migration citation does NOT contradict "nothing under `supabase/` moved"
+
+D12 cites `20260825120001` as the residue-closing migration while D19 and D18
+assert nothing under `supabase/` has moved since `BASE`. These looked
+incompatible. They are not: `20260825120001_payload_contract.sql` was added in
+`39fcf17`, which **is an ancestor of `bc3bc85`**. The migration predates the
+diff base.
+
+Confirmed alongside it: **69 migrations exact at both heads**, and **zero**
+files changed under `supabase/` between `BASE` and `R18`, and between `BASE`
+and `NOW`.
+
+### 1.9 The strong docs-only claim holds from the GATE head
+
+> *No committed product, test, configuration, dependency, migration or
+> gate-harness path changed between `1066e2d` and the candidate head.*
+
+Only two files have changed since the gate head, **both under `docs/`**.
+`app/`, `lib/`, `components/`, `e2e/`, `tests/`, `supabase/`, `scripts/`,
+`package.json`, `package-lock.json`, `playwright.config.ts`,
+`vitest.config.ts` and `next.config.ts` are **all unchanged**.
+
+**The GREEN 38/38 gate at `1066e2d` therefore remains valid evidence for the
+current head.** This must be re-verified immediately before the owner decision
+rather than inherited from here.
+
+### 1.10 D10's ESLint cost-class claim holds — and a file-level check would have failed it
+
+Exactly **two** test files construct an `ESLint` instance and load
+`eslint-config-next`: `a11y-fence.test.ts` and `db-fence.test.ts`. The cost
+class is real and sharp, not rhetorical. Case counts are exact: **6** and
+**34**, as D10's table states.
+
+The claim *"Both cases … read no real file in the repo"* also holds **as
+stated** — it is about the two named occurrences, and the named case at
+`db-fence.test.ts:69` uses `messagesFor('app/(app)/anywhere/route.ts',
+"…inline source…")`, a virtual path. `db-fence.test.ts` *does* read real files,
+but at `:345` and `:420`, in **different** cases.
+
+**Recorded because it nearly produced a false finding here:** a file-level
+grep flags `db-fence.test.ts` as reading repo files and would have reported a
+defect that does not exist. The claim is case-level and had to be checked at
+that granularity. **Q4's move from QUEUED to DIAGNOSED rests on a claim that
+verifies.**
+
+### 1.11 The slice-5B queue's "39 OWED" is internally consistent
+
+ADR-0023's own tally reads *"39 OWED"* and *"39 findings remain OWED"*, and
+ADR-0025, ADR-0027 and ADR-0028 all carry it forward unchanged. **No
+contradiction among the binding documents.**
+
+Flagged rather than ruled: the unmerged `chore/process-retune` ledger argues
+the 39 may be **stale** — that nothing ever wrote back to ADR-0023's table.
+That is a tier-2 claim and that branch's own round to raise. It is not a defect
+in the documents under ratification.
 
 ---
 
@@ -301,27 +389,68 @@ record-clarity finding. It is **not** inflated into a defect.
 
 ---
 
-## 5. NOT YET CHECKED
+## 5. RECORD CORRECTIONS — no verdict moves
 
-Named so the un-attacked surface is visible rather than implied:
+### 5.1 Three stale line citations in `docs/coverage.md`, all confirmed
 
-- **D5's OCR label** across PRD:1391, TSD:2177, TSD:2501, the plan's B9 row,
-  the rendered constant and the leg's literal — **byte-exact comparison; the
-  em-dash is the trap**
-- **D10's ESLint cost-class claim** — the basis on which Q4 moved QUEUED →
-  DIAGNOSED
-- **D12/RULING 5's nine pgTAP citations**, and the tension between D12 citing
-  migration `20260825120001` and D19/D18 asserting nothing under `supabase/`
-  moved since `BASE`
-- **38 *discovered* legs**, proven by Playwright's own listing rather than by
-  counting textual `test(` declarations
-- **D9(b)'s re-pointed REV-02 citation** and the batch-control denylist's
-  membership
-- **The three known-stale coverage citations** — `ingestion.spec.ts:400` (the
-  leg is at **`:580`**), `:432-434`, `review.spec.ts:583` (now **`:591`**)
-- **ADR-0028 D3's measurements** — a manifest is owed first, and where the
-  environment cannot be controlled the result must read *"method corroborated"*
-  rather than *"measurement reproduced"*
+Each was resolved against the working tree and against Playwright's own
+listing:
+
+| Citation | What is actually there | Correct target |
+|---|---|---|
+| `e2e/ingestion.spec.ts:400` | **a blank line** | the *"below the cliff"* leg is at **`:580`** |
+| `e2e/ingestion.spec.ts:432-434` | the **EICAR quarantine** assertions, a different leg | — |
+| `e2e/review.spec.ts:583` | a `/**` comment-block opener | A11Y-08 is at **`:591`** |
+
+Every one of these cells also names its leg **by title**, so the target is
+recoverable and no assertion is lost. **Repairs must be title-first**, with the
+line number as a head-specific convenience — A11Y-08's own cell already records
+that its line moved `:583 → :591` and calls it *"the fourth line drift this
+slice."*
+
+### 5.2 ADR-0028's `:432` carries a sentence its own document later supersedes
+
+`docs/adr/0028-…:432` reads *"…and **the 6B slice does not merge.**"* That was
+conditional on the two unreproduced resource failures, and round 20's re-run
+discharged them — recorded in the same document's own later D7 addendum.
+
+**The sentence is true of `r3` and false of the slice today**, and its site
+carries no marker. This is the ADR-0025 S16.5b shape. Under the amendment rule
+the correct treatment is **a marker at the site with the original prose
+preserved — never a rewrite.**
+
+The same applies to ADR-0027's status line and D20 item 7, which read
+`BLOCKED at sign-off` and *"nothing to ratify at this head."* Both are true of
+`4f242f5`; both have had their **condition** discharged by the green gate at
+`1066e2d`.
+
+### 5.3 A vocabulary observation supporting DEFECT 2
+
+`"FIXED in part"` appears **exactly once** in ADR-0027 — D7's own heading — and
+`"FIXED IN PART"` in the ADR-0025 capitalisation appears **nowhere**. The
+verdict class the round-17 sign-off established is used in a heading and then
+never reflected in the tally that counts that heading's finding.
+
+---
+
+## 6. THE UN-ATTACKABLE SURFACE — and one piece of good news
+
+Flagged so the owner knows where the documents cannot be held to account:
+D6's re-measurement (only its arithmetic and its inferences are checkable) ·
+D11's zero-warning build · all severity gradings and ruling text · D4's
+*"deployment consequence UNOBSERVED"* (correct and honest by construction) ·
+the header's finding-by-finding DDL assurance · D10's and D11's counterfactuals
+· D19's leg-38 causal linkage, which is inference over evidence and is the sole
+basis for the sentence that blocked sign-off.
+
+**ADR-0028 D3's measurements are NOT reproduced here, deliberately.** The
+scratchpad harnesses are gone. Rebuilding them without a manifest — service
+versions, warm-up, sample count, concurrency, pool-state reset, raw-output
+preservation, acceptable variance — would produce numbers without reproducing
+the causal conditions, and round 20 established that the causal condition is
+event-loop blocking rather than CPU scarcity. Any future attempt that cannot
+control those must report **"method corroborated"**, never *"measurement
+reproduced."*
 
 **Good news on the evidence base.** The r1/r2 host observations were expected
 to be un-attackable testimony resting on a scratchpad. They are not: round 20
@@ -331,7 +460,39 @@ preserved the artifacts outside the repo and outside TEMP —
 
 ---
 
-## 6. What this pass does NOT do
+## 7. THE AUDIT, SUMMARISED
+
+| | Count | |
+|---|---|---|
+| **HELD** | **11** | including all three headline counts, the byte-exact label, the 38-leg proof and the docs-only claim |
+| **Confirmed record defects** | **5** | two of them verdict-bearing (DEFECTS 1, 2, compounded by 5) |
+| **Confirmed contradiction** | **1** | UXA-03 |
+| **Record corrections, no verdict** | **5** | three stale citations, one superseded sentence, one vocabulary gap |
+| **Unstated ambiguity** | **1** | D8 vs D13, deliberately not inflated |
+| **Accepted on reasoning** | ~7 classes | named in §6 rather than folded in with the verified |
+
+**The documents are substantially sound.** Every load-bearing enumeration in
+ADR-0027 — 35 across 12, exactly one budgeted route, nine fetches split seven
+and two, 38 legs, 69 migrations — is exactly right, re-derived rather than read
+back. D5's fix verifies byte-for-byte. D10's cost-class diagnosis holds at the
+granularity it was actually claimed at.
+
+**What is wrong is concentrated in the bookkeeping**, and it lands squarely on
+the one thing D20 item 1 asks the owner to ratify: the tally. *"9 FIXED · 2
+carrying a declared remainder"* is wrong in both halves, D7's own heading
+contradicts it, and DEFECT 5 shows that even F-4's partial claim overstates.
+
+**What is owed before the rulings can be complete**
+
+1. The **behavioural matrix** for all 21 session sites — signed-out ·
+   unavailable · timeout — which decides whether DEFECT 3 moves ADR-0028 D1's
+   disposition or is a record correction only.
+2. The **corrected tally**, once the owner rules on what F-1, F-3 and F-4's
+   verdicts actually are.
+
+---
+
+## 8. What this audit does NOT do
 
 - It **rules on nothing.** No verdict moves here.
 - It does not establish whether DEFECT 3 changes ADR-0028 D1's disposition —
@@ -340,3 +501,4 @@ preserved the artifacts outside the repo and outside TEMP —
   (round 15's rule, ADR-0025 S16.7).
 - It does not push, merge, or run the browser gate. The gate is GREEN at
   `1066e2d`, the permitted re-run is spent, and re-running can only lose that.
+- It does not reproduce ADR-0028 D3's measurements — see §6.
