@@ -485,14 +485,20 @@ describe('R2/F-1 · the configuration hash is pinned to a LITERAL', () => {
   // maxRenderedBytes from the provider request limit (R2/F-8), and §6.3's
   // ceilings are a covered input — exactly the movement this pin exists to
   // make visible.
-  const PINNED = '35dad2ec988dad6f';
+  // Moved again at 5B queue step 4 with hc-6b-1 → hc-6b-2 (R2/F-3): the JPEG
+  // codec and quality the pixels leave through joined the render block. The
+  // pixels are unchanged; the identity is more honest. Regenerated with
+  // `node scripts/ts-run.mjs <a script printing configurationHash()>` — the
+  // plain `node -e require(...)` form cannot load this module (TypeScript,
+  // `@/` aliases, `server-only`); ts-run resolves all three.
+  const PINNED = '8ccb04d886cc1b6f';
 
   it('the running configuration hash equals the pinned value', () => {
     expect(configurationHash()).toBe(PINNED);
   });
 
   it('and PROMPT_VERSION still carries it, so the pair cannot drift', () => {
-    expect(PROMPT_VERSION).toBe(`hc-6b-1+${PINNED}`);
+    expect(PROMPT_VERSION).toBe(`hc-6b-2+${PINNED}`);
   });
 });
 
@@ -726,5 +732,30 @@ describe('R2/F-4 · the eval harness sends what the worker sends, by constructio
     expect(src).not.toMatch(/max_tokens:/);
     expect(src).not.toMatch(/output_config:/);
     expect(src).not.toMatch(/delimitedDocumentText\(/);
+  });
+});
+
+// ============================================================================
+// R2/F-3 (5B queue, step 4) — THE DELIBERATE HASH BUMP. `inferenceConfiguration()`
+// carried §6.3's tiers and ceilings but not the ENCODING the pixels leave
+// through: `canvas.encode('jpeg', 90)` was a literal at two sites in
+// lib/pipeline/render.ts (raster pages and photos), and 'png' for born-digital
+// pages a third. The pixels the model sees could change with an identical
+// hash. Now the codec and quality are named exports used at the encode sites
+// AND covered inputs of the identity. The pixels themselves are unchanged —
+// same 'jpeg', same 90 — only the identity grows more honest.
+// ============================================================================
+describe('R2/F-3 · the encoding the pixels leave through is part of the identity', () => {
+  it('the render block names the codecs and the JPEG quality', async () => {
+    const { JPEG_CODEC, JPEG_QUALITY, PNG_CODEC } = await import('@/lib/pipeline/render');
+    const render = inferenceConfiguration().render as Record<string, unknown>;
+    expect(render.encoding).toEqual({
+      lossless: PNG_CODEC,
+      continuous_tone: { codec: JPEG_CODEC, quality: JPEG_QUALITY },
+    });
+    // The values the pixels are actually produced with, pinned.
+    expect(PNG_CODEC).toBe('png');
+    expect(JPEG_CODEC).toBe('jpeg');
+    expect(JPEG_QUALITY).toBe(90);
   });
 });
