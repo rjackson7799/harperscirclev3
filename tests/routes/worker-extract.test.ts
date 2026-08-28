@@ -669,3 +669,60 @@ describe('Q-B/Q-D · each render ceiling lands its own reason', () => {
     });
   });
 });
+
+// ============================================================================
+// R2/F-6 = R7/F-5 (5B queue, step 4) — `usage` is READ. The adapter carried
+// §6.6's measurement (cache_creation / cache_read tokens) back on every ok
+// result and NOTHING consumed it: no log, no column, no metric — its only
+// reader was a shape assertion. "Checked, not assumed" was a struct field
+// that got garbage-collected. The consumption site now prints it, in the
+// shape this route's other signals use, so ai-provider.md's SMOKE-6 has a
+// line to evidence. NO DDL — a log line, not a column.
+// ============================================================================
+describe('R2/F-6 · provider usage is READ at the consumption site (§6.6, SMOKE-6)', () => {
+  it('the extract arm logs the four usage counters, with the VALUES the adapter carried back', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      ai.extractFromArrival.mockResolvedValueOnce({
+        ...OK_EXTRACT,
+        usage: {
+          inputTokens: 4321,
+          outputTokens: 987,
+          cacheCreationInputTokens: 613,
+          cacheReadInputTokens: 1207,
+        },
+      });
+      workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+      await route.POST(req('extract'), ctx('extract'));
+
+      const line = info.mock.calls.map((c) => String(c[0])).find((l) => /provider usage/.test(l));
+      expect(line, 'no usage line was logged').toBeDefined();
+      expect(line).toContain(`worker/extract: provider usage for arrival ${ARRIVAL}`);
+      expect(line).toContain('input_tokens=4321');
+      expect(line).toContain('output_tokens=987');
+      expect(line).toContain('cache_creation_input_tokens=613');
+      expect(line).toContain('cache_read_input_tokens=1207');
+      // …and the publication is untouched by the measurement.
+      expect(workers.finalizeExtraction).toHaveBeenCalled();
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it('a non-ok outcome logs NO usage — there is no measurement to report', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      ai.extractFromArrival.mockResolvedValueOnce({
+        outcome: 'unavailable',
+        detail: 'fixture: overloaded',
+        modelId: 'claude-opus-5',
+        promptVersion: 'v',
+      });
+      workers.readPipelineWork.mockResolvedValueOnce([msg('extract')]);
+      await route.POST(req('extract'), ctx('extract'));
+      expect(info.mock.calls.some((c) => /provider usage/.test(String(c[0])))).toBe(false);
+    } finally {
+      info.mockRestore();
+    }
+  });
+});
