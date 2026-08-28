@@ -519,10 +519,30 @@ function eobLines(o) {
   ];
 }
 
+// The §6.3 email rendition's layout, restated from `lib/pipeline/render.ts`
+// (EMAIL_LAYOUT). This script is plain ESM and that module is TS behind
+// `server-only`, so it cannot be imported here — the numbers are necessarily
+// duplicated. What keeps the duplicate honest is that
+// `tests/eval/corpus.test.ts` recomputes every email label FROM the renderer's
+// own exports and fails if one disagrees. Change these and that leg goes red.
+const EMAIL_PAGE_W = 1212;
+const EMAIL_PAGE_H = 1568;
+const EMAIL_MARGIN = 96;
+const EMAIL_LINE_H = 40;
+
 /**
  * An email body fixture (Q10: the blind partition gains the product's
- * primary intake channel). Plain UTF-8 text; labels are line-positioned,
- * the dev-email-01 approximation carried into a shared helper.
+ * primary intake channel). Plain UTF-8 text.
+ *
+ * ROUND 21 (ADR-0023 D26): labels are the RENDERED LINE BAND, not a fraction
+ * of the line count. The old form — `[0, i / lines.length, 1, 1 / lines.length]`
+ * — described a notional page that WAS the text block, and §6.3 does not paint
+ * one: it paints a 1212 × 1568 page with a 96 px margin and a 40 px line box,
+ * so every line lives in the top quarter and none spans the page. Measured
+ * against the real rendition, a perfect reader landed ZERO of the twenty-three
+ * email citations, which put `provider`, `appointment_date` and
+ * `appointment_time` below `CITATION_FLOOR` by arithmetic alone — a ceiling no
+ * model could clear, of exactly the shape D11 found for recall.
  */
 function emailFixture(lines, labelSpecs) {
   const body = lines.join('\n');
@@ -534,7 +554,16 @@ function emailFixture(lines, labelSpecs) {
       field,
       value: lines[i].slice(prefix.length).trim(),
       page: 1,
-      bbox: round4([0, i / lines.length, 1, 1 / lines.length]),
+      // The full content width of the line the value is painted on — which is
+      // what a crop of "the value is on this line" shows a person, and what
+      // the renderer can be held to without the corpus also modelling its
+      // font metrics.
+      bbox: round4([
+        EMAIL_MARGIN / EMAIL_PAGE_W,
+        (EMAIL_MARGIN + i * EMAIL_LINE_H) / EMAIL_PAGE_H,
+        (EMAIL_PAGE_W - 2 * EMAIL_MARGIN) / EMAIL_PAGE_W,
+        EMAIL_LINE_H / EMAIL_PAGE_H,
+      ]),
     };
   };
   return { bytes, labels: labelSpecs.map(([prefix, field]) => labelFor(prefix, field)) };
@@ -785,40 +814,33 @@ const SPEC = [
     category: 'other',
     ext: 'txt',
     notes: 'An email body: text first, the rendered message as a second source (§6.3 row 4).',
-    make: () => {
-      const body = [
-        'From: scheduling@northgate.example',
-        'Subject: Your appointment',
-        '',
-        'Hello,',
-        '',
-        'Provider: Northgate Medical Group',
-        'Appointment date: 2026-07-09',
-        'Appointment time: 9:00 AM',
-        '',
-        'Please arrive fifteen minutes early.',
-        '',
-      ].join('\n');
-      const bytes = Buffer.from(body, 'utf8');
-      const lines = body.split('\n');
-      const labelFor = (prefix, field) => {
-        const i = lines.findIndex((l) => l.startsWith(prefix));
-        return {
-          field,
-          value: lines[i].slice(prefix.length).trim(),
-          page: 1,
-          bbox: round4([0, i / lines.length, 1, 1 / lines.length]),
-        };
-      };
-      return {
-        bytes,
-        labels: [
-          labelFor('Provider:', 'provider'),
-          labelFor('Appointment date:', 'appointment_date'),
-          labelFor('Appointment time:', 'appointment_time'),
+    // Round 21: this item carried its OWN copy of the label arithmetic, and
+    // that copy is what the Q10 helper was cloned from — one wrong convention
+    // in two places became one wrong convention in six items. It now goes
+    // through `emailFixture` like every other email fixture. The line array is
+    // unchanged, so the bytes and the sha256 are unchanged; only the labels
+    // move.
+    make: () =>
+      emailFixture(
+        [
+          'From: scheduling@northgate.example',
+          'Subject: Your appointment',
+          '',
+          'Hello,',
+          '',
+          'Provider: Northgate Medical Group',
+          'Appointment date: 2026-07-09',
+          'Appointment time: 9:00 AM',
+          '',
+          'Please arrive fifteen minutes early.',
+          '',
         ],
-      };
-    },
+        [
+          ['Provider:', 'provider'],
+          ['Appointment date:', 'appointment_date'],
+          ['Appointment time:', 'appointment_time'],
+        ],
+      ),
   },
   {
     id: 'dev-injection-01',
