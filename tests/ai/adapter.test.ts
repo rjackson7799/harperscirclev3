@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   DISQUALIFIED_MODELS,
   EXTRACT_MODEL,
+  FINALIZE_RESERVE_MS,
   MODEL_ALLOWLIST,
   PROMPT_VERSION,
   assertAllowedModel,
@@ -343,14 +344,52 @@ describe('B3 · the client timeout lives INSIDE the lease deadline (§1.9)', () 
     expect(providerTimeoutMs(new Date(now - 1000).toISOString(), now)).toBe(0);
   });
 
-  it('a hanging provider is cut off by OUR timeout, not by the platform', async () => {
+  // R2/F-2 (5B queue, step 4): the old leg here passed a deadline of +1.5 s —
+  // INSIDE FINALIZE_RESERVE_MS — so providerTimeoutMs returned 0, callProvider
+  // took its no-dispatch path, and the fixture's HC-FIXTURE-HANG branch was
+  // never reached. The leg was green while proving the OTHER branch. Both
+  // branches deserve a leg, and each now asserts the property that separates
+  // them: whether the fixture heard from us at all.
+  it('a deadline inside the finalize reserve is NOT dispatched — the budget is zero and the fixture never hears from us', async () => {
+    const before = server.requests.length;
     const result = await extractFromArrival(
       extractInput({
         text: 'HC-FIXTURE-HANG marker',
+        // 1.5 s from now is inside the 20 s reserve: the budget is zero.
         deadlineIso: new Date(Date.now() + 1_500).toISOString(),
       }),
     );
     expect(result.outcome).toBe('unavailable');
+    if (result.outcome !== 'unavailable') return;
+    expect(result.detail).toBe('no provider budget inside the lease');
+    expect(server.requests.length).toBe(before);
+  });
+
+  it('a hanging provider is cut off by OUR timeout, not by the platform (R2/F-2)', async () => {
+    const before = server.requests.length;
+    const budgetMs = 1_500;
+    const t0 = Date.now();
+    const result = await extractFromArrival(
+      extractInput({
+        text: 'HC-FIXTURE-HANG marker',
+        // The deadline sits OUTSIDE the reserve by exactly budgetMs, so the
+        // request IS dispatched with a 1.5 s client-side timeout — and the
+        // fixture, by design, never answers it.
+        deadlineIso: new Date(t0 + FINALIZE_RESERVE_MS + budgetMs).toISOString(),
+      }),
+    );
+    const elapsed = Date.now() - t0;
+    // The fixture WAS contacted: this is the dispatch path, not the no-budget one.
+    expect(server.requests.length).toBe(before + 1);
+    expect(server.requests.at(-1)!.raw).toContain('HC-FIXTURE-HANG');
+    expect(result.outcome).toBe('unavailable');
+    if (result.outcome !== 'unavailable') return;
+    // …and it was OUR timeout that cut it, named as such — not the no-budget
+    // message, and not a platform limit minutes away.
+    expect(result.detail).not.toBe('no provider budget inside the lease');
+    expect(result.detail).toMatch(/timed out/i);
+    expect(elapsed).toBeGreaterThanOrEqual(budgetMs - 50);
+    expect(elapsed).toBeLessThan(budgetMs + 5_000);
   }, 20_000);
 });
 
