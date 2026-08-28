@@ -91,7 +91,7 @@ material only**, and assert every one of:
 | SMOKE-3 | The structured output parses against `EXTRACTION_SCHEMA` | ☐ |
 | SMOKE-4 | The ZDR-eligible feature COMBINATION works together: structured outputs + vision + a `cache_control` breakpoint in one request | ☐ |
 | SMOKE-5 | No fallback and no file parameters are present on the wire | ☐ |
-| SMOKE-6 | `usage.cache_creation_input_tokens` / `cache_read_input_tokens` are populated — §6.6's 512-token minimum CHECKED against the real tokenizer, not assumed | ☐ |
+| SMOKE-6 | `usage.cache_creation_input_tokens` / `cache_read_input_tokens` are populated — §6.6's 512-token minimum CHECKED against the real tokenizer, not assumed | ☐ · **BLOCKED BY R2/F-6 (recorded 2026-08-28).** At `main`, `usage` is built in `lib/ai/client.ts:285-289` and read NOWHERE — no log, no column, no metric — so this row cannot be evidenced by anything but eyeballing a response. R2/F-6 = R7/F-5 is an OWED item in ADR-0023 D17 and is this row's prerequisite, not a coincidence. |
 
 Use a development-partition fixture. **Never a real document**, at this step or
 any other before G9 closes.
@@ -102,7 +102,7 @@ any other before G9 closes.
 
 | # | Row | Evidence |
 |---|---|---|
-| G9-1 | A completed eval run exists on the **BLIND** partition: `node scripts/ts-run.mjs scripts/eval/run.ts --submit` then `--collect <batch>` | ☐ |
+| G9-1 | A completed eval run exists on the **BLIND** partition: `node scripts/ts-run.mjs scripts/eval/run.ts --submit` then `--collect <batch>` | ☐ · **SEQUENCING (recorded 2026-08-28): R2/F-3 MUST LAND BEFORE THIS RUN.** It puts the JPEG quality and codec choice into `inferenceConfiguration()` — §6.3 render rules are a covered input — which moves `configurationHash()` and therefore `PROMPT_VERSION`. G9-4 below refuses a run whose pair does not match what ships, so a batch submitted before R2/F-3 lands is money spent on an unshippable manifest. |
 | G9-2 | The owner has read the per-field precision/recall against `docs/eval/g9-corpus-spec.md` §6 and **signed the bands**, recorded in an ADR | ☐ |
 | G9-3 | The run manifest's digest is in `BAND_ARTIFACT_ALLOWLIST` (`lib/extraction/bands.ts`) **in the same commit as the sign-off ADR** | ☐ |
 | G9-4 | The shipped `(model_id, prompt_version)` pair MATCHES that run. A change to the model, the prompts, the schema, the parameters or the §6.3 render rules is a different configuration hash and **is not shippable without a re-run** (§6.10) | ☐ |
