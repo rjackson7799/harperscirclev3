@@ -849,7 +849,7 @@ says so in the argument.
 | F-9 | MINOR | **ACCEPTED-NOTE** | Q-D's unreachable list is short by five — see D10. |
 | F-10 | MINOR | **FIXED** | A stage-2 duplicate always yields a silent `invalid_state` at interpret, which §4.2 says means "raise a defect signal". `processGate` warns; `processInterpret` returns it silently. Make it a warn, or absorb it explicitly. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-11 | MINOR | **FIXED** | `msg.facts` is trusted with no runtime validation: a non-array skips *both* the artifact re-read and the operator note, producing exactly the thin-answer-that-looks-normal D6 rules out. Plus an unbounded hand-off over an unindexed archive scan. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
-| F-12 | MINOR | **OWED** | A `profile_fact` with `field: null` is drafted and raises `23502` at approval — a raw Postgres error at the moment a person clicks approve. Guard where `domain` is already guarded. |
+| F-12 | MINOR | **FIXED** | A `profile_fact` with `field: null` is drafted and raises `23502` at approval — a raw Postgres error at the moment a person clicks approve. Guard where `domain` is already guarded. Ruled **FIXED** at ADR-0030 (round 22), re-verified at the site; the fix also guards `value`. |
 | F-13 | OBS | **NOTED** | **Verified positive.** `releaseDeferredWork` holds on all four axes; the threshold is *derived* from `READ_VT_SECONDS` so it cannot drift. One cosmetic gap named (`firedStages` never adds `'interpret'`, harmless because the segment is cosmetic). |
 | F-14 | OBS | **NOTED** | **Verified positive** on the prefix namespaces. The `if (error) return null` conflation is a design observation worth a note. |
 | F-15 | OBS | **FIXED** | `processInterpret` discards `answer.dropped`. It mattered more than it looked: under D1's defect *every* conflict was dropped and the counter that would have said so was never printed. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
@@ -901,7 +901,7 @@ says so in the argument.
 | F-1 | **BLOCKER** | **OWNER** | D13. |
 | F-2 | **BLOCKER** | **FIXED** | D7. |
 | F-3 | MAJOR | **ACCEPTED-NOTE** | Spike leg 5 contains no `assert` and passes unconditionally — and it is the leg whose plan criterion ("refuses cleanly") is **not met**: mupdf repairs. D2 discloses the behaviour honestly and scores it a pass; the count "8/8" is what the Q3 reserve-not-consumed conclusion rests on. Re-score it 7/8 with leg 5 FALSIFIED, and record "malformed input is repaired and processed" as the hostile-input posture it is. |
-| F-4 | MAJOR | **OWED** | D12. D26 answered the owner half; ruled **OWED** at ADR-0029 (round 21). |
+| F-4 | MAJOR | **FIXED** | D12. D26 answered the owner half; ruled **OWED** at ADR-0029 (round 21). Ruled **FIXED** at ADR-0030 (round 22): the labels are the rendered band, 23 of 23 landing. Lifts a ceiling; signs nothing. |
 | F-5 | MAJOR | **OWED** | Same as R2/F-6; the coverage cell and D4 both overstate. |
 | F-6 | MAJOR | **DECLINED (the packet's answer), ACCEPTED (the finding)** | D10. |
 | F-7 | MAJOR | **FIXED** | D3. |
