@@ -678,3 +678,53 @@ describe('6B B4 · the status-aware provider arm', () => {
     });
   });
 });
+
+// ============================================================================
+// R2/F-4 (5B queue, step 4) — ONE construction site. `scripts/eval/run.ts`
+// imported the shared delimiter, prompt and schema and then assembled its own
+// content blocks and its own Messages envelope beside them — so the bands
+// would be signed from a request built by a second hand, equal to the
+// worker's only by inspection. Compared line by line: the blocks were the
+// same three steps, the envelope the same six fields. The only shape that
+// genuinely differs is the Batch API's `{custom_id, params}` wrapper, which is
+// the provider's, not ours.
+//
+// Now the worker's OWN builders are the only ones: `extractionCall` (the
+// blocks and the call) in lib/ai/extract.ts and `messageParams` (the
+// envelope) in lib/ai/client.ts. The harness calls both and builds nothing.
+// ============================================================================
+describe('R2/F-4 · the eval harness sends what the worker sends, by construction', () => {
+  it('the worker’s builders reproduce the wire body EXACTLY — envelope, blocks and all', async () => {
+    const { extractionCall } = await import('@/lib/ai/extract');
+    const { messageParams } = await import('@/lib/ai/client');
+    const input = extractInput();
+    // What the harness would submit for this source…
+    const params = messageParams(extractionCall(input, []));
+    // …and what the worker actually put on the wire for the same source.
+    await extractFromArrival(input);
+    expect(lastBody()).toEqual(JSON.parse(JSON.stringify(params)));
+  });
+
+  it('the builder is the SAME three steps for every source class the worker renders', async () => {
+    const { extractionBlocks } = await import('@/lib/ai/extract');
+    // images first, then the delimited text layer, then the source line.
+    const withText = extractionBlocks({ pages: [PAGE], text: 'Dose: 500 mg', sourceClass: 'born_digital_pdf' });
+    expect(withText.map((b) => b.type)).toEqual(['image', 'text', 'text']);
+    expect(JSON.stringify(withText[1])).toContain('<document_text>');
+    expect(JSON.stringify(withText[2])).toContain('The source is a born digital pdf.');
+    // no text layer: no delimited block — never an EMPTY one.
+    const noText = extractionBlocks({ pages: [PAGE], text: null, sourceClass: 'scanned_pdf' });
+    expect(noText.map((b) => b.type)).toEqual(['image', 'text']);
+    expect(JSON.stringify(noText)).not.toContain('<document_text>');
+  });
+
+  it('the harness builds NOTHING itself — no block literal, no envelope literal', () => {
+    const src = readFileSync(join(process.cwd(), 'scripts/eval/run.ts'), 'utf8');
+    expect(src).toMatch(/extractionCall/);
+    expect(src).toMatch(/messageParams/);
+    expect(src).not.toMatch(/type: 'image'/);
+    expect(src).not.toMatch(/max_tokens:/);
+    expect(src).not.toMatch(/output_config:/);
+    expect(src).not.toMatch(/delimitedDocumentText\(/);
+  });
+});

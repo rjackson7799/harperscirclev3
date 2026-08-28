@@ -40,15 +40,13 @@ import { normalizeArrival } from '@/lib/pipeline/render';
 import { sniffMime } from '@/lib/pipeline/mime';
 import { predictionFor } from '@/scripts/eval/predict';
 import {
-  EXTRACT_EFFORT,
   EXTRACT_MODEL,
-  MAX_TOKENS,
   PROMPT_VERSION,
   configurationHash,
   inferenceConfiguration,
 } from '@/lib/ai/config';
-import { EXTRACTION_SCHEMA } from '@/lib/ai/schema';
-import { EXTRACT_SYSTEM_PROMPT, delimitedDocumentText } from '@/lib/ai/prompt';
+import { messageParams } from '@/lib/ai/client';
+import { extractionCall } from '@/lib/ai/extract';
 
 const OUT_DIR = path.join(process.cwd(), 'eval', 'runs');
 
@@ -65,10 +63,20 @@ function parseArgs(): { mode: Mode; batchId?: string } {
 }
 
 /**
- * One item's request — built from the SAME schema, prompts and §6.3 render
- * rules the worker uses. That identity is the whole reason this harness is
- * TypeScript rather than a convenient script: §6.10 only means something if
- * the eval measures what production sends.
+ * One item's request — built BY the worker's own builders, not from the same
+ * ingredients. That identity is the whole reason this harness is TypeScript
+ * rather than a convenient script: §6.10 only means something if the eval
+ * measures what production sends.
+ *
+ * Round-16 R2/F-4 (5B queue step 4): this function used to assemble its own
+ * content blocks and its own Messages envelope beside the worker's — the same
+ * three steps and the same six fields, equal by inspection and by nothing
+ * else. Now `extractionCall` (lib/ai/extract.ts) is the blocks and the call
+ * exactly as `extractFromArrival` makes them — no operator notes, because the
+ * harness has none to give — and `messageParams` (lib/ai/client.ts) is the
+ * envelope exactly as `callProvider` sends it. The Batch API's `{custom_id,
+ * params}` wrapper in `--submit` is the only shape that differs, and it is
+ * the provider's, not ours.
  */
 async function requestFor(item: CorpusItem) {
   const bytes = readCorpusFile(item);
@@ -80,38 +88,7 @@ async function requestFor(item: CorpusItem) {
   if (normalized.outcome !== 'rendered') {
     return { skipped: normalized.outcome as string };
   }
-  const content: Anthropic.ContentBlockParam[] = [];
-  for (const page of normalized.pages) {
-    content.push({
-      type: 'image',
-      source: {
-        type: 'base64',
-        media_type: page.mime,
-        data: Buffer.from(page.bytes).toString('base64'),
-      },
-    });
-  }
-  if (normalized.text && normalized.text.trim() !== '') {
-    content.push({ type: 'text', text: delimitedDocumentText(normalized.text) });
-  }
-  content.push({
-    type: 'text',
-    text: `The source is a ${normalized.sourceClass.replace(/_/g, ' ')}. Return the document's facts and its filing summary.`,
-  });
-
-  return {
-    params: {
-      model: EXTRACT_MODEL,
-      max_tokens: MAX_TOKENS,
-      thinking: { type: 'adaptive' as const },
-      output_config: {
-        effort: EXTRACT_EFFORT,
-        format: { type: 'json_schema' as const, schema: EXTRACTION_SCHEMA as unknown as Record<string, unknown> },
-      },
-      system: EXTRACT_SYSTEM_PROMPT,
-      messages: [{ role: 'user' as const, content }],
-    },
-  };
+  return { params: messageParams(extractionCall(normalized, [])) };
 }
 
 function manifestSkeleton(): Record<string, unknown> {
@@ -180,10 +157,7 @@ async function main(): Promise<void> {
         console.log(`  SKIP ${item.id}: ${built.skipped}`);
         continue;
       }
-      requests.push({
-        custom_id: item.id,
-        params: built.params as unknown as Anthropic.Messages.Batches.BatchCreateParams.Request['params'],
-      });
+      requests.push({ custom_id: item.id, params: built.params });
     }
     const batch = await client.messages.batches.create({ requests });
     console.log(`batch ${batch.id} · ${batch.processing_status}`);
