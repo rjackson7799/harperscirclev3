@@ -1,6 +1,28 @@
 # ADR-0030 — round-22 dispositions: the two rows slice-6B's own fixes made stale
 
-**Status: PUT, NOT RULED.** Proposed on evidence, awaiting owner sign-off.
+**Status: RULED — OWNER SIGN-OFF 2026-08-28. All three ballot items
+RATIFIED AS PUT.**
+
+The verdicts have moved. **Two rows** in ADR-0023 D17 were rewritten in the
+commit that stamps this line — R4/F-12 and R7/F-4, both `OWED` → `FIXED` —
+each carrying a pointer back here, the ADR-0025 D6 precedent.
+
+The post-ruling tally was **re-derived from the rewritten table**, not
+asserted from D4:
+
+> 61 FIXED · 21 NOTED · 19 ACCEPTED-NOTE · 6 OWED · 3 OWNER · 2 ACCEPTED ·
+> 1 DECLINED-and-ACCEPTED = **113**
+
+with the residue exactly **R2/F-2 · R2/F-3 · R2/F-4 · R2/F-6 · R2/F-12 ·
+R7/F-5** — the 5 distinct items of Step 4, and nothing else. D4's
+self-check is satisfied by measurement rather than by intent.
+
+**D17 and the tree now agree.** Every row the tree has fixed reads FIXED,
+and every row reading OWED names work that is genuinely outstanding.
+
+*(The line below is the ballot as it was PUT, preserved unaltered.)*
+
+~~**Status: PUT, NOT RULED.**~~ Proposed on evidence, awaiting owner sign-off.
 **No verdict in ADR-0023 D17 has moved.** They move in a second commit,
 after sign-off, each carrying a pointer back here — the ADR-0025 D6
 precedent, as round 21 did.
