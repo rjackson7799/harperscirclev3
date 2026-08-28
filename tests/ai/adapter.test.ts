@@ -108,29 +108,78 @@ describe('B3 · the model allowlist is §6.1’s table, and Fable 5 is refused',
   });
 });
 
+// R2/F-12 (5B queue, step 4): two things were wrong with this block.
+//
+// `server-side-fallback` is not a body key. It is a VALUE of the
+// `anthropic-beta` request HEADER (the SDK's own literal is
+// `server-side-fallback-2026-07-01`), and `raw` is the request BODY — the
+// fixture recorded no headers at all — so `expect(raw).not.toContain(…)` could
+// never fail. The fixture now records the header set beside the body, and the
+// fallback absence is asserted against THAT, after proving the set is real.
+//
+// And all four absences ran against ONE extract request. An interpret call is
+// its own request with its own shape (the record prefix, the cache_control
+// breakpoint), so each absence now runs against BOTH dispatchers.
 describe('B3 · what is NEVER on the wire', () => {
-  it('no server-side fallbacks — §6.8’s recorded decline, pinned', async () => {
-    await extractFromArrival(extractInput());
-    const raw = server.requests.at(-1)!.raw;
-    expect(lastBody()).not.toHaveProperty('fallbacks');
-    expect(raw).not.toContain('fallbacks');
-    expect(raw).not.toContain('server-side-fallback');
+  const interpretInput = () => ({
+    recordContext: { profile_facts: { rows: [] }, timeline: { rows: [] } },
+    facts: [],
+    documentText: 'Dose: 500 mg',
+    operatorNotes: [] as string[],
+    deadlineIso: new Date(Date.now() + 240_000).toISOString(),
   });
 
-  it('no Files API — artifacts go inline, so retention has one question not two', async () => {
-    await extractFromArrival(extractInput());
-    expect(server.requests.at(-1)!.raw).not.toContain('file_id');
-  });
+  const dispatchers: ReadonlyArray<readonly [string, () => Promise<unknown>]> = [
+    ['extract', () => extractFromArrival(extractInput())],
+    ['interpret', () => interpretArrival(interpretInput())],
+  ];
 
-  it("the provider's own citations feature is never sent (§6.4's 400)", async () => {
-    await extractFromArrival(extractInput());
-    expect(server.requests.at(-1)!.raw).not.toContain('"citations"');
-  });
+  /** The request headers the fixture saw — lower-cased names, as node gives
+   *  them. Refuses an unrecorded set: an absence asserted over nothing is
+   *  exactly the defect this block is fixing. */
+  function lastHeaders(): Record<string, string> {
+    const headers = server.requests.at(-1)?.headers as Record<string, string> | undefined;
+    if (!headers || Object.keys(headers).length === 0) {
+      throw new Error('the fixture recorded no request headers — the absence would be vacuous');
+    }
+    return headers;
+  }
 
-  it('no budget_tokens — removed on Opus 5, and a 400 if sent', async () => {
-    await extractFromArrival(extractInput());
-    expect(server.requests.at(-1)!.raw).not.toContain('budget_tokens');
-    expect(lastBody().thinking).toEqual({ type: 'adaptive' });
+  describe.each(dispatchers)('on the %s request', (_name, dispatch) => {
+    it('no server-side fallbacks — §6.8’s recorded decline, pinned on the body AND the headers', async () => {
+      await dispatch();
+      const raw = server.requests.at(-1)!.raw;
+      expect(lastBody()).not.toHaveProperty('fallbacks');
+      expect(raw).not.toContain('fallbacks');
+      // The header set is REAL (the SDK always stamps its API version) …
+      const headers = lastHeaders();
+      expect(headers['anthropic-version']).toBeDefined();
+      // … and the fallback beta is absent from it: not in `anthropic-beta`,
+      // and not smuggled in under any other header name or value.
+      expect(headers['anthropic-beta'] ?? '').not.toMatch(/server-side-fallback/);
+      for (const [name, value] of Object.entries(headers)) {
+        expect(`${name}: ${value}`).not.toMatch(/fallback/i);
+      }
+    });
+
+    it('no Files API — artifacts go inline, so retention has one question not two', async () => {
+      await dispatch();
+      expect(server.requests.at(-1)!.raw).not.toContain('file_id');
+      for (const [name, value] of Object.entries(lastHeaders())) {
+        expect(`${name}: ${value}`).not.toMatch(/files-api/i);
+      }
+    });
+
+    it("the provider's own citations feature is never sent (§6.4's 400)", async () => {
+      await dispatch();
+      expect(server.requests.at(-1)!.raw).not.toContain('"citations"');
+    });
+
+    it('no budget_tokens — removed on Opus 5, and a 400 if sent', async () => {
+      await dispatch();
+      expect(server.requests.at(-1)!.raw).not.toContain('budget_tokens');
+      expect(lastBody().thinking).toEqual({ type: 'adaptive' });
+    });
   });
 });
 
