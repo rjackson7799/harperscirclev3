@@ -360,6 +360,36 @@ part, not reading.
    can currently demonstrate would be exactly the argued-around gate this
    spec exists to prevent.
 
+> **MARKER (2026-08-28, round-22 follow-up).** **Point 4 is SUPERSEDED, and
+> its own remedy has been taken.** §7 **row 1 was BOUGHT at 6B B10** — the
+> blind partition went 12 → 40 items, five of them email — and §4 was
+> restated against the readable set. The `Signable?` column point 4 refers
+> to no longer exists: §6's table now reads `Reachable? yes — unsigned` for
+> all twelve fields, at **max recall 1.0**.
+>
+> **The citation axis then grew its own ceiling and lost it again.** The
+> same commit that bought the corpus made citation accuracy load-bearing
+> for signing (R3/F-7, `CITATION_FLOOR` 0.90), and the corpus's email
+> labels were line-fraction boxes the §6.3 rendition never paints — **0 of
+> 23 landing**, capping `provider` at 0.8519 and `appointment_date` /
+> `appointment_time` at 0.7500, below the floor for any reader. That was
+> ruled at ADR-0023 **D26** and fixed at PR #16: **23 of 23 land, and max
+> citation accuracy is 1.0 for all twelve fields.**
+>
+> **So no arithmetic ceiling remains, on either axis.** What keeps G9
+> closed is now the GATE and nothing else — a completed BLIND run, the
+> floors above, and the owner's signature (`docs/ops/ai-provider.md` §5:
+> G9-1 … G9-5, all still ☐, and gated in turn on G3's terms and a
+> credential).
+>
+> **What that does NOT mean.** Rule 3 above is all-or-nothing: a run in
+> which any single field misses any one floor still yields an unsignable
+> manifest, which `loadBands` refuses as `artifact_partial`, and the
+> pipeline stays all-high. The ceiling clearing made signing **possible**,
+> not likely.
+>
+> The prose above is preserved exactly as written.
+
 ---
 
 ## 7. What growing the corpus would buy — priced, not assumed
