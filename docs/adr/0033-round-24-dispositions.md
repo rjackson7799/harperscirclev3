@@ -1,6 +1,25 @@
 # ADR-0033 — round-24 dispositions: all 44 rows, five in-house lenses and the other-family lens
 
-**Status: PUT, NOT RULED.** Proposed on evidence, awaiting owner sign-off.
+**Status: RULED — OWNER SIGN-OFF 2026-08-29. All eighteen ballot items
+RATIFIED AS PUT, and all fifteen D15 rulings ANSWERED AS RECOMMENDED.**
+
+The verdicts have moved in the commit that stamps this line. **Sixteen D13
+rows** go `OWNER` → `OWED`, and R6/F-4 and R6/F-5 with them: the rulings
+they waited on are now made, so nothing in this round is blocked on a
+decision. Each row carries a pointer to its ruling in **D19**.
+
+The post-ruling tally is **re-derived from the rewritten table** (D17), not
+adjusted:
+
+> **44 rows · 42 OWED · 0 OWNER · 2 NOTED · 0 FIXED**
+
+`OWNER` is empty. **`FIXED` is still zero, and that is correct** — the
+rulings unblock the fixes, they do not perform them. Every `OWED` row
+becomes `FIXED` only when a commit shows it red-then-green on PR #26.
+
+*(The paragraph below is the ballot as it was PUT, preserved unaltered.)*
+
+~~**Status: PUT, NOT RULED.**~~ Proposed on evidence, awaiting owner sign-off.
 **No verdict has moved and nothing in the tree has been changed by this
 commit.** Verdicts move in a second commit, after sign-off, each carrying a
 pointer back here — the ADR-0025 D6 precedent, as rounds 21, 22 and 23 did.
@@ -557,9 +576,9 @@ Cluster letters are D14's.
 |---|---|---|---|
 | F-1 | MAJOR | **OWED** | **[A]** Existence disclosed at `hidden`. Verified. Fix with R4/F-1 and R6/F-1 in one act, and rewrite 069:18/:20/:28. |
 | F-2 | MAJOR | **OWED** | **[B]** The kept share revoked on the next cycle. Verified. R1 offers a second remedy R6 did not - key the revoke loops on `sh.member_id = v_former` - which preserves provenance and still needs no DDL. **Prefer R1's**: it fixes reassign and unassign symmetrically. |
-| F-3 | MODERATE | **OWNER** | **[C]** `+` The post-condition is one statement; the recategorise path moves descendants the preview never named. Needs the ruling in D15.3 before a body can be written. |
-| F-4 | MODERATE | **OWNER** | **[C]** `+` Original and instruction do not bridge on completion. D15.4 must say which row is "the work". |
-| F-5 | MODERATE | **OWNER** | **[D]** The objected-to coordinator may still reduce under a freeze. **This is Q-F**, and R6 reached it independently. D15.1. |
+| F-3 | MODERATE | **OWED** | **[C]** `+` The post-condition is one statement; the recategorise path moves descendants the preview never named. Needs the ruling in D15.3 before a body can be written. **RULED D19.3**, so the row is no longer blocked. |
+| F-4 | MODERATE | **OWED** | **[C]** `+` Original and instruction do not bridge on completion. D15.4 must say which row is "the work". **RULED D19.4**, so the row is no longer blocked. |
+| F-5 | MODERATE | **OWED** | **[D]** The objected-to coordinator may still reduce under a freeze. **This is Q-F**, and R6 reached it independently. D15.1. **RULED D19.1**, so the row is no longer blocked. |
 | F-6 | LOW | **OWED** | **[E]** `+` `freeze_active` raised before the caller is authorized, so an existing and a nonexistent id answer differently under a freeze. Fix with R2/F-3. |
 
 ### R2 - concurrency, idempotency, the state machine
@@ -570,24 +589,24 @@ Cluster letters are D14's.
 | F-2 | MAJOR | **OWED** | **[F]** The unresolved-document `lost` list. Verified. Was single-lens; **R6/F-3 corroborates**. |
 | F-3 | MODERATE | **OWED** | **[E]** `+` The freeze/authorization ordering, in all four writers. `set_grant`'s shape is the precedent. |
 | F-4 | MODERATE | **OWED** | **[C]** The instruction row is an unguarded target. Verified. Refusing is the cheap half of cluster C and does not wait on D15.4. |
-| F-5 | MODERATE | **OWNER** | **[C]** `+` Completion does not bridge the two rows. With R1/F-4 under D15.4. |
-| F-6 | MODERATE | **OWNER** | `+` Preview and move share a gate but not a version. R6's third recorded dissent is the same point. D15.5 - bind it, or rule it 7B's job and record the limit. |
-| F-7 | MINOR | **OWNER** | `+` A completed path-2 task keeps its shares and `unassign_task` refuses on done. D15.6. |
+| F-5 | MODERATE | **OWED** | **[C]** `+` Completion does not bridge the two rows. With R1/F-4 under D15.4. **RULED D19.4**, so the row is no longer blocked. |
+| F-6 | MODERATE | **OWED** | `+` Preview and move share a gate but not a version. R6's third recorded dissent is the same point. D15.5 - bind it, or rule it 7B's job and record the limit. **RULED D19.5**, so the row is no longer blocked. |
+| F-7 | MINOR | **OWED** | `+` A completed path-2 task keeps its shares and `unassign_task` refuses on done. D15.6. **RULED D19.6**, so the row is no longer blocked. |
 | F-8 | MINOR | **OWED** | `+` The orphan instruction `remove_member` leaves is not closed by a later re-assignment. Close unconditionally. |
 | F-9 | MINOR | **OWED** | Verified: two bare inserts, no `unique_violation` arm. A raw `23505` can reach a person's client. `on conflict ... do nothing` or catch and re-raise `assign_refused`. |
-| F-10 | LOW | **OWNER** | **[C]** `+` The post-condition is point-in-time. Same ruling as R6/F-5 (D15.2); this row is its LOW-severity statement of the general case. |
+| F-10 | LOW | **OWED** | **[C]** `+` The post-condition is point-in-time. Same ruling as R6/F-5 (D15.2); this row is its LOW-severity statement of the general case. **RULED D19.2**, so the row is no longer blocked. |
 
 ### R3 - test integrity
 
 | # | Sev | PROPOSED | Argument |
 |---|---|---|---|
-| F-1 | MAJOR | **OWNER** | **[G]** 066:12 is green on the post-condition, not the gate its title names. Verified. Was single-lens; **R6/F-4 corroborates**. Needs D15.7's predicate first. |
+| F-1 | MAJOR | **OWED** | **[G]** 066:12 is green on the post-condition, not the gate its title names. Verified. Was single-lens; **R6/F-4 corroborates**. Needs D15.7's predicate first. **RULED D19.7**, so the row is no longer blocked. |
 | F-2 | MODERATE | **OWED** | `+` 066:30/:40's document half is tautological - Lena reads from her own `health: view`, so the `1` is not the share's. Test only. |
 | F-3 | MODERATE | **OWED** | `+` `unassign_task`'s manage bar has no negative test. Test only: two refusals. |
 | F-4 | MODERATE | **OWED** | `+` Four `f(a)::text \|\| f(b)::text` composites prove only that AT LEAST ONE half refuses. Test only: split them, 069:14's shape. |
 | F-5 | MODERATE | **OWED** | **[C]** `+` The post-condition's second arm and the assignee-shape refusals are undriven. Test only. |
 | F-6 | MINOR | **OWED** | `+` 068:16's index half proves `dsc_select`, not the rebuild - the fixture inserted the row by hand. Test only. |
-| F-7 | MINOR | **OWNER** | `+` 069:15 excludes `kind <> 'invite'`, the one kind whose freeze semantics the PRD names. D15.8 is a 7C question; the test follows it. |
+| F-7 | MINOR | **OWED** | `+` 069:15 excludes `kind <> 'invite'`, the one kind whose freeze semantics the PRD names. D15.8 is a 7C question; the test follows it. **RULED D19.8**, so the row is no longer blocked. |
 | F-8 | LOW | **OWED** | Verified: `count(*) = 27` is a count, not a set - a renamed code passes. Test only: an exact `array_agg` pin, the 002 pattern. |
 | F-9 | LOW | **NOTED** | Verified: 215/215 and 90/90 - **AT** the caps, not over. The lens says it plainly: *"Not a defect - the cap doing its job"*, recorded so the next session does not discover it as a red vitest. **No action.** |
 
@@ -596,21 +615,21 @@ Cluster letters are D14's.
 | # | Sev | PROPOSED | Argument |
 |---|---|---|---|
 | F-1 | BLOCKER | **OWED** | **[A]** The round's only BLOCKER, and **R6/F-1 independently agrees on severity**. Verified. Emit only at `level >= 'log'`. |
-| F-2 | MAJOR | **OWNER** | **[A]** `shares_for_member` counts a share whose object the CALLER holds at `hidden`. Verified. R4 argues the two readers differ - the person already knows her own shares (§4.3.5), a coordinator does not. D15.9 must settle whether the floor applies to the share-holder herself. |
-| F-3 | MODERATE | **OWNER** | `+` `document_audience` hands a non-coordinator other members' LEVELS. D15.10. R6's Q-C rider (the UI must render null as *undisclosed*) attaches here. |
-| F-4 | MINOR | **OWNER** | Verified: `v_frozen` is circle-wide; `grant_vectors` scopes an `unresolved` finding per subject. D15.11 - which is the People list? |
-| F-5 | MINOR | **OWNER** | Verified: `shares_for` joins members without `removed_at is null`; `shares_for_member` requires it. The two reads disagree about the same share. D15.12. |
-| F-6 | LOW | **OWNER** | Verified: the member branch returns `a.slice` unconditionally, which `accounts_select_self` refuses. D15.13 - declare the widening or narrow it. |
+| F-2 | MAJOR | **OWED** | **[A]** `shares_for_member` counts a share whose object the CALLER holds at `hidden`. Verified. R4 argues the two readers differ - the person already knows her own shares (§4.3.5), a coordinator does not. D15.9 must settle whether the floor applies to the share-holder herself. **RULED D19.9**, so the row is no longer blocked. |
+| F-3 | MODERATE | **OWED** | `+` `document_audience` hands a non-coordinator other members' LEVELS. D15.10. R6's Q-C rider (the UI must render null as *undisclosed*) attaches here. **RULED D19.10**, so the row is no longer blocked. |
+| F-4 | MINOR | **OWED** | Verified: `v_frozen` is circle-wide; `grant_vectors` scopes an `unresolved` finding per subject. D15.11 - which is the People list? **RULED D19.11**, so the row is no longer blocked. |
+| F-5 | MINOR | **OWED** | Verified: `shares_for` joins members without `removed_at is null`; `shares_for_member` requires it. The two reads disagree about the same share. D15.12. **RULED D19.12**, so the row is no longer blocked. |
+| F-6 | LOW | **OWED** | Verified: the member branch returns `a.slice` unconditionally, which `accounts_select_self` refuses. D15.13 - declare the widening or narrow it. **RULED D19.13**, so the row is no longer blocked. |
 
 ### R5 - the record
 
 | # | Sev | PROPOSED | Argument |
 |---|---|---|---|
 | F-1 | MODERATE | **OWED** | Verified: at green, 066:49 is the allowlist assertion and :50 the already-holds no-op; the freeze pair is **51-52**. ADR-0032:80 and packet:114 carry red-leg numbers. Docs correction. |
-| F-2 | MODERATE | **OWNER** | `+` The ritual's T1 closure set includes the browser gate unconditionally; the kickoff's exit rule does not. **This is Q-G**, and R6 dissents alongside. D15.14, then write the chosen rule into `slice.md` so the ritual and the kickoff say one thing. |
+| F-2 | MODERATE | **OWED** | `+` The ritual's T1 closure set includes the browser gate unconditionally; the kickoff's exit rule does not. **This is Q-G**, and R6 dissents alongside. D15.14, then write the chosen rule into `slice.md` so the ritual and the kickoff say one thing. **RULED D19.14**, so the row is no longer blocked. |
 | F-3 | MINOR | **OWED** | Verified on `x8`. Four non-reproducing counts. **R6's first recorded dissent consolidates here** (D9). Docs correction. |
 | F-4 | MINOR | **OWED** | `+` The PR body's "the latter three counted-never-named" - `shares_for` returns zero rows rather than counting. Docs correction. |
-| F-5 | MINOR | **OWNER** | `+` `document_audience`'s gate departs from the BINDING M3 row ("a coordinator-readable preview") and the departure was recorded but never put. D15.15 - ratify or restore. |
+| F-5 | MINOR | **OWED** | `+` `document_audience`'s gate departs from the BINDING M3 row ("a coordinator-readable preview") and the departure was recorded but never put. D15.15 - ratify or restore. **RULED D19.15**, so the row is no longer blocked. |
 | F-6 | LOW | **OWED** | Verified the sentence at `packet:251-252`. The plan's table has 26 rows and **five** already existed, so "twenty-one" is right and "four" is wrong. Docs correction. |
 | F-7 | LOW | **NOTED** | `+` Three small figures in **immutable commit messages**. Nothing can be done to a commit message, and the lens asks for nothing. **No action.** |
 
@@ -701,10 +720,16 @@ the same result in a function body.
 
 Across **44 rows** - R1-R5's 38 plus R6's six:
 
-> **OWED 24 · OWNER 18 · NOTED 2 = 44**
+> **AT SIGN-OFF: OWED 42 · OWNER 0 · NOTED 2 · FIXED 0 = 44**
+>
+> *(as PUT, before the rulings: OWED 24 · OWNER 18 · NOTED 2 = 44)*
 
-By lens, as `OWED/OWNER/NOTED`: R1 `3/3/0` · R2 `6/4/0` · R3 `6/2/1` ·
-R4 `1/5/0` · R5 `4/2/1` · R6 `4/2/0` — 6+10+9+6+7+6 = 44.
+By lens, as `OWED/OWNER/NOTED`, **after sign-off**: R1 `6/0/0` ·
+R2 `10/0/0` · R3 `8/0/1` · R4 `6/0/0` · R5 `6/0/1` · R6 `6/0/0` —
+6+10+9+6+7+6 = 44.
+
+*(as PUT: R1 `3/3/0` · R2 `6/4/0` · R3 `6/2/1` · R4 `1/5/0` ·
+R5 `4/2/1` · R6 `4/2/0`.)*
 
 The round's **one BLOCKER** (R4/F-1) is OWED. Of the **ten MAJORs** — six
 in-house, four from R6 — eight are OWED and two are OWNER: R3/F-1 and
@@ -743,3 +768,114 @@ If any item is not accepted it is struck here rather than silently dropped,
 and D17 is **re-derived from the rewritten table rather than adjusted** -
 the ADR-0023 D25 rule, which exists because that arithmetic went stale three
 times.
+---
+
+## D19 — OWNER SIGN-OFF, 2026-08-29: the fifteen rulings, answered
+
+Put as D15, answered here **as recommended, in full**. Each ruling names the
+rows it unblocks; those rows moved `OWNER` → `OWED` in D13 in this commit.
+
+### Access semantics
+
+1. **The objected-to member is NOT "a live coordinator" during their own
+   freeze.** The door in `unassign_task` and `revoke_share` narrows to *a
+   live coordinator who is not `freezes.objected_to_member_id` on any
+   open/unresolved freeze of this circle*. Two lenses reached this
+   independently (R1/F-5, R6's Q-F), and it is the reading PRD §7.5's *"all
+   interactive access suspended"* already implies. **Unblocks R1/F-5; settles
+   Q-F.** A test for the objected-to member is part of the fix.
+
+2. **A revocation that would hide a held task is REFUSED, not absorbed.**
+   `revoke_share` refuses standalone revocation of a **live
+   assignment-created** share; withdrawal goes through `unassign_task`. This
+   makes the post-condition a standing invariant instead of a momentary one,
+   which is what AC-TASK-5 claims. **Unblocks R6/F-5 and R2/F-10.**
+
+3. **The preview and the person's entry NAME the derived objects whose
+   holders change level.** The recompute's walk already enumerates them, so
+   the honest report costs a projection, not a traversal. **Unblocks R1/F-3.**
+
+4. **The ORIGINAL is "the work".** Completing an original cancels its open
+   instructions the way `unassign_task` already closes them; completing an
+   instruction completes the original. The shadow row is `cancelled`, never
+   silently left open in a caregiver's list. **Unblocks R1/F-4 and R2/F-5.**
+
+5. **Preview binds to move.** `recategorize_document` takes
+   `p_expected_category` and refuses a changed source with a named
+   `document_changed`, in the `proposal_version_changed` shape. **Unblocks
+   R2/F-6**, and answers R6's third recorded dissent so 7C cannot inherit the
+   gap.
+
+6. **Completion revokes the assignment's shares.** The assignment is over, so
+   its grants end with it. **Unblocks R2/F-7.**
+
+7. **"Context on the subject" is AT LEAST ONE DELIBERATE `log`-OR-HIGHER
+   GRANT.** The empty-vector subject key `grant_vectors` manufactures is not
+   context, and the gate is rewritten to ask the assignee's ladder rather
+   than the key's presence. **Unblocks R3/F-1 and R6/F-4**, and the gate gets
+   a test independent of the path-specific post-condition.
+
+8. **Outstanding invites are ABSENT under a freeze**, matching §7.5's
+   *"voided"*. 069:15's `kind <> 'invite'` exclusion goes, and the invite
+   branch takes a freeze term. **Unblocks R3/F-7.**
+
+9. **The `log` floor does NOT apply to a person reading her own share.** She
+   was logged and notified at creation (§4.3.5), so counting her own
+   hidden-lineage share tells her nothing she does not have. The floor binds
+   **every other reader**, coordinators included. **Unblocks R4/F-2**, and it
+   is why 069:28 (Kim, a coordinator reading Kim's own shares) needs care:
+   the row survives *because she is the holder*, not because the floor is
+   absent.
+
+10. **Below coordinator, only `gained`/`lost`.** The before/after level pair
+    is a coordinator's fact; `access_grants_select_own` withholds it from
+    everyone else and `document_audience` must not hand it back. R6's Q-C
+    rider stands: the UI renders null as **undisclosed**, never as a hidden
+    grant. **Unblocks R4/F-3.**
+
+11. **The People list is frozen PER SUBJECT**, as `grant_vectors` scopes it —
+    not circle-wide. A finding about one subject must not blank another
+    subject's levels. **Unblocks R4/F-4.**
+
+12. **A kept share on a REMOVED member is NOT live.** Both reads exclude
+    removed members, so `shares_for` gains the `removed_at is null` term
+    `shares_for_member` already has. **Unblocks R4/F-5.**
+
+13. **`accounts.slice` IS a People-list fact** (PRD §4.6.1) — the widening is
+    intended. It is DECLARED in the M4 header and ADR-0032 D7 rather than
+    narrowed. **Unblocks R4/F-6, docs-only.**
+
+### Process
+
+14. **The 38-leg browser gate RUNS before #26 merges.** `supabase/` moved and
+    a global trigger body was replaced, and two lenses (R5/F-2, R6's Q-G)
+    asked for it. `docs/process/slice.md` step 6 and
+    `references/packet.md` are then corrected so the ritual and the build
+    kickoff state one rule. **Unblocks R5/F-2.**
+
+15. **`hc.document_audience`'s shared gate is RATIFIED**, not restored to the
+    BINDING row's coordinator-readable preview — D6's *"so the sentence and
+    the write cannot disagree"* is the better property. The record is
+    corrected: the M3 row's "verbatim" claim becomes *"as ruled, with the
+    departures in D5/D7 and this one"*. **Unblocks R5/F-5.**
+
+### Q-H
+
+**Claim / self-assignment is EXPLICITLY DEFERRED to 7B**, recorded here as an
+owned deferral rather than an omission. R5 and R6 both asked for exactly
+this, and R6 stated the condition it discharges: the deferral is what stops
+the Tasks action contract being *"purported complete"* without it.
+
+---
+
+## D20 — what sign-off does NOT do
+
+- **It fixes nothing.** All 42 `OWED` rows are unwritten. `FIXED` is zero and
+  stays zero until each is shown red-then-green on PR #26.
+- **It merges nothing.** PR #26 carries a BLOCKER (R4/F-1) and R6's *request
+  changes*; it merges when the fixes land and the gate is green.
+- **It spends no DDL.** Every ruling above is satisfiable in a function body,
+  a test or a document. The bound stays **4 of ≤ 6, M5 reserved**, and
+  R2/F-1's DDL variant stays declined.
+- **It moves no ADR-0023 row.** That table is closed at 0 `OWED` and is not
+  in this round's scope.
