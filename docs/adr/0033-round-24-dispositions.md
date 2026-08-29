@@ -13,7 +13,11 @@ only**: the other-family lens, six findings and eight question answers. The
 **38 findings of lenses R1–R5** in `docs/review/round-24-findings.md` are
 NOT dispositioned here and still owe a ruling before PR #26 merges. This
 document is deliberately partial and says so; a later commit on this branch
-adds R1–R5, or a separate ADR does. Do not read an empty row as a clean one.
+adds R1-R5, or a separate ADR does. Do not read an empty row as a clean one.
+
+**And R6 corroborates rather than adds (D2a):** ruling R6 does not rule the
+in-house rows it agrees with. The verdicts still have to attach to R1-R5's
+addresses, which is why D11 puts them as consolidations.
 
 ---
 
@@ -55,8 +59,17 @@ statement below is a property of the SQL text at `4cc3aa0`, read with
 `git show`. Where a claim depends on runtime behaviour rather than on the
 text, the ballot says so.
 
-**All six findings CONFIRM.** Not one was refuted, and one of the lens's own
-recorded dissents did not survive checking (D9).
+**All six findings CONFIRM.** Not one was refuted, and all three of the
+lens's recorded dissents hold (D9).
+
+**They are corroborations, not discoveries.** Every one of R6's six findings
+restates a defect lenses R1-R5 had already found and probed, and the
+round's own corroboration map
+(`docs/review/round-24-findings.md:128-136`) names each cluster. That is
+not a deduction from R6's value — it is the opposite. R6 reached the same
+six **independently, from a different model family, with no access to the
+in-house probes**, which is the strongest evidence this round has that the
+six are real rather than an artefact of one house style. D2a maps them.
 
 The lens's structural claims were checked first, because a lens that
 mis-describes the tree is not yet worth reading:
@@ -69,6 +82,33 @@ mis-describes the tree is not yet worth reading:
 | 69 pgTAP files in tree | 69 | holds |
 | `package.json` did not move | 0 files in diff | holds |
 | no pre-7A migration edited | confirmed | holds |
+
+---
+
+## D2a — R6 against R1-R5: six findings, six existing clusters
+
+Mapped against the corroboration map at
+`docs/review/round-24-findings.md:128-136`. **R6 opened no new defect
+class.** Every row below is a second (or fourth) independent arrival at a
+defect already on the round's books.
+
+| R6 | In-house cluster it corroborates | Note |
+|---|---|---|
+| F-1 BLOCKER | **R1/F-1** (MAJOR), **R4/F-1** (BLOCKER), **R4/F-2** (MAJOR) — *"Existence disclosed at `hidden` by the M4 reads"* | R4/F-1 already carries BLOCKER. R6 agrees on severity and mechanism |
+| F-2 MAJOR | **R1/F-2**, **R2/F-1** (both MAJOR), **R3/F-2** | *"All three cite case 52(b)'s manual revoke as the tree's own evidence"* — R6 makes four |
+| F-3 MAJOR | **R2/F-2** — the unresolved-document `lost` list | was a **single-lens** MAJOR; R6 makes it two |
+| F-4 MAJOR | **R3/F-1** — the unreachable no-context gate | was a **single-lens** MAJOR; R6 makes it two |
+| F-5 MAJOR | **R1/F-3, R1/F-4, R2/F-4, R2/F-5, R2/F-8, R2/F-10, R3/F-5** — *"the post-condition is point-in-time"* | R6 isolates `revoke_share` as the cleanest instance |
+| F-6 MODERATE | same cluster — *"the instruction row is an unguarded target"* | R6 rates it MODERATE where the cluster rates parts MAJOR |
+| Q-F dissent | **R1/F-5** | two lenses, independently |
+| dissent 1 | **R5/F-3** (MINOR), and R1's `×7` correction at `:156` | see D9 |
+
+**What this changes about the ballot.** Two findings that were *single-lens*
+MAJORs — R2/F-2 and R3/F-1 — are now corroborated across families. Under the
+round's own consolidation rule, R6's rows should be **ruled together with
+the in-house rows they agree with, one verdict per cluster with both
+addresses named**, rather than as a separate class of six. D11 puts them
+that way.
 
 ---
 
@@ -111,8 +151,14 @@ BLOCKER rather than a patch:
   `task:NULL:false:false,…,profile_fact:NULL:false:false` and its own message
   reads *"both are reported as existing and neither is named nor handed to
   her."*
+- assertion **20** — Ruth reads the document through a NAMED SHARE at
+  `view`, and every derived object is *"counted and not named, because a
+  share never propagates"* — `task:false,timeline_event:false,profile_fact:false`.
 - assertion **28** — the same for Kim on an unresolved-lineage document
   hidden from her by rung 3, *"her own share is reported as existing."*
+
+R6 cited 18 and 28; R1/R4 cited 18 and 20. **All three pin it**, and the fix
+has to rewrite 18, 20 and 28 together.
 
 Both tests pass today. Correcting the code turns them red, so this cannot be
 a quiet fix: the `hidden`/`log` line has to be ruled and 069 rewritten in the
@@ -363,16 +409,25 @@ R6 recorded three observations outside its findings. They were checked like
 everything else.
 
 1. **"The packet says the evidence diff contains eight SQL test files; it
-   contains seven." — HALF CONFIRMED, and the operative half FAILS.**
-   The count of **seven is right** (001, 002, 007, 066, 067, 068, 069). But
-   **no such claim exists**: `round-24-packet.md` states no file count at all
-   — it gives the command at `:27` and lists only the documents that moved
-   after the evidence head. The sole occurrences of "eight" across all four
-   round-24 documents refer to **the eight pointed questions Q-A–Q-H**
-   (`round-24-kickoff.md:42`, `round-24-findings.md:82`). This reads as a
-   question count misread as a file count. **PROPOSED: NOT ACCEPTED, as
-   having no referent** — and recorded here so the next lens does not
-   re-raise it.
+   contains seven." — CONFIRMED, with the referent named.**
+   `docs/review/round-24-packet.md:175` reads *"`supabase/migrations` ×4,
+   `supabase/tests` ×8, `scripts/concurrency/run.mjs`, and nothing else"*.
+   The diff holds **seven** (001, 002, 007, 066–069), so `×8` is wrong and
+   R6 is right.
+
+   **This ADR first recorded the opposite, and was wrong to.** The claim was
+   searched for as the word "eight" and as "8 sql"; the packet writes it as
+   `×8`, so the search missed it and the dissent was written up as having no
+   referent. It has one. The erroneous disposition is corrected here rather
+   than preserved, because this ballot has not been ruled and a wrong row
+   must not go to sign-off.
+
+   R6 is the **third** arrival: **R5/F-3** (MINOR) already names
+   `round-24-packet.md:175` among four non-reproducing counts, and **R1**
+   carries the same correction at `round-24-findings.md:156`
+   (*"the tree binding is `supabase/tests ×7`, not `×8`"*).
+   **PROPOSED: ACCEPTED, and consolidated into R5/F-3's verdict** rather
+   than ruled separately.
 2. **"The full execution tallies were not independently reproduced."** —
    accurate and already the packet's own position; `round-24-findings.md:593`
    records the same limit for R1–R5. **PROPOSED: RECORD, no action.**
@@ -431,9 +486,10 @@ everything else.
    deferral to 7B. R5 and R6 converge on asking for exactly this.
 10. **Q-A, Q-B, Q-C, Q-D, Q-E RATIFIED/CONFIRMED as R6 answers them** (D8),
     carrying Q-C's and Q-D's riders forward as 7C constraints.
-11. **R6's first recorded dissent NOT ACCEPTED** (D9) — the "eight SQL test
-    files" claim has no referent in the packet; the true count is seven and
-    the packet never states one. The other two RECORDED.
+11. **R6's first recorded dissent ACCEPTED and CONSOLIDATED into R5/F-3**
+    (D9) — `round-24-packet.md:175` does say `supabase/tests ×8` and the
+    true count is seven. R6 is the third lens to find it, after R5/F-3 and
+    R1. The other two dissents RECORDED, one as a 7C constraint.
 
 On sign-off, a second commit records the accepted verdicts and opens the fix
 work; the fixes themselves land on PR #26 before it merges, since R6's
