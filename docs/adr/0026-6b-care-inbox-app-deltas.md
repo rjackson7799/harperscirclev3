@@ -206,6 +206,8 @@ configuration hash, and the adapter's pin (`tests/ai/adapter.test.ts:345`)
 moved in the **same commit** — a hash whose pin lags is a hash that proves
 nothing.
 
+**AMENDED (round-23 follow-up, 2026-08-28).** The pair is now `hc-6b-3+ff1435280a36f8eb`. R2/F-3 moved the hash twice — `hc-6b-2+8ccb04d886cc1b6f` at `a69bb0e` (PR #19, the codec and quality) and `hc-6b-3+ff1435280a36f8eb` at `2b0b76a` (PR #20, the user-turn instructions and the delimiters) — the pin moving in the same commit each time (now `tests/ai/adapter.test.ts:497`), the name owner-ruled each time, ruled **FIXED** at ADR-0031 (round 23). The prose above is preserved exactly as written.
+
 ## D12 — the review legs' fixture concessions, argued in-file
 
 Three direct writes are conceded in `e2e/review.spec.ts`: the task proposal,

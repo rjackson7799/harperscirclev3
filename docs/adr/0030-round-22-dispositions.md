@@ -20,6 +20,8 @@ self-check is satisfied by measurement rather than by intent.
 **D17 and the tree now agree.** Every row the tree has fixed reads FIXED,
 and every row reading OWED names work that is genuinely outstanding.
 
+**AMENDED (round-23 follow-up, 2026-08-28).** The sentence above was true at `cfaa7d8` and false from `3c39e23` (PR #19, the same day) until ADR-0031's sign-off at `7b203b2`, when it became true again — with an `OWED` class of zero. Recorded so the next reader does not take it as standing for longer than it stood. The prose above is preserved exactly as written.
+
 *(The line below is the ballot as it was PUT, preserved unaltered.)*
 
 ~~**Status: PUT, NOT RULED.**~~ Proposed on evidence, awaiting owner sign-off.
