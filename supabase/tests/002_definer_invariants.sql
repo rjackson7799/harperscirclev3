@@ -49,6 +49,9 @@ select is((
     'arrival_auth_detail(p_arrival uuid)',
     'assert_claimed()',
     'assert_manual_flag()',
+    -- 7A M1: task assignment — the assignee's taint from her OWN vectors,
+    -- §4.5.6's two human paths, a §5.7 token bound to the pair for path 2
+    'assign_task(p_task uuid, p_member uuid, p_instruction text, p_share_document uuid, p_step_up_token text)',
     'auth_throttle(p_identifier text)',
     'build_dsc()',
     'cancel_arrival(p_arrival uuid)',
@@ -157,6 +160,9 @@ select is((
     'tsv_tasks()',
     'tsv_timeline_events()',
     'uid()',
+    -- 7A M1: revokes EXACTLY the assignment's shares (SHR-02), a
+    -- coordinator's keep list by id, closes the written instruction
+    'unassign_task(p_task uuid, p_keep_share_ids uuid[])',
     'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)',
     'write_extractions(p_arrival uuid, p_lease uuid, p_facts jsonb)',
     'write_proposals(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
@@ -175,7 +181,7 @@ select is((
   array['accept_invite','accept_sender','activate_forwarding',
         'adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
-        'assert_manual_flag','auth_throttle','cancel_arrival','check_quota',
+        'assert_manual_flag','assign_task','auth_throttle','cancel_arrival','check_quota',
         'claim_security_actions','claim_stage','close_extraction_run',
         'complete_security_action','consume_step_up','create_account',
         'create_arrival',
@@ -200,8 +206,10 @@ select is((
         'run_taint_sweep','scan_cache_lookup','sender_lookalike',
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','sweep_provenance',
-        'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the seventy-two boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+        'sweeper_pass',
+        -- 7A M1: the second assignment writer
+        'unassign_task']::name[],
+  'SECURITY DEFINER is exactly the seventy-four boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -355,6 +363,11 @@ with actual as (
   -- 6A M5: the receipt read — authenticated only, gated in-function on
   -- the arrival exactly as approve, reject and extractions_for are
   union all select 'receipt_for', 'authenticated'
+  -- 7A M1: the assignment writers — a member act, authorized in-function
+  -- (manage on the task; the assignee's own vectors). hc_pipeline is
+  -- deliberately absent: the AI has no path into assignment (PRD §6.5)
+  union all select 'assign_task', 'authenticated'
+  union all select 'unassign_task', 'authenticated'
   -- 5A M3: close_extraction_run is a trigger function — hc_internal-owned,
   -- granted to nobody; it appears in no grant row by design
 )
@@ -647,10 +660,14 @@ select is((
         'subjects_internal','subjects_internal_activate_forwarding',
         'subjects_internal_create',
         'tasks_internal','tasks_internal_revise','tasks_internal_write',
+        -- 7A M1: the written instruction's insert policy — the pair, no
+        -- source, taint = {schedule}; the claim machinery widened by
+        -- exactly that shape
+        'tasks_internal_write_instruction',
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated one hundred three');
+  'the hc_internal policy list is exactly the enumerated one hundred four');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:

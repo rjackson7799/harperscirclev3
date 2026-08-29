@@ -48,7 +48,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(50);
+select plan(52);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038/063 pattern).
@@ -104,6 +104,17 @@ begin
   execute 'set local role authenticated';
   v := hc.mint_step_up(p_op, p_target) ->> 'token';
   execute 'reset role';
+  perform set_config('t.' || p_slot, v, true);
+end $$;
+
+-- Read one value as postgres and stash it: object_shares holds no
+-- authenticated grant, so a share id is looked up OUTSIDE call_as and
+-- passed in as a literal.
+create function pg_temp.stash(p_slot text, p_sql text) returns void
+language plpgsql as $$
+declare v text;
+begin
+  execute p_sql into v;
   perform set_config('t.' || p_slot, v, true);
 end $$;
 
@@ -419,8 +430,8 @@ select is(pg_temp.scalar(format(
      returning 'landed' $$,
   current_setting('t.c1'), current_setting('t.s1'), current_setting('t.m_marisol'),
   current_setting('t.m_marisol'), current_setting('t.u_sarah'))),
-  'ERROR:P0001:record_write_unclaimed',
-  'a task with written_for but NO written_from is not an instruction and is still unclaimed — the exemption needs the pair');
+  'ERROR:23514:new row for relation "tasks" violates check constraint "tasks_instruction_pair"',
+  'a task with written_for but NO written_from is UNREPRESENTABLE — the pair is a CHECK on the table, so half an instruction cannot exist for the claim exemption to misread');
 
 select is(pg_temp.scalar(format(
   $$ insert into public.tasks (circle_id, subject_id, title, owner_member_id,
@@ -547,41 +558,56 @@ select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
   'Dan manages the task but not the documents domain: naming a legal document he cannot manage refuses — the share half of path 2 is share_object''s own bar');
 
 -- ----------------------------------------------------------------------------
--- 34–35 · SHR-02, THE FOREIGN SHARE: a share this assignment did not create
+-- 34–37 · SHR-02, THE FOREIGN SHARE: a share this assignment did not create
 --         is neither duplicated, adopted, nor revoked.
 -- ----------------------------------------------------------------------------
 select pg_temp.mint(current_setting('t.u_sarah')::uuid, 'share_object',
   'task:' || current_setting('t.t_fin') || '+document:' || current_setting('t.d_fin'), 'tok_fin');
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
-  $$ select (hc.assign_task(%L, %L, null, %L, %L)) ->> 'path' || '/' ||
-            (select count(*)::text from public.object_shares sh
+  $$ select (hc.assign_task(%L, %L, null, %L, %L)) ->> 'path' $$,
+  current_setting('t.t_fin'), current_setting('t.m_lena'), current_setting('t.d_fin'),
+  current_setting('t.tok_fin'))),
+  'share',
+  'the bank statement was ALREADY shared with Lena by a coordinator''s own act: path 2 still goes through as a share');
+
+select is(pg_temp.scalar(format(
+  $$ select (select count(*)::text from public.object_shares sh
               where sh.object_id = %L and sh.member_id = %L and sh.revoked_at is null)
             || '/' ||
-            (select (sh.created_by_assignment_of is null)::text from public.object_shares sh where sh.id = %L) $$,
-  current_setting('t.t_fin'), current_setting('t.m_lena'), current_setting('t.d_fin'),
-  current_setting('t.tok_fin'), current_setting('t.d_fin'), current_setting('t.m_lena'),
-  current_setting('t.sh_foreign'))),
-  'share/1/true',
-  'the bank statement was ALREADY shared with Lena by a coordinator''s own act: path 2 creates the task share and leaves the document''s foreign share as it is — one live row, still nobody''s assignment');
+            (select (sh.created_by_assignment_of is null)::text from public.object_shares sh where sh.id = %L)
+            || '/' ||
+            (select string_agg(sh.object_type::text, ',') from public.object_shares sh
+              where sh.created_by_assignment_of = %L and sh.revoked_at is null) $$,
+  current_setting('t.d_fin'), current_setting('t.m_lena'), current_setting('t.sh_foreign'),
+  current_setting('t.t_fin'))),
+  '1/true/task',
+  'ONE live row on the bank statement — the foreign one, neither duplicated nor adopted, still nobody''s assignment — and exactly one share created by this assignment: the task''s');
 
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
-  $$ select (hc.unassign_task(%L)) ->> 'shares_revoked' || '/' ||
-            (select (sh.revoked_at is null)::text from public.object_shares sh where sh.id = %L)
+  $$ select (hc.unassign_task(%L)) ->> 'shares_revoked' $$,
+  current_setting('t.t_fin'))),
+  '1',
+  'SHR-02 ONE WAY: unassigning revokes exactly the share the assignment created — the task''s, one row');
+
+select is(pg_temp.scalar(format(
+  $$ select (select (sh.revoked_at is null)::text from public.object_shares sh where sh.id = %L)
             || '/' ||
             (select count(*)::text from public.object_shares sh
               where sh.created_by_assignment_of = %L and sh.revoked_at is null) $$,
-  current_setting('t.t_fin'), current_setting('t.sh_foreign'), current_setting('t.t_fin'))),
-  '1/true/0',
-  'SHR-02 ONE WAY: unassigning revokes exactly the share the assignment created (the task''s) and the FOREIGN document share survives untouched — AC-PERM-10''s revoke half never reaches what it did not grant');
+  current_setting('t.sh_foreign'), current_setting('t.t_fin'))),
+  'true/0',
+  'and the FOREIGN document share survives untouched — AC-PERM-10''s revoke half never reaches what the assignment did not grant');
 
 -- ----------------------------------------------------------------------------
--- 36–39 · SHR-02, THE KEPT SHARE: a coordinator keeps one by id.
+-- 38–41 · SHR-02, THE KEPT SHARE: a coordinator keeps one by id.
 -- ----------------------------------------------------------------------------
+select pg_temp.stash('sh_doc_tainted', format(
+  $$ select sh.id::text from public.object_shares sh
+      where sh.created_by_assignment_of = %L and sh.object_type = 'document' and sh.revoked_at is null $$,
+  current_setting('t.t_tainted')));
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
-  $$ select (hc.unassign_task(%L, array[(select sh.id from public.object_shares sh
-        where sh.created_by_assignment_of = %L and sh.object_type = 'document' and sh.revoked_at is null)]))
-        ->> 'shares_kept' $$,
-  current_setting('t.t_tainted'), current_setting('t.t_tainted'))),
+  $$ select (hc.unassign_task(%L, array[%L::uuid])) ->> 'shares_kept' $$,
+  current_setting('t.t_tainted'), current_setting('t.sh_doc_tainted'))),
   '1',
   'a coordinator unassigns Lena and KEEPS the discharge-summary share by id (AC-TASK-7: "unless a coordinator explicitly keeps it")');
 
@@ -609,7 +635,7 @@ select is(pg_temp.scalar(format(
   'the task_unassigned entry labels who held it and counts what was revoked, kept and closed (PRD §8.8''s shape, carried to member unassignment)');
 
 -- ----------------------------------------------------------------------------
--- 40–42 · Keeping is a COORDINATOR's decision, and the keep list is exact.
+-- 42–44 · Keeping is a COORDINATOR's decision, and the keep list is exact.
 -- ----------------------------------------------------------------------------
 select pg_temp.mint(current_setting('t.u_sarah')::uuid, 'share_object',
   'task:' || current_setting('t.t_sched2') || '+document:' || current_setting('t.d_src'), 'tok_s2b');
@@ -618,12 +644,15 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   current_setting('t.t_sched2'), current_setting('t.m_lena'), current_setting('t.d_src'),
   current_setting('t.tok_s2b'))),
   'share',
-  'fixture: the parking-permit task assigned to Lena with the discharge summary named (she holds no schedule, so it is a crossing)');
+  'fixture: the parking-permit task assigned to Lena with the discharge summary named (she holds no schedule, so it is a crossing); the discharge summary''s share is the KEPT one from the case above, so only the task share is new');
 
+select pg_temp.stash('sh_task_sched2', format(
+  $$ select sh.id::text from public.object_shares sh
+      where sh.created_by_assignment_of = %L and sh.object_type = 'task' and sh.revoked_at is null $$,
+  current_setting('t.t_sched2')));
 select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
-  $$ select hc.unassign_task(%L, array[(select sh.id from public.object_shares sh
-        where sh.created_by_assignment_of = %L and sh.object_type = 'document' and sh.revoked_at is null)])::text $$,
-  current_setting('t.t_sched2'), current_setting('t.t_sched2'))),
+  $$ select hc.unassign_task(%L, array[%L::uuid])::text $$,
+  current_setting('t.t_sched2'), current_setting('t.sh_task_sched2'))),
   'ERROR:P0001:unassign_refused',
   'Dan holds manage on the task and is not a coordinator: a keep list from him refuses WHOLE — keeping a share past its assignment is a coordinator''s explicit decision');
 
@@ -634,13 +663,13 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   'a keep id that is not THIS assignment''s live share (the foreign bank-statement share) refuses whole — the remove_member precedent: an explicit decision, never a guess');
 
 -- ----------------------------------------------------------------------------
--- 43–46 · Refusal shapes: no holder · a done task · nonexistent · below manage.
+-- 45–48 · Refusal shapes: no holder · a done task · nonexistent · below manage.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
   $$ select (hc.unassign_task(%L)) ->> 'shares_revoked' $$,
   current_setting('t.t_sched2'))),
-  '2',
-  'a manage-holder who is not a coordinator CAN unassign without a keep list — both assignment shares revoked');
+  '1',
+  'a manage-holder who is not a coordinator CAN unassign without a keep list — this assignment''s one share (the task''s) revoked; the discharge summary''s kept share belongs to the OTHER assignment and is not touched');
 
 select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
   $$ select hc.unassign_task(%L)::text $$, current_setting('t.t_sched2'))),
@@ -660,7 +689,7 @@ select is(pg_temp.call_as(current_setting('t.u_ruth')::uuid, format(
   'a member at summary cannot assign — manage on the task is the bar (PRD §7.3: manage can assign; view "cannot change others'' items")');
 
 -- ----------------------------------------------------------------------------
--- 47 · The slice trap: hc.revise_object's task allowlist is NOT widened.
+-- 49 · The slice trap: hc.revise_object's task allowlist is NOT widened.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select hc.revise_object('task', %L, '{"status":"done"}'::jsonb)::text
@@ -670,7 +699,7 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   'status and owner_member_id stay unaddressable through the generic patch — the allowlist is title, detail, due_on, due_zone and nothing this migration adds');
 
 -- ----------------------------------------------------------------------------
--- 48 · Same holder: a quiet no-op (the set_grant precedent).
+-- 50 · Same holder: a quiet no-op (the set_grant precedent).
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select (hc.assign_task(%L, %L)) ->> 'changed' || '/' ||
@@ -683,8 +712,9 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   'assigning a task to the person who already holds it changes nothing and logs nothing');
 
 -- ----------------------------------------------------------------------------
--- 49–50 · Freeze: assignment refuses with the NAMED signature; unassignment
---         is permitted (it reduces reach — the remove_member precedent).
+-- 51–52 · Freeze: assignment refuses with the NAMED signature; unassignment
+--         by a live coordinator is permitted (it reduces reach — the
+--         remove_member precedent, set_grant's lower arm).
 -- ----------------------------------------------------------------------------
 do $$
 begin

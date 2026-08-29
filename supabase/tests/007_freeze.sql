@@ -365,14 +365,21 @@ select is(
    where n.nspname = 'hc' and p.prosrc like '%public.freezes%'),
   array['accept_invite','accept_sender','activate_forwarding',
         'adjudicate_freeze','approve_proposal',
+        -- 7A M1: assignment is a widening act and refuses under a freeze
+        -- with the named signature (PRD §7.5, set_grant's raise arm)
+        'assign_task',
         'circle_frozen','create_invite','grant_vectors',
         -- 6A M3: reject is approve's mirror and inherits its freeze
         -- refusal. A freeze suspends ALL interactive access (§3.8), and
         -- declining a proposal is an interactive act on the record
         'reject_proposal',
         'request_freeze',
-        'set_grant']::name[],
-  'exactly eleven hc functions reference freezes: the two writers, the two flag readers, the 1C pipeline predicate hc.circle_frozen (§4.2), 2A''s two FRZ-16 invite legs, set_grant''s no-new-grants raise check, accept_sender''s interactive-access closure (PRD §7.5), 4A M5''s activation closure (a freeze suspends ingestion; activation enables it), and 6A M3''s hc.reject_proposal (approve''s mirror refuses under a freeze exactly as approve does)');
+        'set_grant',
+        -- 7A M1: unassignment REDUCES reach, so under a freeze a live
+        -- coordinator may still perform it — the remove_member precedent,
+        -- set_grant's lower arm; the reference is that permission
+        'unassign_task']::name[],
+  'exactly thirteen hc functions reference freezes: the two writers, the two flag readers, the 1C pipeline predicate hc.circle_frozen (§4.2), 2A''s two FRZ-16 invite legs, set_grant''s no-new-grants raise check, accept_sender''s interactive-access closure (PRD §7.5), 4A M5''s activation closure (a freeze suspends ingestion; activation enables it), 6A M3''s hc.reject_proposal (approve''s mirror refuses under a freeze exactly as approve does), and 7A M1''s pair — assign_task refuses under a freeze as a widening act, unassign_task lets a live coordinator reduce under one');
 select is(
   (select coalesce(array_agg(p.proname order by p.proname), '{}'::name[])
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
