@@ -153,6 +153,33 @@ export type ProviderCall = {
   timeoutMs: number;
 };
 
+/** A call minus its timeout: WHAT goes on the wire, as opposed to how long
+ *  we wait for it. */
+export type ProviderRequest = Omit<ProviderCall, 'timeoutMs'>;
+
+/**
+ * THE ONE Messages envelope (round-16 R2/F-4, 5B queue step 4).
+ * `callProvider` sends exactly this, and the G9 harness submits exactly this
+ * inside the Batch API's `{custom_id, params}` wrapper — the only shape that
+ * genuinely differs between the two, and it is the provider's, not ours.
+ * Building the envelope here, once, is what makes "the eval measures what
+ * production sends" (§6.10) a property of the tree rather than of a
+ * reviewer's eye.
+ */
+export function messageParams(call: ProviderRequest): Anthropic.MessageCreateParamsNonStreaming {
+  return {
+    model: assertAllowedModel(call.model),
+    max_tokens: MAX_TOKENS,
+    thinking: { type: 'adaptive' },
+    output_config: {
+      effort: call.effort,
+      format: { type: 'json_schema', schema: call.schema },
+    },
+    system: call.system,
+    messages: call.messages,
+  };
+}
+
 /** How much dispatch room must remain AFTER honouring a retry-after for the
  *  in-attempt wait to be worth taking; below it, the lease machinery is the
  *  honest counter (6B B4/R2-F5). */
@@ -203,6 +230,7 @@ export async function callProvider(call: ProviderCall): Promise<AdapterResult<un
     return { outcome: 'unavailable', detail: 'no provider budget inside the lease', ...stamp };
   }
 
+  const params = messageParams(call);
   const startedAt = Date.now();
   let waitedForRateLimit = false;
   let message: Anthropic.Message;
@@ -212,20 +240,7 @@ export async function callProvider(call: ProviderCall): Promise<AdapterResult<un
       return { outcome: 'unavailable', detail: 'lease budget exhausted before dispatch', ...stamp };
     }
     try {
-      message = await client().messages.create(
-        {
-          model: modelId,
-          max_tokens: MAX_TOKENS,
-          thinking: { type: 'adaptive' },
-          output_config: {
-            effort: call.effort,
-            format: { type: 'json_schema', schema: call.schema },
-          },
-          system: call.system,
-          messages: call.messages,
-        },
-        { timeout: remainingMs },
-      );
+      message = await client().messages.create(params, { timeout: remainingMs });
       break;
     } catch (err) {
       if (err instanceof Anthropic.BadRequestError) {

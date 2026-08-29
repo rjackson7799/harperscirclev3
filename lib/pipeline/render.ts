@@ -68,6 +68,21 @@ export const STANDARD_LONG_EDGE = 1568;
 export const HIGH_LONG_EDGE = 2576;
 
 /**
+ * The encoding the pixels leave through (round-16 R2/F-3, 5B queue step 4).
+ * PNG for born-digital pages and rendered email (text and line art: lossless
+ * and small); JPEG for continuous-tone sources — scanned pages and photos —
+ * where PNG is pathological. Named here, used at every encode site, and a
+ * covered input of `inferenceConfiguration()`: a citation is only meaningful
+ * against the rendering it was produced from, and the quality a JPEG was
+ * written at is part of that rendering. Before this, `'jpeg', 90` was a
+ * literal at two sites and the pixels the model saw could change under an
+ * identical configuration hash.
+ */
+export const PNG_CODEC = 'png' as const;
+export const JPEG_CODEC = 'jpeg' as const;
+export const JPEG_QUALITY = 90;
+
+/**
  * R2/F-8 — the output ceiling is DERIVED from the request that consumes it,
  * not asserted beside it. Rendered pages ride ONE Messages request as inline
  * base64 (§6.2 forbids the Files API), the API accepts 32 MB per request,
@@ -448,7 +463,7 @@ export async function normalizeArrival(
       let encoded: Uint8Array;
       try {
         encoded = new Uint8Array(
-          asPng ? await canvas.encode('png') : await canvas.encode('jpeg', 90),
+          asPng ? await canvas.encode(PNG_CODEC) : await canvas.encode(JPEG_CODEC, JPEG_QUALITY),
         );
       } catch {
         return { outcome: 'unsupported_type' };
@@ -529,6 +544,58 @@ const EMAIL_PAGE_H = 1568;
 const EMAIL_MARGIN = 96;
 const EMAIL_FONT_PX = 28;
 const EMAIL_LINE_H = 40;
+
+/**
+ * The email rendition's LAYOUT, exported (round 21; ADR-0023 D26).
+ *
+ * §6.4's citation space is the rendered page, so a label that claims a region
+ * of an email rendition is claiming something about THESE numbers. Until this
+ * export existed the G9 corpus carried its own guess at them — line-fraction
+ * boxes over a notional page that WAS the text block — and the guess was
+ * wrong on every one of the twenty-three email labels: a perfect reader landed
+ * none of them, which put `provider`, `appointment_date` and
+ * `appointment_time` under `CITATION_FLOOR` by arithmetic alone.
+ *
+ * The corpus builder cannot import this module (it is plain ESM, this is TS
+ * behind `server-only`), so it necessarily restates the arithmetic. What makes
+ * that safe is that `tests/eval/corpus.test.ts` computes the true bands FROM
+ * HERE and fails if a label disagrees — the convention can drift from the
+ * renderer only by turning a leg red.
+ */
+export const EMAIL_LAYOUT = {
+  pageW: EMAIL_PAGE_W,
+  pageH: EMAIL_PAGE_H,
+  margin: EMAIL_MARGIN,
+  lineH: EMAIL_LINE_H,
+  fontPx: EMAIL_FONT_PX,
+} as const;
+
+/** The normalised §6.4 band a given rendered line occupies — the full content
+ *  width of that line, which is what a crop of "the value is on this line"
+ *  shows a person. `line` is 0-indexed WITHIN its page. */
+export function emailLineBand(line: number): [number, number, number, number] {
+  const round4 = (n: number) => Math.round(n * 10_000) / 10_000;
+  return [
+    round4(EMAIL_MARGIN / EMAIL_PAGE_W),
+    round4((EMAIL_MARGIN + line * EMAIL_LINE_H) / EMAIL_PAGE_H),
+    round4((EMAIL_PAGE_W - 2 * EMAIL_MARGIN) / EMAIL_PAGE_W),
+    round4(EMAIL_LINE_H / EMAIL_PAGE_H),
+  ];
+}
+
+/** How the rendition wraps a body into lines — exported so the corpus suite
+ *  can locate a labelled value's true line rather than assume the source
+ *  line survives unwrapped. */
+export function emailWrappedLines(text: string): string[] {
+  const measureCtx = createCanvas(1, 1).getContext('2d');
+  measureCtx.font = `${EMAIL_FONT_PX}px sans-serif`;
+  return wrapLines((s) => measureCtx.measureText(s).width, text, EMAIL_PAGE_W - 2 * EMAIL_MARGIN);
+}
+
+/** Lines per rendered page — the pagination the bands are indexed within. */
+export const EMAIL_LINES_PER_PAGE = Math.floor(
+  (EMAIL_PAGE_H - 2 * EMAIL_MARGIN) / EMAIL_LINE_H,
+);
 
 type EmailMessage = { subject: string; from: string; body: string };
 
@@ -687,7 +754,7 @@ async function renderEmailMessage(
     }
     let encoded: Uint8Array;
     try {
-      encoded = new Uint8Array(await canvas.encode('png'));
+      encoded = new Uint8Array(await canvas.encode(PNG_CODEC));
     } catch {
       return { outcome: 'unsupported_type' };
     }
@@ -773,7 +840,7 @@ async function normalizeImage(
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     width = canvas.width;
     height = canvas.height;
-    encoded = new Uint8Array(await canvas.encode('jpeg', 90));
+    encoded = new Uint8Array(await canvas.encode(JPEG_CODEC, JPEG_QUALITY));
   } catch {
     return { outcome: 'unsupported_type' };
   }

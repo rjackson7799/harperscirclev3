@@ -6,7 +6,12 @@ import { CORPUS_ROOT, corpusManifest } from '@/lib/eval/manifest';
 import { developmentCorpus, readCorpusFile, type CorpusItem } from '@/lib/eval/corpus';
 import { blindCorpus } from '@/lib/eval/blind';
 import { isKnownField, riskClassFor } from '@/lib/extraction/fields';
-import { normalizeArrival } from '@/lib/pipeline/render';
+import {
+  EMAIL_LINES_PER_PAGE,
+  emailLineBand,
+  emailWrappedLines,
+  normalizeArrival,
+} from '@/lib/pipeline/render';
 import { sniffMime } from '@/lib/pipeline/mime';
 
 // ============================================================================
@@ -436,5 +441,73 @@ describe('B10 · §4.2 — readable support, measured through the pipeline itsel
   it('the purchased size: forty blind items, sixteen development', () => {
     expect(blind).toHaveLength(40);
     expect(dev).toHaveLength(16);
+  });
+});
+
+// ============================================================================
+// Round 21 · R7/F-4 / ADR-0023 D26 — an email label's geometry is the
+// RENDITION's, computed from the renderer, never guessed alongside it.
+//
+// The corpus used to compute an email label as `[0, i/lines, 1, 1/lines]` — a
+// notional page that WAS the text block. §6.3 paints no such page: it paints
+// 1212 × 1568 with a 96 px margin and a 40 px line box, so every line sits in
+// the top quarter and none spans the width. Measured against the real
+// rendition, a perfect reader landed 0 of 23 email citations, and because 6B
+// B10 made citation accuracy load-bearing for signing (R3/F-7,
+// CITATION_FLOOR = 0.90) that put `provider` (0.8519), `appointment_date`
+// (0.7500) and `appointment_time` (0.7500) below the floor by ARITHMETIC —
+// unreachable for any reader, the same shape D11 found for recall.
+//
+// `scripts/fixtures/g9-build.mjs` restates the layout because it cannot import
+// TS behind `server-only`. THIS BLOCK IS WHAT MAKES THAT SAFE: every label is
+// recomputed here from the renderer's own exports, so the builder's copy can
+// drift only by turning a leg red.
+// ============================================================================
+describe('Round 21 · email labels ARE the rendered line band (R7/F-4)', () => {
+  const emails = [...dev, ...blind].filter((i) => i.source_type === 'email_text');
+
+  it('there are email items in BOTH partitions to check', () => {
+    expect(emails.length).toBeGreaterThanOrEqual(6);
+    expect(emails.some((i) => i.partition === 'development')).toBe(true);
+    expect(emails.some((i) => i.partition === 'blind')).toBe(true);
+  });
+
+  it('every email label equals the band the renderer actually paints', async () => {
+    let checked = 0;
+    for (const item of emails) {
+      const bytes = readCorpusFile(item);
+      const result = await normalizeArrival(bytes, sniffMime(bytes));
+      expect(result.outcome, `${item.id} renders`).toBe('rendered');
+      if (result.outcome !== 'rendered') continue;
+
+      // The rendition's OWN wrapping decides which line a value lands on —
+      // never the source line number, which a wrap would silently shift.
+      const lines = emailWrappedLines(result.text ?? '');
+      for (const label of item.labels) {
+        const idx = lines.findIndex((l) => l.includes(String(label.value)));
+        expect(idx, `${item.id}:${label.field} is painted somewhere`).toBeGreaterThanOrEqual(0);
+
+        const page = Math.floor(idx / EMAIL_LINES_PER_PAGE) + 1;
+        const within = idx % EMAIL_LINES_PER_PAGE;
+        expect(label.page, `${item.id}:${label.field} page`).toBe(page);
+        expect(label.bbox, `${item.id}:${label.field} band`).toEqual(emailLineBand(within));
+        checked++;
+      }
+    }
+    // The count the finding was argued on: 23 email labels across six items.
+    expect(checked).toBe(23);
+  }, 120_000);
+
+  it('the OLD line-fraction convention cannot come back unnoticed', () => {
+    for (const item of emails) {
+      for (const label of item.labels) {
+        const [x, , w] = label.bbox;
+        // The discarded form was full-bleed: x = 0 and w = 1. The rendition
+        // has a margin, so a label claiming the whole width is claiming
+        // something §6.3 never paints.
+        expect(x, `${item.id}:${label.field} starts at the margin`).toBeGreaterThan(0);
+        expect(w, `${item.id}:${label.field} is not full-bleed`).toBeLessThan(1);
+      }
+    }
   });
 });

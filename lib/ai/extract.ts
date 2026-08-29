@@ -2,8 +2,18 @@ import 'server-only';
 import type Anthropic from '@anthropic-ai/sdk';
 import { EXTRACT_EFFORT, EXTRACT_MODEL, providerTimeoutMs } from '@/lib/ai/config';
 import { EXTRACTION_SCHEMA, P5_CAPS } from '@/lib/ai/schema';
-import { EXTRACT_SYSTEM_PROMPT, delimitedDocumentText } from '@/lib/ai/prompt';
-import { callProvider, imageBlocks, operatorMessages, type AdapterResult } from '@/lib/ai/client';
+import {
+  EXTRACT_SYSTEM_PROMPT,
+  delimitedDocumentText,
+  extractUserInstruction,
+} from '@/lib/ai/prompt';
+import {
+  callProvider,
+  imageBlocks,
+  operatorMessages,
+  type AdapterResult,
+  type ProviderRequest,
+} from '@/lib/ai/client';
 import { isKnownField } from '@/lib/extraction/fields';
 import type { RenderedPage, SourceClass } from '@/lib/pipeline/render';
 
@@ -112,27 +122,52 @@ const CATEGORIES = new Set([
   'other',
 ]);
 
+/** What an extraction request is built FROM: B2's rendering, exactly as the
+ *  worker and the G9 harness both receive it from `normalizeArrival`. */
+export type ExtractionSource = Pick<ExtractInput, 'pages' | 'text' | 'sourceClass'>;
+
+/**
+ * THE ONE construction site for an extraction request's user turn (round-16
+ * R2/F-4, 5B queue step 4). `scripts/eval/run.ts` used to assemble these same
+ * three steps by hand beside the worker's copy, so the bands would have been
+ * signed from a request equal to production's only by inspection. Now the
+ * harness calls this and builds nothing.
+ */
+export function extractionBlocks(source: ExtractionSource): Anthropic.ContentBlockParam[] {
+  const blocks: Anthropic.ContentBlockParam[] = [];
+  if (source.pages.length > 0) blocks.push(...imageBlocks(source.pages));
+  // §6.3: born-digital PDFs pass the text layer ALONGSIDE the page images —
+  // the text carries the characters, the image carries the geometry.
+  if (source.text && source.text.trim() !== '') {
+    blocks.push({ type: 'text', text: delimitedDocumentText(source.text) });
+  }
+  // The user-turn instruction lives in lib/ai/prompt.ts and is a covered
+  // input of the identity hash (R2/F-3's residue) — never a literal here.
+  blocks.push({ type: 'text', text: extractUserInstruction(source.sourceClass) });
+  return blocks;
+}
+
+/**
+ * The extraction call as the worker makes it, minus the timeout (that is the
+ * lease's business, not the request's). `extractFromArrival` dispatches this
+ * through `callProvider`; the harness puts the same object through
+ * `messageParams` and submits it. One call, two dispatchers.
+ */
+export function extractionCall(source: ExtractionSource, operatorNotes: string[]): ProviderRequest {
+  return {
+    model: EXTRACT_MODEL,
+    system: EXTRACT_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: extractionBlocks(source) }, ...operatorMessages(operatorNotes)],
+    schema: EXTRACTION_SCHEMA as unknown as Record<string, unknown>,
+    effort: EXTRACT_EFFORT,
+  };
+}
+
 export async function extractFromArrival(
   input: ExtractInput,
 ): Promise<AdapterResult<ExtractOutput>> {
-  const blocks: Anthropic.ContentBlockParam[] = [];
-  if (input.pages.length > 0) blocks.push(...imageBlocks(input.pages));
-  // §6.3: born-digital PDFs pass the text layer ALONGSIDE the page images —
-  // the text carries the characters, the image carries the geometry.
-  if (input.text && input.text.trim() !== '') {
-    blocks.push({ type: 'text', text: delimitedDocumentText(input.text) });
-  }
-  blocks.push({
-    type: 'text',
-    text: `The source is a ${input.sourceClass.replace(/_/g, ' ')}. Return the document's facts and its filing summary.`,
-  });
-
   const result = await callProvider({
-    model: EXTRACT_MODEL,
-    system: EXTRACT_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: blocks }, ...operatorMessages(input.operatorNotes)],
-    schema: EXTRACTION_SCHEMA as unknown as Record<string, unknown>,
-    effort: EXTRACT_EFFORT,
+    ...extractionCall(input, input.operatorNotes),
     timeoutMs: providerTimeoutMs(input.deadlineIso, input.now),
   });
   if (result.outcome !== 'ok') return result;

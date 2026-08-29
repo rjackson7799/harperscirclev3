@@ -46,6 +46,13 @@
 //   HC-FIXTURE-CONTEXT     → HTTP 200, stop_reason
 //                            "model_context_window_exceeded" (R2/F-9)
 //   HC-FIXTURE-HANG        → no response at all, so OUR timeout is what cuts
+//   HC-FIXTURE-NULLFIELD   → an INTERPRET answer carrying a profile_fact whose
+//                            `domain` is valid but whose `field` and `value`
+//                            are null — the shape that drafts cleanly and then
+//                            raises 23502 at approval (round 21 / R4/F-12).
+//                            Domain is deliberately valid so the proposal
+//                            reaches the guard under test rather than the
+//                            older domain guard.
 // ============================================================================
 
 import http from 'node:http';
@@ -209,6 +216,20 @@ function interpretationAnswer(text) {
     anomaly_flags: [],
   });
 
+  // Round 21 (R4/F-12): the shape that used to draft cleanly and raise a raw
+  // 23502 inside hc.approve_proposal. `domain` is VALID on purpose — the point
+  // is to clear the older domain guard and land on the field/value one.
+  if (text.includes('HC-FIXTURE-NULLFIELD')) {
+    proposals.push({
+      kind: 'profile_fact',
+      title: 'A fact with no field',
+      summary: 'Drafts cleanly; NOT NULL refuses it at approval.',
+      ...blank,
+      domain: 'health',
+      anomaly_flags: [],
+    });
+  }
+
   for (const fact of facts.slice(0, 20)) {
     const existing = currentByField.get(fact.field);
     if (existing && String(existing.value) !== String(fact.value)) {
@@ -283,7 +304,10 @@ export async function startAnthropicFixtureServer(options = {}) {
         res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error' } }));
         return;
       }
-      requests.push({ url: req.url, raw, body });
+      // The HEADERS ride beside the body (R2/F-12): `server-side-fallback` is
+      // an `anthropic-beta` header value, not a body key, so an absence
+      // asserted over `raw` alone could never fail. Node lower-cases the names.
+      requests.push({ url: req.url, headers: { ...req.headers }, raw, body });
 
       const text = requestText(body);
       const model = body.model ?? 'claude-opus-5';

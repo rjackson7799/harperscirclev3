@@ -1,8 +1,23 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
-import { HIGH_LONG_EDGE, RENDER_CEILINGS, STANDARD_LONG_EDGE } from '@/lib/pipeline/render';
+import {
+  HIGH_LONG_EDGE,
+  JPEG_CODEC,
+  JPEG_QUALITY,
+  PNG_CODEC,
+  RENDER_CEILINGS,
+  STANDARD_LONG_EDGE,
+} from '@/lib/pipeline/render';
 import { EXTRACTION_SCHEMA, INTERPRETATION_SCHEMA, P5_CAPS } from '@/lib/ai/schema';
-import { EXTRACT_SYSTEM_PROMPT, INTERPRET_SYSTEM_PROMPT } from '@/lib/ai/prompt';
+import {
+  EXTRACT_SYSTEM_PROMPT,
+  EXTRACT_USER_INSTRUCTION_TEMPLATE,
+  INTERPRET_SYSTEM_PROMPT,
+  INTERPRET_USER_INSTRUCTION,
+  delimitedDocumentText,
+  delimitedFacts,
+  delimitedRecord,
+} from '@/lib/ai/prompt';
 
 /**
  * The adapter's configuration (slice-5 plan B3; TSD §6.1, §6.10; M3's
@@ -73,8 +88,19 @@ export const INTERPRET_EFFORT = 'high' as const;
  * `max_tokens`, and the honest reason not to here is that **the G9 eval
  * harness runs through the Batch API, which does not stream** — keeping the
  * worker non-streaming means the eval measures the same call shape the worker
- * uses. 24k is comfortably inside the SDK's non-streaming timeout scaling,
- * and our own client timeout (below) is tighter than either.
+ * uses.
+ *
+ * What the SDK actually does with 24k (round-16 R2/F-15, the accepted
+ * correction, carried out at the step-4 follow-up): its non-streaming guard
+ * REFUSES any `max_tokens` above ~21,333 when no explicit timeout is given —
+ * `_calculateNonstreamingTimeout` throws "Streaming is required for
+ * operations that may take longer than 10 minutes" (60·60·24000/128000 =
+ * 675 s > 600 s). 24k is therefore NOT inside that scaling. The guard is
+ * BYPASSED, not satisfied: `callProvider` passes `{ timeout }` on every call
+ * (the lease's budget, §1.9), and an explicit timeout skips the check. Remove
+ * that option and the worker never dispatches — proven at step 4, where the
+ * R2/F-2 hang leg with the option deleted failed in 24 ms without contacting
+ * the fixture. The value may stay; this comment must not claim the opposite.
  */
 export const MAX_TOKENS = 24_000;
 
@@ -114,13 +140,38 @@ export function inferenceConfiguration(): Record<string, unknown> {
     thinking: { type: 'adaptive' },
     caps: P5_CAPS,
     schema: { extraction: EXTRACTION_SCHEMA, interpretation: INTERPRETATION_SCHEMA },
-    prompts: { extract: EXTRACT_SYSTEM_PROMPT, interpret: INTERPRET_SYSTEM_PROMPT },
+    prompts: {
+      extract: EXTRACT_SYSTEM_PROMPT,
+      interpret: INTERPRET_SYSTEM_PROMPT,
+      // R2/F-3's residue (5B queue, step-4 follow-up): the user-turn
+      // instructions and the delimiter tags are what the model reads beside
+      // the images and the system prompt. They were literals in the
+      // dispatchers and the builders, outside this hash, until now. The
+      // delimiters are covered by their output on a placeholder, so the
+      // exact wrapping bytes are what is hashed.
+      user_turn: {
+        extract: EXTRACT_USER_INSTRUCTION_TEMPLATE,
+        interpret: INTERPRET_USER_INSTRUCTION,
+      },
+      delimiters: {
+        document_text: delimitedDocumentText('{text}'),
+        subject_record: delimitedRecord('{json}'),
+        extracted_facts: delimitedFacts('{json}'),
+      },
+    },
     // §6.3's render rules are part of the configuration: a citation is only
     // meaningful against the rendering it was produced from.
     render: {
       standard_long_edge: STANDARD_LONG_EDGE,
       high_long_edge: HIGH_LONG_EDGE,
       ceilings: RENDER_CEILINGS,
+      // R2/F-3: the encoding the pixels leave through. The quality a JPEG
+      // page was written at is part of what the model saw; it was a literal
+      // at the encode sites and outside this hash until 5B queue step 4.
+      encoding: {
+        lossless: PNG_CODEC,
+        continuous_tone: { codec: JPEG_CODEC, quality: JPEG_QUALITY },
+      },
     },
   };
 }
@@ -148,8 +199,26 @@ export function configurationHash(): string {
  *  hash moved and §6.10 says the version moves with it. The rendered pixels
  *  themselves are unchanged (RND-01's suite and the spike pin geometry,
  *  tiers and encodings across the engine swap); no band is signed against
- *  either name — G9 is open and BAND_ARTIFACT_ALLOWLIST is empty. */
-const PROMPT_VERSION_NAME = 'hc-6b-1';
+ *  either name — G9 is open and BAND_ARTIFACT_ALLOWLIST is empty.
+ *
+ *  Bumped hc-6b-1 → hc-6b-2 at 5B queue step 4 (R2/F-3): the JPEG codec and
+ *  quality the pixels leave through joined the render block above, so the
+ *  configuration hash moved and, by the 6B B1 precedent, the name moves with
+ *  it — an OWNER decision, taken 2026-08-28 over keeping the name. The
+ *  rendered pixels are again unchanged (same 'jpeg', same 90; only the
+ *  identity grew more honest), and still no band is signed against any
+ *  name: no G9 run has happened, so none is wasted. Any future eval run is
+ *  against THIS pair (§6.10).
+ *
+ *  Bumped hc-6b-2 → hc-6b-3 at the step-4 follow-up (R2/F-3's residue): the
+ *  row named THREE omissions and step 4 covered one; the user-turn
+ *  instructions and the delimiter builders joined the prompts block above,
+ *  so the hash moved again and — by the same rule, owner-ruled again on
+ *  2026-08-28 over keeping `hc-6b-2` — the name with it. Taken now because a
+ *  second move is free until the first G9 run and costs a re-run after it.
+ *  hc-6b-2 existed one day and nothing ever ran against it. Bytes on the wire
+ *  are unchanged: the sentences moved home, they did not change. */
+const PROMPT_VERSION_NAME = 'hc-6b-3';
 
 /**
  * `<name>+<configuration hash>`. Bumping the name without the configuration

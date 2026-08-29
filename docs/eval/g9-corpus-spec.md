@@ -82,6 +82,17 @@ Max recall's arithmetic is thereby 1.0 for every banded field: the §6
 floors are REACHABLE at last, and what keeps G9 closed is the gate
 itself — a completed blind run, §6.A's rule, and the owner's signature.
 
+> **MARKER (2026-08-27, ADR-0023 D26).** True of RECALL, and only of
+> recall. The citation half added in the same increment (R3/F-7) has a
+> ceiling of its own: the six email items' labels are line-fraction boxes
+> (`[0, i / lines.length, 1, 1 / lines.length]`) that the §6.3 rendition
+> never paints — it draws line *i* at `y = (96 + 40i) / 1568` with height
+> `0.0255`. Measured: a perfect reader lands **0 of 23** email citations,
+> capping `provider` at 0.8519 and `appointment_date` / `appointment_time`
+> at 0.7500, all below `CITATION_FLOOR` 0.90. **For those three fields the
+> arithmetic, not the gate, is what keeps G9 closed.** The prose above is
+> preserved as written; the fix is OWED at ADR-0023 D26.
+
 ---
 
 ## 2. The two partitions, and why the split is structural
@@ -195,6 +206,15 @@ completed blind run over this corpus, §6.A's mechanical rule, and the
 owner's signature on the result. `BAND_ARTIFACT_ALLOWLIST` stays EMPTY
 until that happens, and every field ships all-high-risk (§6.5).
 
+> **MARKER (2026-08-27, ADR-0023 D26).** The §4 minimums are MET exactly as
+> stated — this marker is about a different axis. §6.A also requires
+> citation accuracy ≥ 0.90, and on that axis three banded fields cannot
+> reach the floor whatever a reader does: `provider` 0.8519,
+> `appointment_date` 0.7500, `appointment_time` 0.7500, because 20 blind
+> email labels carry boxes the rendition never paints. "The GATE, not the
+> arithmetic" is true of recall and false of citation for those three. Fix
+> OWED — see ADR-0023 D26.
+
 **The honest statistical reading stands.** Twelve to twenty-seven
 supporting labels put a real interval around a measured number — that
 is what the purchase bought — but a measured 1.00 at n = 12 is still
@@ -256,6 +276,14 @@ mechanical rule by which a run's numbers earn a signable row.
 | `appointment_date` | high | 0.95 | 0.90 | 1.0 | yes — unsigned |
 | `appointment_time` | high | 0.95 | 0.90 | 1.0 | yes — unsigned |
 | `document_date` | standard | 0.95 | 0.95 | 1.0 | yes — unsigned |
+
+> **MARKER (2026-08-27, ADR-0023 D26).** The `Reachable?` column is the
+> RECALL ceiling and is correct as written. It is not the whole signing
+> test: §6.A also requires citation accuracy ≥ 0.90, and on that axis
+> `provider` (0.8519), `appointment_date` (0.7500) and `appointment_time`
+> (0.7500) are **UNREACHABLE as the corpus stands** — the email labels'
+> boxes are not where the rendition puts the glyphs. No row above moves;
+> the fix is OWED at ADR-0023 D26.
 
 ### 6.A The threshold rule — how a measured number becomes a band (R6/F-4)
 
@@ -331,6 +359,36 @@ part, not reading.
    floors do not move to meet it. Lowering a floor to what the apparatus
    can currently demonstrate would be exactly the argued-around gate this
    spec exists to prevent.
+
+> **MARKER (2026-08-28, round-22 follow-up).** **Point 4 is SUPERSEDED, and
+> its own remedy has been taken.** §7 **row 1 was BOUGHT at 6B B10** — the
+> blind partition went 12 → 40 items, five of them email — and §4 was
+> restated against the readable set. The `Signable?` column point 4 refers
+> to no longer exists: §6's table now reads `Reachable? yes — unsigned` for
+> all twelve fields, at **max recall 1.0**.
+>
+> **The citation axis then grew its own ceiling and lost it again.** The
+> same commit that bought the corpus made citation accuracy load-bearing
+> for signing (R3/F-7, `CITATION_FLOOR` 0.90), and the corpus's email
+> labels were line-fraction boxes the §6.3 rendition never paints — **0 of
+> 23 landing**, capping `provider` at 0.8519 and `appointment_date` /
+> `appointment_time` at 0.7500, below the floor for any reader. That was
+> ruled at ADR-0023 **D26** and fixed at PR #16: **23 of 23 land, and max
+> citation accuracy is 1.0 for all twelve fields.**
+>
+> **So no arithmetic ceiling remains, on either axis.** What keeps G9
+> closed is now the GATE and nothing else — a completed BLIND run, the
+> floors above, and the owner's signature (`docs/ops/ai-provider.md` §5:
+> G9-1 … G9-5, all still ☐, and gated in turn on G3's terms and a
+> credential).
+>
+> **What that does NOT mean.** Rule 3 above is all-or-nothing: a run in
+> which any single field misses any one floor still yields an unsignable
+> manifest, which `loadBands` refuses as `artifact_partial`, and the
+> pipeline stays all-high. The ceiling clearing made signing **possible**,
+> not likely.
+>
+> The prose above is preserved exactly as written.
 
 ---
 

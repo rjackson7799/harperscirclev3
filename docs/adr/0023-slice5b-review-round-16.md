@@ -566,6 +566,18 @@ in neither the delivered set nor the named-exclusion set.
 corpus spec row — and it composes with D11, which the owner must answer
 first. RND-01's coverage cell must stop reading "the table row by row"
 until it is settled; see D13.
+> **MARKER (2026-08-27, D26).** All three consequences above were measured
+> at `main` = `4f7a9d7`, and two are no longer true of the tree. **1 is
+> SPENT**: Q6 settled on RENDER at 6B B2 (`441f610`), so no path returns
+> `pageCount` 0 and every email fact now cites a rendition that exists.
+> **3 is SPENT**: 6B B10 (`9c33e0c`) bought §7 row 1 and the BLIND
+> partition gained five email items. **2 is LIVE and larger**: the
+> line-fraction convention was carried into all five new blind items, and a
+> perfect reader lands **0 of 23** email citations — which now costs three
+> banded fields their signability. D26 rules item 5 and states the
+> arithmetic. **The prose above is preserved as written, and no verdict
+> moves: R7/F-4 stays `OWED/OWNER`.**
+
 
 ---
 ## D13 — OWNER DECISION: `mupdf` is AGPL-3.0-or-later, and no governance document says so (R7/F-1)
@@ -770,10 +782,10 @@ says so in the argument.
 | F-1 | MAJOR | **FIXED** | `draftPayloads` now takes the `BandMode` and calls `effectiveRiskClass`; `processInterpret` loads bands exactly as `processExtract` does. The `riskClassFor` import is gone from the route entirely, so the catalogue is reachable from the worker ONLY through the band mode — lint proved the bypass was the sole user. `0ae61f3` RED → `681e839` GREEN. |
 | F-2 | MAJOR | **FIXED** | `containsInstruction` collapses any run of non-alphanumerics to one space before searching, so the phrase matches however it is written — `"do not"`, `"do-not"`, `"do  not"`, or split across a line break. Same commits as F-1. |
 | F-3 | MINOR | **FIXED** | The reviewer's analysis was exactly right: the trailing boundary test was doing no work. Dropping it catches `Stopping`/`Stopped`/`Starting`/`Holding`/`Discontinued` while the LEADING boundary still excludes `restarted` and `household` — both negatives are asserted in the same test so a future widening cannot revive them. Same commits as F-1. |
-| F-4 | MINOR | **OWED** | `typeof null === 'object'`, so `fields: null` passes the shape guard and throws at the field loop — the one malformed shape that does not fail closed, and it lands in an unacked-redelivery poison loop. One `!artifact.fields ||`. Reachability requires a signed artifact, hence not urgent. |
+| F-4 | MINOR | **FIXED** | `typeof null === 'object'`, so `fields: null` passes the shape guard and throws at the field loop — the one malformed shape that does not fail closed, and it lands in an unacked-redelivery poison loop. One `!artifact.fields ||`. Reachability requires a signed artifact, hence not urgent. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-5 | MINOR | **ACCEPTED-NOTE** | `confidenceBand` has no consumer, no test, and its docblock's "slice 5 records the answer" is false — nothing records a band. ADR-0022's docblock is corrected rather than the function deleted: slice 6 is its consumer and the `null`-means-two-things ambiguity should be resolved *before* that screen is written, not after. |
-| F-6 | MINOR | **OWED** | `HC_BANDS_ARTIFACT` appears in exactly one file and in no ops row, so an owner can complete every G9 checklist step and still run all-high forever, with no log line reporting the band mode. Add the row and a mode log. |
-| F-7 | MINOR | **OWED** | `artifact_partial` has five rejection conditions and one test. All five behave correctly (verified by the reviewer), so this is coverage, not correctness — but in the file the packet calls "must not be wrong", an untested branch is one a refactor can invert. |
+| F-6 | MINOR | **FIXED** | `HC_BANDS_ARTIFACT` appears in exactly one file and in no ops row, so an owner can complete every G9 checklist step and still run all-high forever, with no log line reporting the band mode. Add the row and a mode log. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-7 | MINOR | **FIXED** | `artifact_partial` has five rejection conditions and one test. All five behave correctly (verified by the reviewer), so this is coverage, not correctness — but in the file the packet calls "must not be wrong", an untested branch is one a refactor can invert. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-8 | OBS | **NOTED** | `readonly` is erased at runtime; `Object.freeze` is a one-word improvement. No constructible exploit — mutating it requires code execution inside the bundle, at which point `loadBands` can be called with an explicit allowlist anyway. |
 | F-9 | OBS | **NOTED** | Ordering is correct and deliberate (digest before parse). The missing size bound is unreachable while the allowlist is empty; worth a `statSync` when G9 opens. |
 | F-10 | OBS | **NOTED** | `precision`/`recall` are declared and unvalidated. The corpus spec already says nothing reads them until the owner signs, so it is a stated gap. Composes with D11. |
@@ -784,19 +796,19 @@ says so in the argument.
 | # | Sev | Verdict | Argument |
 |---|---|---|---|
 | F-1 | **BLOCKER** | **FIXED** | D5. The pin compared a value to itself; now a literal. |
-| F-2 | MAJOR | **OWED** | The timeout test's deadline (1.5 s) is under `FINALIZE_RESERVE_MS` (20 s), so `providerTimeoutMs` returns 0 and the request is never dispatched — the 1 ms runtime proves it. The `HC-FIXTURE-HANG` branch is dead code at the gate, and §1.9's "our timeout cuts, not the platform's" is unproven. Fix the fixture's deadline. |
-| F-3 | MAJOR | **OWED** | The configuration hash omits the trailing user instruction, the delimiter builders, and `asJPEG(90)` + the codec choice — so the *pixels the model sees* can change with an identical hash. Now that D5 made the hash load-bearing, widening its inputs is the natural follow-on. |
-| F-4 | MAJOR | **OWED** | `scripts/eval/run.ts` re-implements block assembly instead of calling the shared builder, so bands are signed from a third construction site with no wire assertions. Composes with R3/F-12 and R6/F-6; all three say the eval and the worker are only equal by inspection. |
-| F-5 | MAJOR | **OWED** | Confirmed against the `claude-api` skill: the SDK's default `maxRetries: 2` covers 408/409/429/5xx and honours `retry-after`, and `maxRetries: 0` discards it. The ADR's argument is sound for *timeout* retries and never distinguishes 429; a transient rate-limit burns three durable attempts over 900 s, and a permanent 400 is retried three times and then labelled "budget exhausted". Needs a status-aware arm, not a retry loop — the lease stays the only counter. |
-| F-6 | MAJOR | **OWED** | `usage` is carried and never read: no log, no column, no metric. §6.6's "checked, not assumed" is implemented as a struct field that is garbage-collected. `ai-provider.md`'s SMOKE-6 already defers the real check, so the ADR and the coverage cell overstate what exists. |
+| F-2 | MAJOR | **FIXED** | The timeout test's deadline (1.5 s) is under `FINALIZE_RESERVE_MS` (20 s), so `providerTimeoutMs` returns 0 and the request is never dispatched — the 1 ms runtime proves it. The `HC-FIXTURE-HANG` branch is dead code at the gate, and §1.9's "our timeout cuts, not the platform's" is unproven. Fix the fixture's deadline. Ruled **FIXED** at ADR-0031 (round 23), re-verified at the site: two legs, one per branch, and the hang leg is dispatched. |
+| F-3 | MAJOR | **FIXED** | The configuration hash omits the trailing user instruction, the delimiter builders, and `asJPEG(90)` + the codec choice — so the *pixels the model sees* can change with an identical hash. Now that D5 made the hash load-bearing, widening its inputs is the natural follow-on. Ruled **FIXED** at ADR-0031 (round 23), re-verified at the site: all three named omissions are covered inputs; the hash moved twice (PR #19, PR #20) and the name with it, owner-ruled both times. |
+| F-4 | MAJOR | **FIXED** | `scripts/eval/run.ts` re-implements block assembly instead of calling the shared builder, so bands are signed from a third construction site with no wire assertions. Composes with R3/F-12 and R6/F-6; all three say the eval and the worker are only equal by inspection. Narrowed, not fixed, at ADR-0029 (round 21). Ruled **FIXED** at ADR-0031 (round 23), re-verified at the site: one builder, and the harness builds nothing. |
+| F-5 | MAJOR | **FIXED** | Confirmed against the `claude-api` skill: the SDK's default `maxRetries: 2` covers 408/409/429/5xx and honours `retry-after`, and `maxRetries: 0` discards it. The ADR's argument is sound for *timeout* retries and never distinguishes 429; a transient rate-limit burns three durable attempts over 900 s, and a permanent 400 is retried three times and then labelled "budget exhausted". Needs a status-aware arm, not a retry loop — the lease stays the only counter. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-6 | MAJOR | **FIXED** | `usage` is carried and never read: no log, no column, no metric. §6.6's "checked, not assumed" is implemented as a struct field that is garbage-collected. `ai-provider.md`'s SMOKE-6 already defers the real check, so the ADR and the coverage cell overstate what exists. Ruled **FIXED** at ADR-0031 (round 23), re-verified at the site: `usage` is read at both worker consumption sites — a log line, not a column; SMOKE-6 stays unticked until an owner reads a real one. |
 | F-7 | MAJOR | **FIXED** | D6. |
-| F-8 | MAJOR | **OWED** | `maxRenderedBytes` is 64 MB; the API limit is **32 MB per request** and inline base64 inflates by 4/3, so renders between ~24 MB and 64 MB are accepted by our ceiling and rejected by the provider — then mislabelled "budget exhausted" per F-5. The Files API decision is defensible; the size budget it requires was never set. |
-| F-9 | MAJOR | **OWED** | `model_context_window_exceeded` is in the SDK's `StopReason` union and unhandled, so it falls through to "no text content" → `provider_error`. At 200 pages × ~4784 tokens the request is near the window, so the state is reachable by a document PRD §13.3 permits. |
+| F-8 | MAJOR | **FIXED** | `maxRenderedBytes` is 64 MB; the API limit is **32 MB per request** and inline base64 inflates by 4/3, so renders between ~24 MB and 64 MB are accepted by our ceiling and rejected by the provider — then mislabelled "budget exhausted" per F-5. The Files API decision is defensible; the size budget it requires was never set. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-9 | MAJOR | **FIXED** | `model_context_window_exceeded` is in the SDK's `StopReason` union and unhandled, so it falls through to "no text content" → `provider_error`. At 200 pages × ~4784 tokens the request is near the window, so the state is reachable by a document PRD §13.3 permits. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-10 | MAJOR | **FIXED** | The client pins `logLevel: 'warn'`, so the environment cannot raise it. `b4bfe65` RED → `dd86a39` GREEN. |
 | F-11 | MAJOR | **FIXED** | `assertProviderEgress()` runs before every dispatch and refuses a real credential aimed at an overridden base URL. Keyed on whether the key IS a credential (`sk-ant-`), not on a fixture allowlist — the first draft used the gate literal and broke 21 tests that use a different one, which is the argument. Same commits. |
-| F-12 | MINOR | **OWED** | Of four "absence" assertions, one (`server-side-fallback`) is vacuous — it is a *header* value and the fixture records no headers — and all four run only against the extract path. |
+| F-12 | MINOR | **FIXED** | Of four "absence" assertions, one (`server-side-fallback`) is vacuous — it is a *header* value and the fixture records no headers — and all four run only against the extract path. Ruled **FIXED** at ADR-0031 (round 23), re-verified at the site: the fixture records headers, and every absence runs on both dispatchers. |
 | F-13 | MINOR | **ACCEPTED-NOTE** | The fixture server validates nothing, so the wire tests prove absence-by-substring and never acceptance. `ai-provider.md` SMOKE-3 already defers schema acceptance to a live smoke test, so the gap is acknowledged; D4's "the wire is the contract" framing overstates what the gate can show. |
-| F-14 | MINOR | **OWED** | `overloaded_error` is HTTP **529**, not the 503 the fixture returns. Cosmetic today only because F-5 collapses all statuses; load-bearing the moment F-5 is fixed, so fix them together. |
+| F-14 | MINOR | **FIXED** | `overloaded_error` is HTTP **529**, not the 503 the fixture returns. Cosmetic today only because F-5 collapses all statuses; load-bearing the moment F-5 is fixed, so fix them together. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-15 | MINOR | **ACCEPTED-NOTE** | `config.ts`'s stated reason for `MAX_TOKENS = 24_000` is backwards: the SDK's threshold is ~21,333 and the guard is *bypassed* by supplying an explicit timeout, not satisfied. The value may stay; the comment must stop claiming the opposite of the SDK's behaviour. |
 | F-16 | OBS | **NOTED** | One cache test reads the previous test's request. Fails loudly rather than passing wrongly if order changes; `server.reset()` exists and is unused. |
 | F-17 | OBS | **NOTED** | Honest and correctly disclosed. Records which validators ride on the untested vision path — useful input to D11. |
@@ -810,16 +822,16 @@ says so in the argument.
 |---|---|---|---|
 | F-1 | **BLOCKER** | **FIXED** | D2. |
 | F-2 | **BLOCKER** | **FIXED** | D2. |
-| F-3 | MAJOR | **OWED** | Attempt staging leaks on every non-graceful exit — there is no `try/finally` and no sweeper for `render/attempt/**`. The prefix is keyed by a lease id that exists only in the dead invocation's stack, so the orphan is unreachable by construction. Up to 64 MB of a family's rendered medical pages, with no expiry and outside any future DEL-01 cascade. Same defect as R4/F-4. |
-| F-4 | MAJOR | **OWED** | `maxRenderedBytes` counts encoded output while the WASM heap churns ~20 MB per pixmap and nothing is `destroy()`ed — measured 3.5 MB counted against a 463 MB process peak. "The memory bound with a name" bounds the wrong quantity. |
-| F-5 | MAJOR | **OWED** | `wall_clock` is sampled between pages, and `toPixmap` exposes no interrupt — so a single pathological page runs unbounded and the final page is never checked. The test passes `maxWallClockMs: 0`, which cannot distinguish a deadline from a sample. |
-| F-6 | MAJOR | **OWED** | **Every corpus item is single-page**, the text layer is concatenated with no page markers, and image blocks go on the wire unlabelled — so `citation.page` is always 1, the range check is trivially satisfied, and the image-order↔page-number correspondence is exercised by nothing. One coordinate over from the orientation door that *was* closed. Composes with D11. |
-| F-7 | MAJOR | **OWED** | The harness discards the citation before scoring — `Prediction` is `{field, value}` only — so **nothing anywhere measures whether a bbox lands on its value**. A model with perfect values and uniformly wrong boxes scores 1.00. Composes with D11: the bands would be signed on a run in which citation correctness was never measured. |
-| F-8 | MINOR | **OWED** | `promotedPageKey`'s default ext is `png` while every photo/scan/pill-bottle promotes as `.jpg`, and the contract test calls exactly that default. The exported builder encodes the wrong answer for the majority of arrivals; slice 6 would hit it. |
+| F-3 | MAJOR | **FIXED** | Attempt staging leaks on every non-graceful exit — there is no `try/finally` and no sweeper for `render/attempt/**`. The prefix is keyed by a lease id that exists only in the dead invocation's stack, so the orphan is unreachable by construction. Up to 64 MB of a family's rendered medical pages, with no expiry and outside any future DEL-01 cascade. Same defect as R4/F-4. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-4 | MAJOR | **FIXED** | `maxRenderedBytes` counts encoded output while the WASM heap churns ~20 MB per pixmap and nothing is `destroy()`ed — measured 3.5 MB counted against a 463 MB process peak. "The memory bound with a name" bounds the wrong quantity. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-5 | MAJOR | **FIXED** | `wall_clock` is sampled between pages, and `toPixmap` exposes no interrupt — so a single pathological page runs unbounded and the final page is never checked. The test passes `maxWallClockMs: 0`, which cannot distinguish a deadline from a sample. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-6 | MAJOR | **FIXED** | **Every corpus item is single-page**, the text layer is concatenated with no page markers, and image blocks go on the wire unlabelled — so `citation.page` is always 1, the range check is trivially satisfied, and the image-order↔page-number correspondence is exercised by nothing. One coordinate over from the orientation door that *was* closed. Composes with D11. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-7 | MAJOR | **FIXED** | The harness discards the citation before scoring — `Prediction` is `{field, value}` only — so **nothing anywhere measures whether a bbox lands on its value**. A model with perfect values and uniformly wrong boxes scores 1.00. Composes with D11: the bands would be signed on a run in which citation correctness was never measured. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-8 | MINOR | **FIXED** | `promotedPageKey`'s default ext is `png` while every photo/scan/pill-bottle promotes as `.jpg`, and the contract test calls exactly that default. The exported builder encodes the wrong answer for the majority of arrivals; slice 6 would hit it. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-9 | MINOR | **FIXED** | Corrected at sign-off: this row was written before the owner's ruling and still read OWED. Q-B rode with Q-A as D9 recommended, so `normalizeExit` now maps each ceiling to its own outcome — `wall_clock` to `extract_timeout`/`provider_timeout`, the other three to M7's `render_bounds_exceeded`, and `archive_bounds_exceeded` goes back to naming the archive case 4A seeded it for. `f05d101` RED → `f62305c` GREEN (D20). |
 | F-10 | OBS | **NOTED** | **Verified positive.** The orientation door is exclusive in production code; `new mupdf.Image` appears only in the spike; 8/8 legs pass at HEAD and leg 8 reproduces 36.3 vs 220.4. Two honest limits named (the control proves mupdf, not `render.ts`; leg 6's ceiling check shares `PT_PER_PX`) — the second is exactly what hid D2. |
 | F-11 | OBS | **NOTED** | **Verified positive.** `serverExternalPackages` is correct, the pin would red if removed, and no other dependency needs it. |
-| F-12 | MINOR | **OWED** | The harness normalises with the *declared* mime while the worker sniffs. Agrees on today's 28 fixtures; latent. With F-4 and R6/F-6. |
+| F-12 | MINOR | **FIXED** | The harness normalises with the *declared* mime while the worker sniffs. Agrees on today's 28 fixtures; latent. With F-4 and R6/F-6. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-13 | OBS | **NOTED** | `cropRect` has no production consumer (slice 6 is it), and the interpret re-queue re-renders a whole document to recover text it discards the pages of. The second half is a real cost on a sweeper-rescued path — folded into Q-C's re-pricing (D15). |
 
 ### R4 — the worker state machine
@@ -829,36 +841,36 @@ says so in the argument.
 | F-1 | **BLOCKER** | **FIXED** | D1. |
 | F-2 | MAJOR | **FIXED** | The owner granted the fourth amendment item (D21). **M8** adds `interpret / interpreting → extract_failed` — the terminal `hc.stage_budgets` already names as interpret's `exhaust_state`, so no enum value, no label and no reason code moved, and the app needed no change at all: it had always made this call. `9e97117` RED → `ef48079` GREEN. |
 | F-3 | MAJOR | **FIXED** | The conversion writes `domain`, `risk_class` (through the band mode) and a `task` block, so all three §4.8 outcomes are reachable. A conflict with no domain is DROPPED rather than drafted un-approvable — M2's context carries no domain, so the parent cannot supply it. `bafa5af` RED → `df45fca` GREEN. |
-| F-4 | MAJOR | **OWED** | Same leak as R3/F-3; fix once. |
+| F-4 | MAJOR | **FIXED** | Same leak as R3/F-3; fix once. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-5 | MAJOR | **FIXED** | `archivePipelineWork` strips `facts` before archiving — one choke point, so no ack path can forget it. `lookupLineage` reads only `channel`/`circle_id`, both retained and asserted. `hc_pipeline` already held UPDATE on the pgmq tables, so no DDL. `3fcb871` RED → `f6cbc1f` GREEN. |
-| F-6 | MAJOR | **OWED** | `promoteRenderedPages` runs *after* `finalizeExtraction` returned `advanced` and is non-atomic with no repair path: a partial promotion leaves an `extracted` arrival whose citations reference pages that have no artifact, permanently. |
-| F-7 | MAJOR | **OWED** | The read visibility timeout (120 s) is shorter than the extract stage (up to 300 s), so mid-flight redelivery is the *normal* case — and the second reader archives the in-flight message unconditionally, destroying pgmq's redelivery guarantee for that work. Claim-before-work means no double dispatch; the cost is the queue silently doing no work. |
+| F-6 | MAJOR | **FIXED** | `promoteRenderedPages` runs *after* `finalizeExtraction` returned `advanced` and is non-atomic with no repair path: a partial promotion leaves an `extracted` arrival whose citations reference pages that have no artifact, permanently. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-7 | MAJOR | **FIXED** | The read visibility timeout (120 s) is shorter than the extract stage (up to 300 s), so mid-flight redelivery is the *normal* case — and the second reader archives the in-flight message unconditionally, destroying pgmq's redelivery guarantee for that work. Claim-before-work means no double dispatch; the cost is the queue silently doing no work. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-8 | MINOR | **ACCEPTED-NOTE** | `PER_MESSAGE_RESERVE_MS` (20 s) is sized for a finalize where the worst-case message is 300 s, so the budget cannot keep an invocation inside `maxDuration`. Recovery is correct; the comment overstates the arithmetic. |
 | F-9 | MINOR | **ACCEPTED-NOTE** | Q-D's unreachable list is short by five — see D10. |
-| F-10 | MINOR | **OWED** | A stage-2 duplicate always yields a silent `invalid_state` at interpret, which §4.2 says means "raise a defect signal". `processGate` warns; `processInterpret` returns it silently. Make it a warn, or absorb it explicitly. |
-| F-11 | MINOR | **OWED** | `msg.facts` is trusted with no runtime validation: a non-array skips *both* the artifact re-read and the operator note, producing exactly the thin-answer-that-looks-normal D6 rules out. Plus an unbounded hand-off over an unindexed archive scan. |
-| F-12 | MINOR | **OWED** | A `profile_fact` with `field: null` is drafted and raises `23502` at approval — a raw Postgres error at the moment a person clicks approve. Guard where `domain` is already guarded. |
+| F-10 | MINOR | **FIXED** | A stage-2 duplicate always yields a silent `invalid_state` at interpret, which §4.2 says means "raise a defect signal". `processGate` warns; `processInterpret` returns it silently. Make it a warn, or absorb it explicitly. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-11 | MINOR | **FIXED** | `msg.facts` is trusted with no runtime validation: a non-array skips *both* the artifact re-read and the operator note, producing exactly the thin-answer-that-looks-normal D6 rules out. Plus an unbounded hand-off over an unindexed archive scan. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-12 | MINOR | **FIXED** | A `profile_fact` with `field: null` is drafted and raises `23502` at approval — a raw Postgres error at the moment a person clicks approve. Guard where `domain` is already guarded. Ruled **FIXED** at ADR-0030 (round 22), re-verified at the site; the fix also guards `value`. |
 | F-13 | OBS | **NOTED** | **Verified positive.** `releaseDeferredWork` holds on all four axes; the threshold is *derived* from `READ_VT_SECONDS` so it cannot drift. One cosmetic gap named (`firedStages` never adds `'interpret'`, harmless because the segment is cosmetic). |
 | F-14 | OBS | **NOTED** | **Verified positive** on the prefix namespaces. The `if (error) return null` conflation is a design observation worth a note. |
-| F-15 | OBS | **OWED** | `processInterpret` discards `answer.dropped`. It mattered more than it looked: under D1's defect *every* conflict was dropped and the counter that would have said so was never printed. |
+| F-15 | OBS | **FIXED** | `processInterpret` discards `answer.dropped`. It mattered more than it looked: under D1's defect *every* conflict was dropped and the counter that would have said so was never printed. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 
 ### R5 — the member surfaces
 
 | # | Sev | Verdict | Argument |
 |---|---|---|---|
 | F-1 | **BLOCKER** | **FIXED** | D4. |
-| F-2 | MAJOR | **OWED** | Three `{ data }` destructures still drop `error`. B6's fix removed one *input* to D15 and left the amplifier: a refused query is still indistinguishable from an empty one. Reachable today with no code change — a non-UUID circle segment returns 200 with a blank Care Inbox; a DB blip shows a forty-item family its first-run empty state. |
+| F-2 | MAJOR | **FIXED** | Three `{ data }` destructures still drop `error`. B6's fix removed one *input* to D15 and left the amplifier: a refused query is still indistinguishable from an empty one. Reachable today with no code change — a non-UUID circle segment returns 200 with a blank Care Inbox; a DB blip shows a forty-item family its first-run empty state. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-3 | MAJOR | **ACCEPTED-NOTE** | D15's "the grant is deliberate" names three withheld columns and two are wrong. Corrected in D8, because that list is what an owner would reason from when deciding the amendment. |
 | F-4 | MAJOR | **FIXED** | The guard is now an ALLOWLIST over every clause — select, eq, is, in, order — checked against the same exact set pgTAP 057 pins from the DB side, so the two cannot drift without one going red. `7e83761` RED → `7c86c38` GREEN. |
 | F-5 | MAJOR | **FIXED** | The line now states the contract M5 implements: "the document type and date, and at least one detail read from this document". Fixed alongside Q-A's completion, because a title beside an over-claim is worse than an over-claim alone. `7e83761` RED → `7c86c38` GREEN. |
-| F-6 | MINOR | **OWED** | `/[circle]/senders` has **no browser coverage at all**, which is why D4's render throw shipped. D11's a11y argument for keeping it out of nav protects a surface never measured. Add both routes to the audit list and pin the list. |
-| F-7 | MINOR | **OWED** | Every `?e=` marker these submit routes emit is written and never read — no page declares `searchParams`. A revoke refused for *authorization* renders as an emptied list. Authorization itself verified sound in-definer. |
-| F-8 | MINOR | **OWED** | The only link to `/senders` sits inside the non-empty branch, so whatever empties `parents` also removes the path to the surface governing who may write. Move it to the shared branch. |
+| F-6 | MINOR | **FIXED** | `/[circle]/senders` has **no browser coverage at all**, which is why D4's render throw shipped. D11's a11y argument for keeping it out of nav protects a surface never measured. Add both routes to the audit list and pin the list. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-7 | MINOR | **FIXED** | Every `?e=` marker these submit routes emit is written and never read — no page declares `searchParams`. A revoke refused for *authorization* renders as an emptied list. Authorization itself verified sound in-definer. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-8 | MINOR | **FIXED** | The only link to `/senders` sits inside the non-empty branch, so whatever empties `parents` also removes the path to the surface governing who may write. Move it to the shared branch. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-9 | OBS | **ACCEPTED-NOTE** | Postgres says `permission denied for table arrivals`, not `for column`. The ADR and two comments quote a string Postgres does not emit — an on-call engineer would grep for the wrong thing. |
 | F-10 | OBS | **NOTED** | The cancel-leg amendment is honest; one circle-wide assertion traded for a stronger binding one. See D15's Q-I(2) and R8/F-4. |
 | F-11 | OBS | **NOTED** | **Verified positive**, line by line: the definer swap dropped no check and added two. |
 | F-12 | OBS | **NOTED** | **Verified positive** by exhaustive enumeration — the ADR's claim holds. Two durability caveats folded into D8. |
-| F-13 | OBS | **OWED** | Dead `documents` mock scaffolding remains from the RED draft. Worth removing: it would silently serve fixtures to the one query shape most likely to reintroduce D15. |
+| F-13 | OBS | **FIXED** | Dead `documents` mock scaffolding remains from the RED draft. Worth removing: it would silently serve fixtures to the one query shape most likely to reintroduce D15. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 
 ### R6 — the corpus, the scorer, the harness
 
@@ -867,20 +879,20 @@ says so in the argument.
 | F-1 | **BLOCKER** | **OWNER** | D11. |
 | F-2 | **BLOCKER** | **FIXED** | D7. |
 | F-3 | MAJOR | **FIXED** | D7. |
-| F-4 | MAJOR | **OWED** | The harness emits `{precision, recall, support, tp, fp, fn}`; the loader requires `high`/`medium` per field. The signed digest would fail closed as `artifact_partial` **forever**, indistinguishable from the shipping default at the call site — and no one has written down how a measured number becomes a threshold. Must be settled with D11 before any real run. |
+| F-4 | MAJOR | **FIXED** | The harness emits `{precision, recall, support, tp, fp, fn}`; the loader requires `high`/`medium` per field. The signed digest would fail closed as `artifact_partial` **forever**, indistinguishable from the shipping default at the call site — and no one has written down how a measured number becomes a threshold. Must be settled with D11 before any real run. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-5 | MAJOR | **FIXED** | `node scripts/fixtures/g9-build.mjs --check` is a CI step. `7e83761`. |
 | F-6 | MAJOR | **FIXED** | Corrected at sign-off: this row was written before the closing increment and still read OWED. `scripts/eval/predict.ts` calls the WORKER's own `validateFacts` rather than reimplementing it, `--collect` re-normalises each item to recover the page count it needs, and the refusals are COUNTED AND PRINTED rather than swallowed — a fact cited onto a page the rendering does not have is a §10.4 signal, not a rounding error. The bias this removes ran ONE way and it was the unsafe one: an owner would have signed bands better than the product they describe. `7677c0b` RED → `da68887` GREEN (D20). |
 | F-7 | MAJOR | **FIXED** | D7. |
 | F-8 | MINOR | **ACCEPTED-NOTE** | Exact string equality after `lower(btrim())`. Defensible given the prompt's verbatim instruction, and the concrete failure set (dates in prose, a dropped currency symbol, `coverage_determination` free text) is real. Worth stating in the spec so a low number is not misread as a reading failure — and so no one "fixes" it by loosening the matcher after seeing the result. |
 | F-9 | MINOR | **ACCEPTED-NOTE** | The no-global-number property is real in the emitted object and one line of arithmetic away in the artifact. D12's claim should read "reports no global number". |
-| F-10 | MINOR | **OWED** | Expected labels collapse last-wins, predictions first-wins, and `support` counts once per item — so the first multi-valued item silently halves claimed support and scores the wrong one. §7 prices exactly that growth. |
-| F-11 | MINOR | **OWED** | `absent_fields` is never read; non-banded fields get artifact rows with `precision: 0` that no band covers. Harms what a person reads at sign-off. |
+| F-10 | MINOR | **FIXED** | Expected labels collapse last-wins, predictions first-wins, and `support` counts once per item — so the first multi-valued item silently halves claimed support and scores the wrong one. §7 prices exactly that growth. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-11 | MINOR | **FIXED** | `absent_fields` is never read; non-banded fields get artifact rows with `precision: 0` that no band covers. Harms what a person reads at sign-off. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 | F-12 | OBS | **ACCEPTED-NOTE** | "THE ONLY REAL-KEY PATH IN THE PROJECT" is literally false — `lib/ai/client.ts` reads the key in production. The surrounding prose means "the only path ever run against a real credential today"; the sentence should say that. |
 | F-13 | OBS | **NOTED** | **Verified positive** by execution: `--dry-run` cannot send; the credential check is strictly after the return. One gap named — the manifest records no `ANTHROPIC_BASE_URL`, one line. |
 | F-14 | OBS | **NOTED** | **Verified positive.** The reviewer tried to defeat the manifest-completeness walk and could not. |
 | F-15 | OBS | **NOTED** | No request-shape divergence attributable to `ts-run`; two honest gaps named. The real "eval ≠ worker" defect is F-6. |
-| F-16 | MINOR | **OWED** | Re-collecting a batch throws `EEXIST` *after* the API round-trip, and this is the one command that costs money to produce. Needs an idempotent read. |
-| F-17 | OBS | **OWED** | The PDF writer truncates non-Latin-1 silently; no current label is affected. A `throw` on any code point > 0xFF makes the next one a build failure instead of a silent mislabel. |
+| F-16 | MINOR | **FIXED** | Re-collecting a batch throws `EEXIST` *after* the API round-trip, and this is the one command that costs money to produce. Needs an idempotent read. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
+| F-17 | OBS | **FIXED** | The PDF writer truncates non-Latin-1 silently; no current label is affected. A `throw` on any code point > 0xFF makes the next one a build failure instead of a silent mislabel. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 
 ### R7 — governance conformance
 
@@ -889,8 +901,8 @@ says so in the argument.
 | F-1 | **BLOCKER** | **OWNER** | D13. |
 | F-2 | **BLOCKER** | **FIXED** | D7. |
 | F-3 | MAJOR | **ACCEPTED-NOTE** | Spike leg 5 contains no `assert` and passes unconditionally — and it is the leg whose plan criterion ("refuses cleanly") is **not met**: mupdf repairs. D2 discloses the behaviour honestly and scores it a pass; the count "8/8" is what the Q3 reserve-not-consumed conclusion rests on. Re-score it 7/8 with leg 5 FALSIFIED, and record "malformed input is repaired and processed" as the hostile-input posture it is. |
-| F-4 | MAJOR | **OWED/OWNER** | D12. |
-| F-5 | MAJOR | **OWED** | Same as R2/F-6; the coverage cell and D4 both overstate. |
+| F-4 | MAJOR | **FIXED** | D12. D26 answered the owner half; ruled **OWED** at ADR-0029 (round 21). Ruled **FIXED** at ADR-0030 (round 22): the labels are the rendered band, 23 of 23 landing. Lifts a ceiling; signs nothing. |
+| F-5 | MAJOR | **FIXED** | Same as R2/F-6; the coverage cell and D4 both overstate. Ruled **FIXED** at ADR-0031 (round 23) with R2/F-6, re-verified at the site. |
 | F-6 | MAJOR | **DECLINED (the packet's answer), ACCEPTED (the finding)** | D10. |
 | F-7 | MAJOR | **FIXED** | D3. |
 | F-8 | MINOR | **ACCEPTED-NOTE** | Two CI-sourced legs in the one-SHA block come from a run three commits behind the declared evidence head, and a green run at the actual PR head goes uncited. Harmless here; the precedent is not. With D16. |
@@ -905,7 +917,7 @@ says so in the argument.
 
 | # | Sev | Verdict | Argument |
 |---|---|---|---|
-| F-1 | MAJOR | **FIXED** | D14 — the fourth seam row, held with the product decision and RELEASED by it. **Corrected at the 6A build session, 2026-08-24:** this row read OWED while D24 ruling 3 records the same work as done, which is the THIRD instance of the defect the sign-off itself caught twice (R3/F-9, R6/F-6) — a verdict column disagreeing with the prose four hundred lines below it. All three sites re-verified at `main` before the flip: `app/api/worker/[stage]/route.ts:240-247` records the ruling rather than a gap; `tests/routes/worker-stage.test.ts:284` reads "the extract fire is HELD (ADR-0023 D24)"; `tests/routes/relay.test.ts:145-152` carries R8/F-5's honest limit. **The OWED tally stays 39** — that is D24's own count, taken with this work already treated as done, so correcting the row changes no arithmetic. **RATIFIED AT ROUND 17 (ADR-0025 D6, from R17/F-6):** the correction is right — the round re-read all three sites again — but a build session had no authority to move a settled verdict, and this row now rests on the round's. The rule ADR-0025 D6 sets: a build session that finds a settled dispositions record wrong RECORDS the discrepancy where it will be read and leaves the verdict alone; the next round rules. |
+| F-1 | MAJOR | **FIXED** | D14 — the fourth seam row, held with the product decision and RELEASED by it. **Corrected at the 6A build session, 2026-08-24:** this row read OWED while D24 ruling 3 records the same work as done, which is the THIRD instance of the defect the sign-off itself caught twice (R3/F-9, R6/F-6) — a verdict column disagreeing with the prose four hundred lines below it. All three sites re-verified at `main` before the flip: `app/api/worker/[stage]/route.ts:240-247` records the ruling rather than a gap; `tests/routes/worker-stage.test.ts:284` reads "the extract fire is HELD (ADR-0023 D24)"; `tests/routes/relay.test.ts:145-152` carries R8/F-5's honest limit. **The OWED tally stays 39** — that is D24's own count, taken with this work already treated as done, so correcting the row changes no arithmetic. **RATIFIED AT ROUND 17 (ADR-0025 D6, from R17/F-6):** the correction is right — the round re-read all three sites again — but a build session had no authority to move a settled verdict, and this row now rests on the round's. The rule ADR-0025 D6 sets: a build session that finds a settled dispositions record wrong RECORDS the discrepancy where it will be read and leaves the verdict alone; the next round rules. | **[AMENDED 2026-08-27 → ADR-0023 D25: "The OWED tally stays 39" is FALSE.** That 39 is a ROW COUNT over this table's Verdict column and **this row was one of the 39** — flipping it to FIXED necessarily took the strict count to **38, at `e0186ce`**. This sentence is the single named source of the figure ADR-0025, ADR-0027 and ADR-0028 then inherited. **The verdict flip and its round-17 ratification STAND**; only this sentence's arithmetic is corrected, and the sentence itself is preserved above.]**
 | F-2 | MAJOR | **ACCEPTED** | D14 — verified here: `fireWorker` fires for scan, gate, interpret and never extract. |
 | F-3 | MAJOR | **OWNER** | D14 — the product finding. |
 | F-4 | MINOR | **ACCEPTED-NOTE** | The dropped circle-wide count is a real trade and a harmless one: `hc.cancel_arrival` updates a single id, so collateral cancellation is structurally impossible. Restoring it costs nothing and is worth doing with D14. |
@@ -914,7 +926,7 @@ says so in the argument.
 | F-7 | OBS | **NOTED** | `replica` also silences both search triggers and all FK enforcement. The predicate reads none of it; worth one sentence in the leg's comment, which names only the claim trigger. |
 | F-8 | MINOR | **FIXED** | Retitled to "suspected, CITED by name, and `different` resumes". `same_thing` stays covered by `tests/routes/inbox.test.ts` (surface) and pgTAP 055/056 (transition), and the leg now says so. `36a4735`. |
 | F-9 | OBS | **NOTED** | Decisive for Q-I(3): pgTAP 055 files its canonical document unclaimed too, escaping the trigger by `rollback`. The gap is not specific to the gate leg. |
-| F-10 | OBS | **OWED** | The live idempotence assertion is a global claim over a shared queue; it holds today by file ordering and teardown. Scope it to the circle under test. |
+| F-10 | OBS | **FIXED** | The live idempotence assertion is a global claim over a shared queue; it holds today by file ordering and teardown. Scope it to the circle under test. Ruled **FIXED** at ADR-0029 (round 21), re-verified at the site. |
 
 ---
 ## D18 — what the owner is being asked to decide
@@ -928,7 +940,7 @@ blocks something.
 | 2 | **`mupdf` is AGPL-3.0-or-later** and unrecorded. | Nothing in the tree; everything about the product's distribution posture | **Decide before slice 6 builds more on `render.ts`.** Independently: the dependency bound gains a licence column. |
 | 3 | **The G9 corpus cannot pass its own gate.** 8 of 12 blind items carry no rendition of their labels; no proposed floor is arithmetically reachable. | The G9 gate; signing any band | **Restate §4/§6 against the readable set now** (an honest n=2 beats a stated n=6 that is really n=2), then buy §7 row 1 or row 2 deliberately. |
 | 4 | **§4.5's cancel window is ~35 s** on a non-refreshing surface, and the only arrival email fires when it closes. | Nothing today (nothing is production-activated) | **Rule on it before anyone adds the missing `gate → extract` eager fire**, which is an obvious latency win that would silently collapse the window further. |
-| 5 | **§6.3's email row** was truncated in the as-built record; email facts cite a rendering that is never produced, and the blind partition has no email item. | Slice 6's crop for email arrivals; G9 covering the primary intake channel | **Settle the row** (render the message as a second source, or amend the TSD) with decision 3, since they compose. |
+| 5 | **§6.3's email row** was truncated in the as-built record; email facts cite a rendering that is never produced, and the blind partition has no email item. | Slice 6's crop for email arrivals; G9 covering the primary intake channel | **Settle the row** (render the message as a second source, or amend the TSD) with decision 3, since they compose. **— RULED at D26 (2026-08-27): parts 1–3 SUPERSEDED, delivered unruled by 6B B1/B2/B10; part 4 RESTATED with its arithmetic. This row's "never produced" and "no email item" are SPENT — see D26.** |
 
 ---
 
@@ -945,7 +957,7 @@ that needs an argument, so here it is.
 | **INJ-01** | Evidence cell corrected; stays green | The cell says "A conflict may only quote a fact id the call was GIVEN — enforced twice, in the adapter and again at the worker." Both enforcement points existed and both guarded an **empty set** (D1), so the §4.8 half of this row described code that could not run. It runs now, and the cell says when it started to. |
 | **DUP-02** | Status gains its caveat | R7/F-10: the row read a bare `green` while its own evidence cell said "partially met". The same table does this correctly twice already (EVA-01, PRF-07). Now `green (stage-2 copy partially met — Q-A/ADR-0023 D8)`. |
 | **RND-01** | Evidence cell amended; stays green | Two corrections. The §6.3 claim "the table row by row" is not true for **email** (D12), and the resolution rule was silently wrong for any raster declaring a dpi (D2). The row is still green because the machinery is right and now demonstrably so — but a reader must not take "row by row" at face value while D12 is open. |
-| **AIA-01** | Evidence cell amended; stays green | "the cache telemetry carried back so §6.6's 512-token minimum is MEASURED not assumed" is false — nothing reads `usage` (R2/F-6). `ai-provider.md`'s SMOKE-6 already carries the real check as an unticked box, so the checklist was honest and the coverage cell was not. Also records the allowlist narrowing (D6). |
+| **AIA-01** | Evidence cell amended; stays green | "the cache telemetry carried back so §6.6's 512-token minimum is MEASURED not assumed" is false — nothing reads `usage` (R2/F-6). `ai-provider.md`'s SMOKE-6 already carries the real check as an unticked box, so the checklist was honest and the coverage cell was not. Also records the allowlist narrowing (D6). **AMENDED (round-23 follow-up, 2026-08-28):** something reads `usage` since `80e9a75` — R2/F-6 ruled **FIXED** at ADR-0031 (round 23); the coverage cell carries its own marker, and its status is unchanged. |
 | **EVA-01** | Evidence cell amended; **stays green, gate still OPEN** | The row already says the G9 GATE ITSELF IS OPEN, which is why it does not flip. What it must now also say is *why it cannot presently be closed*: D11's arithmetic. The fence claim in the same cell is true again after D7, and the cell now names the module that makes it true. |
 | **SND-03** | Evidence cell amended; stays green | The app half was unreachable through its own surface until D4. Green survives because the pair is proven live end-to-end at the wrapper level and the surface is now fixed — but the cell records that no browser leg opens `/[circle]/senders` (R5/F-6), which is why it shipped broken. |
 
@@ -1267,6 +1279,17 @@ DECLINED-and-ACCEPTED · 1 OWED/OWNER = 113.** The kickoff's "25 FIXED,
 a small thing; a slice-6 kickoff carrying two queue entries that are
 already done is not.
 
+**AMENDED (5B-queue reconciliation, 2026-08-27 — see D25).** **This tally was
+mechanically exact when it was written, and it is now stale by one row.** Its
+eight cells reproduce the table at `9682081` precisely — the 27 FIXED
+included, which counts R7/F-11 (*"**FIXED** (the title) / **ACCEPTED** (the
+count)"*) as FIXED. **That is the counting rule, and D25 now states it.** One
+commit later, at `e0186ce`, `R8/F-1` moved `OWED` → `FIXED`, and nothing
+re-derived the tally. **At `main` = `4f7a9d7` it reads 28 FIXED · 38 OWED · 3
+OWNER · 19 ACCEPTED-NOTE · 21 NOTED · 2 ACCEPTED · 1 DECLINED-and-ACCEPTED ·
+1 OWED/OWNER = 113.** The prose above is preserved exactly as written and
+remains true of the head it names.
+
 ### ADR-0022's amendment list was SHORT BY FOUR
 
 The "Status of ADR-0022" paragraph named five falsified claims. The
@@ -1348,6 +1371,14 @@ should carry first:
    multi-page fixture, and nothing anywhere scores whether a bbox lands
    on its value).
 
+**AMENDED (5B-queue reconciliation, 2026-08-27 — see ADR-0023 D25).** This
+"39" is the strict-`OWED` row count of ADR-0023 D17 **as it stood at
+`9682081`**. `R8/F-1` moved `OWED` → `FIXED` at `e0186ce` and the tally was
+never re-derived. At `main` = `4f7a9d7` the table holds **38 strict `OWED`**;
+the queue is **38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4) = 39 rows carrying
+owed work**, that 1 owner-blocked. The integer is unchanged — **its referent
+is not.** The prose above is preserved exactly as written.
+
 ---
 
 ### The merge — stamped after the fact, per the 4A `95dab27` pattern
@@ -1384,6 +1415,242 @@ G3/G9/G4/G7 all still block.
 
 ---
 
+---
+## D25 — the counting rule, STATED; and the tally re-derived at `main`
+
+**Written 2026-08-27 at `main` = `4f7a9d7`, after slice 6B merged.** This
+section adds no disposition and moves no verdict. It states the rule D24's
+tally was computed with, re-derives the tally at the current head, and marks
+every site that inherited the old figure. **No prose anywhere is rewritten;
+every amended sentence is preserved where it stands.**
+
+### The rule
+
+> **Owed is counted by ROW over D17's Verdict column, at a NAMED HEAD.**
+>
+> 1. **The unit is the row.** One finding is one row. D17 holds **113** rows
+>    and every count partitions those 113 — a tally that does not sum to 113
+>    is wrong by construction.
+> 2. **A row joins exactly ONE class**, named by the **operative** token in
+>    its Verdict cell: the token saying what happened to the code or to the
+>    record. A compound cell is never counted twice.
+> 3. **`OWED/OWNER` IS owed.** R7/F-4 is the only such row, and D12's own
+>    heading reads *"ACCEPTED, owed, not fixed"*. It is owed work that is
+>    **blocked on an owner decision**, so it is reported as `38 + 1` and
+>    never folded into a single integer.
+> 4. **Compound and bare-`ACCEPTED` rows are NOT owed.** R7/F-11 is
+>    operatively **FIXED** (`36a4735` retitled the leg); R7/F-6 is
+>    operatively **DECLINED** (D10); R7/F-10 was fixed in the coverage flip;
+>    R8/F-2 is a verification with no residual work.
+> 5. **Every published count carries the head it was derived at**, because
+>    the table is amendable and has in fact been amended since D24.
+
+Rule 4 is **not invented here.** It is recovered from D24's own arithmetic: at
+`9682081` the table held 26 bare-`FIXED` rows plus R7/F-11, and D24 published
+**27 FIXED**. All eight of D24's cells reproduce exactly, and only under this
+rule. The rule was always in use — it was simply never written down, which is
+the whole of the defect.
+
+### The tally, re-derived at `main` = `4f7a9d7`
+
+| Class | Count |
+|---|---|
+| **FIXED** (27 bare + R7/F-11) | **28** |
+| **OWED** (strict) | **38** |
+| NOTED | 21 |
+| ACCEPTED-NOTE | 19 |
+| OWNER | 3 |
+| ACCEPTED | 2 |
+| DECLINED-and-ACCEPTED (R7/F-6) | 1 |
+| **OWED/OWNER** (R7/F-4) | **1** |
+| **Total** | **113** |
+
+**The owed queue is 38 strict `OWED` + 1 `OWED/OWNER` (R7/F-4) = 39 rows
+carrying owed work**, of which that 1 is owner-blocked. Severity of the 38:
+**18 MAJOR · 16 MINOR · 4 OBS**; with R7/F-4, **19 MAJOR**.
+
+### What actually happened to the number
+
+| Head | What it did | FIXED | strict OWED |
+|---|---|---|---|
+| `9682081` | ADR-0023 RATIFIED as amended — D24's tally written here | 26 +R7/F-11 = **27** | **39** |
+| `234a07f` `b80ab32` `00c29f1` | sign-off corrections, merge SHA stamped | unchanged | **39** |
+| `e0186ce` | *"one owed verdict corrected"* — R8/F-1 `OWED`→`FIXED` | 27 +R7/F-11 = **28** | **38** |
+| `f291a01` … `4f7a9d7` | round 17 onward | unchanged | **38** |
+
+**D24's tally was mechanically exact when it was written.** It went stale one
+commit later, at `e0186ce`, and was never re-derived. Established by tallying
+the D17 table out of the blob at every commit that has touched this file —
+R8/F-1 is the only verdict that has moved since the sign-off.
+
+### Why four rounds did not catch it
+
+**Because the integer never moved.** Three different sets were all called 39:
+
+| Claimed by | The 39 it means | Has R8/F-1 | Has R7/F-4 |
+|---|---|---|---|
+| D24, at `9682081` | strict `OWED` rows | **yes** | no |
+| `docs/review/slice-6-plan.md:734-749` | rows carrying owed work | no | **yes** |
+| ADR-0025 · ADR-0027 · ADR-0028 | inherited, never re-derived | — | — |
+
+The slice-6 plan counted **40**, subtracted the stale R8/F-1, reached 39, and
+recorded that this was *"what D24's own tally says."* **It was not.** The plan
+had landed on the same integer over a set differing from D24's by two rows.
+Two sessions counted different things, both reported "mechanical", and agreed.
+
+The propagation has one named source: **R8/F-1's own correction note**, which
+asserts *"The OWED tally stays 39 — that is D24's own count, taken with this
+work already treated as done, so correcting the row changes no arithmetic."*
+Under the row rule that produced the 39 this is false: the row **was** one of
+the 39. ADR-0025 D6 and its RULING 6 inherited the sentence while ratifying
+the flip, and ADR-0027 and ADR-0028 carried it forward verbatim.
+
+### This NARROWS round 20's §1.11 — it does not overturn it
+
+`docs/review/round-20-signoff-attack.md:206` ruled the queue's "39 OWED"
+**internally consistent**, on the ground that *"no contradiction among the
+binding documents"* exists. **That ruling is correct and it stands.** There is
+no contradiction: every binding document carries the same integer, because
+each copied it from the last. §1.11 tested the documents **against each
+other**; it did not re-derive the integer **from the table**, which is the
+check that fails. Consistency was never the property in question.
+
+§1.11 also records `chore/process-retune`'s tier-2 claim that the 39 *"may be
+stale — that nothing ever wrote back to ADR-0023's table."* **That claim is
+right in its conclusion and wrong in its mechanism**: something *did* write
+back to the table (`e0186ce`). What never happened is the **tally** being
+re-derived afterwards. That branch stays unmerged and non-binding, and this
+section does not adopt it.
+
+### Sites amended
+
+D17's R8/F-1 row · D24's tally paragraph · D24's *"39 findings remain OWED"* ·
+ADR-0025 `361`, `737`, `1200`, `1278` · ADR-0027 `933`, `947`, `1265`, `1393` ·
+ADR-0028 `618`, `625`, `947`. The `docs/review/*` files are records of their
+own moment and are left as written.
+
+**Nothing else moves.** No verdict changes, no coverage row flips, no `pending`
+row moves, no DDL. G4 and G7 block · G9 OPEN · `BAND_ARTIFACT_ALLOWLIST` EMPTY
+· RCP-02 pending tagged 7 · SIG-01 NOT absorbed · migrations **69 exact**,
+budget **7 of ≤ 7 SPENT** · **NOTHING IS PRODUCTION-ACTIVATED.**
+
+## D26 — D18 ITEM 5, RULED: three parts superseded by 6B, the fourth restated with its arithmetic
+
+**Ruled by the owner on 2026-08-27.** D18 escalated five items; D20 ruled
+three of them on 2026-08-23, and D24's sign-off ruled `mupdf`, the G9
+corpus, the cancel window and ratification. **Item 5 was never taken.**
+D18 recommended settling it "with decision 3, since they compose" —
+decision 3 was ruled, and item 5 did not ride along.
+
+**The interval is the finding.** Between D18 and this ruling, slice 6B
+built three of item 5's four parts without a ruling ever being taken, and
+the fourth grew a consequence it did not have when it was written. What
+follows is measured at `main` = `4f7a9d7`, out of the tree, not inherited.
+
+### The four parts, measured
+
+| Part | The standing recommendation | At `main` |
+|---|---|---|
+| 1 | Amend TSD §6.3 row 4 to the as-built truth (text only, no rendered second source), and restore `render.ts`'s truncated docstring as a NAMED GAP. | **INVERTED — do not do this.** Q6 settled on **RENDER** at 6B B2 (`441f610`). `lib/pipeline/render.ts:331` reads "§6.3 row 4 AS WRITTEN", the docstring reproduces the full clause, and `renderEmailMessage` paints it. The row is TRUE as written; amending it to "text only" would falsify a true document. |
+| 2 | `validateFacts` must stop requiring a bbox when `pageCount === 0` — the part named as "false provenance on the primary intake channel, being stored right now". | **SPENT.** No path returns 0: `renderEmailMessage` returns `pages.length` ≥ 1, the PDF path refuses `< 1` as `unsupported_type`, the image path returns 1. `Math.max(1, pageCount)` at `lib/ai/extract.ts:79` is defensive only. No email fact carries a fictional box today. |
+| 3 | Make "render the message as a second source" a named slice-7 item, sequenced AFTER the rasterizer swap. | **DONE, in that order.** The swap landed at 6B B1 (`ae697a8`: `mupdf` out, `pdfjs-dist` + `@napi-rs/canvas` in); the rendition at B2 (`441f610`). Both precede the round-20 sign-off. |
+| 4 | `dev-email-01`'s line-fraction bboxes are labels against an absent rendering — remove or restate as text offsets. | **LIVE, and larger than written.** Not one item but **six**, carrying **23 labels**, **20 of them in the BLIND partition** — added by 6B B10 under the same convention, which `scripts/fixtures/g9-build.mjs` names in its own comment: "the `dev-email-01` approximation carried into a shared helper". |
+
+**Parts 1–3 are SUPERSEDED.** They were delivered while the item sat
+unruled, which is the process fact worth recording: an owner item can be
+built past rather than answered, and nothing in the round machinery
+noticed. Part 4 is the only live residue, and it is RESTATED below on its
+own argument rather than carried forward on the old one.
+
+### Part 4, restated: the labels are boxes the rendition never paints
+
+The generator computes an email label's geometry as
+`[0, i / lines.length, 1, 1 / lines.length]` — line *i* of *n*, full
+width, as though the page WERE the text block. §6.3's rendition is not
+that page. It is 1212 × 1568 with a 96 px margin and a 40 px line box, so
+line *i* occupies `y = (96 + 40i) / 1568` with height `40 / 1568 =
+0.0255` — every line inside the top quarter of the page, never spanning
+it.
+
+`citationLands` (`lib/eval/score.ts`) requires the intersection to be at
+least half the smaller box. **Measured against the renderer's own
+constants: 0 of 23 email labels land.** Not a near miss — on every one of
+them the label band and the painted band are disjoint.
+
+### Why that is not cosmetic: a SECOND arithmetic ceiling
+
+6B B10 answered R3/F-7 in the SAME commit that bought the corpus
+(`9c33e0c`): citation correctness became SCORED, with `CITATION_FLOOR` =
+0.90 — at least nine of ten value-hits must land their box or the field
+cannot sign. Because a perfect reader lands none of the email labels,
+each banded field's citation accuracy is capped at
+`(support − emailLabels) / support`:
+
+| Field | Readable support | Email labels | Max citation accuracy | Signable at 0.90 |
+|---|---|---|---|---|
+| `provider` | 27 | 4 | **0.8519** | **NO** |
+| `appointment_date` | 12 | 3 | **0.7500** | **NO** |
+| `appointment_time` | 12 | 3 | **0.7500** | **NO** |
+| `document_date` | 25 | 2 | 0.9200 | yes |
+| `medication_name`, `medication_dose`, `medication_frequency` | 14 | 1 | 0.9286 | yes |
+| `allergy_substance` | 13 | 1 | 0.9231 | yes |
+| `amount`, `policy_number`, `member_id`, `coverage_determination` | 12 | 1 | 0.9167 | yes |
+
+**Three banded fields are arithmetically unsignable** — the exact shape
+of D11's recall ceiling, on the citation axis, introduced by the same
+increment that cleared the recall one. The spec says in three places, and
+`tests/eval/corpus.test.ts` says in a fourth, that what keeps G9 closed
+is "the GATE, not the arithmetic". That is TRUE of recall and FALSE of
+citation for `provider`, `appointment_date` and `appointment_time`. Every
+such site is marked; none is rewritten.
+
+### The fix, NAMED but NOT TAKEN
+
+**Regenerate the email labels from the renderer's own geometry.**
+`emailFixture` in `scripts/fixtures/g9-build.mjs` computes the box from
+the same constants `renderEmailMessage` draws with; `fixtures/g9/corpus.json`
+and its hashes regenerate; and a new leg pins the labels against
+`normalizeArrival`, so the convention can never drift from the renderer
+again — the technique B10 already used to stop `rendered` being a
+declaration.
+
+**Not taken here: this entry is docs-only.** The change is CODE and
+touches the corpus manifest, so it needs a code session and a browser-gate
+re-run (38 legs). It carries **NO DDL** — migrations stay **69 exact**,
+budget **7 of ≤ 7 SPENT**.
+
+### What does NOT move
+
+**No verdict moves. R7/F-4 stays `OWED/OWNER`**, and D17's tally is
+untouched: 28 FIXED · 38 OWED · 21 NOTED · 19 ACCEPTED-NOTE · 3 OWNER ·
+2 ACCEPTED · 1 DECLINED-and-ACCEPTED · 1 `OWED/OWNER` = 113. ADR-0025 D6's
+standing rule governs — a session records the discrepancy where it will be
+read and LEAVES THE VERDICT ALONE; the next round rules. The owner half of
+R7/F-4 is answered by this entry; the residue is ordinary owed work, and
+the row moves `OWED/OWNER` → `OWED` when a round rules it, **not here**.
+
+**A question D24 deferred is CLOSED, and was not open when this session
+began:** §7's purchase. Row 1 was **BOUGHT** at 6B B10 (blind 12 → 40,
+five of them email); row 2 (photographed synthetic documents) was
+deliberately kept out and remains an owner decision at the gate. §7 of the
+spec records both already. It should not be carried forward as an open
+item again.
+
+### Sites marked
+
+| Document | Site | What the marker says |
+|---|---|---|
+| ADR-0023 | D12 | Consequences 1 and 3 are spent; consequence 2 is live and larger |
+| ADR-0023 | D18, item 5 row | RULED at D26 |
+| ADR-0026 | D10 | The landing predicate now books the corpus's own boxes as misses |
+| `g9-corpus-spec.md` | §1, §4.2, §6 | "the GATE, not the arithmetic" is true of recall, false of citation for three fields |
+
+**Three sites are CODE and are therefore NOT marked here — they are part
+of the owed fix:** `tests/eval/corpus.test.ts`'s §4 block prose,
+`scripts/fixtures/g9-build.mjs`'s `emailFixture`, and the 23 email labels
+in `fixtures/g9/corpus.json`.
+
+---
 ## Consequences
 
 - **EIGHT of the ten BLOCKERs are fixed on the branch** — corrected at

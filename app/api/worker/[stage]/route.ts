@@ -35,6 +35,7 @@ import { sniffMime } from '@/lib/pipeline/mime';
 import { normalizeArrival, type NormalizeResult } from '@/lib/pipeline/render';
 import { extFor, renderStagingKey, renderStagingTextKey } from '@/lib/pipeline/page-keys';
 import { isImageOnlySource, OcrEngineUnavailable, ocrRenderedPages } from '@/lib/pipeline/ocr';
+import type { ProviderUsage } from '@/lib/ai/client';
 import { extractFromArrival } from '@/lib/ai/extract';
 import { interpretArrival, type DraftProposal } from '@/lib/ai/interpret';
 import {
@@ -204,6 +205,34 @@ async function processScan(msg: PipelineMessage, origin: string, key: string): P
     }
   }
   return `${outcome.verdict}:${r}`;
+}
+
+/**
+ * R2/F-6 = R7/F-5 (5B queue, step 4): `usage` is READ. The adapter carries
+ * §6.6's measurement back on every ok result — whether the record prefix
+ * actually cached comes back as cache_creation / cache_read tokens — and
+ * until this line NOTHING consumed it: no log, no column, no metric. The
+ * consumption site prints it, key=value so it can be grepped, so the
+ * 512-token minimum is CHECKED from the worker log rather than assumed, and
+ * ai-provider.md's SMOKE-6 has a line to evidence. A log line, not a column:
+ * no DDL. `prefix_cache` is derived from the counters so an operator reads
+ * "did §6.6 hold for this subject" without doing the arithmetic.
+ */
+function logProviderUsage(
+  stage: 'extract' | 'interpret',
+  arrivalId: string,
+  usage: ProviderUsage,
+): void {
+  const wrote = usage.cacheCreationInputTokens > 0;
+  const read = usage.cacheReadInputTokens > 0;
+  const prefixCache = wrote && read ? 'write+read' : wrote ? 'write' : read ? 'read' : 'none';
+  console.info(
+    `worker/${stage}: provider usage for arrival ${arrivalId} — ` +
+      `input_tokens=${usage.inputTokens} output_tokens=${usage.outputTokens} ` +
+      `cache_creation_input_tokens=${usage.cacheCreationInputTokens} ` +
+      `cache_read_input_tokens=${usage.cacheReadInputTokens} ` +
+      `prefix_cache=${prefixCache} (§6.6: measured, not assumed)`,
+  );
 }
 
 async function processGate(msg: PipelineMessage, origin: string, key: string): Promise<string> {
@@ -411,6 +440,7 @@ async function processExtract(
     const r = await advanceArrival(msg.arrival_id, 'extracting', 'extract_failed', lease, reason);
     return answer.outcome + ':' + r;
   }
+  logProviderUsage('extract', msg.arrival_id, answer.usage);
 
   // §6.5: risk_class is the WORKER's, by field, before the model was called —
   // and with no signed band artifact it is `high` for every field, which is
@@ -712,6 +742,7 @@ async function processInterpret(msg: PipelineMessage): Promise<string> {
     );
     return answer.outcome + ':' + r;
   }
+  logProviderUsage('interpret', msg.arrival_id, answer.usage);
 
   // The same band mode the extract arm publishes through (§6.5).
   const bands = loadBands({
