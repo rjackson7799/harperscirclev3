@@ -76,6 +76,14 @@ select is((
     'describe_invite(p_token text)',
     'detect_duplicate(p_arrival uuid, p_circle uuid, p_sha bytea)',
     'detect_stage2_duplicate(p_arrival uuid, p_circle uuid, p_subject uuid, p_facts jsonb, p_proposals jsonb)',
+    -- 7A M3: the audience preview (the move's own gate), and its two
+    -- owner-only halves — every member's level under two taints from her
+    -- OWN vectors, and the predicted taint under a category (reclassify's
+    -- per-node formula); both run AS the calling definer and join this
+    -- inventory and NOT the definer set
+    'document_audience(p_document uuid, p_category hc.doc_category)',
+    'document_audience_rows(p_document uuid, p_taint_before hc.domain[], p_resolved_before boolean, p_taint_after hc.domain[], p_resolved_after boolean)',
+    'document_taint_under(p_document uuid, p_category hc.doc_category)',
     'dom(p jsonb)',
     'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'execute_wasnt_me(p_token text)',
@@ -120,6 +128,10 @@ select is((
     'presence(p_subject uuid)',
     'product_state(p_arrival uuid)',
     'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
+    -- 7A M3: the move — category, taint (through the ONE shrinking path),
+    -- the index row, and the person's audience_changed entry with both
+    -- audiences by name, in one transaction. `reca` sorts before `rece`
+    'recategorize_document(p_document uuid, p_category hc.doc_category)',
     -- 6A M5: §4.2.4's receipt. proposal_commits holds NO member privilege
     -- and does not get a blanket one — the table IS the
     -- one-proposal-one-object claim, so the receipt gets ONE definer
@@ -141,6 +153,8 @@ select is((
     'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
     'revoke_invite(p_invite_id uuid)',
     'revoke_sender(p_sender_id uuid)',
+    -- 7A M3: unshare in one action — the granter or a coordinator
+    'revoke_share(p_share_id uuid)',
     'run_taint_sweep()',
     'scan_cache_lookup(p_sha256 bytea)',
     'sender_lookalike(p_circle uuid, p_domain text)',
@@ -195,7 +209,7 @@ select is((
         'complete_security_action','complete_task','consume_step_up','create_account',
         'create_arrival',
         'create_circle','create_invite','create_manual_proposal',
-        'ctx','ctx_for','describe_invite','execute_wasnt_me','expire_held_mail',
+        'ctx','ctx_for','describe_invite','document_audience','execute_wasnt_me','expire_held_mail',
         'expire_scan_results','extractions_for',
         'finalize_extraction','finalize_interpretation','finalize_scan',
         'finalize_store',
@@ -205,20 +219,20 @@ select is((
         'mint_step_up','note_suspicious_attempts',
         'outbox_ack','outbox_drain','pending_security_actions','presence',
         'product_state',
-        'propagate_taint_growth','receipt_for','reclassify_taint',
+        'propagate_taint_growth','recategorize_document','receipt_for','reclassify_taint',
         'record_auth_failure',
         'record_auth_success','record_context_for','record_tombstone',
         'reject_proposal','remove_member',
         'request_freeze','resolve_duplicate','resolve_forwarding',
         'revise_object','revoke_invite',
-        'revoke_sender',
+        'revoke_sender','revoke_share',
         'run_taint_sweep','scan_cache_lookup','sender_lookalike',
         'sender_recognised','set_grant','set_opening_context','set_slice',
         'share_object','snooze_task','sweep_provenance',
         'sweeper_pass',
         -- 7A M1: the second assignment writer
         'unassign_task']::name[],
-  'SECURITY DEFINER is exactly the seventy-six boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the seventy-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -382,6 +396,13 @@ with actual as (
   -- and appears in no grant row by design
   union all select 'complete_task', 'authenticated'
   union all select 'snooze_task', 'authenticated'
+  -- 7A M3: the audience preview and the move (manage on BOTH domains,
+  -- in-function) and unshare (the granter or a coordinator, in-function);
+  -- document_audience_rows and document_taint_under are owner-only and
+  -- appear in no grant row by design
+  union all select 'document_audience', 'authenticated'
+  union all select 'recategorize_document', 'authenticated'
+  union all select 'revoke_share', 'authenticated'
   -- 5A M3: close_extraction_run is a trigger function — hc_internal-owned,
   -- granted to nobody; it appears in no grant row by design
 )

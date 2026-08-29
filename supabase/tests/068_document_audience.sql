@@ -305,7 +305,7 @@ select is(
   'BEFORE: Priya (health summary) reads the discharge summary, Ruth (documents view) does not and holds no index row, Omar reads it through his named share');
 
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
-  $$ select r ->> 'category' || '/' || r ->> 'domain' || '/' || r ->> 'gained' || '/' || r ->> 'lost'
+  $$ select (r ->> 'category') || '/' || (r ->> 'domain') || '/' || (r ->> 'gained') || '/' || (r ->> 'lost')
        from hc.recategorize_document(%L, 'legal') r $$,
   current_setting('t.d_med'))),
   'legal/documents/2/2',
@@ -388,7 +388,7 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
 --         category is a quiet no-op.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_kim')::uuid, format(
-  $$ select r ->> 'changed' || '/' || r ->> 'category' || '/' || r ->> 'gained' || '/' || r ->> 'lost'
+  $$ select (r ->> 'changed') || '/' || (r ->> 'category') || '/' || (r ->> 'gained') || '/' || (r ->> 'lost')
             || '/' || (select d.taint::text from public.documents d where d.id = %L)
        from hc.recategorize_document(%L, 'other') r $$,
   current_setting('t.d_med'), current_setting('t.d_med'))),
@@ -396,7 +396,7 @@ select is(pg_temp.call_as(current_setting('t.u_kim')::uuid, format(
   'legal → other stays inside the documents domain: the category moves, the taint does not, nobody gains or loses — still logged, as an empty audience change');
 
 select is(pg_temp.call_as(current_setting('t.u_kim')::uuid, format(
-  $$ select r ->> 'changed' || '/' ||
+  $$ select (r ->> 'changed') || '/' ||
             (select count(*)::text from public.access_log l
               where l.circle_id = %L and l.event_type = 'audience_changed' and l.object_id = %L
                 and l.actor_account_id = %L)
