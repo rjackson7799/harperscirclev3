@@ -30,7 +30,10 @@
 --     a foreign share (created_by_assignment_of IS NOT this task) is left
 --     alone, and a coordinator may keep one by id (AC-TASK-7, SHR-02 both
 --     ways); it closes the written instruction. Reassign = unassign + assign
---     in one transaction, task_reassigned logged.
+--     in one transaction, task_reassigned logged. "This assignment's" =
+--     this task's marker AND held by the person being unassigned (ADR-0033
+--     cluster B): a share a coordinator KEPT stays with its holder through
+--     the task's later cycles (53-60).
 --   · A freeze refuses assignment with the NAMED freeze_active (PRD §7.5 —
 --     assignment is a widening act) and permits unassignment (it reduces
 --     reach: the remove_member precedent).
@@ -48,7 +51,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(52);
+select plan(60);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038/063 pattern).
@@ -473,7 +476,7 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select hc.assign_task(%L, %L, null, %L)::text $$,
-  current_setting('t.t_tainted'), current_setting('t.m_lena'), current_setting('t.d_src'))),
+  current_setting('t.t_tainted'), current_setting('t.m_lena'), current_setting('t.d_legal'))),
   'ERROR:P0001:assign_refused',
   'PATH 2 without a step-up token refuses — sharing an object is a §5.7 operation and assignment does not get a cheaper door');
 
@@ -481,7 +484,7 @@ select pg_temp.mint(current_setting('t.u_sarah')::uuid, 'share_object',
   'task:' || current_setting('t.t_plain'), 'tok_wrong');
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select hc.assign_task(%L, %L, null, %L, %L)::text $$,
-  current_setting('t.t_tainted'), current_setting('t.m_lena'), current_setting('t.d_src'),
+  current_setting('t.t_tainted'), current_setting('t.m_lena'), current_setting('t.d_legal'),
   current_setting('t.tok_wrong'))),
   'ERROR:P0001:assign_refused',
   'a token minted for ONE object (task:<id>) cannot be spent on the pair — the binding is share_object + task:<id>+document:<id>, both named');
@@ -496,13 +499,13 @@ select is(pg_temp.scalar(format(
   'the mismatched token is NOT consumed and no share was written');
 
 select pg_temp.mint(current_setting('t.u_sarah')::uuid, 'share_object',
-  'task:' || current_setting('t.t_tainted') || '+document:' || current_setting('t.d_src'), 'tok_pair');
+  'task:' || current_setting('t.t_tainted') || '+document:' || current_setting('t.d_legal'), 'tok_pair');
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select (hc.assign_task(%L, %L, null, %L, %L)) ->> 'path' $$,
-  current_setting('t.t_tainted'), current_setting('t.m_lena'), current_setting('t.d_src'),
+  current_setting('t.t_tainted'), current_setting('t.m_lena'), current_setting('t.d_legal'),
   current_setting('t.tok_pair'))),
   'share',
-  'PATH 2 with a live token bound to the pair: "Lena will be able to see: this task, and the discharge summary from Jul 12" — one act');
+  'PATH 2 with a live token bound to the pair: "Lena will be able to see: this task, and the power of attorney" — one act (the POA is a {documents} row she holds no grant on, so whatever she reads next is the share''s doing — R3/F-2)');
 
 select is(pg_temp.scalar(format(
   $$ select (select string_agg(sh.object_type::text, ',' order by sh.object_type)
@@ -518,10 +521,12 @@ select is(pg_temp.scalar(format(
 
 select is(pg_temp.call_as(current_setting('t.u_lena')::uuid, format(
   $$ select (select count(*) from public.tasks where id = %L)::text || '/' ||
-            (select count(*) from public.documents where id = %L)::text $$,
-  current_setting('t.t_tainted'), current_setting('t.d_src'))),
-  '1/1',
-  'from her own live context Lena now reads the task AND the named document — and nothing widened beyond those two rows');
+            (select count(*) from public.documents where id = %L)::text || '/' ||
+            (select count(*) from public.tasks)::text || '/' ||
+            (select string_agg(d.category::text, ',' order by d.category::text) from public.documents d) $$,
+  current_setting('t.t_tainted'), current_setting('t.d_legal'))),
+  '1/1/1/financial,legal,medical',
+  'from her own live context Lena now reads the task AND the named document — the POA, which only the share can show her (health VIEW never reached a {documents} row; R3/F-2) — and nothing widened beyond: her whole world is this one task and three documents — the discharge summary from her own grant, the bank statement from the FOREIGN share, the POA from THIS share');
 
 select is(pg_temp.scalar(format(
   $$ select (select count(*)::text from public.access_log l
@@ -609,7 +614,7 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select (hc.unassign_task(%L, array[%L::uuid])) ->> 'shares_kept' $$,
   current_setting('t.t_tainted'), current_setting('t.sh_doc_tainted'))),
   '1',
-  'a coordinator unassigns Lena and KEEPS the discharge-summary share by id (AC-TASK-7: "unless a coordinator explicitly keeps it")');
+  'a coordinator unassigns Lena and KEEPS the power-of-attorney share by id (AC-TASK-7: "unless a coordinator explicitly keeps it")');
 
 select is(pg_temp.scalar(format(
   $$ select string_agg(sh.object_type::text || ':' || (sh.revoked_at is null)::text, ',' order by sh.object_type)
@@ -621,9 +626,9 @@ select is(pg_temp.scalar(format(
 select is(pg_temp.call_as(current_setting('t.u_lena')::uuid, format(
   $$ select (select count(*) from public.tasks where id = %L)::text || '/' ||
             (select count(*) from public.documents where id = %L)::text $$,
-  current_setting('t.t_tainted'), current_setting('t.d_src'))),
+  current_setting('t.t_tainted'), current_setting('t.d_legal'))),
   '0/1',
-  'from Lena''s live context: the task is gone on her NEXT query and the kept document is still there — revocation is live, and a kept share is a real one');
+  'from Lena''s live context: the task is gone on her NEXT query and the kept document is still there — revocation is live, and a kept share is a real one: the POA reaches her through the kept share and nothing else (R3/F-2)');
 
 select is(pg_temp.scalar(format(
   $$ select (l.detail ->> 'former_owner_name') || '/' || (l.detail ->> 'shares_revoked') || '/'
@@ -638,13 +643,13 @@ select is(pg_temp.scalar(format(
 -- 42–44 · Keeping is a COORDINATOR's decision, and the keep list is exact.
 -- ----------------------------------------------------------------------------
 select pg_temp.mint(current_setting('t.u_sarah')::uuid, 'share_object',
-  'task:' || current_setting('t.t_sched2') || '+document:' || current_setting('t.d_src'), 'tok_s2b');
+  'task:' || current_setting('t.t_sched2') || '+document:' || current_setting('t.d_legal'), 'tok_s2b');
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select (hc.assign_task(%L, %L, null, %L, %L)) ->> 'path' $$,
-  current_setting('t.t_sched2'), current_setting('t.m_lena'), current_setting('t.d_src'),
+  current_setting('t.t_sched2'), current_setting('t.m_lena'), current_setting('t.d_legal'),
   current_setting('t.tok_s2b'))),
   'share',
-  'fixture: the parking-permit task assigned to Lena with the discharge summary named (she holds no schedule, so it is a crossing); the discharge summary''s share is the KEPT one from the case above, so only the task share is new');
+  'fixture: the parking-permit task assigned to Lena with the POA named (she holds no schedule, so it is a crossing); the POA''s share is the KEPT one from the case above, so only the task share is new');
 
 select pg_temp.stash('sh_task_sched2', format(
   $$ select sh.id::text from public.object_shares sh
@@ -669,7 +674,7 @@ select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
   $$ select (hc.unassign_task(%L)) ->> 'shares_revoked' $$,
   current_setting('t.t_sched2'))),
   '1',
-  'a manage-holder who is not a coordinator CAN unassign without a keep list — this assignment''s one share (the task''s) revoked; the discharge summary''s kept share belongs to the OTHER assignment and is not touched');
+  'a manage-holder who is not a coordinator CAN unassign without a keep list — this assignment''s one share (the task''s) revoked; the POA''s kept share belongs to the OTHER assignment and is not touched');
 
 select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
   $$ select hc.unassign_task(%L)::text $$, current_setting('t.t_sched2'))),
@@ -731,6 +736,110 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   current_setting('t.t_plain'))),
   'Marisol',
   'and a freeze permits unassignment — containment never blocks reduction');
+
+-- ----------------------------------------------------------------------------
+-- 53–60 · ADR-0033 cluster B (R1/F-2, R2/F-1, R3/F-2, R6/F-2): a share a
+--         coordinator KEPT survives the task's LATER assignment cycles.
+--         `created_by_assignment_of` names the TASK, not the cycle, so both
+--         revoke loops key on the FORMER HOLDER as well (R1's remedy, ruled
+--         at D19): "this assignment's shares" = this task's marker AND held
+--         by the person being unassigned. Lena's kept POA share (38) still
+--         carries t_tainted's marker; Ruth's and Dan's cycles on the SAME
+--         task must not reach it (55–58), and her own next cycle still ends
+--         it (60).
+--         The world here: the freeze from 51–52 is still open and assignment
+--         refuses under it (51), so it is removed first. Nothing else moves.
+-- ----------------------------------------------------------------------------
+delete from public.freezes where circle_id = current_setting('t.c1')::uuid;
+
+select is(pg_temp.scalar(format(
+  $$ select (sh.revoked_at is null)::text || '/' || (sh.created_by_assignment_of = %L)::text || '/'
+            || (select (t.owner_member_id is null)::text from public.tasks t where t.id = %L)
+       from public.object_shares sh where sh.id = %L $$,
+  current_setting('t.t_tainted'), current_setting('t.t_tainted'), current_setting('t.sh_doc_tainted'))),
+  'true/true/true',
+  'the world after 52: Lena''s kept POA share is live, still carries t_tainted''s marker, and nobody holds the task');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (hc.assign_task(%L, %L)) ->> 'path' $$,
+  current_setting('t.t_tainted'), current_setting('t.m_ruth'))),
+  'plain',
+  'CYCLE 2: Sarah assigns the same task to Ruth, PLAIN — she clears {schedule,health} at summary, no path, no new share');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (r ->> 'former_owner_name') || '/' || (r ->> 'shares_revoked')
+       from (select hc.unassign_task(%L) r) u $$,
+  current_setting('t.t_tainted')))
+  || '/' || pg_temp.scalar(format(
+  $$ select (sh.revoked_at is null)::text from public.object_shares sh where sh.id = %L $$,
+  current_setting('t.sh_doc_tainted'))),
+  'Ruth/0/true',
+  'UNASSIGN, cycle 2, no keep list: Ruth is the former holder, NOTHING is revoked, and Lena''s kept share is still live — the loop is keyed on the holder, not on the task''s marker alone (R1/F-2, R2/F-1, R6/F-2)');
+
+select pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.assign_task(%L, %L)::text $$,
+  current_setting('t.t_tainted'), current_setting('t.m_ruth')));
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (r ->> 'former_member_id' = %L)::text || '/' || (r ->> 'shares_revoked')
+       from (select hc.assign_task(%L, %L) r) a $$,
+  current_setting('t.m_ruth'), current_setting('t.t_tainted'), current_setting('t.m_dan')))
+  || '/' || pg_temp.scalar(format(
+  $$ select (sh.revoked_at is null)::text from public.object_shares sh where sh.id = %L $$,
+  current_setting('t.sh_doc_tainted'))),
+  'true/0/true',
+  'REASSIGN, cycle 3: Ruth to Dan in one transaction — the former holder is Ruth (assign_task returns former_member_id), NOTHING is revoked, and Lena''s kept share is still live: the reassign loop has no keep list and, keyed on the holder, never needed one');
+
+select is(pg_temp.scalar(format(
+  $$ select (select count(*)::text from public.access_log l
+              where l.circle_id = %L and l.event_type = 'object_share_revoked'
+                and l.target_member_id = %L and l.object_id = %L)
+            || '/' ||
+            (select count(*)::text from public.access_log l
+              where l.circle_id = %L and l.event_type = 'task_reassigned'
+                and l.object_id = %L and l.detail ->> 'former_owner_name' = 'Ruth') $$,
+  current_setting('t.c1'), current_setting('t.m_lena'), current_setting('t.d_legal'),
+  current_setting('t.c1'), current_setting('t.t_tainted')))
+  || '/' || pg_temp.call_as(current_setting('t.u_lena')::uuid, format(
+  $$ select count(*)::text from public.documents where id = %L $$,
+  current_setting('t.d_legal'))),
+  '0/1/1',
+  'the log never says Lena lost the POA (no object_share_revoked names her on it), the one task_reassigned entry names Ruth, and from Lena''s live context the POA is still there — a row only the kept share can show her');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (r ->> 'former_owner_name') || '/' || (r ->> 'shares_revoked')
+       from (select hc.unassign_task(%L) r) u $$,
+  current_setting('t.t_tainted')))
+  || '/' || pg_temp.scalar(format(
+  $$ select (sh.revoked_at is null)::text from public.object_shares sh where sh.id = %L $$,
+  current_setting('t.sh_doc_tainted'))),
+  'Dan/0/true',
+  'UNASSIGN, cycle 3 ends: Dan is the former holder, nothing revoked, the kept share still live — three cycles of the same task later, the coordinator''s decision at 38 stands');
+
+select pg_temp.mint(current_setting('t.u_sarah')::uuid, 'share_object',
+  'task:' || current_setting('t.t_tainted') || '+document:' || current_setting('t.d_legal'), 'tok_pair2');
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (hc.assign_task(%L, %L, null, %L, %L)) ->> 'path' $$,
+  current_setting('t.t_tainted'), current_setting('t.m_lena'), current_setting('t.d_legal'),
+  current_setting('t.tok_pair2')))
+  || '/' || pg_temp.scalar(format(
+  $$ select count(*)::text from public.object_shares sh
+      where sh.created_by_assignment_of = %L and sh.member_id = %L and sh.revoked_at is null $$,
+  current_setting('t.t_tainted'), current_setting('t.m_lena'))),
+  'share/2',
+  'CYCLE 4, Lena herself again by path 2 naming the POA: the kept share is live, so only the task share is new — two live shares of hers now carry this task''s marker');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (r ->> 'former_member_id' = %L)::text || '/' || (r ->> 'shares_revoked')
+       from (select hc.assign_task(%L, %L) r) a $$,
+  current_setting('t.m_lena'), current_setting('t.t_tainted'), current_setting('t.m_ruth')))
+  || '/' || pg_temp.scalar(format(
+  $$ select (sh.revoked_at is null)::text from public.object_shares sh where sh.id = %L $$,
+  current_setting('t.sh_doc_tainted')))
+  || '/' || pg_temp.call_as(current_setting('t.u_lena')::uuid, format(
+  $$ select count(*)::text from public.documents where id = %L $$,
+  current_setting('t.d_legal'))),
+  'true/2/false/0',
+  'the CONTROL, and the remedy''s consequence: reassigning Lena to Ruth revokes BOTH of Lena''s shares — the new task share and the POA share kept at 38 — because keying on the holder makes a kept share HERS, and her own next cycle on the same task ends with it (R1''s remedy as ruled at D19; R6''s marker-clearing would have left it). The POA is gone from her live context');
 
 select * from finish();
 rollback;

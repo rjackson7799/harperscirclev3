@@ -3225,16 +3225,17 @@ async function case52(admin) {
     // Lena holds health view and no schedule: the {schedule} task is a
     // crossing, so Sarah assigns it by PATH 2 naming the invoice.
     const lena = await mkMember(admin, fx, 'Lena', 'family', { health: 'view' });
-    const assignPath2 = async () => {
+    const assignPath2 = async (who) => {
       const token = await mintStepUp(admin, fx.u1, 'share_object',
         `task:${fx.task}+document:${fx.doc}`);
       await asUser(s2, fx.u1);
       const r = (await s2.query(
-        `select hc.assign_task($1, $2, null, $3, $4) as r`, [fx.task, lena.m, fx.doc, token]))
+        `select hc.assign_task($1, $2, null, $3, $4) as r`, [fx.task, who.m, fx.doc, token]))
         .rows[0].r;
       const shares = (await admin.query(
         `select sh.id, sh.object_type::text as t from public.object_shares sh
-          where sh.created_by_assignment_of = $1 and sh.revoked_at is null`, [fx.task])).rows;
+          where sh.created_by_assignment_of = $1 and sh.member_id = $2 and sh.revoked_at is null`,
+        [fx.task, who.m])).rows;
       return { path: r.path, doc: shares.find(s => s.t === 'document')?.id,
                task: shares.find(s => s.t === 'task')?.id };
     };
@@ -3247,7 +3248,7 @@ async function case52(admin) {
         [fx.task, fx.c])).rows[0];
 
     // (a) The coordinator's KEEP commits while a plain unassign waits.
-    const a = await assignPath2();
+    const a = await assignPath2(lena);
     await asUser(s1, fx.u1);
     await s1.query('begin');
     await s1.query(`select hc.unassign_task($1, array[$2::uuid])`, [fx.task, a.doc]);
@@ -3264,11 +3265,15 @@ async function case52(admin) {
         && stA.s === 'document:true,task:false' && stA.entries === 1,
       `path=${a.path} err=${ea ? ea.code + ':' + ea.message : 'none'} shares=${stA.s} entries=${stA.entries}`);
 
-    // (b) The other order: the plain unassign commits while the keep waits.
-    // The kept document share from (a) is revoked first so this assignment
-    // creates both shares afresh.
-    await admin.query(`update public.object_shares set revoked_at = now() where id = $1`, [a.doc]);
-    const b = await assignPath2();
+    // (b) The other order: the plain unassign commits while the keep waits —
+    // and the SECOND cycle of the same task goes to ANOTHER person. Lena's
+    // kept document share from (a) is left exactly as the coordinator left
+    // it: live, still carrying this task's marker. That is the state
+    // ADR-0033 cluster B is about (R1/F-2, R2/F-1, R6/F-2): this step used
+    // to revoke it by hand, and without that the plain unassign below
+    // revoked it as if it were Ruth's.
+    const ruth = await mkMember(admin, fx, 'Ruth', 'family', { health: 'view' });
+    const b = await assignPath2(ruth);
     await asUser(s1, fx.u2);
     await s1.query('begin');
     await s1.query(`select hc.unassign_task($1)`, [fx.task]);
@@ -3281,9 +3286,9 @@ async function case52(admin) {
     await s1.query('commit');
     const eb = await withTimeout(pb, 'case52b keep after the plain unassign');
     const stB = await shareState();
-    check('case52b (7A M1): in the other order the plain unassign commits and the KEEP arrives at a task nobody holds — refused whole, and the shares stand as the first unassign left them: every share this assignment created revoked, a second task_unassigned entry and no third',
+    check('case52b (7A M1 · ADR-0033 cluster B): in the other order the plain unassign commits and the KEEP arrives at a task nobody holds — refused whole, and the shares stand as the first unassign left them: both shares RUTH\'s cycle created revoked, LENA\'s kept document share from (a) untouched by a cycle that was not hers, a second task_unassigned entry and no third',
       b.path === 'share' && eb !== null && eb.code === 'P0001' && eb.message === 'unassign_refused'
-        && stB.s === 'document:false,document:false,task:false,task:false' && stB.entries === 2,
+        && stB.s === 'document:true,document:false,task:false,task:false' && stB.entries === 2,
       `path=${b.path} err=${eb ? eb.code + ':' + eb.message : 'none'} shares=${stB.s} entries=${stB.entries}`);
   } finally {
     await s1.query('rollback').catch(() => {});
