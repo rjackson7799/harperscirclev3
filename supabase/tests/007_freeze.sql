@@ -369,6 +369,9 @@ select is(
         -- with the named signature (PRD §7.5, set_grant's raise arm)
         'assign_task',
         'circle_frozen',
+        -- 7A M4: the People list reads the freeze state to return the people
+        -- and NO levels under a freeze
+        'circle_people',
         -- 7A M2: both lifecycle verbs refuse under a freeze with the named
         -- signature — a freeze suspends ALL interactive access (§3.8)
         'complete_task',
@@ -387,7 +390,7 @@ select is(
         -- coordinator may still perform it — the remove_member precedent,
         -- set_grant's lower arm; the reference is that permission
         'unassign_task']::name[],
-  'exactly sixteen hc functions reference freezes: the two writers, the two flag readers, the 1C pipeline predicate hc.circle_frozen (§4.2), 2A''s two FRZ-16 invite legs, set_grant''s no-new-grants raise check, accept_sender''s interactive-access closure (PRD §7.5), 4A M5''s activation closure (a freeze suspends ingestion; activation enables it), 6A M3''s hc.reject_proposal (approve''s mirror refuses under a freeze exactly as approve does), and 7A M1''s pair — assign_task refuses under a freeze as a widening act, unassign_task lets a live coordinator reduce under one — and 7A M2''s complete_task and snooze_task, which refuse under one — and 7A M3''s recategorize_document, which refuses under one because a move can widen who reads');
+  'exactly seventeen hc functions reference freezes: the two writers, the two flag readers, the 1C pipeline predicate hc.circle_frozen (§4.2), 2A''s two FRZ-16 invite legs, set_grant''s no-new-grants raise check, accept_sender''s interactive-access closure (PRD §7.5), 4A M5''s activation closure (a freeze suspends ingestion; activation enables it), 6A M3''s hc.reject_proposal (approve''s mirror refuses under a freeze exactly as approve does), and 7A M1''s pair — assign_task refuses under a freeze as a widening act, unassign_task lets a live coordinator reduce under one — and 7A M2''s complete_task and snooze_task, which refuse under one — and 7A M3''s recategorize_document, which refuses under one because a move can widen who reads — and 7A M4''s circle_people, which reads the freeze to return people and no levels');
 select is(
   (select coalesce(array_agg(p.proname order by p.proname), '{}'::name[])
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace

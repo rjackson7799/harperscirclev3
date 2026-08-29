@@ -246,6 +246,7 @@ begin
   perform set_config('t.c1', c1::text, true);
   perform set_config('t.c2', c2::text, true);
   perform set_config('t.s1', s1::text, true);
+  perform set_config('t.s2', s2::text, true);
   perform set_config('t.m_dan', m_dan::text, true);
   perform set_config('t.m_ruth', m_ruth::text, true);
   perform set_config('t.m_mar', m_mar::text, true);
@@ -299,8 +300,8 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
        from (select row_number() over () as ord, kind, display_name
                from hc.circle_people(%L)) p $$,
   current_setting('t.c1'))),
-  'subject:Marcus,subject:Nell,member:Dan,member:Kim,member:Marisol,member:Ruth,member:Sarah,member:Tom,invite:aunt@example.org,invite:cousin@example.org',
-  'every person in the circle: the two subjects first, as people; then the six live members; then the two open invites — and Omar, removed, is not a person in this circle any more');
+  'subject:Marcus,subject:Nell,member:Dan,member:Kim,member:Marisol,member:Priya,member:Ruth,member:Sarah,member:Tom,invite:aunt@example.org,invite:cousin@example.org',
+  'every person in the circle: the two subjects first, as people; then the seven live members; then the two open invites — and Omar, removed, is not a person in this circle any more');
 
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select p.is_subject::text || '/' || coalesce(p.account_id::text, 'NULL') || '/' || p.custodian_name
@@ -338,7 +339,7 @@ select is(pg_temp.call_as(current_setting('t.u_ruth')::uuid, format(
        from (select row_number() over () as ord, kind, display_name
                from hc.circle_people(%L)) p $$,
   current_setting('t.c1'))),
-  'subject:Marcus,subject:Nell,member:Dan,member:Kim,member:Marisol,member:Ruth,member:Sarah,member:Tom',
+  'subject:Marcus,subject:Nell,member:Dan,member:Kim,member:Marisol,member:Priya,member:Ruth,member:Sarah,member:Tom',
   'a family member gets the same people — existence of members is circle-level (circle_members_select already says so) — and NO invites');
 
 select is(pg_temp.call_as(current_setting('t.u_ruth')::uuid, format(
@@ -380,7 +381,7 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select count(*)::text || '/' || count(*) filter (where p.levels is null)::text
        from hc.circle_people(%L) p where p.kind <> 'invite' $$,
   current_setting('t.c1'))),
-  '8/8',
+  '9/9',
   'a FROZEN circle: the people are still people (the family can see who is in the circle) and nobody has a level — a freeze suspends all interactive access, and the list does not pretend otherwise');
 select is(pg_temp.scalar(
   $$ select (hc.adjudicate_freeze(
@@ -398,7 +399,7 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
                        || ':' || (r.object_id is not null)::text, ',' order by r.object_type)
        from hc.document_references(%L) r $$,
   current_setting('t.d_med'))),
-  'profile_fact:blood_type:true:true,task:Book the follow-up:true:true,timeline_event:Discharged home:true:true',
+  'task:Book the follow-up:true:true,timeline_event:Discharged home:true:true,profile_fact:blood_type:true:true',
   '§4.3.4 "everything else in the record that references it": the task, the event and the fact drafted from the discharge summary, NAMED to a coordinator who can see each');
 
 select is(pg_temp.call_as(current_setting('t.u_priya')::uuid, format(
@@ -406,7 +407,7 @@ select is(pg_temp.call_as(current_setting('t.u_priya')::uuid, format(
                        || ':' || (r.object_id is not null)::text, ',' order by r.object_type)
        from hc.document_references(%L) r $$,
   current_setting('t.d_med'))),
-  'profile_fact:NULL:false:false,task:NULL:false:false,timeline_event:Discharged home:true:true',
+  'task:NULL:false:false,timeline_event:Discharged home:true:true,profile_fact:NULL:false:false',
   'COUNTED, NEVER NAMED (063''s discipline): Priya reads the document at health summary — the event is hers to see; the task carries {schedule,health} and she holds no schedule, the fact reads at VIEW; both are reported as existing and neither is named nor handed to her');
 
 select is(
@@ -422,7 +423,7 @@ select is(pg_temp.call_as(current_setting('t.u_ruth')::uuid, format(
   $$ select string_agg(r.object_type::text || ':' || r.visible::text, ',' order by r.object_type)
        from hc.document_references(%L) r $$,
   current_setting('t.d_med'))),
-  'profile_fact:false,task:false,timeline_event:false',
+  'task:false,timeline_event:false,profile_fact:false',
   'AC-PERM-10 at the read: Ruth holds a NAMED SHARE on the discharge summary and reads it at view — and every object derived from it is counted and not named, because a share never propagates');
 
 -- ----------------------------------------------------------------------------
@@ -459,10 +460,10 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   'a revoked share is not a share: Ruth''s is gone from the list');
 
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
-  $$ select string_agg(s.display_name || ':' || s.object_type::text, ',' order by s.display_name)
+  $$ select string_agg(s.display_name || ':' || (s.created_by_assignment_of is null)::text, ',' order by s.display_name)
        from hc.shares_for('task', %L) s $$,
   current_setting('t.t1'))),
-  'Marisol:task',
+  'Marisol:true',
   'shares are per object: the task drafted from the document has its own list — Marisol''s task share, and NOT the document''s shares (§7.6, a share never reaches a derived object)');
 
 -- ----------------------------------------------------------------------------

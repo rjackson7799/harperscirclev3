@@ -57,6 +57,10 @@ select is((
     'cancel_arrival(p_arrival uuid)',
     'check_quota(p_circle uuid, p_sender text)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
+    -- 7A M4: the People list of ONE circle — subjects as people, levels per
+    -- subject per domain (a coordinator's read of others'), invites for
+    -- coordinators only, a frozen circle without levels
+    'circle_people(p_circle uuid)',
     'claim_security_actions(p_limit integer)',
     'claim_stage(p_arrival uuid, p_stage text, p_model_id text, p_prompt_version text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
     'close_extraction_run()',
@@ -83,6 +87,9 @@ select is((
     -- inventory and NOT the definer set
     'document_audience(p_document uuid, p_category hc.doc_category)',
     'document_audience_rows(p_document uuid, p_taint_before hc.domain[], p_resolved_before boolean, p_taint_after hc.domain[], p_resolved_after boolean)',
+    -- 7A M4: everything in the record that references a document, at the
+    -- caller's own level, counted-never-named (the receipt's discipline)
+    'document_references(p_document uuid)',
     'document_taint_under(p_document uuid, p_category hc.doc_category)',
     'dom(p jsonb)',
     'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
@@ -118,8 +125,15 @@ select is((
     -- owner-only, running AS the calling definer (the 6A write-half
     -- pattern), so it joins this inventory and NOT the definer set
     'may_act_on_task(p_task_circle uuid, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_task uuid, p_owner uuid, p_actor uuid)',
+    -- 7A M4: a member's grant levels per subject per domain, hidden spelled
+    -- out — owner-only, running AS the calling definer
+    'member_levels(p_circle uuid, p_member uuid)',
     'mint_step_up(p_operation text, p_target_ref text)',
     'note_suspicious_attempts(p_identifier text)',
+    -- 7A M4: one record object's label and the caller's level through the
+    -- object's OWN policy predicate — owner-only, shared by the two
+    -- counted-never-named reads
+    'object_label_at(p_ctx jsonb, p_type hc.object_type, p_id uuid)',
     'outbox_ack(p_outbox_ids uuid[])',
     'outbox_drain(p_limit integer)',
     'own_domain(p_type hc.object_type, p_category hc.doc_category, p_kind hc.timeline_kind, p_declared hc.domain)',
@@ -163,6 +177,11 @@ select is((
     'set_opening_context(p_circle uuid, p_context text[])',
     'set_slice(p_slice text)',
     'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid, p_step_up_token text)',
+    -- 7A M4: the live shares on an object (a manage-holder's read; zero
+    -- rows otherwise) and the live shares a person holds (a coordinator's
+    -- or her own; counted-never-named)
+    'shares_for(p_object_type hc.object_type, p_object_id uuid)',
+    'shares_for_member(p_member uuid)',
     -- 7A M2: moves the date FORWARD, counts, one revision row per snooze
     'snooze_task(p_task uuid, p_due_on date, p_due_zone text)',
     'state_label(p hc.arrival_state)',
@@ -205,11 +224,13 @@ select is((
         'adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
         'assert_manual_flag','assign_task','auth_throttle','cancel_arrival','check_quota',
+        'circle_people',
         'claim_security_actions','claim_stage','close_extraction_run',
         'complete_security_action','complete_task','consume_step_up','create_account',
         'create_arrival',
         'create_circle','create_invite','create_manual_proposal',
-        'ctx','ctx_for','describe_invite','document_audience','execute_wasnt_me','expire_held_mail',
+        'ctx','ctx_for','describe_invite','document_audience','document_references',
+        'execute_wasnt_me','expire_held_mail',
         'expire_scan_results','extractions_for',
         'finalize_extraction','finalize_interpretation','finalize_scan',
         'finalize_store',
@@ -228,11 +249,11 @@ select is((
         'revoke_sender','revoke_share',
         'run_taint_sweep','scan_cache_lookup','sender_lookalike',
         'sender_recognised','set_grant','set_opening_context','set_slice',
-        'share_object','snooze_task','sweep_provenance',
+        'share_object','shares_for','shares_for_member','snooze_task','sweep_provenance',
         'sweeper_pass',
         -- 7A M1: the second assignment writer
         'unassign_task']::name[],
-  'SECURITY DEFINER is exactly the seventy-nine boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the eighty-three boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -403,6 +424,13 @@ with actual as (
   union all select 'document_audience', 'authenticated'
   union all select 'recategorize_document', 'authenticated'
   union all select 'revoke_share', 'authenticated'
+  -- 7A M4: the four definer READS — each filters per row through
+  -- hc.visible_at and authorizes in-function; member_levels and
+  -- object_label_at are owner-only and appear in no grant row by design
+  union all select 'circle_people', 'authenticated'
+  union all select 'document_references', 'authenticated'
+  union all select 'shares_for', 'authenticated'
+  union all select 'shares_for_member', 'authenticated'
   -- 5A M3: close_extraction_run is a trigger function — hc_internal-owned,
   -- granted to nobody; it appears in no grant row by design
 )
