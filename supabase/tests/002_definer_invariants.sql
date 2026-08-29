@@ -61,6 +61,9 @@ select is((
     'claim_stage(p_arrival uuid, p_stage text, p_model_id text, p_prompt_version text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
     'close_extraction_run()',
     'complete_security_action(p_action_id uuid)',
+    -- 7A M2: the holder (at the level she sees the task as its holder) or
+    -- a manage-holder closes the work; done is terminal
+    'complete_task(p_task uuid)',
     'consume_step_up(p_token text, p_operation text, p_target_ref text, p_account uuid)',
     'contact_key(p text)',
     'create_account(p_display_name text)',
@@ -103,6 +106,10 @@ select is((
     'log_sign_out()',
     'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
     'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
+    -- 7A M2: the one authorization complete_task and snooze_task share —
+    -- owner-only, running AS the calling definer (the 6A write-half
+    -- pattern), so it joins this inventory and NOT the definer set
+    'may_act_on_task(p_task_circle uuid, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_task uuid, p_owner uuid, p_actor uuid)',
     'mint_step_up(p_operation text, p_target_ref text)',
     'note_suspicious_attempts(p_identifier text)',
     'outbox_ack(p_outbox_ids uuid[])',
@@ -142,6 +149,8 @@ select is((
     'set_opening_context(p_circle uuid, p_context text[])',
     'set_slice(p_slice text)',
     'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid, p_step_up_token text)',
+    -- 7A M2: moves the date FORWARD, counts, one revision row per snooze
+    'snooze_task(p_task uuid, p_due_on date, p_due_zone text)',
     'state_label(p hc.arrival_state)',
     'state_rank(p hc.arrival_state)',
     'sweep_provenance()',
@@ -183,7 +192,7 @@ select is((
         'arrival_auth_detail','assert_claimed',
         'assert_manual_flag','assign_task','auth_throttle','cancel_arrival','check_quota',
         'claim_security_actions','claim_stage','close_extraction_run',
-        'complete_security_action','consume_step_up','create_account',
+        'complete_security_action','complete_task','consume_step_up','create_account',
         'create_arrival',
         'create_circle','create_invite','create_manual_proposal',
         'ctx','ctx_for','describe_invite','execute_wasnt_me','expire_held_mail',
@@ -205,11 +214,11 @@ select is((
         'revoke_sender',
         'run_taint_sweep','scan_cache_lookup','sender_lookalike',
         'sender_recognised','set_grant','set_opening_context','set_slice',
-        'share_object','sweep_provenance',
+        'share_object','snooze_task','sweep_provenance',
         'sweeper_pass',
         -- 7A M1: the second assignment writer
         'unassign_task']::name[],
-  'SECURITY DEFINER is exactly the seventy-four boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the seventy-six boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -368,6 +377,11 @@ with actual as (
   -- deliberately absent: the AI has no path into assignment (PRD §6.5)
   union all select 'assign_task', 'authenticated'
   union all select 'unassign_task', 'authenticated'
+  -- 7A M2: the lifecycle writers — the holder's or a manage-holder's act,
+  -- authorized in-function through hc.may_act_on_task, which is owner-only
+  -- and appears in no grant row by design
+  union all select 'complete_task', 'authenticated'
+  union all select 'snooze_task', 'authenticated'
   -- 5A M3: close_extraction_run is a trigger function — hc_internal-owned,
   -- granted to nobody; it appears in no grant row by design
 )

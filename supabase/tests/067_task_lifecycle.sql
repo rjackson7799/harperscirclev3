@@ -32,7 +32,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(29);
+select plan(30);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038/063 pattern).
@@ -284,8 +284,8 @@ select is(pg_temp.scalar(format(
   'the log entry names the actor, both dates and the count');
 
 select is(pg_temp.call_as(current_setting('t.u_marisol')::uuid, format(
-  $$ select (hc.snooze_task(%L, '2026-09-24', 'America/New_York')) ->> 'snooze_count' || '/' ||
-            (hc.snooze_task(%L, '2026-10-01', 'America/New_York')) ->> 'revision_no' $$,
+  $$ select ((hc.snooze_task(%L, '2026-09-24', 'America/New_York')) ->> 'snooze_count') || '/' ||
+            ((hc.snooze_task(%L, '2026-10-01', 'America/New_York')) ->> 'revision_no') $$,
   current_setting('t.t_mar'), current_setting('t.t_mar'))),
   '2/3',
   'a task snoozed again and again counts up, one revision per snooze — "a task snoozed four times is a signal the family should be able to see"');
@@ -312,7 +312,7 @@ select is(pg_temp.call_as(current_setting('t.u_lena')::uuid, format(
   'a task with no date cannot be snoozed — there is no date to move; giving it one is an edit');
 
 -- ----------------------------------------------------------------------------
--- 21–23 · The caregiver completes at summary; a manage-holder completes and
+-- 21–24 · The caregiver completes at summary; a manage-holder completes and
 --         snoozes work nobody holds.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_marisol')::uuid, format(
@@ -321,11 +321,16 @@ select is(pg_temp.call_as(current_setting('t.u_marisol')::uuid, format(
   'THE ARGUED CASE: the caregiver holds the task at summary — the care ceiling — and closes it. A view bar would make every task handed to a caregiver one she could read and never finish');
 
 select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
-  $$ select (hc.complete_task(%L)) ->> 'status' || '/' ||
-            (select t.completed_by = %L from public.tasks t where t.id = %L)::text $$,
-  current_setting('t.t_unowned'), current_setting('t.u_dan'), current_setting('t.t_unowned'))),
-  'done/true',
-  'a manage-holder completes a task nobody holds, and the completion is attributed to him');
+  $$ select (hc.complete_task(%L)) ->> 'status' $$, current_setting('t.t_unowned'))),
+  'done',
+  'a manage-holder completes a task nobody holds');
+
+select is(pg_temp.scalar(format(
+  $$ select (t.completed_by = %L and t.owner_member_id is null)::text
+       from public.tasks t where t.id = %L $$,
+  current_setting('t.u_dan'), current_setting('t.t_unowned'))),
+  'true',
+  'and the completion is attributed to him while the task stays nobody''s — the doer and the holder are two different facts');
 
 select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
   $$ select (hc.snooze_task(%L, '2026-09-09', 'America/New_York')) ->> 'snooze_count' $$,
@@ -334,7 +339,7 @@ select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
   'and snoozes one — manage on the taint suffices without holding it');
 
 -- ----------------------------------------------------------------------------
--- 24–26 · Refusal shapes: a done task cannot be snoozed · nonexistent ·
+-- 25–27 · Refusal shapes: a done task cannot be snoozed · nonexistent ·
 --         a view-holder cannot touch a task she does not hold.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_lena')::uuid, format(
@@ -354,7 +359,7 @@ select is(pg_temp.call_as(current_setting('t.u_lena')::uuid, format(
   'Lena holds VIEW on the task''s whole taint and does not hold the task: refused — view completes work assigned to HER, not work assigned to nobody');
 
 -- ----------------------------------------------------------------------------
--- 27 · The slice trap: hc.revise_object's task allowlist is NOT widened.
+-- 28 · The slice trap: hc.revise_object's task allowlist is NOT widened.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
   $$ select hc.revise_object('task', %L, '{"snooze_count":5}'::jsonb)::text
@@ -364,7 +369,7 @@ select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
   'snooze_count and completed_at stay unaddressable through the generic patch — the count is a fact the snooze writes, not a field a person edits');
 
 -- ----------------------------------------------------------------------------
--- 28–29 · Freeze: both verbs refuse with the NAMED signature.
+-- 29–30 · Freeze: both verbs refuse with the NAMED signature.
 -- ----------------------------------------------------------------------------
 do $$
 begin
