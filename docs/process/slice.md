@@ -3,7 +3,12 @@
 Loaded on demand, not every session — `CLAUDE.md` carries the charter, this
 carries the procedure. The `slice` skill drives it and holds the templates.
 
-**In force from slice 7.** Slice 6B finishes under the rules it started with.
+**In force from slice 7** — adopted at the slice-7 plan gate, Q3 SETTLED
+2026-08-28 (`docs/review/slice-7-plan.md`: *"ADOPT — refreshed PR, merged before
+the 7A kickoff"*), binding from the owner's merge of the refreshed
+`chore/process-retune` PR. Slice 6B finished under the rules it started with
+(merged 2026-08-27, `4f7a9d7`). The tiers ruled for slice 7 live in the plan,
+not here: this file is the rule, a plan is the ruling.
 
 ---
 

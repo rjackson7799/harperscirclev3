@@ -1,5 +1,5 @@
 /**
- * The destructive-command guard.
+ * The destructive-command guard — and the holder of the stack lease.
  *
  * `db:reset`, `test:db`, `test:e2e` and `test:concurrency` are GLOBAL: two
  * Claude sessions share ONE working tree and ONE Supabase stack, and any of
@@ -11,13 +11,27 @@
  * gone. This is the one rule that has to be enforced BEFORE the command runs.
  *
  * Usage:
- *   node scripts/preflight.mjs --for e2e|db|concurrency|any [--force "reason"]
+ *   node scripts/preflight.mjs --for e2e|db|concurrency|any [--force "reason"] [-- <command …>]
+ *
+ * With a command after `--`, this script is the RUNNER: it checks, takes the
+ * stack lease for the run's whole lifetime, runs the command on the inherited
+ * console, releases the lease, and exits with the command's own code. That is
+ * how package.json wires the four stack scripts. Without a command it only
+ * reports — a manual look before something no script wraps.
+ *
+ * Why a runner and not an npm `pre` hook (the shape this file had from
+ * 116f80c until the retune refresh): a `pre` hook exits before the command
+ * starts, so a lease it wrote would name a pid that is already dead and the
+ * peer check could never fire — and nothing ever wrote one, so exit 3 was
+ * unreachable. The lease lives in the OS temp dir keyed by the stack's DB
+ * port, because the stack is HOST-scoped: two worktrees of this repo share
+ * it, and a lease under either tree's `.gate/` is invisible to the other.
  *
  * Exit codes are distinct on purpose — "a peer is running" and "your ports are
  * hot" call for different actions, and one generic code produces one generic
  * message, which is how a founder learns to skim past it.
  *
- *   0  SAFE
+ *   0  SAFE (report only), or the wrapped command's own exit code
  *   1  internal error
  *   3  BLOCKED — a peer session holds the stack lease
  *   4  BLOCKED — environment wrong (ports hot, stack down, stale fixture server)
@@ -25,24 +39,51 @@
  *
  * PROCESS TOOLS: always execFileSync, never through a shell. `tasklist /FI`
  * fails under Git Bash because MSYS rewrites `/FI` into a path, and PowerShell
- * `Get-CimInstance` costs ~1.6s — eight times a whole node start.
+ * `Get-CimInstance` costs ~1.6s — eight times a whole node start. The one
+ * shell spawn here is the wrapped command itself, which npm ran through the
+ * same shell before this script existed.
  */
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+// The stack's ports are 5434x, not the 5432x defaults (supabase/config.toml).
+const PORT = { api: 54341, db: 54342, mailpit: 54344, dev: 3000, fixture: 8787, clamd: 3310 };
 
 const STATE_DIR = '.gate';
 const HEAD_FILE = `${STATE_DIR}/last-head`;
-const LOCK_FILE = `${STATE_DIR}/stack.lock`;
+const LOCK_FILE = join(tmpdir(), `hc-stack-${PORT.db}.lock`);
 
-const args = process.argv.slice(2);
-const leg = args[args.indexOf('--for') + 1] ?? 'any';
+// What each leg actually needs — measured, not assumed. `test:db` and
+// `test:concurrency` talk to Postgres alone (scripts/concurrency/run.mjs dials
+// 54342 directly), and CI's `supabase db start` brings up ONLY the database:
+// demanding Kong and Mailpit for a pgTAP run — the round-19 shape — would have
+// turned CI red on the branch's first push. The browser gate needs the API,
+// Mailpit, a FREE 3000 and 8787 (reuseExistingServer:false on both webServers,
+// so an occupied port fails the gate at startup) and clamd.
+const NEEDS = {
+  db: { open: [PORT.db], free: [], clamd: false },
+  concurrency: { open: [PORT.db], free: [], clamd: false },
+  e2e: { open: [PORT.api, PORT.db, PORT.mailpit], free: [PORT.dev, PORT.fixture], clamd: true },
+  any: { open: [], free: [], clamd: false },
+};
+
+const argv = process.argv.slice(2);
+const dashdash = argv.indexOf('--');
+const args = dashdash === -1 ? argv : argv.slice(0, dashdash);
+const command = dashdash === -1 ? [] : argv.slice(dashdash + 1);
+
+const forIdx = args.indexOf('--for');
+const leg = forIdx === -1 ? 'any' : (args[forIdx + 1] ?? 'any');
 const forceIdx = args.indexOf('--force');
 
 // The override is a REASON, never a bare flag. A bare flag gets typed
 // reflexively within a week; a reason has to be composed, and it is echoed
-// into the run record. HC_PREFLIGHT_FORCE exists because npm `pre` scripts
-// cannot forward argv — `HC_PREFLIGHT_FORCE="why" npm run test:e2e`.
+// into the run record. HC_PREFLIGHT_FORCE exists because `npm run <script>`
+// appends its extra arguments AFTER the wrapped command, where they belong to
+// it — `HC_PREFLIGHT_FORCE="why" npm run test:e2e`.
 const envReason = process.env.HC_PREFLIGHT_FORCE ?? '';
 const force = forceIdx !== -1 || envReason !== '';
 const forceReason = envReason || (forceIdx !== -1 ? (args[forceIdx + 1] ?? '') : '');
@@ -66,11 +107,29 @@ const portOpen = (port) =>
     sock.once('error', () => done(false));
   });
 
+/** Signal 0 probes without killing. EPERM means "exists, not yours" — live. */
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e?.code === 'EPERM';
+  }
+};
+
+/** Quote for the shell only when the shell would otherwise split it. */
+const quote = (a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
+
 async function main() {
+  if (!(leg in NEEDS)) {
+    console.error(`preflight: unknown leg "${leg}" — use e2e, db, concurrency or any`);
+    return 1;
+  }
   if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
 
   const head = git('rev-parse', 'HEAD');
   const branch = git('rev-parse', '--abbrev-ref', 'HEAD');
+  const needs = NEEDS[leg];
 
   // --- 1. the stack lease -------------------------------------------------
   // A lease read is 0ms and exact. Process scanning is ~282ms and ambiguous.
@@ -81,17 +140,13 @@ async function main() {
     } catch {
       /* a corrupt lease is a stale lease */
     }
-    let live = false;
-    if (lock?.pid && lock.pid !== process.pid) {
-      try {
-        process.kill(lock.pid, 0);
-        live = true;
-      } catch {
-        live = false;
-      }
-    }
+    const live = Boolean(lock?.pid) && lock.pid !== process.pid && alive(lock.pid);
     if (live) {
-      add('BLOCK:3', 'lease', `pid ${lock.pid} holds the stack for "${lock.leg}" since ${lock.startedAt}`);
+      add(
+        'BLOCK:3',
+        'lease',
+        `pid ${lock.pid} in ${lock.cwd ?? '?'} holds the stack for "${lock.leg}" since ${lock.startedAt} (${LOCK_FILE})`,
+      );
     } else {
       add('OK', 'lease', 'a stale lease was present and is ignored');
     }
@@ -102,7 +157,8 @@ async function main() {
   // --- 2. HEAD movement, self-disarming -----------------------------------
   // Denies exactly once per NEW head value, then records the acknowledgement.
   // A check that fires on every peer commit for six hours is a check you learn
-  // to ignore; this one forces exactly one look.
+  // to ignore; this one forces exactly one look. Per working tree, because
+  // HEAD is.
   const lastHead = existsSync(HEAD_FILE) ? readFileSync(HEAD_FILE, 'utf8').trim() : null;
   if (lastHead && lastHead !== head) {
     let log = '';
@@ -129,34 +185,35 @@ async function main() {
   }
 
   // --- 4. ports -----------------------------------------------------------
-  const [p3000, p8787, p54341, p54342, p54344, p3310] = await Promise.all(
-    [3000, 8787, 54341, 54342, 54344, 3310].map(portOpen),
+  const probe = [...new Set([...needs.open, ...needs.free, PORT.fixture, PORT.clamd])];
+  const state = Object.fromEntries(
+    (await Promise.all(probe.map(portOpen))).map((open, i) => [probe[i], open]),
   );
 
-  if (leg === 'e2e') {
-    // playwright.config.ts sets reuseExistingServer:false on BOTH webServers,
-    // so an occupied port fails the gate at startup. Catch it here instead.
-    const hot = [p3000 && '3000 (dev server)', p8787 && '8787 (fixture server)'].filter(Boolean);
+  if (needs.free.length) {
+    const hot = needs.free.filter((p) => state[p]);
     if (hot.length) {
       add('BLOCK:4', 'ports', `${hot.join(' · ')} OPEN — reuseExistingServer:false needs them FREE`);
     } else {
-      add('OK', 'ports', '3000 and 8787 free');
+      add('OK', 'ports', `${needs.free.join(' and ')} free`);
     }
-    add(p3310 ? 'OK' : 'WARN', 'clamd', p3310 ? '3310 open' : '3310 closed — `docker start hc_clamd`');
   }
-
-  if (leg === 'db' || leg === 'concurrency' || leg === 'e2e') {
-    const down = [!p54341 && '54341', !p54342 && '54342', !p54344 && '54344'].filter(Boolean);
+  if (needs.clamd) {
+    add(state[PORT.clamd] ? 'OK' : 'WARN', 'clamd', state[PORT.clamd] ? '3310 open' : '3310 closed — `docker start hc_clamd`');
+  }
+  if (needs.open.length) {
+    const down = needs.open.filter((p) => !state[p]);
     if (down.length) {
       add('BLOCK:4', 'stack', `${down.join(' · ')} CLOSED — stack ports are 5434x, not 5432x`);
     } else {
-      add('OK', 'stack', '54341/54342/54344 open');
+      add('OK', 'stack', `${needs.open.join('/')} open`);
     }
   }
 
   // --- 5. stale fixture server -------------------------------------------
-  // An open 8787 that ANSWERS is a live orphan, not a coincidence.
-  if (p8787) {
+  // An open 8787 that ANSWERS is a live orphan, not a coincidence. For the e2e
+  // leg it is already a BLOCK above; elsewhere it is worth a look.
+  if (state[PORT.fixture] && !needs.free.includes(PORT.fixture)) {
     add('WARN', 'fixture', '8787 is answering — identify it by start time before killing it');
   }
 
@@ -169,26 +226,71 @@ async function main() {
   }
 
   const blocks = findings.filter((f) => f.level.startsWith('BLOCK'));
-  if (!blocks.length) {
-    console.log('\nVERDICT: SAFE');
-    return 0;
-  }
-
-  const code = Math.max(...blocks.map((f) => Number(f.level.split(':')[1])));
-  if (force) {
+  if (blocks.length) {
+    const code = Math.max(...blocks.map((f) => Number(f.level.split(':')[1])));
+    if (!force) {
+      console.log(`\nVERDICT: BLOCKED (${code}) — re-run to acknowledge, or HC_PREFLIGHT_FORCE="reason".`);
+      return code;
+    }
     if (!forceReason) {
-      console.log('\nVERDICT: --force requires a reason. `--force "why this is safe"`.');
+      console.log('\nVERDICT: the override requires a reason. `--force "why this is safe"`.');
       return code;
     }
     console.log(`\nVERDICT: BLOCKED (${code}) — OVERRIDDEN: ${forceReason}`);
-    return 0;
+  } else {
+    console.log('\nVERDICT: SAFE');
   }
-  console.log(`\nVERDICT: BLOCKED (${code}) — re-run to acknowledge, or --force "reason".`);
-  return code;
+
+  if (!command.length) return 0;
+  return run(head);
+}
+
+/**
+ * Hold the lease for exactly as long as the command lives. The lease names
+ * THIS pid, which outlives the child by construction; a peer's preflight
+ * probes it with signal 0. Released on exit, on Ctrl+C, and on a spawn
+ * failure; a hard kill leaves a lease whose pid is dead, which the next
+ * preflight reads as stale.
+ */
+function run(head) {
+  const lease = {
+    pid: process.pid,
+    leg,
+    startedAt: new Date().toISOString(),
+    head: head.slice(0, 7),
+    cwd: process.cwd(),
+    command: command.join(' '),
+  };
+  writeFileSync(LOCK_FILE, JSON.stringify(lease));
+  const release = () => {
+    try {
+      if (JSON.parse(readFileSync(LOCK_FILE, 'utf8')).pid === process.pid) unlinkSync(LOCK_FILE);
+    } catch {
+      /* already gone, or not ours */
+    }
+  };
+  const bail = (code) => {
+    release();
+    process.exit(code);
+  };
+
+  const line = command.map(quote).join(' ');
+  console.log(`LEASE    ${LOCK_FILE} (pid ${process.pid})\nRUN      ${line}\n`);
+  const child = spawn(line, { stdio: 'inherit', shell: true });
+  process.on('SIGINT', () => bail(130));
+  process.on('SIGTERM', () => bail(143));
+  child.on('error', (e) => {
+    console.error('preflight: could not start the command —', e?.message ?? e);
+    bail(1);
+  });
+  child.on('exit', (code, signal) => bail(code ?? (signal ? 1 : 0)));
+  return null; // the event loop stays alive for the child
 }
 
 main()
-  .then((code) => process.exit(code))
+  .then((code) => {
+    if (code !== null) process.exit(code);
+  })
   .catch((e) => {
     console.error('preflight: internal error —', e?.message ?? e);
     process.exit(1);

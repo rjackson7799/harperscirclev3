@@ -55,5 +55,6 @@ npm-debug.log*
 # by a wildcard. Nothing here is secret; what matters is that it is chosen.
 eval/runs/
 
-# preflight/gate local state (leases, last-seen HEAD, preserved run archives)
+# preflight/gate local state (last-seen HEAD, preserved run archives). The
+# stack lease is host-scoped and lives in the OS temp dir, not under a tree.
 .gate/

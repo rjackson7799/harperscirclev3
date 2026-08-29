@@ -10,7 +10,8 @@ and `docs/process/slice.md` (the ritual and the tiering rule). Those are loaded
 already or one read away. **This skill is the procedure and the templates** —
 what to do on the leg you are actually on.
 
-**In force from slice 7.** Slice 6B finishes under the rules it started with.
+**In force from slice 7** — adopted at the slice-7 plan gate (Q3, SETTLED
+2026-08-28). A slice's rulings live in its plan; the rules live here.
 
 ## First: name your leg
 
@@ -53,8 +54,9 @@ a T3 unit. If the plan produces one, the plan is wrong — split it.
 ## Before you run anything destructive
 
 `db:reset`, `test:db`, `test:e2e`, `test:concurrency` are GLOBAL and destroy a
-peer session's in-flight run. They are wired to `scripts/preflight.mjs` through
-npm `pre` hooks and will refuse. The override is a reason, never a bare flag:
+peer session's in-flight run. The four scripts run THROUGH `scripts/preflight.mjs`,
+which holds the host-scoped stack lease for the run and refuses on a peer's
+lease, a moved HEAD or hot ports. The override is a reason, never a bare flag:
 
 ```
 HC_PREFLIGHT_FORCE="why this is safe" npm run test:e2e

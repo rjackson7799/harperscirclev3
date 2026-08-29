@@ -41,6 +41,10 @@ new to its own slice and points here.
 - **Every dependency is argued WITH its licence**, re-verified from the
   installed manifest, with the command's output pasted into the red commit that
   adds it.
+- **A reserve is consumed only with its ruling quoted in the commit.** A reserve
+  not consumed closes UNCONSUMED — the bound closes at what was spent.
+- **An accepted risk is an owner ruling plus a never-green coverage row** carrying
+  the exposure; the ledger holds it as `RISK(row)` and nothing turns it green.
 - The **owed ledger is `docs/owed.md`**, capped at **25 OPEN**. A round may not
   close above the cap. Excess is FIXED, TAKEN into the current slice against a
   named unit, or KILLED with a reason — carrying is not a third option.
@@ -58,6 +62,9 @@ and is itself an owner ruling. Full rule and the ritual: `docs/process/slice.md`
   routes, state machines, storage.
 - **Tier 3 (shallow)** — UI composition, copy, styling, timeout constants,
   test-only changes. Reviewed in one batched pass per slice, not per increment.
+
+**The tier is ruled per increment.** The owner may raise one mid-round, on the
+record, before a line is written; **a tier is never lowered mid-slice.**
 
 Findings land **VERBATIM** in a committed file before anything is argued. Build
 red→green per unit, with the failure signature in the red commit message.

@@ -42,17 +42,18 @@ re-run at most once, and only after classifying it from the retained trace.
 `db:reset`, `test:db`, `test:e2e` and `test:concurrency` are **GLOBAL**. They
 destroy a peer session's in-flight run with no error on either side.
 
-Before any of them, check for a live peer and a moved HEAD. Run
-`node scripts/preflight.mjs`; it refuses and names the conflict. `--force` is the
-deliberate override.
+The four npm scripts run THROUGH `scripts/preflight.mjs`, which holds a
+host-scoped stack lease for the run and refuses — naming the conflict — on a
+peer's live lease, a moved HEAD or hot ports. `HC_PREFLIGHT_FORCE="reason"`
+is the override; a bare flag is not one.
 
-- Check the peer `node.exe` **command line**, not just the image name — Adobe
-  Creative Cloud ships a `node.exe` and is a known false positive.
+- A peer that bypasses the scripts holds no lease: check the peer `node.exe`
+  **command line**, not just the image name — Adobe Creative Cloud ships a
+  `node.exe` and is a known false positive.
   `Get-CimInstance Win32_Process -Filter "name='node.exe'"`.
 - **Stage EXPLICIT paths. Never `git add -A`** — it sweeps the peer's
   in-progress files into your commit.
-- A dev server left running by a peer is **REUSED** by Playwright *without* the
-  config's env block.
+- **Branch from `origin/main` after a fetch, never local `main`** — it goes stale.
 - **Never poll a PID with `tasklist` + grep** — it reports "exited" for a
   demonstrably live process. Use `Get-Process -Id`.
 - After an **interrupted** gate, kill the orphans before re-running: stopping
@@ -77,9 +78,10 @@ login and yields `permission denied for schema auth` (42501).
 eat the 543xx block — an elevated `winnat` restart plus `supabase stop/start`
 recreates it.
 
-A stale `scripts/ai-fixture-server.mjs --port 8787` blocks `test:e2e` at startup
-**by design** — better than silently answering from the BLIND partition.
-Identify it by start time before killing it.
+**The Anthropic SDK refuses a non-streaming `max_tokens` above ~21,333 unless
+the call passes an explicit `{ timeout }`** (`lib/ai/config.ts:93-104`).
+`callProvider`'s `{ timeout: remainingMs }` is what makes the worker's request
+dispatchable at all; drop it and every extract returns `unavailable` in ~20 ms.
 
 ---
 
@@ -92,24 +94,23 @@ rule exists.
 
 **A run with no `N passed` tally is NOT a gate result.**
 
-**NEVER GREP THE PLAYWRIGHT STATUS MARK — IT IS NOT A FIXED CHARACTER.** From
-`node_modules/playwright/lib/runner/index.js:4616-4618`:
-
-```js
-DOES_NOT_SUPPORT_UTF8_IN_TERMINAL =
-  process.platform === "win32" && process.env.TERM_PROGRAM !== "vscode" && !process.env.WT_SESSION;
-NEGATIVE_STATUS_MARK = DOES_NOT_SUPPORT_UTF8_IN_TERMINAL ? "x" : "✘";
-```
-
-Under bare conhost a failed leg is `x`; under Windows Terminal (`WT_SESSION`
-set) or VS Code it is `✘`. **The same command in two terminals prints two
-different characters**, so a grep-based tally is not merely wrong, it is
-*intermittently* wrong — which is worse. Read the tally from the JSON reporter
-(`PLAYWRIGHT_JSON_OUTPUT_FILE`), never from console text.
+**NEVER GREP THE PLAYWRIGHT STATUS MARK — IT IS NOT A FIXED CHARACTER.**
+`node_modules/playwright/lib/runner/index.js:4616-4618`: `NEGATIVE_STATUS_MARK =
+DOES_NOT_SUPPORT_UTF8_IN_TERMINAL ? "x" : "✘"`, the guard being `win32 &&
+TERM_PROGRAM !== "vscode" && !WT_SESSION`. Under bare conhost a failed leg is
+`x  N …` — ONE `x`, then the leg number, so an alternation of `xx`/`failed`/
+`Error` matches none of it; under Windows Terminal or VS Code it is `✘`. The
+same command in two terminals prints two different characters, so a grep tally
+is *intermittently* wrong — worse than wrong. Read the tally from the JSON
+reporter (`PLAYWRIGHT_JSON_OUTPUT_FILE`), never from console text.
 
 Detail and tally appear only after the last leg. `retries=0`, so a failure
 restarts the worker and re-provisions the founder, and cascading failures
 over-report.
+
+**`console.info` from the dev server never reaches the gate log** — no `stdout:`
+is set on the webServers, so Playwright's default `stdout:'ignore'` drops it
+while `warn`/`error` arrive as `[WebServer]` lines. Absence there proves nothing.
 
 **Targeted runs are never gate results.** Neither is a leg re-run in isolation.
 
@@ -154,8 +155,11 @@ response bodies.
   plan" parse errors that are **drift, not defects**.
 - **Never interrupt a `db:reset`** — an interrupted one leaves an EMPTY database.
 - A post-reset Kong 502 on auth → `docker restart supabase_kong_HarpersCirclev3`.
-- `hc_clamd` dies on a Docker restart; `docker start hc_clamd` revives it (the
-  local gate needs it — wait for "socket found, clamd started").
+- **`hc_clamd`'s SelfCheck signature reload (~8 min at 96 % CPU and 1.7 GiB on
+  this 8 GB host) starves the DB pool mid-gate**: `/setup/step/3/submit` 500s
+  after a ~9.6 s connect wait and onboarding legs 25–31 cascade. Before a gate,
+  `docker stats --no-stream hc_clamd` must sit near 0 % and `docker logs
+  hc_clamd --since 20m` show no reload; a fresh `docker start` reloads once.
 - **A function-ACL denial SEGFAULTS this PG17 image.** Privilege closure is
   therefore CATALOG-BASED, never probed by calling as a denied role.
 - `citext` operators die under `search_path=''` and fall back to
@@ -170,11 +174,12 @@ response bodies.
 ## 8. Text editing on this host
 
 - **MEASURE LINE ENDINGS WITH NODE ONLY.** Git Bash's `grep`, `sed` and `od`
-  strip `\r`, disagree with each other, and disagree with the truth. Repo
-  *source* is pure LF; `docs/coverage.md` is wholly CRLF; **line endings are
-  mixed WITHIN single files** (`docs/adr/0023-*.md` holds 1183 CRLF and 192 LF).
-  Fresh worktrees check out CRLF. Git's "LF will be replaced by CRLF" warning on
-  commit is autocrlf noise.
+  strip `\r`, disagree with each other, and disagree with the truth.
+- **The blob and the working tree disagree; only the blob is the record.**
+  `* text=auto` makes every text blob LF; a Windows checkout — and every fresh
+  `git worktree add` — is CRLF; writing LF into a CRLF file leaves the tree
+  mixed and the blob still LF. Say which side you assert; read the blob with
+  `git show HEAD:<path>` piped to node. "LF will be replaced by CRLF" is noise.
 - **Assert the match count before writing any exact-string replacement.**
 - **Bash heredocs truncate past ~130 lines**, reporting a misleading
   `unexpected EOF` at a line inside your own content, with nothing written.
@@ -205,4 +210,5 @@ replacement, so the eviction rule cannot be used to quietly drop a lesson.
 
 | Retired trap | Now enforced by |
 |---|---|
-| _(none yet — the first entries arrive as `tests/lint/process.test.ts` and `scripts/preflight.mjs` land)_ | |
+| Check for a live peer and a moved HEAD by hand before a stack command | `scripts/preflight.mjs` — the stack lease (exit 3) and the HEAD check (exit 5), run by the four stack scripts |
+| A stale fixture server on 8787, a peer's dev server on 3000 silently REUSED, `hc_clamd` down after a Docker restart | `preflight --for e2e` blocks on a hot 8787/3000 and names a closed 3310 (`docker start hc_clamd`); `playwright.config.ts` `reuseExistingServer:false` on both servers (6B) |

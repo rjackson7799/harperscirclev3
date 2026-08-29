@@ -33,6 +33,13 @@ const cells = (line: string): string[] =>
 
 const STATUS_WORDS = new Set(['green', 'pending', 'review']);
 
+// An assertion ID may carry a lowercase suffix — FRZ-16a/b, RLS-11a/b,
+// APP-09a/b are real rows. The round-19 form of this regex required digits to
+// the end and skipped all six WITHOUT a failure: the pending tally read 10
+// where the file holds 12. A parser that drops rows silently is the defect
+// class this file exists to catch, so the pattern is named and tested below.
+const ASSERTION_ID = /^\*{0,2}[A-Z][A-Z0-9]*-\d+[a-z]?\*{0,2}$/;
+
 // The status must be located by COLUMN, never by scanning cells for a keyword:
 // the Layer column legitimately contains the value `review`, so a keyword scan
 // reports a pgTAP row as review-status and the tally silently inflates. Rows in
@@ -166,7 +173,7 @@ describe('docs/coverage.md invariants', () => {
   const rows = readFileSync('docs/coverage.md', 'utf8')
     .split(/\r?\n/)
     .map((l, i) => ({ n: i + 1, c: cells(l) }))
-    .filter(({ c }) => /^\*{0,2}[A-Z][A-Z0-9]*-\d+\*{0,2}$/.test(c[1] ?? ''))
+    .filter(({ c }) => ASSERTION_ID.test(c[1] ?? ''))
     .map(({ n, c }) => ({ n, c, id: (c[1] ?? '').replace(/\*/g, '') }));
 
   it('finds the full assertion set', () => {
@@ -242,8 +249,9 @@ describe('docs/owed.md invariants', () => {
 
   // Header-indexed, for the same reason as coverage.md: the last element of a
   // split row is the empty string after the trailing pipe, never a real cell.
-  // This currently passes trivially (the ledger is empty pending triage), so a
-  // wrong index here would be a silent false-pass rather than a failure.
+  // The ledger was populated at the retune refresh (2026-08-29); until then
+  // this passed trivially against an empty table, and a wrong index would
+  // have been a silent false-pass rather than a failure.
   const OWED_HEADER =
     '| ID | Origin | Sev | Claim | Acceptance condition | Status | Evidence |';
   const OWED_STATUS_IDX = cells(OWED_HEADER).indexOf('Status');
@@ -276,6 +284,26 @@ describe('docs/owed.md invariants', () => {
       .filter(({ c }) => !(c[OWED_ACCEPT_IDX] && c[OWED_ACCEPT_IDX].length > 3))
       .map(({ n }) => n);
     expect(offenders).toEqual([]);
+  });
+
+  // The status column is a closed vocabulary (owed.md "Status vocabulary").
+  // A row reading `owed`, `deferred` or `carried` is the pre-ledger state
+  // coming back under a new spelling — the thing the cap cannot see.
+  const STATUS_RE =
+    /^(OPEN|TAKEN\([^)]+\)|CLOSED\([0-9a-f]{7,40}\)|KILLED\([^)]+\)|RISK\([^)]+\)|PROMOTED\([^)]+\))$/;
+
+  it('every ledger row carries a status from the vocabulary', () => {
+    const offenders = rows
+      .filter(({ c }) => !STATUS_RE.test(statusCell(c).trim()))
+      .map(({ n }) => n);
+    expect(offenders).toEqual([]);
+  });
+
+  it('the OPEN count the prose states is the count the table holds', () => {
+    // Round 16 shipped an ADR whose prose said seven where its table said
+    // eight. The ledger states its own count; it must be the re-tallied one.
+    const open = rows.filter(({ c }) => isOpen(c)).length;
+    expect(text).toContain(`**OPEN: ${open} / ${CAP}.**`);
   });
 
   it('every CLOSED row names a resolvable commit', () => {
@@ -348,6 +376,15 @@ describe('the coverage parser, on synthetic rows', () => {
     const c = row('| STO-01 | store | §4.3 | pgTAP | 4A/4B | green — pgTAP 044:1,7 |');
     const statusCell = (c[Math.min(STATUS_IDX, c.length - 2)] ?? '').replace(/\*\*/g, '');
     expect(statusCell.trim().length > 'green'.length).toBe(true);
+  });
+
+  it('recognises a suffixed assertion ID', () => {
+    // FRZ-16a/b, RLS-11a/b and APP-09a/b are real rows. The round-19 regex
+    // required digits to the end and skipped all six without a failure.
+    expect(ASSERTION_ID.test('FRZ-16b')).toBe(true);
+    expect(ASSERTION_ID.test('**RLS-11a**')).toBe(true);
+    expect(ASSERTION_ID.test('16b')).toBe(false);
+    expect(ASSERTION_ID.test('FRZ-16bb')).toBe(false);
   });
 
   it('normalises bold status cells', () => {
