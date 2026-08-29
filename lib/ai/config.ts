@@ -88,8 +88,19 @@ export const INTERPRET_EFFORT = 'high' as const;
  * `max_tokens`, and the honest reason not to here is that **the G9 eval
  * harness runs through the Batch API, which does not stream** — keeping the
  * worker non-streaming means the eval measures the same call shape the worker
- * uses. 24k is comfortably inside the SDK's non-streaming timeout scaling,
- * and our own client timeout (below) is tighter than either.
+ * uses.
+ *
+ * What the SDK actually does with 24k (round-16 R2/F-15, the accepted
+ * correction, carried out at the step-4 follow-up): its non-streaming guard
+ * REFUSES any `max_tokens` above ~21,333 when no explicit timeout is given —
+ * `_calculateNonstreamingTimeout` throws "Streaming is required for
+ * operations that may take longer than 10 minutes" (60·60·24000/128000 =
+ * 675 s > 600 s). 24k is therefore NOT inside that scaling. The guard is
+ * BYPASSED, not satisfied: `callProvider` passes `{ timeout }` on every call
+ * (the lease's budget, §1.9), and an explicit timeout skips the check. Remove
+ * that option and the worker never dispatches — proven at step 4, where the
+ * R2/F-2 hang leg with the option deleted failed in 24 ms without contacting
+ * the fixture. The value may stay; this comment must not claim the opposite.
  */
 export const MAX_TOKENS = 24_000;
 
