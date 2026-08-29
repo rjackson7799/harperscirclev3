@@ -4,6 +4,7 @@ import { INTERPRET_EFFORT, INTERPRET_MODEL, providerTimeoutMs } from '@/lib/ai/c
 import { ANOMALY_FLAGS, INTERPRETATION_SCHEMA, P5_CAPS } from '@/lib/ai/schema';
 import {
   INTERPRET_SYSTEM_PROMPT,
+  INTERPRET_USER_INSTRUCTION,
   delimitedDocumentText,
   delimitedFacts,
   delimitedRecord,
@@ -108,10 +109,9 @@ export async function interpretArrival(
   if (input.documentText && input.documentText.trim() !== '') {
     blocks.push({ type: 'text', text: delimitedDocumentText(input.documentText) });
   }
-  blocks.push({
-    type: 'text',
-    text: 'Propose what a person might want done about this document.',
-  });
+  // The user-turn instruction lives in lib/ai/prompt.ts and is a covered
+  // input of the identity hash (R2/F-3's residue) — never a literal here.
+  blocks.push({ type: 'text', text: INTERPRET_USER_INSTRUCTION });
 
   const result = await callProvider({
     model: INTERPRET_MODEL,
