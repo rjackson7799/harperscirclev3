@@ -9,7 +9,15 @@ import {
   STANDARD_LONG_EDGE,
 } from '@/lib/pipeline/render';
 import { EXTRACTION_SCHEMA, INTERPRETATION_SCHEMA, P5_CAPS } from '@/lib/ai/schema';
-import { EXTRACT_SYSTEM_PROMPT, INTERPRET_SYSTEM_PROMPT } from '@/lib/ai/prompt';
+import {
+  EXTRACT_SYSTEM_PROMPT,
+  EXTRACT_USER_INSTRUCTION_TEMPLATE,
+  INTERPRET_SYSTEM_PROMPT,
+  INTERPRET_USER_INSTRUCTION,
+  delimitedDocumentText,
+  delimitedFacts,
+  delimitedRecord,
+} from '@/lib/ai/prompt';
 
 /**
  * The adapter's configuration (slice-5 plan B3; TSD §6.1, §6.10; M3's
@@ -121,7 +129,25 @@ export function inferenceConfiguration(): Record<string, unknown> {
     thinking: { type: 'adaptive' },
     caps: P5_CAPS,
     schema: { extraction: EXTRACTION_SCHEMA, interpretation: INTERPRETATION_SCHEMA },
-    prompts: { extract: EXTRACT_SYSTEM_PROMPT, interpret: INTERPRET_SYSTEM_PROMPT },
+    prompts: {
+      extract: EXTRACT_SYSTEM_PROMPT,
+      interpret: INTERPRET_SYSTEM_PROMPT,
+      // R2/F-3's residue (5B queue, step-4 follow-up): the user-turn
+      // instructions and the delimiter tags are what the model reads beside
+      // the images and the system prompt. They were literals in the
+      // dispatchers and the builders, outside this hash, until now. The
+      // delimiters are covered by their output on a placeholder, so the
+      // exact wrapping bytes are what is hashed.
+      user_turn: {
+        extract: EXTRACT_USER_INSTRUCTION_TEMPLATE,
+        interpret: INTERPRET_USER_INSTRUCTION,
+      },
+      delimiters: {
+        document_text: delimitedDocumentText('{text}'),
+        subject_record: delimitedRecord('{json}'),
+        extracted_facts: delimitedFacts('{json}'),
+      },
+    },
     // §6.3's render rules are part of the configuration: a citation is only
     // meaningful against the rendering it was produced from.
     render: {
@@ -171,8 +197,17 @@ export function configurationHash(): string {
  *  rendered pixels are again unchanged (same 'jpeg', same 90; only the
  *  identity grew more honest), and still no band is signed against any
  *  name: no G9 run has happened, so none is wasted. Any future eval run is
- *  against THIS pair (§6.10). */
-const PROMPT_VERSION_NAME = 'hc-6b-2';
+ *  against THIS pair (§6.10).
+ *
+ *  Bumped hc-6b-2 → hc-6b-3 at the step-4 follow-up (R2/F-3's residue): the
+ *  row named THREE omissions and step 4 covered one; the user-turn
+ *  instructions and the delimiter builders joined the prompts block above,
+ *  so the hash moved again and — by the same rule, owner-ruled again on
+ *  2026-08-28 over keeping `hc-6b-2` — the name with it. Taken now because a
+ *  second move is free until the first G9 run and costs a re-run after it.
+ *  hc-6b-2 existed one day and nothing ever ran against it. Bytes on the wire
+ *  are unchanged: the sentences moved home, they did not change. */
+const PROMPT_VERSION_NAME = 'hc-6b-3';
 
 /**
  * `<name>+<configuration hash>`. Bumping the name without the configuration

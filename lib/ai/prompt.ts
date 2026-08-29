@@ -71,8 +71,29 @@ Rules that are not negotiable:
   incomplete and do not conclude that something is absent from the record
   merely because you cannot see it.`;
 
+/**
+ * The USER-TURN instructions — the one sentence each dispatcher appends after
+ * the data blocks, telling the model what to return. Round-16 R2/F-3 (its
+ * residue, taken at the 5B queue step-4 follow-up): these are part of what
+ * the model reads and were literals inside `extractFromArrival` and
+ * `interpretArrival`, outside `inferenceConfiguration()` — so the words the
+ * model was given could change under an identical hash. They live here now,
+ * both dispatchers read them from here, and the hash covers them. The
+ * template carries `{source_class}`; `extractUserInstruction` fills it.
+ */
+export const EXTRACT_USER_INSTRUCTION_TEMPLATE =
+  "The source is a {source_class}. Return the document's facts and its filing summary.";
+
+export function extractUserInstruction(sourceClass: string): string {
+  return EXTRACT_USER_INSTRUCTION_TEMPLATE.replace('{source_class}', sourceClass.replace(/_/g, ' '));
+}
+
+export const INTERPRET_USER_INSTRUCTION =
+  'Propose what a person might want done about this document.';
+
 /** §6.7: the delimiters, in one place, so the prompt and the payload cannot
- *  drift apart. */
+ *  drift apart. Covered by `inferenceConfiguration()` via their output on a
+ *  placeholder (R2/F-3's residue) — the tags are part of what the model reads. */
 export function delimitedDocumentText(text: string): string {
   return `<document_text>\n${text}\n</document_text>`;
 }

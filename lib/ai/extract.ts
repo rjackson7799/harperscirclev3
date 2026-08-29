@@ -2,7 +2,11 @@ import 'server-only';
 import type Anthropic from '@anthropic-ai/sdk';
 import { EXTRACT_EFFORT, EXTRACT_MODEL, providerTimeoutMs } from '@/lib/ai/config';
 import { EXTRACTION_SCHEMA, P5_CAPS } from '@/lib/ai/schema';
-import { EXTRACT_SYSTEM_PROMPT, delimitedDocumentText } from '@/lib/ai/prompt';
+import {
+  EXTRACT_SYSTEM_PROMPT,
+  delimitedDocumentText,
+  extractUserInstruction,
+} from '@/lib/ai/prompt';
 import {
   callProvider,
   imageBlocks,
@@ -137,10 +141,9 @@ export function extractionBlocks(source: ExtractionSource): Anthropic.ContentBlo
   if (source.text && source.text.trim() !== '') {
     blocks.push({ type: 'text', text: delimitedDocumentText(source.text) });
   }
-  blocks.push({
-    type: 'text',
-    text: `The source is a ${source.sourceClass.replace(/_/g, ' ')}. Return the document's facts and its filing summary.`,
-  });
+  // The user-turn instruction lives in lib/ai/prompt.ts and is a covered
+  // input of the identity hash (R2/F-3's residue) — never a literal here.
+  blocks.push({ type: 'text', text: extractUserInstruction(source.sourceClass) });
   return blocks;
 }
 

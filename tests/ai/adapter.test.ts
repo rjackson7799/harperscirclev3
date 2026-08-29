@@ -491,14 +491,17 @@ describe('R2/F-1 · the configuration hash is pinned to a LITERAL', () => {
   // `node scripts/ts-run.mjs <a script printing configurationHash()>` — the
   // plain `node -e require(...)` form cannot load this module (TypeScript,
   // `@/` aliases, `server-only`); ts-run resolves all three.
-  const PINNED = '8ccb04d886cc1b6f';
+  // Moved a third time at the step-4 follow-up with hc-6b-2 → hc-6b-3: the
+  // user-turn instructions and the delimiters joined the prompts block —
+  // R2/F-3's residue, the last of its three named omissions. Same wire bytes.
+  const PINNED = 'ff1435280a36f8eb';
 
   it('the running configuration hash equals the pinned value', () => {
     expect(configurationHash()).toBe(PINNED);
   });
 
   it('and PROMPT_VERSION still carries it, so the pair cannot drift', () => {
-    expect(PROMPT_VERSION).toBe(`hc-6b-2+${PINNED}`);
+    expect(PROMPT_VERSION).toBe(`hc-6b-3+${PINNED}`);
   });
 });
 
@@ -757,5 +760,73 @@ describe('R2/F-3 · the encoding the pixels leave through is part of the identit
     expect(PNG_CODEC).toBe('png');
     expect(JPEG_CODEC).toBe('jpeg');
     expect(JPEG_QUALITY).toBe(90);
+  });
+});
+
+// ============================================================================
+// R2/F-3, the RESIDUE (5B queue, step 4 follow-up) — the row named THREE
+// omissions from the identity hash: the trailing user-turn instruction, the
+// delimiter builders, and the JPEG quality/codec. Step 4 covered the third.
+// The first two are what the model READS beside the images: the sentence that
+// tells it what to return, and the tags that mark document text, the record
+// and the facts as data. They now live in ONE place (lib/ai/prompt.ts), are
+// what both dispatchers put on the wire, and are covered inputs of
+// `inferenceConfiguration()`. No byte on the wire changes; the identity grows
+// more honest — the second and last time for this row.
+// ============================================================================
+describe('R2/F-3 · the user turn is a covered input', () => {
+  it('the prompts block names the user-turn instructions and the delimiters', async () => {
+    const prompt = await import('@/lib/ai/prompt');
+    const prompts = inferenceConfiguration().prompts as Record<string, unknown>;
+    expect(prompts.user_turn).toEqual({
+      extract: prompt.EXTRACT_USER_INSTRUCTION_TEMPLATE,
+      interpret: prompt.INTERPRET_USER_INSTRUCTION,
+    });
+    expect(prompts.delimiters).toEqual({
+      document_text: prompt.delimitedDocumentText('{text}'),
+      subject_record: prompt.delimitedRecord('{json}'),
+      extracted_facts: prompt.delimitedFacts('{json}'),
+    });
+    // The values the wire carries, pinned.
+    expect(prompt.EXTRACT_USER_INSTRUCTION_TEMPLATE).toBe(
+      "The source is a {source_class}. Return the document's facts and its filing summary.",
+    );
+    expect(prompt.INTERPRET_USER_INSTRUCTION).toBe(
+      'Propose what a person might want done about this document.',
+    );
+  });
+
+  it('the hashed template is what the extract request carries as its last block', async () => {
+    const { extractUserInstruction } = await import('@/lib/ai/prompt');
+    await extractFromArrival(extractInput());
+    const messages = lastBody().messages as Array<{ role: string; content: Array<{ type: string; text?: string }> }>;
+    const last = messages[0].content.at(-1)!;
+    expect(last.type).toBe('text');
+    expect(last.text).toBe(extractUserInstruction('born_digital_pdf'));
+    expect(last.text).toBe("The source is a born digital pdf. Return the document's facts and its filing summary.");
+  });
+
+  it('the hashed sentence is what the interpret request carries as its last block', async () => {
+    const { INTERPRET_USER_INSTRUCTION } = await import('@/lib/ai/prompt');
+    await interpretArrival({
+      recordContext: { profile_facts: { rows: [] } },
+      facts: [],
+      documentText: 'Dose: 500 mg',
+      operatorNotes: [],
+      deadlineIso: new Date(Date.now() + 240_000).toISOString(),
+    });
+    const messages = lastBody().messages as Array<{ role: string; content: Array<{ type: string; text?: string }> }>;
+    const last = messages[0].content.at(-1)!;
+    expect(last.type).toBe('text');
+    expect(last.text).toBe(INTERPRET_USER_INSTRUCTION);
+  });
+
+  it('neither dispatcher carries its own copy of the sentence — one home, lib/ai/prompt.ts', () => {
+    const extract = readFileSync(join(process.cwd(), 'lib/ai/extract.ts'), 'utf8');
+    const interpret = readFileSync(join(process.cwd(), 'lib/ai/interpret.ts'), 'utf8');
+    expect(extract).not.toContain("Return the document's facts");
+    expect(interpret).not.toContain('Propose what a person');
+    expect(extract).toMatch(/extractUserInstruction\(/);
+    expect(interpret).toMatch(/INTERPRET_USER_INSTRUCTION/);
   });
 });
