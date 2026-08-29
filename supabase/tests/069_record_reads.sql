@@ -39,7 +39,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(28);
+select plan(29);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038/063 pattern).
@@ -234,6 +234,11 @@ begin
   values (c1, s1, 'document', d_med, m_ruth, u_kim) returning id into sh_ruth;
   insert into public.object_shares (circle_id, subject_id, object_type, object_id, member_id, granted_by)
   values (c1, s1, 'document', d_unres, m_kim, u_sarah) returning id into sh_kim_unres;
+  -- ADR-0033 D19.9: a share held by SOMEONE ELSE on the unresolved document,
+  -- so 069:29 can read a list whose owner is not the caller and watch the
+  -- floor remove the row 069:28's holder keeps.
+  insert into public.object_shares (circle_id, subject_id, object_type, object_id, member_id, granted_by)
+  values (c1, s1, 'document', d_unres, m_ruth, u_sarah);
 
   perform set_config('t.u_sarah', u_sarah::text, true);
   perform set_config('t.u_kim', u_kim::text, true);
@@ -407,8 +412,8 @@ select is(pg_temp.call_as(current_setting('t.u_priya')::uuid, format(
                        || ':' || (r.object_id is not null)::text, ',' order by r.object_type)
        from hc.document_references(%L) r $$,
   current_setting('t.d_med'))),
-  'task:NULL:false:false,timeline_event:Discharged home:true:true,profile_fact:NULL:false:false',
-  'COUNTED, NEVER NAMED (063''s discipline): Priya reads the document at health summary — the event is hers to see; the task carries {schedule,health} and she holds no schedule, the fact reads at VIEW; both are reported as existing and neither is named nor handed to her');
+  'timeline_event:Discharged home:true:true,profile_fact:NULL:false:false',
+  'THE FLOOR AND THE BAND, in one row (ADR-0033 D2, cluster A): Priya reads the document at health summary. The event is hers to see and is NAMED. The task carries {schedule,health} and she holds NO schedule, so hc.ladder''s set containment puts her at HIDDEN on it — and hidden discloses nothing, so the task does not appear AT ALL. The fact reads at VIEW and she is at summary, so log <= summary < view: it is COUNTED, NEVER NAMED. Before M5 the task was reported as existing, which is what R4/F-1 (BLOCKER), R1/F-1, R4/F-2 and R6/F-1 all found.');
 
 select is(
   pg_temp.call_as(current_setting('t.u_tom')::uuid, format(
@@ -420,11 +425,12 @@ select is(
   'Tom holds schedule summary and nothing on health: he cannot see the document, so he cannot see what references it — refused in the same one shape as a nonexistent document (DEF-10)');
 
 select is(pg_temp.call_as(current_setting('t.u_ruth')::uuid, format(
-  $$ select string_agg(r.object_type::text || ':' || r.visible::text, ',' order by r.object_type)
+  $$ select coalesce(string_agg(r.object_type::text || ':' || r.visible::text, ',' order by r.object_type),
+                     '<<ZERO ROWS>>')
        from hc.document_references(%L) r $$,
   current_setting('t.d_med'))),
-  'task:false,timeline_event:false,profile_fact:false',
-  'AC-PERM-10 at the read: Ruth holds a NAMED SHARE on the discharge summary and reads it at view — and every object derived from it is counted and not named, because a share never propagates');
+  '<<ZERO ROWS>>',
+  'AC-PERM-10 at the read: Ruth holds a NAMED SHARE on the discharge summary and reads it at view — and a share NEVER PROPAGATES, so she is hidden on all three derived objects and learns of NONE of them. Before M5 she was told three objects existed and their types; the share bought her the document, not an inventory of its lineage (ADR-0033 D2).');
 
 -- ----------------------------------------------------------------------------
 -- 21–24 · SHARES ON AN OBJECT: the manage-holder''s control surface; nothing
@@ -467,7 +473,7 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   'shares are per object: the task drafted from the document has its own list — Marisol''s task share, and NOT the document''s shares (§7.6, a share never reaches a derived object)');
 
 -- ----------------------------------------------------------------------------
--- 25–28 · SHARES A PERSON HOLDS: a coordinator or the person herself; each
+-- 25–29 · SHARES A PERSON HOLDS: a coordinator or the person herself; each
 --         object at the CALLER''s level — counted, never named.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
@@ -499,7 +505,26 @@ select is(pg_temp.call_as(current_setting('t.u_kim')::uuid, format(
        from hc.shares_for_member(%L) s $$,
   current_setting('t.m_kim'))),
   'document:NULL:false:false',
-  'COUNTED, NEVER NAMED, the other way: Kim holds a share on a document whose lineage is UNRESOLVED; she is a coordinator with view on memories rather than manage×5, so rung 3 hides it from her — her own share is reported as existing and is neither named nor handed to her');
+  'THE HOLDER''S OWN LIST (ADR-0033 D19.9): Kim holds a share on a document whose lineage is UNRESOLVED, and rung 3 hides it from her — view on memories, not manage×5. The row survives BECAUSE SHE IS THE HOLDER: §4.3.5 logged and notified her when it was created, so counting it tells her nothing she does not have. This row is NOT evidence that the floor is absent — a coordinator reading someone ELSE''s list takes cluster A''s floor, which 069:29 now pins.');
+
+-- 29 pins the OTHER side of D19.9 from 069:28: the same list, the same live
+-- share, two different callers. Ruth's only live share here is the UNRESOLVED
+-- d_unres (sh_ruth was revoked at :460 for 24), and rung 3 of hc.visible_at
+-- makes it manage-on-all-five or nothing — so Sarah and Kim differ on it by
+-- construction. Two distinct strings, so neither half can hide the other
+-- (R3/F-4's caution about composites).
+select is(
+  pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+    $$ select coalesce(string_agg(s.object_type::text || ':' || coalesce(s.label, 'NULL') || ':' || s.visible::text,
+                                  ',' order by s.object_type, s.label), '<<ZERO ROWS>>')
+         from hc.shares_for_member(%L) s $$, current_setting('t.m_ruth')))
+  || '/' ||
+  pg_temp.call_as(current_setting('t.u_kim')::uuid, format(
+    $$ select coalesce(string_agg(s.object_type::text || ':' || coalesce(s.label, 'NULL') || ':' || s.visible::text,
+                                  ',' order by s.object_type, s.label), '<<ZERO ROWS>>')
+         from hc.shares_for_member(%L) s $$, current_setting('t.m_ruth'))),
+  'document:A lab result with a broken lineage:true/<<ZERO ROWS>>',
+  'THE FLOOR ON SOMEONE ELSE''S LIST (ADR-0033 D19.9, cluster A): Ruth holds one live share, on the UNRESOLVED d_unres. Sarah reads Ruth''s list holding manage on all five, so rung 3 gives her manage and she sees it NAMED. Kim reads the SAME list as a coordinator too — but she holds view on memories, so rung 3 puts her at HIDDEN and the row DOES NOT APPEAR AT ALL, not even counted. Before M5 Kim was handed document:NULL:false and learned a share existed. The exemption 069:28 relies on is the HOLDER''s alone.');
 
 select * from finish();
 rollback;
