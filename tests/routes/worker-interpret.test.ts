@@ -710,3 +710,64 @@ describe('R4/F-3 · a conflict with no domain is DROPPED, not drafted un-approva
     expect(proposals).toHaveLength(0);
   });
 });
+
+// ============================================================================
+// R2/F-6 = R7/F-5 (5B queue, step 4) — the interpret arm is the arm §6.6 is
+// ABOUT: the record prefix sits behind a cache_control breakpoint and whether
+// it actually cached comes back as cache_creation / cache_read tokens. The
+// adapter carried them; nothing read them. Now the consumption site prints
+// them, so the 512-token minimum is CHECKED from a log line rather than
+// assumed — and SMOKE-6 has something to evidence. NO DDL.
+// ============================================================================
+describe('R2/F-6 · provider usage is READ at the consumption site (§6.6, SMOKE-6)', () => {
+  it('the interpret arm logs the four usage counters, with the VALUES the adapter carried back', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      interpretMod.interpretArrival.mockResolvedValueOnce({
+        ...okInterpret([
+          { kind: 'document', title: 'File it', summary: 'A summary', ...BLANK, category: 'medical' },
+        ]),
+        usage: {
+          inputTokens: 2048,
+          outputTokens: 311,
+          cacheCreationInputTokens: 0,
+          cacheReadInputTokens: 1536,
+        },
+      });
+      workers.readPipelineWork.mockResolvedValueOnce([msg()]);
+      await route.POST(req(), ctx);
+
+      const line = info.mock.calls.map((c) => String(c[0])).find((l) => /provider usage/.test(l));
+      expect(line, 'no usage line was logged').toBeDefined();
+      expect(line).toContain(`worker/interpret: provider usage for arrival ${ARRIVAL}`);
+      expect(line).toContain('input_tokens=2048');
+      expect(line).toContain('output_tokens=311');
+      expect(line).toContain('cache_creation_input_tokens=0');
+      expect(line).toContain('cache_read_input_tokens=1536');
+      // The prefix verdict is derived from the counters, so an operator reads
+      // "did §6.6 hold for this subject" without doing the arithmetic.
+      expect(line).toContain('prefix_cache=read');
+      expect(workers.finalizeInterpretation).toHaveBeenCalled();
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it('a prefix that neither wrote nor read the cache is named as such — the §6.6 minimum did NOT hold', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      interpretMod.interpretArrival.mockResolvedValueOnce({
+        ...okInterpret([
+          { kind: 'document', title: 'File it', summary: 'A summary', ...BLANK, category: 'medical' },
+        ]),
+        usage: { inputTokens: 300, outputTokens: 40, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
+      });
+      workers.readPipelineWork.mockResolvedValueOnce([msg()]);
+      await route.POST(req(), ctx);
+      const line = info.mock.calls.map((c) => String(c[0])).find((l) => /provider usage/.test(l));
+      expect(line).toContain('prefix_cache=none');
+    } finally {
+      info.mockRestore();
+    }
+  });
+});

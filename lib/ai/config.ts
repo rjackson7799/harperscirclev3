@@ -1,6 +1,13 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
-import { HIGH_LONG_EDGE, RENDER_CEILINGS, STANDARD_LONG_EDGE } from '@/lib/pipeline/render';
+import {
+  HIGH_LONG_EDGE,
+  JPEG_CODEC,
+  JPEG_QUALITY,
+  PNG_CODEC,
+  RENDER_CEILINGS,
+  STANDARD_LONG_EDGE,
+} from '@/lib/pipeline/render';
 import { EXTRACTION_SCHEMA, INTERPRETATION_SCHEMA, P5_CAPS } from '@/lib/ai/schema';
 import { EXTRACT_SYSTEM_PROMPT, INTERPRET_SYSTEM_PROMPT } from '@/lib/ai/prompt';
 
@@ -121,6 +128,13 @@ export function inferenceConfiguration(): Record<string, unknown> {
       standard_long_edge: STANDARD_LONG_EDGE,
       high_long_edge: HIGH_LONG_EDGE,
       ceilings: RENDER_CEILINGS,
+      // R2/F-3: the encoding the pixels leave through. The quality a JPEG
+      // page was written at is part of what the model saw; it was a literal
+      // at the encode sites and outside this hash until 5B queue step 4.
+      encoding: {
+        lossless: PNG_CODEC,
+        continuous_tone: { codec: JPEG_CODEC, quality: JPEG_QUALITY },
+      },
     },
   };
 }
@@ -148,8 +162,17 @@ export function configurationHash(): string {
  *  hash moved and §6.10 says the version moves with it. The rendered pixels
  *  themselves are unchanged (RND-01's suite and the spike pin geometry,
  *  tiers and encodings across the engine swap); no band is signed against
- *  either name — G9 is open and BAND_ARTIFACT_ALLOWLIST is empty. */
-const PROMPT_VERSION_NAME = 'hc-6b-1';
+ *  either name — G9 is open and BAND_ARTIFACT_ALLOWLIST is empty.
+ *
+ *  Bumped hc-6b-1 → hc-6b-2 at 5B queue step 4 (R2/F-3): the JPEG codec and
+ *  quality the pixels leave through joined the render block above, so the
+ *  configuration hash moved and, by the 6B B1 precedent, the name moves with
+ *  it — an OWNER decision, taken 2026-08-28 over keeping the name. The
+ *  rendered pixels are again unchanged (same 'jpeg', same 90; only the
+ *  identity grew more honest), and still no band is signed against any
+ *  name: no G9 run has happened, so none is wasted. Any future eval run is
+ *  against THIS pair (§6.10). */
+const PROMPT_VERSION_NAME = 'hc-6b-2';
 
 /**
  * `<name>+<configuration hash>`. Bumping the name without the configuration

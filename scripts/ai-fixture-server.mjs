@@ -304,7 +304,10 @@ export async function startAnthropicFixtureServer(options = {}) {
         res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error' } }));
         return;
       }
-      requests.push({ url: req.url, raw, body });
+      // The HEADERS ride beside the body (R2/F-12): `server-side-fallback` is
+      // an `anthropic-beta` header value, not a body key, so an absence
+      // asserted over `raw` alone could never fail. Node lower-cases the names.
+      requests.push({ url: req.url, headers: { ...req.headers }, raw, body });
 
       const text = requestText(body);
       const model = body.model ?? 'claude-opus-5';

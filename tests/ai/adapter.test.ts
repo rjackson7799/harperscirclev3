@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   DISQUALIFIED_MODELS,
   EXTRACT_MODEL,
+  FINALIZE_RESERVE_MS,
   MODEL_ALLOWLIST,
   PROMPT_VERSION,
   assertAllowedModel,
@@ -107,29 +108,78 @@ describe('B3 · the model allowlist is §6.1’s table, and Fable 5 is refused',
   });
 });
 
+// R2/F-12 (5B queue, step 4): two things were wrong with this block.
+//
+// `server-side-fallback` is not a body key. It is a VALUE of the
+// `anthropic-beta` request HEADER (the SDK's own literal is
+// `server-side-fallback-2026-07-01`), and `raw` is the request BODY — the
+// fixture recorded no headers at all — so `expect(raw).not.toContain(…)` could
+// never fail. The fixture now records the header set beside the body, and the
+// fallback absence is asserted against THAT, after proving the set is real.
+//
+// And all four absences ran against ONE extract request. An interpret call is
+// its own request with its own shape (the record prefix, the cache_control
+// breakpoint), so each absence now runs against BOTH dispatchers.
 describe('B3 · what is NEVER on the wire', () => {
-  it('no server-side fallbacks — §6.8’s recorded decline, pinned', async () => {
-    await extractFromArrival(extractInput());
-    const raw = server.requests.at(-1)!.raw;
-    expect(lastBody()).not.toHaveProperty('fallbacks');
-    expect(raw).not.toContain('fallbacks');
-    expect(raw).not.toContain('server-side-fallback');
+  const interpretInput = () => ({
+    recordContext: { profile_facts: { rows: [] }, timeline: { rows: [] } },
+    facts: [],
+    documentText: 'Dose: 500 mg',
+    operatorNotes: [] as string[],
+    deadlineIso: new Date(Date.now() + 240_000).toISOString(),
   });
 
-  it('no Files API — artifacts go inline, so retention has one question not two', async () => {
-    await extractFromArrival(extractInput());
-    expect(server.requests.at(-1)!.raw).not.toContain('file_id');
-  });
+  const dispatchers: ReadonlyArray<readonly [string, () => Promise<unknown>]> = [
+    ['extract', () => extractFromArrival(extractInput())],
+    ['interpret', () => interpretArrival(interpretInput())],
+  ];
 
-  it("the provider's own citations feature is never sent (§6.4's 400)", async () => {
-    await extractFromArrival(extractInput());
-    expect(server.requests.at(-1)!.raw).not.toContain('"citations"');
-  });
+  /** The request headers the fixture saw — lower-cased names, as node gives
+   *  them. Refuses an unrecorded set: an absence asserted over nothing is
+   *  exactly the defect this block is fixing. */
+  function lastHeaders(): Record<string, string> {
+    const headers = server.requests.at(-1)?.headers as Record<string, string> | undefined;
+    if (!headers || Object.keys(headers).length === 0) {
+      throw new Error('the fixture recorded no request headers — the absence would be vacuous');
+    }
+    return headers;
+  }
 
-  it('no budget_tokens — removed on Opus 5, and a 400 if sent', async () => {
-    await extractFromArrival(extractInput());
-    expect(server.requests.at(-1)!.raw).not.toContain('budget_tokens');
-    expect(lastBody().thinking).toEqual({ type: 'adaptive' });
+  describe.each(dispatchers)('on the %s request', (_name, dispatch) => {
+    it('no server-side fallbacks — §6.8’s recorded decline, pinned on the body AND the headers', async () => {
+      await dispatch();
+      const raw = server.requests.at(-1)!.raw;
+      expect(lastBody()).not.toHaveProperty('fallbacks');
+      expect(raw).not.toContain('fallbacks');
+      // The header set is REAL (the SDK always stamps its API version) …
+      const headers = lastHeaders();
+      expect(headers['anthropic-version']).toBeDefined();
+      // … and the fallback beta is absent from it: not in `anthropic-beta`,
+      // and not smuggled in under any other header name or value.
+      expect(headers['anthropic-beta'] ?? '').not.toMatch(/server-side-fallback/);
+      for (const [name, value] of Object.entries(headers)) {
+        expect(`${name}: ${value}`).not.toMatch(/fallback/i);
+      }
+    });
+
+    it('no Files API — artifacts go inline, so retention has one question not two', async () => {
+      await dispatch();
+      expect(server.requests.at(-1)!.raw).not.toContain('file_id');
+      for (const [name, value] of Object.entries(lastHeaders())) {
+        expect(`${name}: ${value}`).not.toMatch(/files-api/i);
+      }
+    });
+
+    it("the provider's own citations feature is never sent (§6.4's 400)", async () => {
+      await dispatch();
+      expect(server.requests.at(-1)!.raw).not.toContain('"citations"');
+    });
+
+    it('no budget_tokens — removed on Opus 5, and a 400 if sent', async () => {
+      await dispatch();
+      expect(server.requests.at(-1)!.raw).not.toContain('budget_tokens');
+      expect(lastBody().thinking).toEqual({ type: 'adaptive' });
+    });
   });
 });
 
@@ -343,14 +393,52 @@ describe('B3 · the client timeout lives INSIDE the lease deadline (§1.9)', () 
     expect(providerTimeoutMs(new Date(now - 1000).toISOString(), now)).toBe(0);
   });
 
-  it('a hanging provider is cut off by OUR timeout, not by the platform', async () => {
+  // R2/F-2 (5B queue, step 4): the old leg here passed a deadline of +1.5 s —
+  // INSIDE FINALIZE_RESERVE_MS — so providerTimeoutMs returned 0, callProvider
+  // took its no-dispatch path, and the fixture's HC-FIXTURE-HANG branch was
+  // never reached. The leg was green while proving the OTHER branch. Both
+  // branches deserve a leg, and each now asserts the property that separates
+  // them: whether the fixture heard from us at all.
+  it('a deadline inside the finalize reserve is NOT dispatched — the budget is zero and the fixture never hears from us', async () => {
+    const before = server.requests.length;
     const result = await extractFromArrival(
       extractInput({
         text: 'HC-FIXTURE-HANG marker',
+        // 1.5 s from now is inside the 20 s reserve: the budget is zero.
         deadlineIso: new Date(Date.now() + 1_500).toISOString(),
       }),
     );
     expect(result.outcome).toBe('unavailable');
+    if (result.outcome !== 'unavailable') return;
+    expect(result.detail).toBe('no provider budget inside the lease');
+    expect(server.requests.length).toBe(before);
+  });
+
+  it('a hanging provider is cut off by OUR timeout, not by the platform (R2/F-2)', async () => {
+    const before = server.requests.length;
+    const budgetMs = 1_500;
+    const t0 = Date.now();
+    const result = await extractFromArrival(
+      extractInput({
+        text: 'HC-FIXTURE-HANG marker',
+        // The deadline sits OUTSIDE the reserve by exactly budgetMs, so the
+        // request IS dispatched with a 1.5 s client-side timeout — and the
+        // fixture, by design, never answers it.
+        deadlineIso: new Date(t0 + FINALIZE_RESERVE_MS + budgetMs).toISOString(),
+      }),
+    );
+    const elapsed = Date.now() - t0;
+    // The fixture WAS contacted: this is the dispatch path, not the no-budget one.
+    expect(server.requests.length).toBe(before + 1);
+    expect(server.requests.at(-1)!.raw).toContain('HC-FIXTURE-HANG');
+    expect(result.outcome).toBe('unavailable');
+    if (result.outcome !== 'unavailable') return;
+    // …and it was OUR timeout that cut it, named as such — not the no-budget
+    // message, and not a platform limit minutes away.
+    expect(result.detail).not.toBe('no provider budget inside the lease');
+    expect(result.detail).toMatch(/timed out/i);
+    expect(elapsed).toBeGreaterThanOrEqual(budgetMs - 50);
+    expect(elapsed).toBeLessThan(budgetMs + 5_000);
   }, 20_000);
 });
 
@@ -397,14 +485,20 @@ describe('R2/F-1 · the configuration hash is pinned to a LITERAL', () => {
   // maxRenderedBytes from the provider request limit (R2/F-8), and §6.3's
   // ceilings are a covered input — exactly the movement this pin exists to
   // make visible.
-  const PINNED = '35dad2ec988dad6f';
+  // Moved again at 5B queue step 4 with hc-6b-1 → hc-6b-2 (R2/F-3): the JPEG
+  // codec and quality the pixels leave through joined the render block. The
+  // pixels are unchanged; the identity is more honest. Regenerated with
+  // `node scripts/ts-run.mjs <a script printing configurationHash()>` — the
+  // plain `node -e require(...)` form cannot load this module (TypeScript,
+  // `@/` aliases, `server-only`); ts-run resolves all three.
+  const PINNED = '8ccb04d886cc1b6f';
 
   it('the running configuration hash equals the pinned value', () => {
     expect(configurationHash()).toBe(PINNED);
   });
 
   it('and PROMPT_VERSION still carries it, so the pair cannot drift', () => {
-    expect(PROMPT_VERSION).toBe(`hc-6b-1+${PINNED}`);
+    expect(PROMPT_VERSION).toBe(`hc-6b-2+${PINNED}`);
   });
 });
 
@@ -588,5 +682,80 @@ describe('6B B4 · the status-aware provider arm', () => {
       outcome: 'truncated',
       detail: 'model_context_window_exceeded',
     });
+  });
+});
+
+// ============================================================================
+// R2/F-4 (5B queue, step 4) — ONE construction site. `scripts/eval/run.ts`
+// imported the shared delimiter, prompt and schema and then assembled its own
+// content blocks and its own Messages envelope beside them — so the bands
+// would be signed from a request built by a second hand, equal to the
+// worker's only by inspection. Compared line by line: the blocks were the
+// same three steps, the envelope the same six fields. The only shape that
+// genuinely differs is the Batch API's `{custom_id, params}` wrapper, which is
+// the provider's, not ours.
+//
+// Now the worker's OWN builders are the only ones: `extractionCall` (the
+// blocks and the call) in lib/ai/extract.ts and `messageParams` (the
+// envelope) in lib/ai/client.ts. The harness calls both and builds nothing.
+// ============================================================================
+describe('R2/F-4 · the eval harness sends what the worker sends, by construction', () => {
+  it('the worker’s builders reproduce the wire body EXACTLY — envelope, blocks and all', async () => {
+    const { extractionCall } = await import('@/lib/ai/extract');
+    const { messageParams } = await import('@/lib/ai/client');
+    const input = extractInput();
+    // What the harness would submit for this source…
+    const params = messageParams(extractionCall(input, []));
+    // …and what the worker actually put on the wire for the same source.
+    await extractFromArrival(input);
+    expect(lastBody()).toEqual(JSON.parse(JSON.stringify(params)));
+  });
+
+  it('the builder is the SAME three steps for every source class the worker renders', async () => {
+    const { extractionBlocks } = await import('@/lib/ai/extract');
+    // images first, then the delimited text layer, then the source line.
+    const withText = extractionBlocks({ pages: [PAGE], text: 'Dose: 500 mg', sourceClass: 'born_digital_pdf' });
+    expect(withText.map((b) => b.type)).toEqual(['image', 'text', 'text']);
+    expect(JSON.stringify(withText[1])).toContain('<document_text>');
+    expect(JSON.stringify(withText[2])).toContain('The source is a born digital pdf.');
+    // no text layer: no delimited block — never an EMPTY one.
+    const noText = extractionBlocks({ pages: [PAGE], text: null, sourceClass: 'scanned_pdf' });
+    expect(noText.map((b) => b.type)).toEqual(['image', 'text']);
+    expect(JSON.stringify(noText)).not.toContain('<document_text>');
+  });
+
+  it('the harness builds NOTHING itself — no block literal, no envelope literal', () => {
+    const src = readFileSync(join(process.cwd(), 'scripts/eval/run.ts'), 'utf8');
+    expect(src).toMatch(/extractionCall/);
+    expect(src).toMatch(/messageParams/);
+    expect(src).not.toMatch(/type: 'image'/);
+    expect(src).not.toMatch(/max_tokens:/);
+    expect(src).not.toMatch(/output_config:/);
+    expect(src).not.toMatch(/delimitedDocumentText\(/);
+  });
+});
+
+// ============================================================================
+// R2/F-3 (5B queue, step 4) — THE DELIBERATE HASH BUMP. `inferenceConfiguration()`
+// carried §6.3's tiers and ceilings but not the ENCODING the pixels leave
+// through: `canvas.encode('jpeg', 90)` was a literal at two sites in
+// lib/pipeline/render.ts (raster pages and photos), and 'png' for born-digital
+// pages a third. The pixels the model sees could change with an identical
+// hash. Now the codec and quality are named exports used at the encode sites
+// AND covered inputs of the identity. The pixels themselves are unchanged —
+// same 'jpeg', same 90 — only the identity grows more honest.
+// ============================================================================
+describe('R2/F-3 · the encoding the pixels leave through is part of the identity', () => {
+  it('the render block names the codecs and the JPEG quality', async () => {
+    const { JPEG_CODEC, JPEG_QUALITY, PNG_CODEC } = await import('@/lib/pipeline/render');
+    const render = inferenceConfiguration().render as Record<string, unknown>;
+    expect(render.encoding).toEqual({
+      lossless: PNG_CODEC,
+      continuous_tone: { codec: JPEG_CODEC, quality: JPEG_QUALITY },
+    });
+    // The values the pixels are actually produced with, pinned.
+    expect(PNG_CODEC).toBe('png');
+    expect(JPEG_CODEC).toBe('jpeg');
+    expect(JPEG_QUALITY).toBe(90);
   });
 });

@@ -68,6 +68,21 @@ export const STANDARD_LONG_EDGE = 1568;
 export const HIGH_LONG_EDGE = 2576;
 
 /**
+ * The encoding the pixels leave through (round-16 R2/F-3, 5B queue step 4).
+ * PNG for born-digital pages and rendered email (text and line art: lossless
+ * and small); JPEG for continuous-tone sources — scanned pages and photos —
+ * where PNG is pathological. Named here, used at every encode site, and a
+ * covered input of `inferenceConfiguration()`: a citation is only meaningful
+ * against the rendering it was produced from, and the quality a JPEG was
+ * written at is part of that rendering. Before this, `'jpeg', 90` was a
+ * literal at two sites and the pixels the model saw could change under an
+ * identical configuration hash.
+ */
+export const PNG_CODEC = 'png' as const;
+export const JPEG_CODEC = 'jpeg' as const;
+export const JPEG_QUALITY = 90;
+
+/**
  * R2/F-8 — the output ceiling is DERIVED from the request that consumes it,
  * not asserted beside it. Rendered pages ride ONE Messages request as inline
  * base64 (§6.2 forbids the Files API), the API accepts 32 MB per request,
@@ -448,7 +463,7 @@ export async function normalizeArrival(
       let encoded: Uint8Array;
       try {
         encoded = new Uint8Array(
-          asPng ? await canvas.encode('png') : await canvas.encode('jpeg', 90),
+          asPng ? await canvas.encode(PNG_CODEC) : await canvas.encode(JPEG_CODEC, JPEG_QUALITY),
         );
       } catch {
         return { outcome: 'unsupported_type' };
@@ -739,7 +754,7 @@ async function renderEmailMessage(
     }
     let encoded: Uint8Array;
     try {
-      encoded = new Uint8Array(await canvas.encode('png'));
+      encoded = new Uint8Array(await canvas.encode(PNG_CODEC));
     } catch {
       return { outcome: 'unsupported_type' };
     }
@@ -825,7 +840,7 @@ async function normalizeImage(
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     width = canvas.width;
     height = canvas.height;
-    encoded = new Uint8Array(await canvas.encode('jpeg', 90));
+    encoded = new Uint8Array(await canvas.encode(JPEG_CODEC, JPEG_QUALITY));
   } catch {
     return { outcome: 'unsupported_type' };
   }

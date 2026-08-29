@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   HIGH_LONG_EDGE,
@@ -175,6 +177,21 @@ describe('B2 · the ceilings abort BEFORE any provider dispatch', () => {
     expect(RENDER_CEILINGS.maxPageMegapixels).toBeGreaterThan(0);
     expect(RENDER_CEILINGS.maxWallClockMs).toBeGreaterThan(0);
     expect(RENDER_CEILINGS.maxRenderedBytes).toBeGreaterThan(0);
+  });
+
+  it('the encoding is stated as values too, and the encode sites use them (R2/F-3)', async () => {
+    // The names the identity hash covers…
+    const { JPEG_CODEC, JPEG_QUALITY, PNG_CODEC } = await import('@/lib/pipeline/render');
+    expect(JPEG_CODEC).toBe('jpeg');
+    expect(JPEG_QUALITY).toBe(90);
+    expect(PNG_CODEC).toBe('png');
+    // …and no encode site carries its own literal beside them: a quality
+    // edited at one site would otherwise leave the hash — and §6.10 — behind.
+    const src = readFileSync(join(process.cwd(), 'lib/pipeline/render.ts'), 'utf8');
+    expect(src).not.toMatch(/encode\(\s*'jpeg'\s*,\s*\d/);
+    expect(src).not.toMatch(/encode\(\s*'png'\s*\)/);
+    expect(src.match(/encode\(JPEG_CODEC, JPEG_QUALITY\)/g)?.length).toBe(2);
+    expect(src.match(/encode\(PNG_CODEC\)/g)?.length).toBe(2);
   });
 });
 
