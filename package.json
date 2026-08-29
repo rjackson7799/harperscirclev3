@@ -13,12 +13,13 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "db:reset": "supabase db reset",
-    "test:db": "supabase test db",
-    "test:concurrency": "node scripts/concurrency/run.mjs",
+    "db:reset": "node scripts/preflight.mjs --for db -- supabase db reset",
+    "test:db": "node scripts/preflight.mjs --for db -- supabase test db",
+    "test:concurrency": "node scripts/preflight.mjs --for concurrency -- node scripts/concurrency/run.mjs",
     "db:verify": "supabase db lint --fail-on warning",
     "test:app": "vitest run --reporter=default --reporter=json --outputFile=.vitest/run.json",
-    "test:e2e": "playwright test"
+    "test:e2e": "node scripts/preflight.mjs --for e2e -- playwright test",
+    "preflight": "node scripts/preflight.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.120.0",

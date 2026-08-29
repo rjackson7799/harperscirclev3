@@ -1,0 +1,171 @@
+# The owed ledger
+
+<!-- owed-cap: 25 -->
+<!-- owed-schema: 1 -->
+
+**Authoritative for what is owed.** Dispositions ADRs record the *verdict* that
+made an item owed and are immutable; this file records the *fact* of where it
+stands and is live.
+
+Before this file existed, the ledger of record was ADR-0023's D17 table and
+nothing ever wrote back to it. `"The slice-5B queue stays 39 OWED"` appears
+verbatim in rounds 17, 18 and 19 — *even though slice 6's plan claimed to take
+30 of the 39*. That is what this file is for.
+
+---
+
+## Why the queue grew — and it is not only that nobody wrote back
+
+**`OWED` was never a legal disposition.** ADR-0006's blocking rule says a
+finding blocks merge unless its row shows **either** an applied artifact plus a
+named test **or** an explicit accepted-risk ruling with a coverage row. `OWED`
+is neither. Fifty findings have been resting in a state ADR-0006 does not
+define, for four rounds.
+
+That is the real defect. A queue with no legal standing has no cap, no owner and
+no exit, so of course it only grew. This file makes `OWED` legitimate — a
+ledger row here *is* the blocking artifact ADR-0006 requires — and the cap and
+the burn-down quota are what stop that being a loophole.
+
+**This is an amendment to ADR-0006, not a reading of it.** It is recorded as one
+in the retune ADR; nothing here takes effect by being written in this file.
+
+*(Written at `1066e2d`, round 19/20, when the fifty were live. Rounds 21–23
+then reconciled ADR-0023's table by ruling, not by ledger — the intake note
+below carries the arithmetic.)*
+
+---
+
+## Rules
+
+- **Cap: 25 OPEN.** A round may not close above it. Enforced by
+  `tests/lint/process.test.ts`, which runs in CI under `npm run test:app`.
+- **Burn-down quota: each slice closes at least as many items as it opens, plus
+  five.** A cap alone permits sitting at 25 forever; the quota is what makes the
+  ledger shrink. It opened at 6 OPEN on 2026-08-29; the quota keeps it falling.
+- **An OPEN row with no owner slice that survives two round closes is
+  auto-escalated to the owner for a kill ruling.** This is the specific
+  mechanism that stops *"the slice-5B queue stays 39 OWED, unchanged by this
+  round"* from happening a fourth time.
+- **Every OPEN row carries an acceptance condition.** An owed item without one
+  is a wish.
+- **At round close, excess is FIXED, TAKEN, or KILLED.** Carrying is not a third
+  option.
+- **A build session may flip a row to `CLOSED` with a commit SHA** — that is a
+  fact, not a verdict. Changing a *verdict* still requires a round (ADR-0025 D6).
+  Recording a discrepancy in a settled ADR still means recording it and leaving
+  the verdict alone.
+- **Pricing rule when a slice takes intake:** *take the owed finding whose
+  failure a person now reads; defer the one whose only reader is a worker.*
+
+### Status vocabulary
+
+| Status | Meaning |
+|---|---|
+| `OPEN` | Accepted, argued, scheduled, not yet taken. Counts against the cap. |
+| `TAKEN(slice/unit)` | Assigned to a named unit in a live slice. Does not count against the cap. |
+| `CLOSED(sha)` | Landed. Requires a resolvable commit SHA. |
+| `KILLED(adr)` | Deliberately not doing it, with the argument on the record. |
+| `RISK(coverage row)` | Accepted risk. Owner ruling **plus** a `coverage.md` row carrying the exposure. Never green. |
+| `PROMOTED(coverage row)` | Became a named, quantified entry gate on a named slice. Leaves the ledger, stays visible as a `pending` row. |
+
+IDs are `OW-<n>`, assigned in intake order and never reused or renumbered — a
+handle for citation, not a rank and not a severity. The `Sev` column is the
+reviewer's severity of the *parent finding*; `n/a` marks an item that came from
+a sign-off, a packet question or a measurement rather than a finding.
+
+### The four ways an item leaves OPEN
+
+Exactly four. Anything else is carrying, and carrying is not an option above the
+cap.
+
+1. **Fixed** — applied artifact **plus a named test** → `CLOSED(sha)`. This is
+   ADR-0006's blocking rule reused verbatim.
+2. **Moot** — the code it describes no longer exists, verified by a named path or
+   symbol check at a named head, with the check recorded → `KILLED(adr)`.
+3. **Accepted risk** — an owner ruling plus a coverage row carrying the exposure
+   → `RISK(row)`.
+4. **Promoted to a gate** — it becomes a named, quantified entry gate on a named
+   slice → `PROMOTED(row)`. This is the `bounded-deferral-gates` pattern used as
+   an exit rather than as an excuse.
+
+**The boundary with `docs/coverage.md`, stated so it cannot blur:**
+`coverage.md` holds **assertions about the product** — a claim about behaviour,
+green/pending/review. This file holds **work we owe** — a task. The only crossing
+is rulings 3 and 4, and it is one-directional.
+
+---
+
+## Ledger
+
+Populated 2026-08-29 at the retune refresh against `main` = `75f6b1c`, from the
+slice-7 plan's priced table (Q4, SETTLED 2026-08-28). Every `TAKEN` home is the
+plan's; every acceptance condition is the originating ADR's, restated where the
+ADR only implied it. File:line citations were re-verified at `7fdca4e` by the
+plan gate and are cited from there; a build session re-verifies at its own head.
+
+| ID | Origin | Sev | Claim | Acceptance condition | Status | Evidence |
+|---|---|---|---|---|---|---|
+| OW-01 | ADR-0027 D17 item 1 (packet Q5) | n/a | `lib/hc/review.ts` has no `tests/hc/` live-DB module test: 10 files in `tests/hc/`, none loads `@/lib/hc/review`, two route tests mock it out | A module test of the `tests/hc/inbox.test.ts` kind runs against the live stack and drives the review layer's refusal shapes; **first item** of 7B B1, before any new read is written on top of it | TAKEN(7B/B1) | slice-7 plan Q4, SETTLED 2026-08-28 |
+| OW-02 | ADR-0027 D17 item 2 (F-4, larger half) | MODERATE | `RequestRoleQuery.query` returns `Promise<QueryResult>` with `rows: any[]` — the root of R5/F-1 and of ADR-0028 D15 item 2's class | `q.query<R>` is generic and the two escapes (`as unknown as string`; a bare `received_at: row.received_at`) fail to compile | TAKEN(7B/B1) | plan Q4; lands with OW-01 |
+| OW-03 | ADR-0027 D17 item 3 (F-1's composition limit) | MAJOR | 35 `withRequestRole` sites across 12 `lib/hc` modules share one pool and exactly one route carries an `AnswerBudget` | Every destination page and every route they POST to carries an `AnswerBudget` (7B B4; 7C likewise); the ruling for the rest — pipeline, workers, auth forms — is recorded in the 7B deltas ADR | TAKEN(7B/B4) | plan Q4: *"D17 item 3 as the per-page budget ruling"* |
+| OW-04 | ADR-0027 D17 item 4 (F-3's residue) | MODERATE | The artifact route's abandonment check cannot cover the `artifact_read` entry's commit round-trip: one round-trip's worth of refused reads can be recorded as reads | RULED: the one-round-trip window is ACCEPTED, no DDL, M6 unconsumed; the log errs toward *over*-reporting a read a family member did not complete, the safe direction for a log whose purpose is to show who saw what. Carried by LOG-03, never green | RISK(LOG-03) | plan Q2, SETTLED 2026-08-28. LOG-03 opens with 7A's coverage section (plan, *"Coverage rows to open"*); this refresh writes no coverage row |
+| OW-05 | ADR-0027 D17 item 5 (D13) | n/a | The leg-integrity pass — title and coverage citation read against actual assertions — has covered 7 of 38 legs; 31 remain. Explicitly NOT a scanner | Recurring, never one-time: each batched Tier-3 pass audits a fixed quota (8 legs per close-out — 24 of the 31 by slice end) until the backlog clears, findings recorded whether or not they move a verdict | TAKEN(7/Tier-3 pass) | plan Q3/Q4: *"item 5 as the quota"*; `docs/process/slice.md` §1 |
+| OW-06 | ADR-0027 D17 item 6 (D13) | n/a | A11Y-07's `if (factCount > 1)` guard silently skips the leg's headline claim on a thin fixture instead of failing | The guard is an assertion (a thin fixture goes RED) and the leg has run enough times to show the fixture is stable | TAKEN(7B/B4) | plan Q4; 7B B4's row |
+| OW-07 | ADR-0027 D17 item 7 (F-9 / D9) — the upload-path five | MINOR | Of the nine unbounded outbound fetches, five sit on the upload path: the two client calls, the two TUS hops, `upload/complete`'s fire | Each of the five carries a bound (time and size) with a test that names it; PRD §4.3.7 — Documents walks straight into these routes | TAKEN(7C/C2) | plan Q4; 7C C2's row; DOC-05 opens at 7C |
+| OW-08 | ADR-0027 D17 item 7 — the other four | MINOR | `lib/mail/outbound.ts:39` (slice 11's channel), `postmark/route.ts:211`, `worker/relay/route.ts:116`, `worker/[stage]/route.ts:109` are unbounded. The tree's own split at `lib/storage/fetch.ts:21-33` (*"7 awaited / 2 eager"*, ratified ADR-0027 D22 item 4) is wrong at the site — two of the "awaited" sit inside `after(…)`; the split is 5/4. Measured at the plan gate, no verdict moved | Each of the four carries a bound with a named test — the three pipeline fires in the pipeline's execution-model increment (with OW-10), the mail channel in slice 11; the `fetch.ts` comment is corrected in the first increment that touches the file | OPEN | plan Q4: NOT THIS SLICE, named; plan *"What stays out"* |
+| OW-09 | ADR-0027 D17 item 8 (F-2) | MAJOR | F-2's deployment consequence is UNOBSERVED: no hosted runtime has been looked at, and no local instrument can close this | A hosted runtime has been looked at under an auth-server fault and the observation recorded — date, runtime, what the page gate did | OPEN | plan Q4: NOT THIS SLICE — owner track |
+| OW-10 | ADR-0028 D8 item 1 (F-1, product half) | MAJOR | §6.3 render and §6.9 OCR run on the request process; the stall F-1 found is a consequence of the pipeline's execution model. Ruled NOT PLANNED at round 20 (*gate first*); no line exists | Render and OCR run off the request process, in their own increment, with OW-14's harness as its prerequisite; leg 38 passes under D13's named load condition | OPEN | ADR-0028 D11, D15 item 1; plan: NOT THIS SLICE — owner-held, home its own increment |
+| OW-11 | ADR-0028 D8 item 2 (F-2, PRODUCT) | MODERATE | 10 page gates render an auth-server outage as a sign-in redirect (D15's corrected enumeration of 21 sites: 3 refuse with a status · 5 form routes redirect · 2 do not gate · 1 layout degrades · 10 pages redirect) | `liveSessionClaims`'s `unavailable` stops collapsing to `null`; the ten pages and five form routes render or answer *unavailable* rather than redirecting, with a leg per shape | TAKEN(7B/B1) | plan Q4; 7B B1's row |
+| OW-12 | ADR-0028 D8 item 3 (F-1) | MAJOR | The starvation sample is one sample: it sees only blocking that overlaps the deadline | A heartbeat across the whole request window reports stalls that do not overlap the deadline, at the cost of one more timer per request; lands with OW-10 | OPEN | plan: NOT THIS SLICE, with item 1 |
+| OW-13 | ADR-0028 D8 item 5 (F-1) | MAJOR | Leg 38 has passed at `r3`/`r5` and failed at `r6`/`r7`/`r2`; two passes do not close a load-dependent stall | Every 7B/7C gate run records leg 38's duration and outcome in the D13 table's shape, never re-run to green; closes when it passes under D13's genuine-load condition, or when OW-10 lands | OPEN | ADR-0028 D8 item 5; plan Q4 (*"observation, not work"* — recorded, not assigned) |
+| OW-14 | ADR-0028 D8 item 5a (F-1) | MAJOR | The `HopCost` ledger has never been seen firing on a live stall; three round-20 attempts narrowed the reproduction condition (D13) without discharging it | The harness D13 names — a concurrent in-process render + OCR overlapping an authenticated artifact read — exists, and the ledger's first live report is recorded | OPEN | ADR-0028 D13; plan: NOT THIS SLICE — owner track, OW-10's prerequisite |
+| OW-15 | ADR-0028 D15 item 1 | n/a | `lib/auth/session.ts:32-33` and `:138-141` carry the wrong enumeration (*"twelve pages … eight routes"*) in product code | Both comments state D15's 21-site enumeration; lands inside the gate fix, no comment-only gate re-run | TAKEN(7B/B1) | plan Q4 |
+| OW-16 | ADR-0028 D15 item 2 | n/a | `lib/http/budget.ts:52-55` states the overturned localisation as fact; the round-20 qualifier *"UNCONFIRMED IN THE RUNNING APP"* is absent (the `ROUND-19 F-1` marker at `:16-17` predates the ruling) | The sentence is MARKED with the qualifier, never rewritten, in the increment that touches the file | TAKEN(7C/C2) | plan Q4 |
+| OW-17 | ADR-0028 D15 item 3 | n/a | `tests/lint/timestamp-boundary.test.ts:52-59` closes 3 of ≥ 8 spellings of the timestamp-at-the-boundary class; `:113-114` still claims three is the class | The scanner covers the class (`.toString()`, `toISOString` on an `_at`, `Date(` wrapping, JSON round-trips, template fragments, `+ ""` variants) with a negative test per spelling — the new surfaces render dates on every row | TAKEN(7B/B1) | plan Q4 |
+| OW-18 | ADR-0028 D15 item 4 | n/a | `app/(auth)/confirm/route.ts:45`: on `unavailable`, `liveSessionClaims` → `null` → activation skipped → the `?verified=1` success page; a one-shot lifecycle effect is lost silently | The three outcomes are read; on `unavailable` the route renders a retry, never success — the gate fix's mechanism | TAKEN(7B/B1) | plan Q4 |
+| OW-19 | ADR-0028 D15 item 5 | n/a | `api/upload/token` and `api/upload/complete` `await req.json()` with no size or `content-length` bound and no answer budget; `complete` bounds only MEASURED staged bytes post-download; the 24.3 s `r2` call was `upload/token` | A `content-length`/JSON-size cap and an `AnswerBudget` on both; the upload channel gains a per-file pre-read bound like the mail path's | TAKEN(7C/C2) | plan Q4; DOC-05 opens at 7C |
+| OW-20 | slice-7 plan, *"What this planning session measured"* point 1 (2026-08-28) | n/a | `app/(app)/[circle]/tasks/page.tsx:27` selects `state` (the column is `status`); `timeline/page.tsx:29` selects `title, happened_on` (the columns are `summary` and the §2.7 temporal shape). Both render their empty state unconditionally, contradicting RCP-01's *"live RLS reads"* cell and the receipt's own comment | The two pages select the columns that exist, read `error` and render an error state — never an empty one — and a leg proves a row renders; RCP-01's cell is rewritten by round 24, not by a build session (ADR-0025 D6) | TAKEN(7B/B1) | plan consequence 3; 7B B1's row (*"the floors made honest — FIRST"*) |
+| OW-21 | ADR-0025 D8 (F-5), owed to 6B | MAJOR | All four spec files are `test.describe.serial`; `ingestion.spec.ts:400` had never executed at the 6A head, leaving the live half of UXA-01 and RLS-10 unverified; six suite-repair conditions | Verified at the 6B head before carrying, as the intake note required: the 38-leg gate ran GREEN 38/38 at `1066e2d` (run `r5`, ADR-0028 D7; ratified at D15 item 4), executing every serial block end to end. Not carried | CLOSED(1066e2d) | ADR-0028 D7 `r5`; D15 item 4 |
+| OW-22 | ADR-0025 S16.8 (F-1's residue: the approve-time payload contract, S16.2/S16.3), owed to 6B | MAJOR | `hc.approve_proposal`'s payload-derived casts uncovered for every conflict outcome; `064` had no `keep_both` case; `p_edits`'s top-level keys uncontracted | Verified at the 6B head before carrying: `20260825120001_payload_contract.sql` landed (`de804e8` RED → `39fcf17` GREEN, ADR-0026 D7 — all six S16.8 conditions disposed, `064` at `plan(32)`); F-1 ruled FIXED-IN-PART → FIXED at ADR-0027 RULING 5, ratified. Not carried | CLOSED(39fcf17) | ADR-0026 D7; ADR-0027 RULING 5 |
+
+**OPEN: 6 / 25.** TAKEN 13 · RISK 1 · CLOSED 2 · 22 rows. Re-tallied by
+`tests/lint/process.test.ts`, which also checks that this line agrees with the
+table.
+
+---
+
+## Intake — triaged at the slice-7 plan gate; the note this replaces was wrong
+
+Triaged 2026-08-28 at the slice-7 plan gate (Q4 SETTLED — `docs/review/slice-7-plan.md`,
+*"The inherited obligations, priced"*) and written into the table above on
+2026-08-29 against `main` = `75f6b1c`. The intake note written at `1066e2d`
+said *"ADR-0023 D17 § 39"* and *"Total distinct 50"*; both were true when
+written and false by the time this file could bind. Counted by ROW at a named
+head, under ADR-0023 D25's rule:
+
+| Source | Items | Note |
+|---|---|---|
+| `docs/adr/0023-slice5b-review-round-16.md` § D17 | **0** | The slice-5B queue is CLOSED. The history in one line: **39** strict `OWED` at `9682081` (D24) → **38 + 1** `OWED/OWNER` at `4f7a9d7` (D25: R8/F-1 flipped at `e0186ce` and the tally was never re-derived) → **8** after ADR-0029 (round 21: 31 stale rows ruled FIXED, R7/F-4 unblocked) → **6** after ADR-0030 (round 22) → **0** after ADR-0031 (round 23, sign-off at `7b203b2`). The 3 `OWNER` rows — R6/F-1, R7/F-1, R8/F-3 — are owner decisions, not owed work: D25 rule 4's spirit (a row's class is its operative token, and theirs is not `OWED`). They do not enter this ledger. |
+| `docs/adr/0025-slice6a-review-round-17.md` § D8 and § S16.8 | **2 → 0** | F-5 and F-1's residue were owed *to 6B*, and 6B discharged both — OW-21, OW-22, `CLOSED` with the evidence. The note this replaces cited *"§ D17"*; ADR-0025 has no D17 — its owed sections are D8 and S16.8. |
+| `docs/adr/0027-slice6b-review-round-18.md` § D17 | **8 items · 9 rows** | Items 1–8 → OW-01 … OW-09. Item 7 is two rows because the plan gave its two halves different homes (7C, and NOT THIS SLICE). Item 9 is RCP-02, a coverage row and not owed work; item 10 was a pointer to the 39 above and is now a pointer to 0. |
+| `docs/adr/0028-slice6b-round-19-dispositions.md` § D8 | **5** | Items 1, 2, 3, 5, 5a → OW-10 … OW-14. Item 4 DISCHARGED at round 20; items 6 and 7 are pointers to ADR-0027 D17 and ADR-0023 D17. |
+| `docs/adr/0028-slice6b-round-19-dispositions.md` § D15 | **5** | Items 1–5 → OW-15 … OW-19, the round-20 sign-off's consequences. |
+| `docs/review/slice-7-plan.md`, measured at the gate | **1** | The two floors → OW-20. A measurement with no verdict; it is here because it is work with a named home, and the boundary rule puts work here and assertions in `coverage.md`. |
+| **Total** | **22 rows** | 6 OPEN · 13 TAKEN · 1 RISK · 2 CLOSED |
+
+The two things the old note said had to be settled during triage:
+
+1. **"The 39 have never been reconciled."** They were — by three rounds
+   (ADR-0029, ADR-0030, ADR-0031), each verdict moved by a round and not by a
+   session, exactly as ADR-0025 D6 requires. The reconciled number was not
+   *"well under 39"*; it was zero. The 6B build had fixed 31 of them without
+   any record moving, which is the defect this file exists to end.
+2. **"Round 18's item 5 becomes recurring, not one-time."** Done: OW-05 is
+   `TAKEN(7/Tier-3 pass)` as a standing quota, per `docs/process/slice.md` §1.
+
+The ledger therefore opens **below** the cap, not at it: 6 OPEN against 25. The
+burn-down quota is measured at slice 7's close against these 6 plus whatever
+rounds 24–26 open. Every OPEN row is owner-held or owner-track work with its
+home named; none has a slice to take it, so each is on the two-round escalation
+clock from round 24.
