@@ -154,6 +154,7 @@ mechanical, **R** = read.
 - **R2/F-4 is NOT in this set.** The harness now imports the shared
   delimiter, prompt and schema, but still assembles its own content-block
   array. It is **narrowed, not fixed**, and stays `OWED`.
+  **AMENDED (round-23 follow-up, 2026-08-28).** Fixed at `6323ad1` (PR #19): `extractionBlocks`/`extractionCall` (lib/ai/extract.ts) and `messageParams` (lib/ai/client.ts) are the one construction site and the harness builds nothing; ruled **FIXED** at ADR-0031 (round 23), the pointer on the row accreting this narrowing. The prose above is preserved exactly as written.
 
 ---
 
