@@ -1,5 +1,10 @@
-import type { RequestRoleQuery } from '@/lib/db/request-role';
 import { isoText } from '@/lib/hc/rows';
+
+// The channel is fenced to lib/hc/** for RUNTIME reach; this file needs only
+// the TYPE, taken the way tests/db/request-role.test.ts takes the module —
+// through the import() form the fence's ImportDeclaration rule does not
+// register. No value from the channel is touched here.
+type RequestRoleQuery = import('@/lib/db/request-role').RequestRoleQuery;
 
 // ============================================================================
 // 7B B1 · the row boundary is TYPED (OW-02 — ADR-0027 D17 item 2, F-4's
