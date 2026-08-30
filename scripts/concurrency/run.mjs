@@ -3178,15 +3178,17 @@ async function case51(admin) {
     const kim = await mkMember(admin, fx, 'Kim', 'coordinator',
       { memories: 'manage', health: 'manage', schedule: 'manage', documents: 'manage', finances: 'manage' });
 
-    // S1 (Sarah) moves the invoice financial → legal and holds the transaction open.
+    // S1 (Sarah) moves the invoice financial → legal, confirmed against the
+    // category she saw (ADR-0033 D19.5), and holds the transaction open.
     await asUser(s1, fx.u1);
     await s1.query('begin');
     const r1 = (await s1.query(
-      `select (hc.recategorize_document($1, 'legal')) ->> 'changed' as c`, [fx.doc])).rows[0].c;
+      `select (hc.recategorize_document($1, 'legal', 'financial')) ->> 'changed' as c`, [fx.doc])).rows[0].c;
 
-    // S2 (Kim) makes the SAME move and blocks on the circle lock.
+    // S2 (Kim) makes the SAME move, confirmed against the same sentence (the
+    // invoice is still financial when she reads it), and blocks on the lock.
     await asUser(s2, kim.u);
-    const p2 = s2.query(`select hc.recategorize_document($1, 'legal') as r`, [fx.doc])
+    const p2 = s2.query(`select hc.recategorize_document($1, 'legal', 'financial') as r`, [fx.doc])
       .then(r => r.rows[0].r).catch(e => e);
     const pid2 = await findActivePid(admin, 'select hc.recategorize_document%', 'recategorize backend');
     await waitForLockWait(admin, pid2, 's2 recategorize blocked on the circle lock');
@@ -3203,8 +3205,8 @@ async function case51(admin) {
                 where l.circle_id = $2 and l.event_type = 'audience_changed'
                   and l.object_id = $1 and l.actor_display_name = 'Reclassification') as machine_entries`,
       [fx.doc, fx.c])).rows[0];
-    check('case51 (7A M3): two coordinators re-categorising ONE document to the same category serialise on the circle lock — the second re-reads the moved row and is a quiet no-op, so there is ONE audience change and ONE person entry (plus the taint machinery\'s one), and the row reads legal/{documents}',
-      r1 === 'true' && r2 && r2.changed === false
+    check('case51 (7A M3 · ADR-0033 D19.5): two coordinators re-categorising ONE document to the same category serialise on the circle lock — the second re-reads the MOVED row, and the sentence she confirmed ("financial → legal") no longer describes it: refused with the NAMED document_changed, never silently folded into her confirmation (R2/F-6). ONE audience change, ONE person entry (plus the taint machinery\'s one), and the row reads legal/{documents}',
+      r1 === 'true' && r2 instanceof Error && r2.code === 'P0001' && r2.message === 'document_changed'
         && st.doc === 'legal/{documents}' && st.person_entries === 1 && st.machine_entries === 1,
       `first=${r1} second=${r2 instanceof Error ? r2.message : JSON.stringify(r2)} doc=${st.doc} person=${st.person_entries} machine=${st.machine_entries}`);
   } finally {

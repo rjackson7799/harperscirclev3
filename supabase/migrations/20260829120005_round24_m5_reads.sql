@@ -25,7 +25,12 @@
 -- edit in place), two for cluster C (`complete_task`, `revoke_share`), two
 -- for cluster E (`snooze_task`, `recategorize_document`) — no schema change.
 -- Clusters D (D19.1: unassign_task, revoke_share) and G (D19.7: assign_task)
--- edit those bodies in place, marked. Ownership,
+-- edit those bodies in place, marked. The M3 audience cluster (F, D19.3,
+-- D19.5, D19.10) re-creates `recategorize_document` with a third parameter
+-- and `document_audience` with a sixth column (drop + create: the signature
+-- moved, the schema did not), and adds two functions -
+-- `document_taint_walk_under` (owner-only) and `document_audience_derived`.
+-- Ownership,
 -- revocations and grants are RESTATED — a replaced body does not restate them
 -- for you, and 002's definer invariants read the catalog.
 -- ============================================================================
@@ -1037,7 +1042,9 @@ grant execute on function hc.revoke_share(uuid) to authenticated;
 --
 -- assign_task and complete_task carry the check in place above; the two
 -- bodies below are M2's (snooze_task) and M3's (recategorize_document)
--- VERBATIM with the same marked addition.
+-- VERBATIM with the same marked addition - recategorize_document then
+-- carries the M3 audience cluster's marked edits in place (F, D19.3, D19.5)
+-- and is re-created with its third parameter.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -1152,7 +1159,12 @@ grant execute on function hc.snooze_task(uuid, date, text) to authenticated;
 -- ----------------------------------------------------------------------------
 -- hc.recategorize_document — the move.
 -- ----------------------------------------------------------------------------
-create or replace function hc.recategorize_document(p_document uuid, p_category hc.doc_category)
+-- ADR-0033 D19.5 (R2/F-6): the signature gains p_expected_category, so the
+-- 2-argument form goes - an overload left behind would be a door around
+-- the binding. drop + create; ownership and grants restated below.
+drop function if exists hc.recategorize_document(uuid, hc.doc_category);
+create function hc.recategorize_document(p_document uuid, p_category hc.doc_category,
+                                         p_expected_category hc.doc_category)
 returns jsonb language plpgsql security definer
 set search_path = ''
 as $$
@@ -1170,6 +1182,10 @@ declare
   v_gained jsonb;
   v_lost   jsonb;
   v_res    jsonb;
+  v_resolved_before boolean;
+  v_resolved_after  boolean;
+  v_derived_before  jsonb;
+  v_derived         jsonb;
 begin
   if v_actor is null then
     raise exception 'recategorize_refused' using errcode = 'P0001';
@@ -1222,6 +1238,14 @@ begin
     raise exception 'recategorize_refused' using errcode = 'P0001';
   end if;
 
+  -- ADR-0033 D19.5 (R2/F-6): the sentence the person confirmed BINDS the
+  -- move. A category that changed under her feet refuses with the NAMED
+  -- document_changed (the proposal_version_changed shape) - after the gate,
+  -- so a caller the gate refuses learns nothing about the category.
+  if v_doc.category <> p_expected_category then
+    raise exception 'document_changed' using errcode = 'P0001';
+  end if;
+
   if p_category = v_doc.category then
     return jsonb_build_object('document_id', p_document, 'category', p_category,
                               'domain', v_own_new, 'changed', false);
@@ -1230,6 +1254,38 @@ begin
   -- The audience BEFORE, from every member's own vectors, read before any
   -- row moves.
   v_taint_before := v_doc.taint;
+  -- ADR-0033 cluster F (R2/F-2, R6/F-3): the BEFORE flag is kept apart from
+  -- the after flag - the old body overwrote v_doc.taint_resolved with the
+  -- after-state and fed it to both sides of gained/lost, so an unresolved
+  -- document's entry named as `lost` people its own audience_before said
+  -- never had it.
+  v_resolved_before := v_doc.taint_resolved;
+
+  -- ADR-0033 D19.3 (R1/F-3a): the derived objects whose HOLDERS change
+  -- level are named in the person's entry. Snapshot every open, held
+  -- descendant task with its taint as it stands, before any row moves.
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'object_type', 'task', 'object_id', t.id,
+           'holder_member_id', t.owner_member_id,
+           'holder_name', m.display_name_at_join,
+           'holder_account', m.account_id,
+           'taint', to_jsonb(t.taint), 'resolved', t.taint_resolved)), '[]'::jsonb)
+    into v_derived_before
+    from (
+      with recursive down(otype, oid, depth) as (
+          select 'document'::hc.object_type, p_document, 0
+        union
+          select e.child_type, e.child_id, dn.depth + 1
+            from public.provenance_edges e
+            join down dn on dn.otype = e.parent_type and dn.oid = e.parent_id
+           where dn.depth < 32
+      )
+      select distinct dn.oid from down dn where dn.otype = 'task' and dn.depth > 0
+    ) w
+    join public.tasks t on t.id = w.oid and t.deleted_at is null and t.status = 'open'
+                        and t.owner_member_id is not null
+    join public.circle_members m on m.id = t.owner_member_id
+                                and m.removed_at is null and m.account_id is not null;
   select coalesce(jsonb_agg(jsonb_build_object('member_id', r.member_id, 'name', r.display_name,
                                                'tier', r.tier, 'level', r.before)
                             order by r.display_name, r.member_id)
@@ -1253,7 +1309,7 @@ begin
       raise exception 'recategorize_refused' using errcode = 'P0001';
     end if;
   end if;
-  select d.taint, d.taint_resolved into v_taint_after, v_doc.taint_resolved
+  select d.taint, d.taint_resolved into v_taint_after, v_resolved_after
     from public.documents d where d.id = p_document;
 
   -- The audience AFTER, from the taint as it now stands.
@@ -1266,8 +1322,30 @@ begin
          coalesce(jsonb_agg(r.display_name order by r.display_name, r.member_id)
                   filter (where r.before > 'hidden' and r.after = 'hidden'), '[]'::jsonb)
     into v_after, v_gained, v_lost
-    from hc.document_audience_rows(p_document, v_taint_before, v_doc.taint_resolved,
-                                   v_taint_after, v_doc.taint_resolved) r;
+    from hc.document_audience_rows(p_document, v_taint_before, v_resolved_before,
+                                   v_taint_after, v_resolved_after) r;
+
+  -- D19.3: the held descendants whose holder's level changed, from the
+  -- snapshot to the taint as it now stands, each from the holder's OWN
+  -- vectors.
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'object_type', 'task', 'object_id', (e ->> 'object_id')::uuid,
+           'holder_member_id', (e ->> 'holder_member_id')::uuid,
+           'holder_name', e ->> 'holder_name',
+           'before', b.lvl, 'after', a.lvl)
+           order by e ->> 'holder_name', e ->> 'object_id'), '[]'::jsonb)
+    into v_derived
+    from jsonb_array_elements(v_derived_before) e
+    join public.tasks t on t.id = (e ->> 'object_id')::uuid
+    cross join lateral (
+      select hc.visible_at(hc.ctx_for((e ->> 'holder_account')::uuid), t.subject_id,
+               coalesce((select array_agg(x::hc.domain) from jsonb_array_elements_text(e -> 'taint') x),
+                        '{}'::hc.domain[]),
+               (e ->> 'resolved')::boolean, 'task', t.id, t.owner_member_id) as lvl) b
+    cross join lateral (
+      select hc.visible_at(hc.ctx_for((e ->> 'holder_account')::uuid), t.subject_id,
+               t.taint, t.taint_resolved, 'task', t.id, t.owner_member_id) as lvl) a
+   where b.lvl <> a.lvl;
 
   -- The person's entry: both audiences, by name (§4.3.2).
   perform hc.log(v_doc.circle_id, 'audience_changed', v_actor_name,
@@ -1280,18 +1358,263 @@ begin
                    'taint_before', to_jsonb(v_taint_before),
                    'taint_after',  to_jsonb(v_taint_after),
                    'audience_before', v_before, 'audience_after', v_after,
-                   'gained', v_gained, 'lost', v_lost));
+                   'gained', v_gained, 'lost', v_lost,
+                   'derived', v_derived));
 
   return jsonb_build_object(
     'document_id', p_document, 'category', p_category, 'domain', v_own_new,
     'changed', true,
     'taint_before', to_jsonb(v_taint_before), 'taint_after', to_jsonb(v_taint_after),
     'gained', jsonb_array_length(v_gained), 'lost', jsonb_array_length(v_lost),
-    'gained_names', v_gained, 'lost_names', v_lost);
+    'gained_names', v_gained, 'lost_names', v_lost,
+    'derived', v_derived);
 end $$;
 
-alter function hc.recategorize_document(uuid, hc.doc_category) owner to hc_internal;
-revoke execute on function hc.recategorize_document(uuid, hc.doc_category)
+alter function hc.recategorize_document(uuid, hc.doc_category, hc.doc_category)
+  owner to hc_internal;
+revoke execute on function hc.recategorize_document(uuid, hc.doc_category, hc.doc_category)
   from public, anon, hc_pipeline, hc_admin;
-grant execute on function hc.recategorize_document(uuid, hc.doc_category) to authenticated;
+grant execute on function hc.recategorize_document(uuid, hc.doc_category, hc.doc_category)
+  to authenticated;
 
+
+-- ============================================================================
+-- THE M3 AUDIENCE CLUSTER (ADR-0033 D4 / D19.3 / D19.5 / D19.10) - R1/F-3(a),
+-- R2/F-2, R2/F-6, R4/F-3, R6/F-3.
+--
+--   * F - a separate v_resolved_before (above, in recategorize_document):
+--     an unresolved document's entry no longer names as `lost` people its own
+--     audience_before says never had it.
+--   * D19.5 - the preview binds the move: recategorize_document takes
+--     p_expected_category and refuses a changed source with the NAMED
+--     document_changed (above).
+--   * D19.10 - below coordinator, only gained/lost: the before/after level
+--     pair is a coordinator's fact (access_grants_select_own withholds it from
+--     everyone else), so document_audience hands a non-coordinator the
+--     member's name and the DIRECTION (`change`: gained / lost / changed)
+--     with both levels NULL - the UI renders null as UNDISCLOSED, never as a
+--     hidden grant (R6's Q-C rider). The column is new, so the function is
+--     re-created.
+--   * D19.3 - the preview and the person's entry NAME the derived objects
+--     whose HOLDERS change level. hc.document_taint_walk_under is the pure
+--     predictor: reclassify_taint's own fixed point over the descendants,
+--     with the document's taint as document_taint_under predicts it, WITHOUT
+--     writing. hc.document_audience_derived projects it onto the open, held
+--     descendant tasks whose holder's level moves, labelled at the CALLER's
+--     level through object_label_at (counted, never named, cluster A's
+--     floor), behind the same gate as the preview.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- hc.document_taint_walk_under - the pure predictor. Owner-only.
+-- ----------------------------------------------------------------------------
+create function hc.document_taint_walk_under(p_document uuid, p_category hc.doc_category)
+returns table (object_type hc.object_type, object_id uuid,
+               taint_before hc.domain[], resolved_before boolean, taint_after hc.domain[])
+language plpgsql stable
+set search_path = ''
+as $$
+declare
+  c_depth constant int := 32;
+  v_map jsonb;
+  v_pass int := 0;
+  v_changed int;
+  v_key text;
+  v_want hc.domain[];
+  v_have hc.domain[];
+  r record;
+begin
+  -- the moved document itself, as document_taint_under predicts it
+  v_map := jsonb_build_object('document:' || p_document::text,
+                              to_jsonb(hc.document_taint_under(p_document, p_category)));
+  -- reclassify_taint's fixed point: own domain UNION the parents' taint,
+  -- predicted where a parent is in the affected set, stored otherwise.
+  loop
+    v_pass := v_pass + 1;
+    v_changed := 0;
+    for r in
+      with recursive down(otype, oid, depth) as (
+          select 'document'::hc.object_type, p_document, 0
+        union
+          select e.child_type, e.child_id, dn.depth + 1
+            from public.provenance_edges e
+            join down dn on dn.otype = e.parent_type and dn.oid = e.parent_id
+           where dn.depth < c_depth
+      )
+      select dn.otype, dn.oid from down dn
+       where dn.depth > 0
+       group by dn.otype, dn.oid
+      having min(dn.depth) < c_depth
+       order by case dn.otype when 'document' then 0 when 'episode' then 1
+                     when 'profile_fact' then 2 when 'task' then 3 else 4 end,
+                dn.oid
+    loop
+      v_key := r.otype::text || ':' || r.oid::text;
+      select hc.taint_union(
+               array[o.own]::hc.domain[],
+               coalesce((select hc.taint_union_agg(
+                           case when v_map ? (e.parent_type::text || ':' || e.parent_id::text)
+                                then (select array_agg(x::hc.domain)
+                                        from jsonb_array_elements_text(
+                                               v_map -> (e.parent_type::text || ':' || e.parent_id::text)) x)
+                                else p2.taint end)
+                         from public.provenance_edges e
+                         join lateral hc.resolve_object(e.parent_type, e.parent_id) p2 on true
+                        where e.child_type = r.otype and e.child_id = r.oid),
+                        '{}'::hc.domain[]))
+        into v_want
+        from hc.resolve_object(r.otype, r.oid) o;
+      if v_want is null then
+        continue;   -- a deleted node: resolve_object returns no row
+      end if;
+      v_have := case when v_map ? v_key
+                     then (select array_agg(x::hc.domain) from jsonb_array_elements_text(v_map -> v_key) x)
+                     end;
+      if v_have is null or v_want is distinct from v_have then
+        v_map := v_map || jsonb_build_object(v_key, to_jsonb(v_want));
+        v_changed := v_changed + 1;
+      end if;
+    end loop;
+    exit when v_changed = 0 or v_pass >= c_depth;
+  end loop;
+
+  return query
+    select split_part(mp.k, ':', 1)::hc.object_type,
+           split_part(mp.k, ':', 2)::uuid,
+           o.taint, o.taint_resolved,
+           (select array_agg(x::hc.domain) from jsonb_array_elements_text(mp.v) x)
+      from jsonb_each(v_map) mp(k, v)
+      join lateral hc.resolve_object(split_part(mp.k, ':', 1)::hc.object_type,
+                                     split_part(mp.k, ':', 2)::uuid) o on true
+     where mp.k <> 'document:' || p_document::text;
+end $$;
+
+alter function hc.document_taint_walk_under(uuid, hc.doc_category) owner to hc_internal;
+revoke execute on function hc.document_taint_walk_under(uuid, hc.doc_category)
+  from public, anon, authenticated, hc_pipeline, hc_admin;
+
+-- ----------------------------------------------------------------------------
+-- hc.document_audience - the preview, re-created with `change` (D19.10).
+-- M3's body VERBATIM plus v_coord and the sixth column.
+-- ----------------------------------------------------------------------------
+drop function if exists hc.document_audience(uuid, hc.doc_category);
+create function hc.document_audience(p_document uuid, p_category hc.doc_category)
+returns table (member_id uuid, display_name text, tier hc.tier,
+               before hc.access_level, after hc.access_level, change text)
+language plpgsql stable security definer
+set search_path = ''
+as $$
+declare
+  v_doc record;
+  v_ctx jsonb := hc.ctx();
+  v_new hc.domain[];
+  v_coord boolean;
+begin
+  select d.* into v_doc from public.documents d
+   where d.id = p_document and d.deleted_at is null;
+  if v_doc.id is null then
+    raise exception 'audience_refused' using errcode = 'P0001';
+  end if;
+
+  -- THE MOVE'S GATE: manage over the document as it stands, AND manage on
+  -- the destination domain (§4.3.2's fourth rule).
+  if hc.visible_at(v_ctx, v_doc.subject_id, v_doc.taint, v_doc.taint_resolved,
+                   'document', p_document, null) < 'manage'
+     or not ((v_ctx -> 'subjects' -> v_doc.subject_id::text -> 'manage')
+             @> to_jsonb(array[hc.own_domain('document', p_category, null, null)])) then
+    raise exception 'audience_refused' using errcode = 'P0001';
+  end if;
+
+  -- ADR-0033 D19.10 (R4/F-3): the level pair is a coordinator's fact.
+  v_coord := exists (select 1 from public.circle_members m
+                     where m.circle_id = v_doc.circle_id
+                       and m.account_id = hc.uid()
+                       and m.removed_at is null
+                       and m.tier = 'coordinator');
+
+  -- The recompute restores `resolved` when it completes, so the AFTER side
+  -- is read as resolved: an unresolved document opening up IS an audience
+  -- change (rung 3 hid it from everyone below manage×5).
+  v_new := hc.document_taint_under(p_document, p_category);
+  return query
+    select r.member_id, r.display_name, r.tier,
+           case when v_coord then r.before end,
+           case when v_coord then r.after end,
+           case when r.before = 'hidden' then 'gained'
+                when r.after = 'hidden' then 'lost'
+                else 'changed' end
+      from hc.document_audience_rows(p_document, v_doc.taint, v_doc.taint_resolved,
+                                     v_new, true) r
+     where r.before <> r.after
+     order by r.display_name, r.member_id;
+end $$;
+
+alter function hc.document_audience(uuid, hc.doc_category) owner to hc_internal;
+revoke execute on function hc.document_audience(uuid, hc.doc_category)
+  from public, anon, hc_pipeline, hc_admin;
+grant execute on function hc.document_audience(uuid, hc.doc_category) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- hc.document_audience_derived - the derived objects whose holders change
+-- level under the proposed category (D19.3), behind the preview's gate.
+-- ----------------------------------------------------------------------------
+create function hc.document_audience_derived(p_document uuid, p_category hc.doc_category)
+returns table (object_type hc.object_type, object_id uuid, label text,
+               holder_member_id uuid, holder_name text,
+               before hc.access_level, after hc.access_level, change text)
+language plpgsql stable security definer
+set search_path = ''
+as $$
+declare
+  v_doc record;
+  v_ctx jsonb := hc.ctx();
+  v_coord boolean;
+begin
+  select d.* into v_doc from public.documents d
+   where d.id = p_document and d.deleted_at is null;
+  if v_doc.id is null then
+    raise exception 'audience_refused' using errcode = 'P0001';
+  end if;
+  -- the preview's gate, verbatim
+  if hc.visible_at(v_ctx, v_doc.subject_id, v_doc.taint, v_doc.taint_resolved,
+                   'document', p_document, null) < 'manage'
+     or not ((v_ctx -> 'subjects' -> v_doc.subject_id::text -> 'manage')
+             @> to_jsonb(array[hc.own_domain('document', p_category, null, null)])) then
+    raise exception 'audience_refused' using errcode = 'P0001';
+  end if;
+  v_coord := exists (select 1 from public.circle_members m
+                     where m.circle_id = v_doc.circle_id
+                       and m.account_id = hc.uid()
+                       and m.removed_at is null
+                       and m.tier = 'coordinator');
+
+  return query
+    select w.object_type, w.object_id,
+           case when x.level >= x.need then x.label end,
+           t.owner_member_id, m.display_name_at_join,
+           case when v_coord then b.lvl end,
+           case when v_coord then a.lvl end,
+           case when b.lvl = 'hidden' then 'gained'
+                when a.lvl = 'hidden' then 'lost'
+                else 'changed' end
+      from hc.document_taint_walk_under(p_document, p_category) w
+      join public.tasks t
+        on w.object_type = 'task' and t.id = w.object_id
+       and t.deleted_at is null and t.status = 'open' and t.owner_member_id is not null
+      join public.circle_members m
+        on m.id = t.owner_member_id and m.removed_at is null and m.account_id is not null
+      cross join lateral (
+        select hc.visible_at(hc.ctx_for(m.account_id), t.subject_id,
+                             w.taint_before, w.resolved_before, 'task', t.id, t.owner_member_id) as lvl) b
+      cross join lateral (
+        select hc.visible_at(hc.ctx_for(m.account_id), t.subject_id,
+                             w.taint_after, true, 'task', t.id, t.owner_member_id) as lvl) a
+      left join lateral hc.object_label_at(v_ctx, 'task'::hc.object_type, t.id) x on true
+     where b.lvl <> a.lvl
+     order by m.display_name_at_join, t.id;
+end $$;
+
+alter function hc.document_audience_derived(uuid, hc.doc_category) owner to hc_internal;
+revoke execute on function hc.document_audience_derived(uuid, hc.doc_category)
+  from public, anon, hc_pipeline, hc_admin;
+grant execute on function hc.document_audience_derived(uuid, hc.doc_category) to authenticated;
