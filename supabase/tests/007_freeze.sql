@@ -376,6 +376,9 @@ select is(
         -- signature — a freeze suspends ALL interactive access (§3.8)
         'complete_task',
         'create_invite','grant_vectors',
+        -- ADR-0033 D19.11: the People list is frozen PER SUBJECT - the
+        -- owner-only helper blanks the subjects a finding is narrowed to
+        'member_levels_frozen',
         -- 7A M3: an audience change can WIDEN who reads a document and
         -- refuses under a freeze with the named signature
         'recategorize_document',
@@ -384,13 +387,16 @@ select is(
         -- declining a proposal is an interactive act on the record
         'reject_proposal',
         'request_freeze',
+        -- ADR-0033 D19.1: the objected-to member is no coordinator under
+        -- their own freeze - revoke_share reads it to refuse them
+        'revoke_share',
         'set_grant',
         'snooze_task',
         -- 7A M1: unassignment REDUCES reach, so under a freeze a live
         -- coordinator may still perform it — the remove_member precedent,
         -- set_grant's lower arm; the reference is that permission
         'unassign_task']::name[],
-  'exactly seventeen hc functions reference freezes: the two writers, the two flag readers, the 1C pipeline predicate hc.circle_frozen (§4.2), 2A''s two FRZ-16 invite legs, set_grant''s no-new-grants raise check, accept_sender''s interactive-access closure (PRD §7.5), 4A M5''s activation closure (a freeze suspends ingestion; activation enables it), 6A M3''s hc.reject_proposal (approve''s mirror refuses under a freeze exactly as approve does), and 7A M1''s pair — assign_task refuses under a freeze as a widening act, unassign_task lets a live coordinator reduce under one — and 7A M2''s complete_task and snooze_task, which refuse under one — and 7A M3''s recategorize_document, which refuses under one because a move can widen who reads — and 7A M4''s circle_people, which reads the freeze to return people and no levels');
+  'exactly nineteen hc functions reference freezes: the two writers, the two flag readers, the 1C pipeline predicate hc.circle_frozen (§4.2), 2A''s two FRZ-16 invite legs, set_grant''s no-new-grants raise check, accept_sender''s interactive-access closure (PRD §7.5), 4A M5''s activation closure (a freeze suspends ingestion; activation enables it), 6A M3''s hc.reject_proposal (approve''s mirror refuses under a freeze exactly as approve does), and 7A M1''s pair — assign_task refuses under a freeze as a widening act, unassign_task lets a live coordinator reduce under one — and 7A M2''s complete_task and snooze_task, which refuse under one — and 7A M3''s recategorize_document, which refuses under one because a move can widen who reads — and 7A M4''s circle_people, which reads the freeze to return people and no levels - and round 24''s two (ADR-0033): revoke_share refuses the objected-to member under their own finding (D19.1), and member_levels_frozen blanks the subject a finding is narrowed to (D19.11)');
 select is(
   (select coalesce(array_agg(p.proname order by p.proname), '{}'::name[])
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
