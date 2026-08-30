@@ -248,8 +248,15 @@ select fk_ok('public', 'access_log', array['circle_id','corrects_id'],
 select index_is_unique('public', 'access_log', 'access_log_circle_id_seq_key',
   'seq is unique per circle — the chain cannot fork');
 
-select is((select count(*)::int from hc.log_event_types), 27,
-  'the event-type enumeration is seeded (1A''s seven + 1B–1D''s three + 2A''s eight + 4A''s three + 5A''s one: conflict_resolved + 6A M3''s one: proposal_rejected + 7A M1''s two: task_assigned, task_reassigned + 7A M2''s two: task_completed, task_snoozed)');
+select is((select array_agg(code order by code) from hc.log_event_types),
+  array['access_denied','artifact_read','audience_changed','conflict_resolved',
+        'custodianship_declared','forwarding_activated','freeze_adjudicated',
+        'freeze_claim_recorded','freeze_requested','grant_changed','invite_accepted',
+        'invite_issued','invite_revoked','member_joined','member_removed',
+        'object_approved','object_share_revoked','object_shared','proposal_rejected',
+        'sender_accepted','sender_revoked','signed_out','task_assigned',
+        'task_completed','task_reassigned','task_snoozed','task_unassigned']::text[],
+  'the event-type enumeration is seeded — pinned as the EXACT SET, the 002 pattern (R3/F-8: a count let a renamed code pass) — (1A''s seven + 1B–1D''s three + 2A''s eight + 4A''s three + 5A''s one: conflict_resolved + 6A M3''s one: proposal_rejected + 7A M1''s two: task_assigned, task_reassigned + 7A M2''s two: task_completed, task_snoozed)');
 
 -- Round-5 F1: the declaration precedes the subject row it binds, so the
 -- (circle_id, subject_id) FK must be deferrable — checked at commit, when

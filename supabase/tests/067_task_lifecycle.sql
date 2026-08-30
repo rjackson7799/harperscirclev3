@@ -362,10 +362,12 @@ select is(pg_temp.call_as(current_setting('t.u_lena')::uuid, format(
 -- 28 · The slice trap: hc.revise_object's task allowlist is NOT widened.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
-  $$ select hc.revise_object('task', %L, '{"snooze_count":5}'::jsonb)::text
-         || hc.revise_object('task', %L, '{"completed_at":"2026-09-01T00:00:00Z"}'::jsonb)::text $$,
-  current_setting('t.t_dan'), current_setting('t.t_dan'))),
-  'ERROR:P0001:revise_invalid_field',
+  $$ select hc.revise_object('task', %L, '{"snooze_count":5}'::jsonb)::text $$,
+  current_setting('t.t_dan')))
+  || '/' || pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
+  $$ select hc.revise_object('task', %L, '{"completed_at":"2026-09-01T00:00:00Z"}'::jsonb)::text $$,
+  current_setting('t.t_dan'))),
+  'ERROR:P0001:revise_invalid_field/ERROR:P0001:revise_invalid_field',
   'snooze_count and completed_at stay unaddressable through the generic patch — the count is a fact the snooze writes, not a field a person edits');
 
 -- ----------------------------------------------------------------------------

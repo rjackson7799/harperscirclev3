@@ -68,7 +68,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(84);
+select plan(85);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038/063 pattern).
@@ -699,10 +699,12 @@ select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
   'unassigning a task nobody holds refuses');
 
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
-  $$ select hc.assign_task(%L, %L)::text || hc.assign_task(gen_random_uuid(), %L)::text $$,
-  current_setting('t.t_done'), current_setting('t.m_marisol'), current_setting('t.m_marisol'))),
-  'ERROR:P0001:assign_refused',
-  'a DONE task is not assignable (completed work stays attributed, §4.5.3), and a nonexistent task lands in the same one shape (DEF-10)');
+  $$ select hc.assign_task(%L, %L)::text $$,
+  current_setting('t.t_done'), current_setting('t.m_marisol')))
+  || '/' || pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.assign_task(gen_random_uuid(), %L)::text $$, current_setting('t.m_marisol'))),
+  'ERROR:P0001:assign_refused/ERROR:P0001:assign_refused',
+  'a DONE task is not assignable (completed work stays attributed, §4.5.3), and a nonexistent task lands in the same one shape (DEF-10) — two calls joined OUTSIDE the statement, so each half must refuse on its own (R3/F-4: inside one statement the first raise ended evaluation and either half satisfied the string)');
 
 select is(pg_temp.call_as(current_setting('t.u_ruth')::uuid, format(
   $$ select hc.assign_task(%L, %L)::text $$,
@@ -714,10 +716,12 @@ select is(pg_temp.call_as(current_setting('t.u_ruth')::uuid, format(
 -- 49 · The slice trap: hc.revise_object's task allowlist is NOT widened.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
-  $$ select hc.revise_object('task', %L, '{"status":"done"}'::jsonb)::text
-         || hc.revise_object('task', %L, jsonb_build_object('owner_member_id', %L))::text $$,
-  current_setting('t.t_plain'), current_setting('t.t_plain'), current_setting('t.m_ruth'))),
-  'ERROR:P0001:revise_invalid_field',
+  $$ select hc.revise_object('task', %L, '{"status":"done"}'::jsonb)::text $$,
+  current_setting('t.t_plain')))
+  || '/' || pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.revise_object('task', %L, jsonb_build_object('owner_member_id', %L))::text $$,
+  current_setting('t.t_plain'), current_setting('t.m_ruth'))),
+  'ERROR:P0001:revise_invalid_field/ERROR:P0001:revise_invalid_field',
   'status and owner_member_id stay unaddressable through the generic patch — the allowlist is title, detail, due_on, due_zone and nothing this migration adds');
 
 -- ----------------------------------------------------------------------------
@@ -1219,6 +1223,22 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   current_setting('t.tok_g2'))),
   'share',
   'ONE deliberate grant at log — memories, the lowest rung that is a grant — IS context: the same assignment now goes through by path 2. The share is still what shows him the task; the grant is what makes him someone the subject''s circle chose to tell anything at all');
+
+-- ----------------------------------------------------------------------------
+-- 85 · R3/F-3 (test only): unassign_task's MANAGE bar has its negatives.
+--      Omar holds the pharmacy call through a share (84) — a holder at view;
+--      Ruth holds summary on schedule. Neither may unassign; before, nothing
+--      in the suite would have gone red had the bar dropped to summary.
+-- ----------------------------------------------------------------------------
+select is(pg_temp.call_as(current_setting('t.u_omar')::uuid, format(
+  $$ select hc.unassign_task(%L)::text $$, current_setting('t.t_plain')))
+  || '/' || pg_temp.call_as(current_setting('t.u_ruth')::uuid, format(
+  $$ select hc.unassign_task(%L)::text $$, current_setting('t.t_plain')))
+  || '/' || pg_temp.scalar(format(
+  $$ select (t.owner_member_id = %L)::text from public.tasks t where t.id = %L $$,
+  current_setting('t.m_omar'), current_setting('t.t_plain'))),
+  'ERROR:P0001:unassign_refused/ERROR:P0001:unassign_refused/true',
+  'the HOLDER at view and a sibling at summary are both refused — manage on the task is the bar for unassignment too (PRD §7.3: view "cannot change others'' items", and reducing is still changing); Omar still holds it (R3/F-3)');
 
 select * from finish();
 rollback;

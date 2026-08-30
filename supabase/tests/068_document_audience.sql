@@ -336,9 +336,13 @@ select is(
     $$ select count(*)::text from public.document_search_content where document_id = %L $$, current_setting('t.d_med')))
   || '/' ||
   pg_temp.call_as(current_setting('t.u_omar')::uuid, format(
-    $$ select count(*)::text from public.documents where id = %L $$, current_setting('t.d_med'))),
-  '0/1/1/0/1',
-  'AFTER, on each person''s NEXT query: Priya has lost it, Ruth has gained it AND its index row, Priya holds no index row, Omar still reads it through his share — a share names one object for one person and a domain move does not touch it (§4.3.5)');
+    $$ select count(*)::text from public.documents where id = %L $$, current_setting('t.d_med')))
+  || '/' ||
+  pg_temp.scalar(format(
+    $$ select (c.search_text_full is not null and c.tsv_full is not null)::text
+         from public.document_search_content c where c.document_id = %L $$, current_setting('t.d_med'))),
+  '0/1/1/0/1/true',
+  'AFTER, on each person''s NEXT query: Priya has lost it, Ruth has gained it AND its index row, Priya holds no index row, Omar still reads it through his share — a share names one object for one person and a domain move does not touch it (§4.3.5) — and the index row was REBUILT in the move''s transaction: the fixture wrote it under replica with its derived columns null, and the move''s SET list fired the 1D builders (R3/F-6: membership follows the policy by construction, so the rebuild is what this half now reads)');
 
 -- ----------------------------------------------------------------------------
 -- 17–19 · The log: the person's entry carries BOTH audiences by name; the
@@ -440,9 +444,10 @@ select is(pg_temp.call_as(current_setting('t.u_ruth')::uuid, format(
   'neither the granter nor a coordinator: refused');
 
 select is(pg_temp.call_as(current_setting('t.u_kim')::uuid, format(
-  $$ select hc.revoke_share(%L)::text || hc.revoke_share(gen_random_uuid())::text $$,
-  current_setting('t.sh_mar'))),
-  'ERROR:P0001:revoke_refused',
+  $$ select hc.revoke_share(%L)::text $$, current_setting('t.sh_mar')))
+  || '/' || pg_temp.call_as(current_setting('t.u_sarah')::uuid,
+  $$ select hc.revoke_share(gen_random_uuid())::text $$),
+  'ERROR:P0001:revoke_refused/ERROR:P0001:revoke_refused',
   'an already-revoked share and a nonexistent one land in the same one shape (DEF-10)');
 
 -- ----------------------------------------------------------------------------
