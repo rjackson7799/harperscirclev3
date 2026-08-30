@@ -131,9 +131,89 @@ describe('6B · a timestamp column never becomes String(Date)', () => {
     expect(BARE_TIMESTAMP_STRING.test('msg: `arrival ${id} at ${when}`,')).toBe(false);
   });
 
+  // ==========================================================================
+  // 7B B1 · OW-17 (ADR-0028 D15 item 3): THREE SPELLINGS IS NOT THE CLASS.
+  //
+  // The class is "a temporal column crossing the boundary by any hand but the
+  // ONE named function". Every branch below yields a string a surface will
+  // slice — the same "Tue Aug 25" or a quoted/localised sibling of it — or a
+  // Date re-wrapped so that the next line can. One spelling per case, a
+  // negative control per spelling, so a widening that stops discriminating
+  // is caught by the same file that demanded it.
+  // ==========================================================================
+  it('OW-17: `.toString()` / `.toLocale*String()` / `.toDateString()` on a temporal column are the same defect', () => {
+    expect(BARE_TIMESTAMP_STRING.test('received_at: row.received_at.toString(),')).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test('decided_at: row.decided_at?.toString() ?? null,')).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test('due_on: row.due_on.toLocaleDateString(),')).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test('changed_at: r.rows[0].changed_at.toDateString(),')).toBe(true);
+  });
+
+  it('OW-17: `.toISOString()` on a temporal column is no longer sanctioned — it assumes a Date the driver may not have handed back', () => {
+    // The 6B negative control said this was fine. It produces the RIGHT
+    // string when the value is a Date and THROWS when a `::text` cast or a
+    // future parser hands back text — a second way for the boundary to lie,
+    // in the opposite direction. One named function, no exceptions.
+    expect(BARE_TIMESTAMP_STRING.test('accepted_at: row.accepted_at.toISOString(),')).toBe(true);
+  });
+
+  it('OW-17: `new Date(x_at)` / `Date(x_at)` wrapping re-enters the class one line later', () => {
+    expect(BARE_TIMESTAMP_STRING.test('const when = new Date(row.received_at);')).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test('label: Date(row.due_on),')).toBe(true);
+  });
+
+  it('OW-17: a JSON round-trip of a temporal column is a quoted sibling of the same string', () => {
+    expect(BARE_TIMESTAMP_STRING.test('received_at: JSON.stringify(row.received_at),')).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test('decided_at: JSON.parse(JSON.stringify(row.decided_at)),')).toBe(true);
+  });
+
+  it('OW-17: a temporal column as a template FRAGMENT is caught wherever it sits in the template', () => {
+    // The 6B rule anchored to the WHOLE interpolation; the fragment form
+    // produces the identical bytes inside a longer string.
+    expect(BARE_TIMESTAMP_STRING.test('const line = `received ${row.received_at} by mail`;')).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test('msg: `due ${row.due_on}`,')).toBe(true);
+  });
+
+  it('OW-17: every `+ ""` variant — prefix, suffix, any string literal, backtick', () => {
+    expect(BARE_TIMESTAMP_STRING.test("received_at: '' + row.received_at,")).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test('received_at: "" + row.received_at,')).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test("label: 'at ' + row.received_at,")).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test("label: row.received_at + ' (local)',")).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test('label: row.received_at + ``,')).toBe(true);
+  });
+
+  it('OW-17: the double assertion `as unknown as string` on a temporal column is the escape a type cannot refuse', () => {
+    // OW-02 typed the boundary; `as unknown as T` is the one hatch TypeScript
+    // leaves open by design, so the scanner closes it here.
+    expect(BARE_TIMESTAMP_STRING.test('received_at: row.received_at as unknown as string,')).toBe(true);
+    expect(BARE_TIMESTAMP_STRING.test('accepted_at: (row.accepted_at as unknown) as string,')).toBe(true);
+  });
+
+  it('OW-17: and the widening does not swallow the sanctioned or the non-temporal (one negative per spelling)', () => {
+    expect(BARE_TIMESTAMP_STRING.test('received_at: isoText(row.received_at),')).toBe(false);
+    expect(BARE_TIMESTAMP_STRING.test('decided_at: isoTextOrNull(row.decided_at),')).toBe(false);
+    // .toString / .toISOString on a non-temporal name stay out of scope.
+    expect(BARE_TIMESTAMP_STRING.test('id: row.id.toString(),')).toBe(false);
+    expect(BARE_TIMESTAMP_STRING.test('const stamp = new Date().toISOString();')).toBe(false);
+    // Date wrapping of a non-temporal value, and the sanctioned Date use.
+    expect(BARE_TIMESTAMP_STRING.test('const now = new Date();')).toBe(false);
+    expect(BARE_TIMESTAMP_STRING.test('const d = new Date(Date.UTC(y, m, day));')).toBe(false);
+    // JSON of a row, of a payload, of anything not temporal by name.
+    expect(BARE_TIMESTAMP_STRING.test('payload: JSON.stringify(edits),')).toBe(false);
+    expect(BARE_TIMESTAMP_STRING.test("await q.query('select hc.f($1)', [JSON.stringify(input.subjects)]);")).toBe(false);
+    // Template fragments with no temporal name in them.
+    expect(BARE_TIMESTAMP_STRING.test('const key = `circle/${circleId}/arrival/${id}`;')).toBe(false);
+    expect(BARE_TIMESTAMP_STRING.test('msg: `arrival ${id} at ${when}`,')).toBe(false);
+    expect(BARE_TIMESTAMP_STRING.test('received_at: `${isoText(row.received_at)}`,')).toBe(false);
+    // Concatenation that is not a temporal column meeting a string.
+    expect(BARE_TIMESTAMP_STRING.test("const path = '/' + circle + '/tasks';")).toBe(false);
+    expect(BARE_TIMESTAMP_STRING.test('const n = row.snooze_count + 1;')).toBe(false);
+    // A single assertion from unknown is the typed boundary's own form.
+    expect(BARE_TIMESTAMP_STRING.test('received_at: isoText(row.received_at as Date),')).toBe(false);
+    expect(BARE_TIMESTAMP_STRING.test('label: row.label as string,')).toBe(false);
+  });
+
   it('the scanner leaves the sanctioned forms alone (negative control)', () => {
     expect(BARE_TIMESTAMP_STRING.test('received_at: isoText(row.received_at),')).toBe(false);
-    expect(BARE_TIMESTAMP_STRING.test('accepted_at: row.accepted_at.toISOString(),')).toBe(false);
     // A non-temporal column is none of this scanner's business.
     expect(BARE_TIMESTAMP_STRING.test('status: String(row.status),')).toBe(false);
     expect(BARE_TIMESTAMP_STRING.test('model_id: String(row.model_id ?? ""),')).toBe(false);
