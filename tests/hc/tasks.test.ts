@@ -332,16 +332,20 @@ describe('B2 · the point of selection agrees with the database (TSK-01, D19.7)'
     expect(result.path).toBe('share');
     expect(result.share_ids).toHaveLength(2);
     // From HIS live context: the task is his to see now, and the document
-    // with it (TSK-01: checked from the grantee's context).
+    // with it (TSK-01: checked from the grantee's context). Marcus's task
+    // was always his — he holds schedule on Marcus — and Nell's other task
+    // still is not: the share lifts ONE named object, never the domain.
     const his = await tasksLib.listTasks(claimsOf('omar'), circleId);
-    expect(his.map((r) => r.id)).toEqual([tTainted]);
-    expect(his[0].source).toMatchObject({ kind: 'arrival_unseen' });
+    expect(his.map((r) => r.id).sort()).toEqual([tTainted, tMarcus].sort());
+    expect(his.find((r) => r.id === tTainted)!.source).toMatchObject({ kind: 'arrival_unseen' });
+    expect(his.some((r) => r.id === tPlain)).toBe(false);
 
     // SHR-02's app half: unassign withdraws exactly the assignment's shares,
-    // checked from his context — the task is gone again.
+    // checked from his context — the task is gone again, Marcus's stays.
     const un = await tasksLib.unassignTask(claimsOf('sarah'), tTainted);
     expect(un.shares_revoked).toBe(2);
-    expect(await tasksLib.listTasks(claimsOf('omar'), circleId)).toEqual([]);
+    expect(un.former_member_id).toBe(member.omar);
+    expect((await tasksLib.listTasks(claimsOf('omar'), circleId)).map((r) => r.id)).toEqual([tMarcus]);
   });
 
   it('can-clear is PLAIN, and a path supplied for her is refused — the paths exist only for the crossing', async () => {
@@ -405,13 +409,14 @@ describe('B2 · snooze counts; the filters are pure over the rows', () => {
   });
 
   it('taskFilters: Mine · Unassigned · Overdue · All, counted post-filter over what the caller can see', () => {
-    const rows = [
+    type R = { id: string; status: string; owner_member_id: string | null; due_on: string | null };
+    const rows: R[] = [
       { id: 'a', status: 'open', owner_member_id: 'me', due_on: '2026-01-01' },
       { id: 'b', status: 'open', owner_member_id: null, due_on: '2026-12-31' },
       { id: 'c', status: 'open', owner_member_id: 'you', due_on: null },
       { id: 'd', status: 'done', owner_member_id: 'me', due_on: '2026-01-01' },
       { id: 'e', status: 'cancelled', owner_member_id: 'me', due_on: '2026-01-01' },
-    ] as Parameters<typeof tasksLib.taskFilters>[0];
+    ];
     const f = tasksLib.taskFilters(rows, 'me', '2026-06-15');
     expect(f.all.map((r) => r.id)).toEqual(['a', 'b', 'c']);
     expect(f.mine.map((r) => r.id)).toEqual(['a']);

@@ -80,21 +80,24 @@ beforeEach(() => {
   });
 });
 
+// 7B B1 (OW-20): the floors now read the columns that EXIST and read
+// `error`, so the chain resolves the supabase-js shape whatever the page
+// calls on it, per table. (The pins below used to hand the timeline
+// `title, happened_on` rows — the columns the page asked for and the table
+// never had — which is exactly the defect OW-20 names.)
 function tableReturning(rows: unknown[]) {
-  return {
-    select: () => ({
-      eq: () => ({
-        order: () => ({
-          limit: async () => ({ data: rows }),
-        }),
-      }),
-    }),
-  };
+  const p = Promise.resolve({ data: rows, error: null });
+  const proxy: Record<string, unknown> = {};
+  for (const m of ['select', 'eq', 'is', 'in', 'order', 'limit', 'single']) proxy[m] = () => proxy;
+  proxy.then = p.then.bind(p);
+  proxy.catch = p.catch.bind(p);
+  return proxy;
 }
+const SUBJECTS = [{ id: 's-1', first_name: 'Nell', created_at: '2026-07-01T00:00:00Z' }];
 
 describe('D8 · the migrated stubs render the system with the 2B copy intact', () => {
   it('timeline, empty: PageHeader + EmptyState, the sentence unchanged', async () => {
-    from.mockReturnValue(tableReturning([]));
+    from.mockImplementation((t: string) => tableReturning(t === 'subjects' ? SUBJECTS : []));
     const { default: Page } = await import('@/app/(app)/[circle]/timeline/page');
     const html = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ circle: 'c-1' }) }),
@@ -105,11 +108,27 @@ describe('D8 · the migrated stubs render the system with the 2B copy intact', (
     expect(html).not.toContain('auth-shell');
   });
 
-  it('timeline, with events: rows are cards with title · date', async () => {
-    from.mockReturnValue(
-      tableReturning([
-        { id: 'e-1', title: 'Nell moved to Denver General', happened_on: '2026-07-12' },
-      ]),
+  it('timeline, with events: rows are cards with summary · a human date (§8.6)', async () => {
+    from.mockImplementation((t: string) =>
+      tableReturning(
+        t === 'subjects'
+          ? SUBJECTS
+          : [
+              {
+                id: 'e-1',
+                subject_id: 's-1',
+                kind: 'care',
+                summary: 'Nell moved to Denver General',
+                occurred_on: '2026-07-12',
+                local_at: null,
+                iana_zone: null,
+                instant: null,
+                is_floating: false,
+                approved_at: '2026-07-13T09:00:00Z',
+                approver_display_name: 'Sarah',
+              },
+            ],
+      ),
     );
     const { default: Page } = await import('@/app/(app)/[circle]/timeline/page');
     const html = renderToStaticMarkup(
@@ -117,11 +136,11 @@ describe('D8 · the migrated stubs render the system with the 2B copy intact', (
     );
     expect(html).toContain('card');
     expect(html).toContain('Nell moved to Denver General');
-    expect(html).toContain('2026-07-12');
+    expect(html).toContain('July 12');
   });
 
   it('tasks, empty: PageHeader + EmptyState, the sentence unchanged', async () => {
-    from.mockReturnValue(tableReturning([]));
+    from.mockImplementation((t: string) => tableReturning(t === 'subjects' ? SUBJECTS : []));
     const { default: Page } = await import('@/app/(app)/[circle]/tasks/page');
     const html = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ circle: 'c-1' }) }),
