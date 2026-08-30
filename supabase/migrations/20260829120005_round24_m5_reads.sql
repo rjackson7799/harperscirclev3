@@ -30,7 +30,8 @@
 -- and `document_audience` with a sixth column (drop + create: the signature
 -- moved, the schema did not), and adds two functions -
 -- `document_taint_walk_under` (owner-only) and `document_audience_derived`.
--- Ownership,
+-- The M4 cluster (D19.8, D19.11) replaces `circle_people` and adds
+-- `member_levels_frozen` (owner-only). Ownership,
 -- revocations and grants are RESTATED — a replaced body does not restate them
 -- for you, and 002's definer invariants read the catalog.
 -- ============================================================================
@@ -1161,9 +1162,10 @@ grant execute on function hc.snooze_task(uuid, date, text) to authenticated;
 -- ----------------------------------------------------------------------------
 -- ADR-0033 D19.5 (R2/F-6): the signature gains p_expected_category, so the
 -- 2-argument form goes - an overload left behind would be a door around
--- the binding. drop + create; ownership and grants restated below.
+-- the binding. drop + create or replace (idempotent on a re-run); ownership
+-- and grants restated below.
 drop function if exists hc.recategorize_document(uuid, hc.doc_category);
-create function hc.recategorize_document(p_document uuid, p_category hc.doc_category,
+create or replace function hc.recategorize_document(p_document uuid, p_category hc.doc_category,
                                          p_expected_category hc.doc_category)
 returns jsonb language plpgsql security definer
 set search_path = ''
@@ -1408,7 +1410,7 @@ grant execute on function hc.recategorize_document(uuid, hc.doc_category, hc.doc
 -- ----------------------------------------------------------------------------
 -- hc.document_taint_walk_under - the pure predictor. Owner-only.
 -- ----------------------------------------------------------------------------
-create function hc.document_taint_walk_under(p_document uuid, p_category hc.doc_category)
+create or replace function hc.document_taint_walk_under(p_document uuid, p_category hc.doc_category)
 returns table (object_type hc.object_type, object_id uuid,
                taint_before hc.domain[], resolved_before boolean, taint_after hc.domain[])
 language plpgsql stable
@@ -1498,7 +1500,7 @@ revoke execute on function hc.document_taint_walk_under(uuid, hc.doc_category)
 -- M3's body VERBATIM plus v_coord and the sixth column.
 -- ----------------------------------------------------------------------------
 drop function if exists hc.document_audience(uuid, hc.doc_category);
-create function hc.document_audience(p_document uuid, p_category hc.doc_category)
+create or replace function hc.document_audience(p_document uuid, p_category hc.doc_category)
 returns table (member_id uuid, display_name text, tier hc.tier,
                before hc.access_level, after hc.access_level, change text)
 language plpgsql stable security definer
@@ -1558,7 +1560,7 @@ grant execute on function hc.document_audience(uuid, hc.doc_category) to authent
 -- hc.document_audience_derived - the derived objects whose holders change
 -- level under the proposed category (D19.3), behind the preview's gate.
 -- ----------------------------------------------------------------------------
-create function hc.document_audience_derived(p_document uuid, p_category hc.doc_category)
+create or replace function hc.document_audience_derived(p_document uuid, p_category hc.doc_category)
 returns table (object_type hc.object_type, object_id uuid, label text,
                holder_member_id uuid, holder_name text,
                before hc.access_level, after hc.access_level, change text)
@@ -1618,3 +1620,148 @@ alter function hc.document_audience_derived(uuid, hc.doc_category) owner to hc_i
 revoke execute on function hc.document_audience_derived(uuid, hc.doc_category)
   from public, anon, hc_pipeline, hc_admin;
 grant execute on function hc.document_audience_derived(uuid, hc.doc_category) to authenticated;
+
+-- ============================================================================
+-- THE M4 CLUSTER (ADR-0033 D19.8 / D19.11) - R3/F-7, R4/F-4.
+--
+--   * D19.8 - outstanding invites are ABSENT under a freeze, matching PRD
+--     S7.5's "voided": the invite branch takes a freeze term. 069:15's
+--     `kind <> 'invite'` exclusion goes.
+--   * D19.11 - the People list is frozen PER SUBJECT, as grant_vectors
+--     scopes it, not circle-wide: a finding narrowed to Marcus must not
+--     blank Nell's levels. An open freeze, or a finding not narrowed to a
+--     subject, still blanks everything (the whole `levels` is null, as
+--     before); a narrowed finding blanks that subject's entry alone
+--     (hc.member_levels_frozen, owner-only, below).
+--
+-- hc.circle_people is M4's VERBATIM with the marked edits. Ownership,
+-- revocations and grants restated.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- hc.member_levels_frozen - member_levels with each subject a finding is
+-- narrowed to blanked (its entry null), the rest as they stand. Owner-only,
+-- running AS the calling definer. A circle-wide freeze is handled by the
+-- caller (the whole object is null then), so this sees only the narrowed
+-- findings.
+-- ----------------------------------------------------------------------------
+create or replace function hc.member_levels_frozen(p_circle uuid, p_member uuid)
+returns jsonb language sql stable
+set search_path = ''
+as $$
+  select coalesce(jsonb_object_agg(
+           e.key,
+           case when exists (select 1 from public.freezes f
+                             where f.circle_id = p_circle
+                               and f.state = 'unresolved'
+                               and f.subject_id = e.key::uuid)
+                then null else e.value end),
+         '{}'::jsonb)
+    from jsonb_each(hc.member_levels(p_circle, p_member)) e;
+$$;
+alter function hc.member_levels_frozen(uuid, uuid) owner to hc_internal;
+revoke execute on function hc.member_levels_frozen(uuid, uuid)
+  from public, anon, authenticated, hc_pipeline, hc_admin;
+
+create or replace function hc.circle_people(p_circle uuid)
+returns table (
+  kind               text,
+  member_id          uuid,
+  account_id         uuid,
+  display_name       text,
+  tier               hc.tier,
+  slice              text,
+  is_subject         boolean,
+  subject_id         uuid,
+  custodian_member_id uuid,
+  custodian_name     text,
+  joined_at          timestamptz,
+  invite_id          uuid,
+  invite_expires_at  timestamptz,
+  invite_status      text,
+  levels             jsonb
+)
+language plpgsql stable security definer
+set search_path = ''
+as $$
+declare
+  v_actor uuid := hc.uid();
+  v_me record;
+  v_coord boolean;
+  v_frozen boolean;
+  v_frozen_all boolean;
+begin
+  if v_actor is null then
+    raise exception 'people_refused' using errcode = 'P0001';
+  end if;
+  -- The caller's own live membership in THIS circle. A non-member and a
+  -- nonexistent circle are one shape.
+  select m.* into v_me from public.circle_members m
+   where m.circle_id = p_circle and m.account_id = v_actor and m.removed_at is null;
+  if v_me.id is null then
+    raise exception 'people_refused' using errcode = 'P0001';
+  end if;
+  v_coord := v_me.tier = 'coordinator';
+  -- ANY freeze of the circle: outstanding invites are absent under it
+  -- (ADR-0033 D19.8 - PRD S7.5 "voided"; R3/F-7).
+  v_frozen := exists (select 1 from public.freezes f
+                      where f.circle_id = p_circle and f.state in ('open', 'unresolved'));
+  -- A CIRCLE-WIDE freeze blanks every level: an open freeze, or a finding
+  -- not narrowed to a subject. A finding narrowed to ONE subject blanks
+  -- that subject's levels alone (ADR-0033 D19.11 - the People list is
+  -- frozen PER SUBJECT, as grant_vectors scopes it; R4/F-4).
+  v_frozen_all := exists (select 1 from public.freezes f
+                          where f.circle_id = p_circle
+                            and (f.state = 'open'
+                                 or (f.state = 'unresolved' and f.subject_id is null)));
+
+  return query
+  select p.kind, p.member_id, p.account_id, p.display_name, p.tier, p.slice,
+         p.is_subject, p.subject_id, p.custodian_member_id, p.custodian_name,
+         p.joined_at, p.invite_id, p.invite_expires_at, p.invite_status, p.levels
+    from (
+      -- Subjects as people: the highest access to their own record, their
+      -- custodian named beside them (§7.5).
+      select 'subject'::text as kind, m.id as member_id, m.account_id,
+             m.display_name_at_join as display_name, m.tier, a.slice,
+             true as is_subject, m.subject_id, m.custodian_member_id,
+             cm.display_name_at_join as custodian_name, m.joined_at,
+             null::uuid as invite_id, null::timestamptz as invite_expires_at,
+             null::text as invite_status,
+             case when v_frozen_all then null else hc.member_levels_frozen(p_circle, m.id) end as levels,
+             0 as ord
+        from public.circle_members m
+        left join public.accounts a on a.id = m.account_id
+        left join public.circle_members cm on cm.id = m.custodian_member_id
+       where m.circle_id = p_circle and m.removed_at is null and m.subject_id is not null
+      union all
+      -- Members: levels for a coordinator, and for the person herself.
+      select 'member', m.id, m.account_id, m.display_name_at_join, m.tier, a.slice,
+             false, null, null, null, m.joined_at, null, null, null,
+             case when v_frozen_all then null
+                  when v_coord or m.id = v_me.id then hc.member_levels_frozen(p_circle, m.id)
+                  else null end,
+             1
+        from public.circle_members m
+        left join public.accounts a on a.id = m.account_id
+       where m.circle_id = p_circle and m.removed_at is null and m.subject_id is null
+      union all
+      -- Open invites, coordinators only: pending, or expired and re-sendable.
+      select 'invite', null, null, i.invited_email::text, i.tier, null,
+             false, null, null, null, i.created_at, i.id, i.expires_at,
+             case when i.expires_at > now() then 'pending' else 'expired' end,
+             null,
+             2
+        from public.invites i
+       where v_coord and i.circle_id = p_circle
+         and i.accepted_at is null and i.revoked_at is null
+         and not v_frozen   -- ADR-0033 D19.8: voided under a freeze, so absent
+    ) p
+   order by p.ord, p.display_name, p.member_id, p.invite_id;
+end $$;
+
+alter function hc.circle_people(uuid) owner to hc_internal;
+revoke execute on function hc.circle_people(uuid)
+  from public, anon, hc_pipeline, hc_admin;
+grant execute on function hc.circle_people(uuid) to authenticated;
+

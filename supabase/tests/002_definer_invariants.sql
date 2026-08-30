@@ -130,6 +130,7 @@ select is((
     -- 7A M4: a member's grant levels per subject per domain, hidden spelled
     -- out — owner-only, running AS the calling definer
     'member_levels(p_circle uuid, p_member uuid)',
+    'member_levels_frozen(p_circle uuid, p_member uuid)',
     'mint_step_up(p_operation text, p_target_ref text)',
     'note_suspicious_attempts(p_identifier text)',
     -- 7A M4: one record object's label and the caller's level through the

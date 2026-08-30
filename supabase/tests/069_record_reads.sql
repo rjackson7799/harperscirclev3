@@ -39,7 +39,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(29);
+select plan(31);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038/063 pattern).
@@ -384,10 +384,11 @@ begin
 end $$;
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select count(*)::text || '/' || count(*) filter (where p.levels is null)::text
-       from hc.circle_people(%L) p where p.kind <> 'invite' $$,
+            || '/' || count(*) filter (where p.kind = 'invite')::text
+       from hc.circle_people(%L) p $$,
   current_setting('t.c1'))),
-  '9/9',
-  'a FROZEN circle: the people are still people (the family can see who is in the circle) and nobody has a level — a freeze suspends all interactive access, and the list does not pretend otherwise');
+  '9/9/0',
+  'a FROZEN circle: the people are still people (the family can see who is in the circle) and nobody has a level — a freeze suspends all interactive access, and the list does not pretend otherwise — and the two outstanding invites are ABSENT: "voided" (PRD §7.5, ADR-0033 D19.8), not "Invited · expires Friday" for an invite nobody can accept (R3/F-7: the old `kind <> ''invite''` filter never asked)');
 select is(pg_temp.scalar(
   $$ select (hc.adjudicate_freeze(
        (select f.id from public.freezes f
@@ -525,6 +526,40 @@ select is(
          from hc.shares_for_member(%L) s $$, current_setting('t.m_ruth'))),
   'document:A lab result with a broken lineage:true/<<ZERO ROWS>>',
   'THE FLOOR ON SOMEONE ELSE''S LIST (ADR-0033 D19.9, cluster A): Ruth holds one live share, on the UNRESOLVED d_unres. Sarah reads Ruth''s list holding manage on all five, so rung 3 gives her manage and she sees it NAMED. Kim reads the SAME list as a coordinator too — but she holds view on memories, so rung 3 puts her at HIDDEN and the row DOES NOT APPEAR AT ALL, not even counted. Before M5 Kim was handed document:NULL:false and learned a share existed. The exemption 069:28 relies on is the HOLDER''s alone.');
+
+-- ----------------------------------------------------------------------------
+-- 30–31 · ADR-0033 D19.11 (R4/F-4): the People list is frozen PER SUBJECT,
+--         as grant_vectors scopes it. A finding narrowed to MARCUS (s2),
+--         adjudicated unresolved by hand, blanks Marcus's levels and leaves
+--         Nell's — including the caller's own, which access_grants_select_own
+--         still serves. Invites are absent under it too (D19.8: any freeze).
+-- ----------------------------------------------------------------------------
+set session_replication_role = replica;
+insert into public.freezes (circle_id, subject_id, state, adjudicated_at, adjudicated_by, narrowing_rationale)
+values (current_setting('t.c1')::uuid, current_setting('t.s2')::uuid, 'unresolved', now(),
+        current_setting('t.u_sarah')::uuid, 'A finding about Marcus alone');
+set session_replication_role = default;
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (select (p.levels -> %L ->> 'schedule') || '/' || coalesce(p.levels -> %L ->> 'schedule', 'NULL')
+               from hc.circle_people(%L) p where p.account_id = %L)
+            || '/' || (select count(*)::text from hc.circle_people(%L) p
+                        where p.kind = 'member' and p.levels -> %L is not null and p.levels -> %L <> 'null'::jsonb)
+            || '/' || (select count(*)::text from hc.circle_people(%L) p
+                        where p.kind = 'member' and p.levels -> %L = 'null'::jsonb) $$,
+  current_setting('t.s1'), current_setting('t.s2'), current_setting('t.c1'), current_setting('t.u_sarah'),
+  current_setting('t.c1'), current_setting('t.s1'), current_setting('t.s1'),
+  current_setting('t.c1'), current_setting('t.s2'))),
+  'manage/NULL/7/7',
+  'a finding narrowed to Marcus: Sarah still reads her own manage on NELL and nothing on MARCUS; every one of the seven members keeps Nell''s levels and has Marcus''s blanked — before, the list blanked both subjects for everyone under any finding (R4/F-4), narrower than grant_vectors and than every sibling read');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (select count(*)::text from hc.circle_people(%L) p where p.kind = 'invite')
+            || '/' || (select (p.levels -> %L = 'null'::jsonb)::text || '/' || (p.levels -> %L <> 'null'::jsonb)::text
+                         from hc.circle_people(%L) p where p.kind = 'subject' and p.subject_id = %L) $$,
+  current_setting('t.c1'), current_setting('t.s2'), current_setting('t.s1'),
+  current_setting('t.c1'), current_setting('t.s2'))),
+  '0/true/true',
+  'under the narrowed finding the outstanding invites are absent (D19.8 binds on ANY freeze), and Marcus''s own subject row shows his standing on Nell and nothing on himself — the subject the finding is about');
 
 select * from finish();
 rollback;
