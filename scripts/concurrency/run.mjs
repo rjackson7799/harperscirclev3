@@ -3347,6 +3347,56 @@ async function case53(admin) {
   }
 }
 
+// --- case 54: 7A M1 · ADR-0033 R2/F-9 — path 2 racing share_object -----------
+
+async function case54(admin) {
+  const fx = await mkCircle(admin, 'c54');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // Lena holds health view and no schedule: the {schedule} task is a
+    // crossing, so path 2 names the invoice. share_object is the recorded
+    // R-rule exception — it takes no advisory lock — so S2's share on the
+    // same (task, Lena) is INVISIBLE to S1's `not exists` and S1's insert
+    // blocks on object_shares_live; when S2 commits, S1's insert collides.
+    const lena = await mkMember(admin, fx, 'Lena', 'family', { health: 'view' });
+    const tokShare = await mintStepUp(admin, fx.u2, 'share_object', `task:${fx.task}`);
+    const tokPair = await mintStepUp(admin, fx.u1, 'share_object',
+      `task:${fx.task}+document:${fx.doc}`);
+
+    await asUser(s2, fx.u2);
+    await s2.query('begin');
+    await s2.query(`select hc.share_object('task', $1, $2, $3)`, [fx.task, lena.m, tokShare]);
+
+    await asUser(s1, fx.u1);
+    const p1 = s1.query(`select hc.assign_task($1, $2, null, $3, $4)`, [fx.task, lena.m, fx.doc, tokPair])
+      .then(() => null).catch(e => e);
+    const pid1 = await findActivePid(admin, 'select hc.assign_task%', 'assign backend');
+    await waitForLockWait(admin, pid1, 's1 assign blocked on the live-share index behind the uncommitted share');
+    await s2.query('commit');
+    const e1 = await withTimeout(p1, 'case54 assign after the share commits');
+
+    const st = (await admin.query(
+      `select (select t.owner_member_id from public.tasks t where t.id = $1) as owner,
+              (select string_agg(sh.object_type::text || ':' || (sh.created_by_assignment_of is null)::text, ',' order by sh.object_type)
+                 from public.object_shares sh where sh.member_id = $2 and sh.revoked_at is null) as shares,
+              (select count(*)::int from public.access_log l
+                where l.circle_id = $3 and l.event_type in ('task_assigned', 'task_reassigned')) as entries,
+              (select count(*)::int from public.step_up_tokens s
+                where s.account_id in ($4, $5) and s.consumed_at is not null) as burnt`,
+      [fx.task, lena.m, fx.c, fx.u1, fx.u2])).rows[0];
+    check('case54 (7A M1 · ADR-0033 R2/F-9): path 2 racing share_object on the same (task, member) — the assignment collides on object_shares_live when the share commits and refuses in the ONE shape, assign_refused, never a raw 23505; nothing of it lands (no holder, no entry, the pair token unconsumed) and Lena keeps exactly the share S2 gave her',
+      e1 !== null && e1.code === 'P0001' && e1.message === 'assign_refused'
+        && st.owner === null && st.shares === 'task:true' && st.entries === 0 && st.burnt === 1,
+      `err=${e1 ? e1.code + ':' + e1.message : 'none'} owner=${st.owner} shares=${st.shares} entries=${st.entries} tokens_burnt=${st.burnt}`);
+  } finally {
+    await s2.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -3405,6 +3455,7 @@ try {
   await case51(admin);
   await case52(admin);
   await case53(admin);
+  await case54(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;

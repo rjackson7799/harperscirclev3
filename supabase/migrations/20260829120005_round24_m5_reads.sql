@@ -24,8 +24,9 @@
 -- for cluster B (`assign_task`, `unassign_task`, which clusters C and E then
 -- edit in place), two for cluster C (`complete_task`, `revoke_share`), two
 -- for cluster E (`snooze_task`, `recategorize_document`) — no schema change.
--- Clusters D (D19.1: unassign_task, revoke_share) and G (D19.7: assign_task)
--- edit those bodies in place, marked. The M3 audience cluster (F, D19.3,
+-- Clusters D (D19.1: unassign_task, revoke_share), G (D19.7: assign_task)
+-- and R2/F-9 (assign_task's unique_violation arm) edit those bodies in
+-- place, marked. The M3 audience cluster (F, D19.3,
 -- D19.5, D19.10) re-creates `recategorize_document` with a third parameter
 -- and `document_audience` with a sixth column (drop + create: the signature
 -- moved, the schema did not), and adds two functions -
@@ -470,6 +471,13 @@ begin
   elsif v_path = 'share' then
     -- Both shares together; a live FOREIGN share on either object is left
     -- exactly as it is — it is not this assignment's to revoke (SHR-02).
+    -- ADR-0033 R2/F-9: hc.share_object is the recorded R-rule exception (no
+    -- advisory lock), so a share it inserts and has not yet committed is
+    -- invisible to the `not exists` below and the insert here blocks on
+    -- object_shares_live, then fails with a raw 23505 when it commits. The
+    -- one shape holds: unique_violation becomes assign_refused, and the whole
+    -- call - the token burn included - rolls back with it.
+    begin
     insert into public.object_shares
       (circle_id, subject_id, object_type, object_id, member_id, granted_by,
        created_by_assignment_of)
@@ -487,6 +495,9 @@ begin
                         where sh.object_type = 'document' and sh.object_id = p_share_document
                           and sh.member_id = p_member and sh.revoked_at is null)
     returning id into v_sh_doc;
+    exception when unique_violation then
+      raise exception 'assign_refused' using errcode = 'P0001';
+    end;
     if v_sh_task is not null then
       perform hc.log(v_task.circle_id, 'object_shared', v_actor_name,
                      p_actor_account_id => v_actor,
