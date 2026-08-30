@@ -20,9 +20,10 @@
 -- `shares_for` gains the `removed_at is null` term `shares_for_member`
 -- already had (R4/F-5: the two reads disagreed about the same share).
 --
--- NO DDL: five `create or replace` bodies — three for cluster A here, two for
--- cluster B (`assign_task`, `unassign_task`) at the end of this file — no
--- schema change. Ownership,
+-- NO DDL: seven `create or replace` bodies — three for cluster A here, two
+-- for cluster B (`assign_task`, `unassign_task`, which cluster C then edits
+-- in place), two for cluster C (`complete_task`, `revoke_share`) — no schema
+-- change. Ownership,
 -- revocations and grants are RESTATED — a replaced body does not restate them
 -- for you, and 002's definer invariants read the catalog.
 -- ============================================================================
@@ -213,8 +214,11 @@ grant execute on function hc.shares_for_member(uuid) to authenticated;
 -- holder's OWN later cycle on the same task still ends it.
 --
 -- Both bodies below are M1's VERBATIM with that one predicate added to each
--- loop (and the two design comments corrected). Ownership, revocations and
--- grants are RESTATED, as above.
+-- loop (and the two design comments corrected), plus cluster C's marked
+-- additions: the instruction guard in each (R2/F-4, R6/F-6) and, in
+-- assign_task, the unconditional closure of the original's open
+-- instructions (R2/F-8). Ownership, revocations and grants are RESTATED,
+-- as above.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -278,6 +282,12 @@ begin
    where t.id = p_task and t.deleted_at is null
    for update;
   if v_task.id is null or v_task.status <> 'open' then
+    raise exception 'assign_refused' using errcode = 'P0001';
+  end if;
+  -- ADR-0033 cluster C (R2/F-4, R6/F-6): an INSTRUCTION is what its holder
+  -- reads of the original, not a task of its own. It is never assigned
+  -- onward - its lifecycle is the original's. One shape.
+  if v_task.written_from_task_id is not null then
     raise exception 'assign_refused' using errcode = 'P0001';
   end if;
 
@@ -391,17 +401,21 @@ begin
                      p_object_type => r.object_type, p_object_id => r.object_id,
                      p_detail => jsonb_build_object('assignment_of', p_task));
     end loop;
-    for r in
-      update public.tasks i
-         set status = 'cancelled'
-       where i.written_from_task_id = p_task
-         and i.status = 'open'
-         and i.deleted_at is null
-      returning i.id
-    loop
-      v_closed := v_closed + 1;
-    end loop;
   end if;
+  -- The original's open instructions close on EVERY assignment, whoever the
+  -- former holder was (ADR-0033 R2/F-8): remove_member clears the holder and
+  -- leaves the instruction open, and a closure keyed on a former holder
+  -- never reached it. Keyed on written_from_task_id instead.
+  for r in
+    update public.tasks i
+       set status = 'cancelled'
+     where i.written_from_task_id = p_task
+       and i.status = 'open'
+       and i.deleted_at is null
+    returning i.id
+  loop
+    v_closed := v_closed + 1;
+  end loop;
 
   -- The assignment itself: a fact on the original, whichever path.
   update public.tasks
@@ -491,7 +505,7 @@ begin
                    'former_owner_member_id', v_former,
                    'former_owner_name', v_former_name,
                    'shares_revoked', case when v_former is not null then v_revoked end,
-                   'instructions_closed', case when v_former is not null then v_closed end)));
+                   'instructions_closed', case when v_former is not null or v_closed > 0 then v_closed end)));
 
   return jsonb_strip_nulls(jsonb_build_object(
     'task_id', p_task, 'member_id', p_member, 'path', v_path, 'changed', true,
@@ -500,7 +514,7 @@ begin
                       then jsonb_strip_nulls(jsonb_build_array(v_sh_task, v_sh_doc)) end,
     'former_member_id', v_former,
     'shares_revoked', case when v_former is not null then v_revoked end,
-    'instructions_closed', case when v_former is not null then v_closed end));
+    'instructions_closed', case when v_former is not null or v_closed > 0 then v_closed end));
 end $$;
 
 alter function hc.assign_task(uuid, uuid, text, uuid, text) owner to hc_internal;
@@ -549,6 +563,11 @@ begin
    where t.id = p_task and t.deleted_at is null
    for update;
   if v_task.id is null or v_task.status <> 'open' or v_task.owner_member_id is null then
+    raise exception 'unassign_refused' using errcode = 'P0001';
+  end if;
+  -- ADR-0033 cluster C (R2/F-4, R6/F-6): an instruction is never unassigned
+  -- by itself - unassigning the ORIGINAL closes it (below). One shape.
+  if v_task.written_from_task_id is not null then
     raise exception 'unassign_refused' using errcode = 'P0001';
   end if;
 
@@ -659,3 +678,278 @@ alter function hc.unassign_task(uuid, uuid[]) owner to hc_internal;
 revoke execute on function hc.unassign_task(uuid, uuid[])
   from public, anon, hc_pipeline, hc_admin;
 grant execute on function hc.unassign_task(uuid, uuid[]) to authenticated;
+
+-- ============================================================================
+-- CLUSTER C (ADR-0033 D6 / D7 / D13 / D14 / D19.2 / D19.4 / D19.6) - the
+-- guards, and "the ORIGINAL is the work". R1/F-3(b,c), R1/F-4, R2/F-4,
+-- R2/F-5, R2/F-7, R2/F-8, R2/F-10, R6/F-5, R6/F-6.
+--
+-- The two bodies below are M2's (complete_task) and M3's (revoke_share)
+-- VERBATIM with marked additions; assign_task and unassign_task above carry
+-- their marked additions in place.
+--
+--   * An INSTRUCTION row is never p_task to assign_task or unassign_task:
+--     "the assignment is a fact on the original; the instruction is what
+--     she reads" (R2/F-4, R6/F-6). One shape each.
+--   * D19.4 - the ORIGINAL is the work. complete_task on an original
+--     cancels its open instructions the way unassign_task closes them;
+--     complete_task on an instruction completes the original with the
+--     instruction's actor, and the original gets its own task_completed
+--     entry naming the instruction (R1/F-4, R2/F-5).
+--   * D19.6 - completion revokes the assignment's shares: the assignment
+--     is over, so its grants end with it (R2/F-7). Cluster B's meaning:
+--     the original's marker AND held by its holder.
+--   * D19.2 - revoke_share refuses a share a LIVE assignment created;
+--     withdrawal goes through unassign_task or ends with completion. A
+--     KEPT share is an ordinary share again and stays revocable (R6/F-5,
+--     R2/F-10).
+--   * R2/F-8 - assign_task closes the original's open instructions
+--     unconditionally, so the orphan remove_member leaves is closed by the
+--     next assignment.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- hc.complete_task
+-- ----------------------------------------------------------------------------
+create or replace function hc.complete_task(p_task uuid)
+returns jsonb language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_actor uuid := hc.uid();
+  v_actor_name text;
+  v_task record;
+  v_now timestamptz := now();
+  v_owner_name text;
+  v_orig_id uuid;
+  v_orig_owner uuid;
+  v_orig_owner_name text;
+  v_work uuid;
+  v_holder uuid;
+  v_revoked int := 0;
+  v_closed int := 0;
+  r record;
+begin
+  if v_actor is null then
+    raise exception 'complete_refused' using errcode = 'P0001';
+  end if;
+  select a.display_name into v_actor_name from public.accounts a where a.id = v_actor;
+  if v_actor_name is null then
+    raise exception 'complete_refused' using errcode = 'P0001';
+  end if;
+
+  select t.* into v_task from public.tasks t
+   where t.id = p_task and t.deleted_at is null;
+  if v_task.id is null then
+    raise exception 'complete_refused' using errcode = 'P0001';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext('taint:' || v_task.circle_id::text));
+  select t.* into v_task from public.tasks t
+   where t.id = p_task and t.deleted_at is null
+   for update;
+  if v_task.id is null or v_task.status <> 'open' then
+    raise exception 'complete_refused' using errcode = 'P0001';
+  end if;
+
+  if exists (select 1 from public.freezes f
+             where f.circle_id = v_task.circle_id
+               and f.state in ('open', 'unresolved')) then
+    raise exception 'freeze_active' using errcode = 'P0001';
+  end if;
+
+  if not hc.may_act_on_task(v_task.circle_id, v_task.subject_id, v_task.taint,
+                            v_task.taint_resolved, p_task, v_task.owner_member_id,
+                            v_actor) then
+    raise exception 'complete_refused' using errcode = 'P0001';
+  end if;
+
+  update public.tasks
+     set status = 'done', completed_by = v_actor, completed_at = v_now
+   where id = p_task;
+
+  -- ADR-0033 D19.4 / D19.6 (cluster C - R1/F-4, R2/F-5, R2/F-7): THE
+  -- ORIGINAL IS THE WORK. Completing an INSTRUCTION completes the original
+  -- it was written from, with the instruction's actor; completing an
+  -- ORIGINAL closes its open instructions the way unassign_task does, never
+  -- leaving one open in a caregiver's list; and either way the assignment's
+  -- shares end with the work - "this assignment's" in cluster B's sense:
+  -- the original's marker AND held by its holder. The original is locked
+  -- under the circle lock this call already holds.
+  if v_task.written_from_task_id is not null then
+    select t.id, t.owner_member_id into v_orig_id, v_orig_owner
+      from public.tasks t
+     where t.id = v_task.written_from_task_id
+       and t.deleted_at is null and t.status = 'open'
+     for update;
+    if v_orig_id is not null then
+      update public.tasks
+         set status = 'done', completed_by = v_actor, completed_at = v_now
+       where id = v_orig_id;
+      select m.display_name_at_join into v_orig_owner_name
+        from public.circle_members m where m.id = v_orig_owner;
+      v_work := v_orig_id;
+      v_holder := v_orig_owner;
+    end if;
+  else
+    v_work := p_task;
+    v_holder := v_task.owner_member_id;
+  end if;
+  if v_work is not null then
+    for r in
+      update public.tasks i
+         set status = 'cancelled'
+       where i.written_from_task_id = v_work
+         and i.status = 'open'
+         and i.deleted_at is null
+      returning i.id
+    loop
+      v_closed := v_closed + 1;
+    end loop;
+    for r in
+      update public.object_shares sh
+         set revoked_at = v_now
+       where sh.created_by_assignment_of = v_work
+         and sh.member_id = v_holder
+         and sh.revoked_at is null
+      returning sh.object_type, sh.object_id, sh.member_id
+    loop
+      v_revoked := v_revoked + 1;
+      perform hc.log(v_task.circle_id, 'object_share_revoked', v_actor_name,
+                     p_actor_account_id => v_actor,
+                     p_subject_id => v_task.subject_id,
+                     p_target_member_id => r.member_id,
+                     p_object_type => r.object_type, p_object_id => r.object_id,
+                     p_detail => jsonb_build_object('assignment_of', v_work,
+                                                    'completed', true));
+    end loop;
+  end if;
+
+  select m.display_name_at_join into v_owner_name
+    from public.circle_members m where m.id = v_task.owner_member_id;
+
+  perform hc.log(v_task.circle_id, 'task_completed', v_actor_name,
+                 p_actor_account_id => v_actor,
+                 p_subject_id => v_task.subject_id,
+                 p_target_member_id => v_task.owner_member_id,
+                 p_object_type => 'task', p_object_id => p_task,
+                 p_detail => jsonb_strip_nulls(jsonb_build_object(
+                   'owner_member_id', v_task.owner_member_id,
+                   'owner_name', v_owner_name,
+                   'original_task_id', v_orig_id,
+                   'instructions_closed', v_closed,
+                   'shares_revoked', v_revoked)));
+  if v_orig_id is not null then
+    -- The original's own entry: completed through its instruction.
+    perform hc.log(v_task.circle_id, 'task_completed', v_actor_name,
+                   p_actor_account_id => v_actor,
+                   p_subject_id => v_task.subject_id,
+                   p_target_member_id => v_orig_owner,
+                   p_object_type => 'task', p_object_id => v_orig_id,
+                   p_detail => jsonb_strip_nulls(jsonb_build_object(
+                     'owner_member_id', v_orig_owner,
+                     'owner_name', v_orig_owner_name,
+                     'via_instruction_task_id', p_task,
+                     'instructions_closed', v_closed,
+                     'shares_revoked', v_revoked)));
+  end if;
+
+  return jsonb_strip_nulls(jsonb_build_object(
+    'task_id', p_task, 'status', 'done',
+    'completed_by', v_actor, 'completed_at', v_now,
+    'original_task_id', v_orig_id,
+    'instructions_closed', v_closed, 'shares_revoked', v_revoked));
+end $$;
+
+alter function hc.complete_task(uuid) owner to hc_internal;
+revoke execute on function hc.complete_task(uuid)
+  from public, anon, hc_pipeline, hc_admin;
+grant execute on function hc.complete_task(uuid) to authenticated;
+
+
+-- ----------------------------------------------------------------------------
+-- hc.revoke_share — unshare in one action.
+-- ----------------------------------------------------------------------------
+create or replace function hc.revoke_share(p_share_id uuid)
+returns jsonb language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_actor uuid := hc.uid();
+  v_actor_name text;
+  v_share record;
+  v_now timestamptz := now();
+begin
+  if v_actor is null then
+    raise exception 'revoke_refused' using errcode = 'P0001';
+  end if;
+  select a.display_name into v_actor_name from public.accounts a where a.id = v_actor;
+  if v_actor_name is null then
+    raise exception 'revoke_refused' using errcode = 'P0001';
+  end if;
+
+  select sh.* into v_share from public.object_shares sh
+   where sh.id = p_share_id and sh.revoked_at is null;
+  if v_share.id is null then
+    raise exception 'revoke_refused' using errcode = 'P0001';
+  end if;
+
+  -- R-rule: a share is security state; revoke it under the circle lock and
+  -- re-read.
+  perform pg_advisory_xact_lock(hashtext('taint:' || v_share.circle_id::text));
+  select sh.* into v_share from public.object_shares sh
+   where sh.id = p_share_id and sh.revoked_at is null
+   for update;
+  if v_share.id is null then
+    raise exception 'revoke_refused' using errcode = 'P0001';
+  end if;
+
+  -- The granter, or a live coordinator of the circle. No freeze check:
+  -- revocation reduces reach.
+  if v_share.granted_by <> v_actor
+     and not exists (select 1 from public.circle_members m
+                     where m.circle_id = v_share.circle_id
+                       and m.account_id = v_actor
+                       and m.removed_at is null
+                       and m.tier = 'coordinator') then
+    raise exception 'revoke_refused' using errcode = 'P0001';
+  end if;
+
+  -- ADR-0033 D19.2 (cluster C - R6/F-5, R2/F-10): a share a LIVE assignment
+  -- created is not revocable on its own - withdrawing it would leave the
+  -- holder with a task she cannot see, and AC-TASK-5's post-condition is a
+  -- standing invariant, not a moment. Withdrawal goes through unassign_task
+  -- (or ends with completion). A KEPT share - its task no longer held by
+  -- this member, or closed - is an ordinary share again and revocable
+  -- here: "revocable in one action" (S4.3.5) still holds for it. One shape.
+  -- (M3's header sentence "the assignment stands" is superseded by this.)
+  if v_share.created_by_assignment_of is not null
+     and exists (select 1 from public.tasks t
+                 where t.id = v_share.created_by_assignment_of
+                   and t.deleted_at is null
+                   and t.status = 'open'
+                   and t.owner_member_id = v_share.member_id) then
+    raise exception 'revoke_refused' using errcode = 'P0001';
+  end if;
+
+  update public.object_shares set revoked_at = v_now where id = p_share_id;
+
+  perform hc.log(v_share.circle_id, 'object_share_revoked', v_actor_name,
+                 p_actor_account_id => v_actor,
+                 p_subject_id => v_share.subject_id,
+                 p_target_member_id => v_share.member_id,
+                 p_object_type => v_share.object_type, p_object_id => v_share.object_id,
+                 p_detail => jsonb_strip_nulls(jsonb_build_object(
+                   'share_id', p_share_id,
+                   'granted_by', v_share.granted_by,
+                   'created_by_assignment_of', v_share.created_by_assignment_of)));
+
+  return jsonb_build_object('share_id', p_share_id, 'member_id', v_share.member_id,
+                            'object_type', v_share.object_type,
+                            'object_id', v_share.object_id, 'revoked_at', v_now);
+end $$;
+
+alter function hc.revoke_share(uuid) owner to hc_internal;
+revoke execute on function hc.revoke_share(uuid)
+  from public, anon, hc_pipeline, hc_admin;
+grant execute on function hc.revoke_share(uuid) to authenticated;

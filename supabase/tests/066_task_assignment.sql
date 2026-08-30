@@ -34,6 +34,13 @@
 --     this task's marker AND held by the person being unassigned (ADR-0033
 --     cluster B): a share a coordinator KEPT stays with its holder through
 --     the task's later cycles (53-60).
+--   · An INSTRUCTION row is never p_task to assign/unassign (ADR-0033
+--     cluster C); completing an original cancels its open instructions,
+--     completing an instruction completes the original with the
+--     instruction's actor, and completion revokes the assignment's shares
+--     (D19.4, D19.6); revoke_share refuses a LIVE assignment's share and
+--     accepts a kept one (D19.2); assignment closes the original's open
+--     instructions unconditionally (R2/F-8). 61-75.
 --   · A freeze refuses assignment with the NAMED freeze_active (PRD §7.5 —
 --     assignment is a widening act) and permits unassignment (it reduces
 --     reach: the remove_member precedent).
@@ -51,7 +58,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(60);
+select plan(75);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038/063 pattern).
@@ -840,6 +847,241 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   current_setting('t.d_legal'))),
   'true/2/false/0',
   'the CONTROL, and the remedy''s consequence: reassigning Lena to Ruth revokes BOTH of Lena''s shares — the new task share and the POA share kept at 38 — because keying on the holder makes a kept share HERS, and her own next cycle on the same task ends with it (R1''s remedy as ruled at D19; R6''s marker-clearing would have left it). The POA is gone from her live context');
+
+-- ----------------------------------------------------------------------------
+-- 61–75 · ADR-0033 cluster C — the guards, and "the ORIGINAL is the work".
+--         R2/F-4 + R6/F-6: an instruction row is refused as p_task by both
+--         assign_task and unassign_task. D19.4 (R1/F-4, R2/F-5): completing
+--         an original cancels its open instructions; completing an
+--         instruction completes the original with the instruction's actor.
+--         D19.6 (R2/F-7): completion revokes the assignment's shares.
+--         D19.2 (R6/F-5, R2/F-10): revoke_share refuses a share a LIVE
+--         assignment created; a kept one is an ordinary share again.
+--         R2/F-8: assign_task closes the original's open instructions
+--         unconditionally, so remove_member's orphan is closed by the next
+--         assignment. R3/F-5 (test only): the post-condition's second arm
+--         and the assignee shapes.
+--         The world here: t_tainted is Ruth's (60); t_plain, t_sched2 and
+--         t_fin are nobody's; every share of Lena's but the foreign one is
+--         revoked; no freeze.
+-- ----------------------------------------------------------------------------
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (hc.assign_task(%L, %L, 'Collect the dressing kit from the pharmacy before Friday')) ->> 'path' $$,
+  current_setting('t.t_tainted'), current_setting('t.m_marisol'))),
+  'instruction',
+  'fixture for the guards: the tainted task goes from Ruth to Marisol by PATH 1 — she cannot clear {health}, so it is a crossing and a reassign — and the instruction row is what she reads');
+select pg_temp.stash('i_tainted', format(
+  $$ select i.id::text from public.tasks i where i.written_from_task_id = %L and i.status = 'open' $$,
+  current_setting('t.t_tainted')));
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.assign_task(%L, %L)::text $$,
+  current_setting('t.i_tainted'), current_setting('t.m_dan'))),
+  'ERROR:P0001:assign_refused',
+  'an INSTRUCTION is not assignable onward (R2/F-4, R6/F-6): "the assignment is a fact on the original; the instruction is what she reads" — one shape, and nothing moves');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.unassign_task(%L)::text $$, current_setting('t.i_tainted')))
+  || '/' || pg_temp.scalar(format(
+  $$ select (select (i.owner_member_id = %L and i.status = 'open')::text from public.tasks i where i.id = %L)
+            || '/' || (select (t.owner_member_id = %L)::text from public.tasks t where t.id = %L) $$,
+  current_setting('t.m_marisol'), current_setting('t.i_tainted'),
+  current_setting('t.m_marisol'), current_setting('t.t_tainted'))),
+  'ERROR:P0001:unassign_refused/true/true',
+  'and not unassignable by itself either — the instruction still names Marisol, still open, and she still holds the original: the instruction''s lifecycle is the original''s (unassign 41, reassign 31, and now completion)');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (r ->> 'status') || '/' || (r ->> 'instructions_closed')
+       from (select hc.complete_task(%L) r) c $$,
+  current_setting('t.t_tainted')))
+  || '/' || pg_temp.scalar(format(
+  $$ select i.status from public.tasks i where i.id = %L $$, current_setting('t.i_tainted'))),
+  'done/1/cancelled',
+  'D19.4, THE ORIGINAL IS THE WORK: Sarah completes the original — its open instruction is CANCELLED the way unassign closes it, never left open in Marisol''s list (R1/F-4, R2/F-5)');
+
+select pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.assign_task(%L, %L, 'Pay the July invoice at the clinic desk')::text $$,
+  current_setting('t.t_fin'), current_setting('t.m_marisol')));
+select pg_temp.stash('i_fin', format(
+  $$ select i.id::text from public.tasks i where i.written_from_task_id = %L and i.status = 'open' $$,
+  current_setting('t.t_fin')));
+select is(pg_temp.call_as(current_setting('t.u_marisol')::uuid, format(
+  $$ select (r ->> 'status') || '/' || (r ->> 'original_task_id' = %L)::text
+       from (select hc.complete_task(%L) r) c $$,
+  current_setting('t.t_fin'), current_setting('t.i_fin')))
+  || '/' || pg_temp.scalar(format(
+  $$ select t.status || '/' || (t.completed_by = %L)::text from public.tasks t where t.id = %L $$,
+  current_setting('t.u_marisol'), current_setting('t.t_fin'))),
+  'done/true/done/true',
+  'and the other direction: Marisol completes her INSTRUCTION at summary — the ORIGINAL is completed with HER as its actor, and the return names it');
+
+select is(pg_temp.scalar(format(
+  $$ select count(*) filter (where l.object_id = %L)::text || '/' ||
+            count(*) filter (where l.object_id = %L)::text || '/' ||
+            (select (l2.detail ->> 'via_instruction_task_id' = %L)::text from public.access_log l2
+              where l2.circle_id = %L and l2.event_type = 'task_completed' and l2.object_id = %L)
+       from public.access_log l
+      where l.circle_id = %L and l.event_type = 'task_completed' and l.object_id in (%L, %L) $$,
+  current_setting('t.t_fin'), current_setting('t.i_fin'),
+  current_setting('t.i_fin'), current_setting('t.c1'), current_setting('t.t_fin'),
+  current_setting('t.c1'), current_setting('t.t_fin'), current_setting('t.i_fin'))),
+  '1/1/true',
+  'two task_completed entries — the instruction''s and the original''s — and the original''s says which instruction completed it');
+
+select pg_temp.mint(current_setting('t.u_sarah')::uuid, 'share_object',
+  'task:' || current_setting('t.t_sched2') || '+document:' || current_setting('t.d_legal'), 'tok_c3');
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (hc.assign_task(%L, %L, null, %L, %L)) ->> 'path' $$,
+  current_setting('t.t_sched2'), current_setting('t.m_lena'), current_setting('t.d_legal'),
+  current_setting('t.tok_c3')))
+  || '/' || pg_temp.scalar(format(
+  $$ select count(*)::text from public.object_shares sh
+      where sh.created_by_assignment_of = %L and sh.member_id = %L and sh.revoked_at is null $$,
+  current_setting('t.t_sched2'), current_setting('t.m_lena'))),
+  'share/2',
+  'fixture: the parking permit goes to Lena by path 2 naming the POA — both shares created afresh (her earlier ones ended at 60)');
+select pg_temp.stash('sh_task_c3', format(
+  $$ select sh.id::text from public.object_shares sh
+      where sh.created_by_assignment_of = %L and sh.object_type = 'task' and sh.revoked_at is null $$,
+  current_setting('t.t_sched2')));
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.revoke_share(%L)::text $$, current_setting('t.sh_task_c3')))
+  || '/' || pg_temp.scalar(format(
+  $$ select (sh.revoked_at is null)::text from public.object_shares sh where sh.id = %L $$,
+  current_setting('t.sh_task_c3'))),
+  'ERROR:P0001:revoke_refused/true',
+  'D19.2: a share a LIVE assignment created is not revocable on its own — withdrawing it would leave Lena holding a task she cannot see, and the post-condition is a standing invariant, not a moment (R6/F-5, R2/F-10); withdrawal goes through unassign_task. The share stands');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (r ->> 'status') || '/' || (r ->> 'shares_revoked')
+       from (select hc.complete_task(%L) r) c $$,
+  current_setting('t.t_sched2')))
+  || '/' || pg_temp.scalar(format(
+  $$ select (select count(*)::text from public.object_shares sh
+              where sh.created_by_assignment_of = %L and sh.revoked_at is null)
+            || '/' ||
+            (select count(*)::text from public.access_log l
+              where l.circle_id = %L and l.event_type = 'object_share_revoked'
+                and l.target_member_id = %L and l.detail ->> 'assignment_of' = %L
+                and l.detail ->> 'completed' = 'true') $$,
+  current_setting('t.t_sched2'), current_setting('t.c1'), current_setting('t.m_lena'),
+  current_setting('t.t_sched2'))),
+  'done/2/0/2',
+  'D19.6: completion REVOKES the assignment''s shares — the assignment is over, so its grants end with it (R2/F-7): both of Lena''s shares revoked and logged with the assignment they came from');
+
+select pg_temp.mint(current_setting('t.u_sarah')::uuid, 'share_object',
+  'task:' || current_setting('t.t_plain') || '+document:' || current_setting('t.d_legal'), 'tok_c4');
+select pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.assign_task(%L, %L, null, %L, %L)::text $$,
+  current_setting('t.t_plain'), current_setting('t.m_lena'), current_setting('t.d_legal'),
+  current_setting('t.tok_c4')));
+select pg_temp.stash('sh_doc_c4', format(
+  $$ select sh.id::text from public.object_shares sh
+      where sh.created_by_assignment_of = %L and sh.object_type = 'document' and sh.revoked_at is null $$,
+  current_setting('t.t_plain')));
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (hc.unassign_task(%L, array[%L::uuid])) ->> 'shares_kept' $$,
+  current_setting('t.t_plain'), current_setting('t.sh_doc_c4'))),
+  '1',
+  'fixture: the pharmacy call goes to Lena by path 2 naming the POA, and Sarah unassigns her KEEPING the POA share');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select ((hc.revoke_share(%L)) ->> 'member_id' = %L)::text $$,
+  current_setting('t.sh_doc_c4'), current_setting('t.m_lena')))
+  || '/' || pg_temp.scalar(format(
+  $$ select (sh.revoked_at is not null)::text from public.object_shares sh where sh.id = %L $$,
+  current_setting('t.sh_doc_c4'))),
+  'true/true',
+  'a KEPT share is an ordinary share again — its assignment is over — so "revocable in one action" (§4.3.5) still holds for it');
+
+-- R2/F-8: the orphan remove_member leaves. A fresh tainted task, an
+-- instruction for Marisol, then remove_member's effect by hand under replica
+-- (round9_fixes:484-497 clears the holder of every open task and closes
+-- nothing).
+set session_replication_role = replica;
+do $$
+declare t_c uuid := gen_random_uuid();
+begin
+  insert into public.tasks (id, circle_id, subject_id, title, status,
+    approved_by, approved_at, approver_display_name, taint)
+  values (t_c, current_setting('t.c1')::uuid, current_setting('t.s1')::uuid,
+          'Ask Dr Okafor about the new dressing', 'open',
+          current_setting('t.u_sarah')::uuid, now(), 'Sarah', '{schedule,health}');
+  perform set_config('t.t_c', t_c::text, true);
+end $$;
+set session_replication_role = default;
+select pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.assign_task(%L, %L, 'Ask Dr Okafor about the new dressing at the Tuesday visit')::text $$,
+  current_setting('t.t_c'), current_setting('t.m_marisol')));
+select pg_temp.stash('i_c', format(
+  $$ select i.id::text from public.tasks i where i.written_from_task_id = %L and i.status = 'open' $$,
+  current_setting('t.t_c')));
+set session_replication_role = replica;
+update public.tasks set owner_member_id = null, assigned_by = null, assigned_at = null
+ where id = current_setting('t.t_c')::uuid;
+set session_replication_role = default;
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (r ->> 'path') || '/' || (r ->> 'instructions_closed')
+       from (select hc.assign_task(%L, %L) r) a $$,
+  current_setting('t.t_c'), current_setting('t.m_ruth')))
+  || '/' || pg_temp.scalar(format(
+  $$ select i.status from public.tasks i where i.id = %L $$, current_setting('t.i_c'))),
+  'plain/1/cancelled',
+  'R2/F-8: the orphan remove_member leaves — original unowned, instruction open — is CLOSED by the next assignment of the original, whoever the former holder was: closure is keyed on written_from_task_id, not on a former holder');
+
+-- R3/F-5: the post-condition's SECOND arm (unresolved lineage) and the
+-- assignee shapes. Fixture rows under replica.
+set session_replication_role = replica;
+do $$
+declare t_u uuid := gen_random_uuid(); m_subject uuid; u_gone uuid := pg_temp.mk_user(gen_random_uuid()); m_gone uuid;
+begin
+  insert into public.tasks (id, circle_id, subject_id, title, status,
+    approved_by, approved_at, approver_display_name, taint, taint_resolved)
+  values (t_u, current_setting('t.c1')::uuid, current_setting('t.s1')::uuid,
+          'Review the second opinion', 'open',
+          current_setting('t.u_sarah')::uuid, now(), 'Sarah', '{schedule,health}', false);
+  insert into public.circle_members (circle_id, subject_id, custodian_member_id, tier, display_name_at_join)
+  values (current_setting('t.c1')::uuid, current_setting('t.s1')::uuid,
+          current_setting('t.m_sarah')::uuid, 'coordinator', 'Nell')
+  returning id into m_subject;
+  insert into public.accounts (id, kind, display_name) values (u_gone, 'member', 'Gone');
+  insert into public.circle_members (circle_id, account_id, tier, display_name_at_join, removed_at, removed_by)
+  values (current_setting('t.c1')::uuid, u_gone, 'family', 'Gone', now(), current_setting('t.u_sarah')::uuid)
+  returning id into m_gone;
+  perform set_config('t.t_u', t_u::text, true);
+  perform set_config('t.m_subject', m_subject::text, true);
+  perform set_config('t.m_gone', m_gone::text, true);
+end $$;
+set session_replication_role = default;
+select pg_temp.mint(current_setting('t.u_sarah')::uuid, 'share_object',
+  'task:' || current_setting('t.t_u') || '+document:' || current_setting('t.d_legal'), 'tok_u');
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.assign_task(%L, %L, null, %L, %L)::text $$,
+  current_setting('t.t_u'), current_setting('t.m_lena'), current_setting('t.d_legal'),
+  current_setting('t.tok_u'))),
+  'ERROR:P0001:assign_refused',
+  'R3/F-5, the post-condition''s SECOND arm: a task whose lineage is UNRESOLVED is hidden by rung 3 from everyone below manage×5 — a share cannot show it, so path 2 refuses whole');
+
+select is(pg_temp.scalar(format(
+  $$ select (select (s.consumed_at is null)::text from public.step_up_tokens s
+              where s.token_hash = extensions.digest(%L, 'sha256'))
+            || '/' ||
+            (select count(*)::text from public.object_shares sh where sh.created_by_assignment_of = %L)
+            || '/' ||
+            (select (t.owner_member_id is null)::text from public.tasks t where t.id = %L) $$,
+  current_setting('t.tok_u'), current_setting('t.t_u'), current_setting('t.t_u'))),
+  'true/0/true',
+  'and the refusal rolled everything back: the token is NOT consumed, no share was written, nobody holds it');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.assign_task(%L, %L)::text $$,
+  current_setting('t.t_plain'), current_setting('t.m_subject')))
+  || '/' || pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.assign_task(%L, %L)::text $$,
+  current_setting('t.t_plain'), current_setting('t.m_gone'))),
+  'ERROR:P0001:assign_refused/ERROR:P0001:assign_refused',
+  'R3/F-5, the assignee shapes: a subject-member row (nobody to do the work) and a REMOVED member are refused in the one shape — two separate calls, joined outside the statement (069:14''s shape)');
 
 select * from finish();
 rollback;
