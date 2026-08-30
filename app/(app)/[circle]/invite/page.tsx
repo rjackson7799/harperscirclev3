@@ -1,8 +1,8 @@
-import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
 import { INVITABLE_TIERS, TIERS } from '@/lib/permissions/tiers';
 import { TierCeiling } from '@/lib/permissions/tier-ceiling';
-import { liveSessionClaims } from '@/lib/auth/session';
+import { gatePage } from '@/lib/auth/gate';
+import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
@@ -28,8 +28,16 @@ export default async function InvitePage({
   const query = await searchParams;
 
   const supabase = await asUser();
-  const claims = await liveSessionClaims(supabase);
-  if (!claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/invite`)}`);
+  // 7B B1 (GTE-01): three outcomes; unavailable is a STATE, never a sign-in.
+  const gate = await gatePage(supabase, `/${circle}/invite`);
+  if (gate.kind === 'unavailable') {
+    return (
+      <>
+        <PageHeader title="Invite someone" />
+        <SessionUnavailable next={`/${circle}/invite`} />
+      </>
+    );
+  }
 
   const { data: subjects } = await supabase
     .from('subjects')

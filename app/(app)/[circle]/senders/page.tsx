@@ -1,6 +1,6 @@
-import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
-import { liveSessionClaims } from '@/lib/auth/session';
+import { gatePage } from '@/lib/auth/gate';
+import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 import { listKnownSenders, type KnownSender } from '@/lib/hc/inbox';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { Card } from '@/components/ui/Card';
@@ -37,8 +37,17 @@ export default async function SendersPage({
 }) {
   const { circle } = await params;
   const supabase = await asUser();
-  const claims = await liveSessionClaims(supabase);
-  if (!claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/senders`)}`);
+  // 7B B1 (GTE-01): three outcomes; unavailable is a STATE, never a sign-in.
+  const gate = await gatePage(supabase, `/${circle}/senders`);
+  if (gate.kind === 'unavailable') {
+    return (
+      <>
+        <PageHeader title="Known senders" />
+        <SessionUnavailable next={`/${circle}/senders`} />
+      </>
+    );
+  }
+  const claims = gate.claims;
 
   // 6B B6 (R5/F-7): the ?e=revoke marker the submit route emits is READ.
   const sp = await searchParams;

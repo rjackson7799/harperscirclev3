@@ -19,7 +19,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 // Test class: MOCKED ROUTE CONTRACT.
 // ============================================================================
 
-const session = { liveSessionClaims: vi.fn() };
+const session = { readLiveSession: vi.fn() };
 vi.mock('@/lib/auth/session', () => session);
 vi.mock('@/lib/db/user', () => ({
   asUser: async () => ({ auth: { getClaims: vi.fn(), getUser: vi.fn() } }),
@@ -45,7 +45,7 @@ const SENDER = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  session.liveSessionClaims.mockResolvedValue(CLAIMS);
+  session.readLiveSession.mockResolvedValue({ kind: 'signed-in', claims: CLAIMS });
   inbox.listKnownSenders.mockResolvedValue([SENDER]);
   inbox.revokeSender.mockResolvedValue({ revoked: true });
 });
@@ -132,7 +132,7 @@ describe('5B B8 · the revoke submit route', () => {
   });
 
   it('no session ⇒ sign-in, and nothing is revoked', async () => {
-    session.liveSessionClaims.mockResolvedValueOnce(null);
+    session.readLiveSession.mockResolvedValueOnce({ kind: 'signed-out' });
     const res = await post({ sender_id: 'sender-1' });
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain('/sign-in');

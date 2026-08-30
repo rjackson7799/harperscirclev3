@@ -21,7 +21,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 // the live authority is tests/hc/inbox.test.ts and the B9 gate leg.
 // ============================================================================
 
-const session = { liveSessionClaims: vi.fn() };
+const session = { readLiveSession: vi.fn() };
 vi.mock('@/lib/auth/session', () => session);
 
 const from = vi.fn();
@@ -75,7 +75,7 @@ let readErrors: { parents?: string; children?: string; subjects?: string } = {};
 
 beforeEach(() => {
   vi.clearAllMocks();
-  session.liveSessionClaims.mockResolvedValue(CLAIMS);
+  session.readLiveSession.mockResolvedValue({ kind: 'signed-in', claims: CLAIMS });
   inbox.productStates.mockResolvedValue(new Map());
   parents = [];
   children = [];
@@ -363,7 +363,7 @@ describe('B6 · the submit routes ride the wrappers with relative PRG redirects'
   });
 
   it('no session ⇒ straight to sign-in, nothing called', async () => {
-    session.liveSessionClaims.mockResolvedValue(null);
+    session.readLiveSession.mockResolvedValue({ kind: 'signed-out' });
     const { POST } = await import('@/app/(app)/[circle]/inbox/cancel/submit/route');
     const res = await POST(
       post(`/${CIRCLE}/inbox/cancel/submit`, { arrival_id: 'a-1' }),

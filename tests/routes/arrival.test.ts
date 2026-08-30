@@ -23,7 +23,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 // legs under the local-gate protocol.
 // ============================================================================
 
-const session = { liveSessionClaims: vi.fn() };
+const session = { readLiveSession: vi.fn() };
 vi.mock('@/lib/auth/session', () => session);
 vi.mock('@/lib/db/user', () => ({
   asUser: async () => ({ auth: { getClaims: vi.fn(), getUser: vi.fn() } }),
@@ -119,7 +119,7 @@ const PROPOSALS = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  session.liveSessionClaims.mockResolvedValue(CLAIMS);
+  session.readLiveSession.mockResolvedValue({ kind: 'signed-in', claims: CLAIMS });
   review.arrivalForReview.mockResolvedValue(ROW);
   review.extractionsFor.mockResolvedValue(FACTS);
   review.proposalsFor.mockResolvedValue(PROPOSALS);

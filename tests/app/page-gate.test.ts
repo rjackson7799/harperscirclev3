@@ -69,15 +69,20 @@ vi.mock('@/lib/db/user', () => ({
 
 const CIRCLE = '11111111-0000-4000-8000-000000000001';
 const ARRIVAL = '55555555-0000-4000-8000-000000000005';
-const CLAIMS = { sub: '33333333-0000-4000-8000-000000000003', role: 'authenticated' };
 const UNAVAILABLE = { kind: 'unavailable', why: 'AuthRetryableFetchError: fetch failed' } as const;
 const SIGNED_OUT = { kind: 'signed-out' } as const;
 
 type PageProps = Record<string, unknown>;
+// Each page declares its own props shape; the table carries them untyped and
+// the call site widens, so one loader type fits every page.
+type PageModule = { default: (p: never) => Promise<unknown> };
+type RouteModule = { POST: (r: Request, c: never) => Promise<Response> };
+type PageFn = (p: PageProps) => Promise<unknown>;
+type RouteFn = (r: Request, c: { params: Promise<Record<string, string>> }) => Promise<Response>;
 type Entry =
-  | { kind: 'page'; next: string; load: () => Promise<{ default: (p: PageProps) => Promise<unknown> }>; props: PageProps }
-  | { kind: 'layout'; load: () => Promise<{ default: (p: PageProps) => Promise<unknown> }>; props: PageProps }
-  | { kind: 'route'; next: string; load: () => Promise<{ POST: (r: Request, c: { params: Promise<Record<string, string>> }) => Promise<Response> }>; params: Record<string, string> }
+  | { kind: 'page'; next: string; load: () => Promise<PageModule>; props: PageProps }
+  | { kind: 'layout'; load: () => Promise<PageModule>; props: PageProps }
+  | { kind: 'route'; next: string; load: () => Promise<RouteModule>; params: Record<string, string> }
   | { kind: 'elsewhere'; where: string };
 
 const params = (p: Record<string, string>) => Promise.resolve(p);
@@ -185,6 +190,14 @@ const GATED: Record<string, Entry> = {
     load: () => import('@/app/(app)/[circle]/senders/revoke/submit/route'),
     params: { circle: CIRCLE },
   },
+  // The pin demanded this one the moment it existed: the activation pass
+  // offered again (OW-18's account-page half) is a sixth form route.
+  '/account/activate-forwarding/submit': {
+    kind: 'route',
+    next: '/account',
+    load: () => import('@/app/account/activate-forwarding/submit/route'),
+    params: {},
+  },
   // ---- the three that already answer a status, and the two special routes --
   '/api/artifact/[id]': { kind: 'elsewhere', where: 'tests/routes/artifact.test.ts — 503 session_unavailable, never 404' },
   '/api/upload/token': { kind: 'elsewhere', where: 'tests/routes/upload.test.ts — 503, never 401' },
@@ -239,10 +252,10 @@ describe('GTE-01 · the gated set is PINNED to the filesystem both ways', () => 
     expect(stale, `entries with no gated file behind them: ${stale.join(', ')}`).toEqual([]);
   });
 
-  it('the D15 enumeration holds on disk: ten pages, five form routes, one layout', () => {
+  it('the D15 enumeration holds on disk: ten pages, five form routes + the one 7B added, one layout', () => {
     const kinds = Object.values(GATED).map((e) => e.kind);
     expect(kinds.filter((k) => k === 'page').length).toBe(10);
-    expect(kinds.filter((k) => k === 'route').length).toBe(5);
+    expect(kinds.filter((k) => k === 'route').length).toBe(6);
     expect(kinds.filter((k) => k === 'layout').length).toBe(1);
   });
 });
@@ -271,18 +284,20 @@ for (const [route, entry] of Object.entries(GATED)) {
       it('unavailable ⇒ RENDERS the state — role="alert", the retry sentence, "try again" to its own path — and never the sign-in redirect', async () => {
         session.readLiveSession.mockResolvedValue(UNAVAILABLE);
         session.liveSessionClaims.mockResolvedValue(null);
-        const { default: Page } = await entry.load();
+        const Page = (await entry.load()).default as unknown as PageFn;
         const html = renderToStaticMarkup((await Page(entry.props)) as never);
         expect(html).toContain('role="alert"');
         expect(html).toContain("We couldn&#x27;t check your sign-in just now.");
         expect(html).toContain(`href="${entry.next}"`);
-        expect(html).not.toContain('sign-in');
+        // The state SAYS "your sign-in"; what it must never carry is the
+        // redirect's path.
+        expect(html).not.toContain('/sign-in');
       });
 
       it('signed-out ⇒ the SAME redirect as before (the control)', async () => {
         session.readLiveSession.mockResolvedValue(SIGNED_OUT);
         session.liveSessionClaims.mockResolvedValue(null);
-        const { default: Page } = await entry.load();
+        const Page = (await entry.load()).default as unknown as PageFn;
         await expect(Page(entry.props)).rejects.toThrow(
           `NEXT_REDIRECT /sign-in?next=${encodeURIComponent(entry.next)}`,
         );
@@ -293,10 +308,12 @@ for (const [route, entry] of Object.entries(GATED)) {
       it('unavailable ⇒ the chrome renders around the children, with no user chip and no redirect', async () => {
         session.readLiveSession.mockResolvedValue(UNAVAILABLE);
         session.liveSessionClaims.mockResolvedValue(null);
-        const { default: Layout } = await entry.load();
+        const Layout = (await entry.load()).default as unknown as PageFn;
         const html = renderToStaticMarkup((await Layout(entry.props)) as never);
         expect(html).toContain('CHILD-MARKER');
-        expect(html).not.toContain('sign-in');
+        // The state SAYS "your sign-in"; what it must never carry is the
+        // redirect's path.
+        expect(html).not.toContain('/sign-in');
       });
     }
 
@@ -304,7 +321,7 @@ for (const [route, entry] of Object.entries(GATED)) {
       it('unavailable ⇒ 503 with retry-after and private, no-store, as a page a person can read — never a 303 to /sign-in', async () => {
         session.readLiveSession.mockResolvedValue(UNAVAILABLE);
         session.liveSessionClaims.mockResolvedValue(null);
-        const { POST } = await entry.load();
+        const POST = (await entry.load()).POST as unknown as RouteFn;
         const res = await POST(post(route), { params: params(entry.params) });
         expect(res.status).toBe(503);
         expect(res.headers.get('retry-after')).toBe('5');
@@ -313,13 +330,13 @@ for (const [route, entry] of Object.entries(GATED)) {
         const body = await res.text();
         expect(body).toContain("We couldn't check your sign-in just now.");
         expect(body).toContain(`href="${entry.next}"`);
-        expect(body).not.toContain('sign-in');
+        expect(body).not.toContain('/sign-in');
       });
 
       it('signed-out ⇒ 303 to /sign-in with next (the control)', async () => {
         session.readLiveSession.mockResolvedValue(SIGNED_OUT);
         session.liveSessionClaims.mockResolvedValue(null);
-        const { POST } = await entry.load();
+        const POST = (await entry.load()).POST as unknown as RouteFn;
         const res = await POST(post(route), { params: params(entry.params) });
         expect(res.status).toBe(303);
         expect(res.headers.get('location')).toBe(`/sign-in?next=${encodeURIComponent(entry.next)}`);
@@ -335,14 +352,18 @@ describe('GTE-01 · the two-outcome gate is gone', () => {
     expect(typeof real.readLiveSession).toBe('function');
   });
 
-  it('no file under app/ imports liveSessionClaims', () => {
+  it('no file under app/ imports or calls liveSessionClaims (comment lines carved out — a scanner matches its own prose)', () => {
     const offenders: string[] = [];
+    const COMMENT_LINE = /^\s*(\/\/|\/\*|\*)/;
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
         const full = join(dir, name);
         if (statSync(full).isDirectory()) walk(full);
-        else if (/\.(ts|tsx)$/.test(name) && /liveSessionClaims/.test(readFileSync(full, 'utf8'))) {
-          offenders.push(relative(process.cwd(), full));
+        else if (/\.(ts|tsx)$/.test(name)) {
+          const hit = readFileSync(full, 'utf8')
+            .split('\n')
+            .some((line) => !COMMENT_LINE.test(line) && /\bliveSessionClaims\b/.test(line));
+          if (hit) offenders.push(relative(process.cwd(), full));
         }
       }
     };

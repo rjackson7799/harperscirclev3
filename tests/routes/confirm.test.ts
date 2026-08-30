@@ -107,7 +107,7 @@ describe('OW-18 · the verification step reads its own three outcomes', () => {
     expect(res.headers.get('cache-control')).toBe('private, no-store');
     const body = await res.text();
     expect(body).toContain('href="/confirm?token_hash=abc&amp;type=signup"');
-    expect(body).not.toContain('sign-in');
+    expect(body).not.toContain('/sign-in');
     expect(ingest.activateForwardingAfterVerification).not.toHaveBeenCalled();
   });
 

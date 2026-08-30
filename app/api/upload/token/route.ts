@@ -15,7 +15,7 @@ import { mintUploadGrant, uploadStagingKey } from '@/lib/storage/artifacts';
  * zero-policy posture intact: the browser never holds a credential
  * wider than one expiring key.
  *
- * The session gate is getUser truth (liveSessionClaims — AC-AUTH-10:
+ * The session gate is getUser truth (readLiveSession — AC-AUTH-10:
  * a killed session bites within seconds). Nonexistent and unauthorized
  * subjects answer ONE 404 shape (DEF-10).
  */

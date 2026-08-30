@@ -1,6 +1,6 @@
-import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
-import { liveSessionClaims } from '@/lib/auth/session';
+import { gatePage } from '@/lib/auth/gate';
+import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 import { canIngestForSubject } from '@/lib/hc/upload';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -20,8 +20,17 @@ export default async function UploadPage({
 }) {
   const { circle } = await params;
   const supabase = await asUser();
-  const claims = await liveSessionClaims(supabase);
-  if (!claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/upload`)}`);
+  // 7B B1 (GTE-01): three outcomes; unavailable is a STATE, never a sign-in.
+  const gate = await gatePage(supabase, `/${circle}/upload`);
+  if (gate.kind === 'unavailable') {
+    return (
+      <>
+        <PageHeader title="Add a document" />
+        <SessionUnavailable next={`/${circle}/upload`} />
+      </>
+    );
+  }
+  const claims = gate.claims;
 
   const { data: subjects } = await supabase
     .from('subjects')

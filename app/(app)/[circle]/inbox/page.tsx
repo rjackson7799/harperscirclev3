@@ -1,6 +1,7 @@
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
-import { liveSessionClaims } from '@/lib/auth/session';
+import { gatePage } from '@/lib/auth/gate';
+import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 import { productStates } from '@/lib/hc/inbox';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { Card } from '@/components/ui/Card';
@@ -149,8 +150,18 @@ export default async function InboxPage({
   // the uuid cast, and render as a BLANK inbox with a 200. It is a 404.
   if (!UUID_RE.test(circle)) notFound();
   const supabase = await asUser();
-  const claims = await liveSessionClaims(supabase);
-  if (!claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/inbox`)}`);
+  // 7B B1 (GTE-01): three outcomes. Signed-out redirects inside the gate;
+  // unavailable is a STATE, never a sign-in.
+  const gate = await gatePage(supabase, `/${circle}/inbox`);
+  if (gate.kind === 'unavailable') {
+    return (
+      <>
+        <PageHeader title="Care Inbox" context="Every item shows exactly where it is." />
+        <SessionUnavailable next={`/${circle}/inbox`} />
+      </>
+    );
+  }
+  const claims = gate.claims;
 
   const notice = noticeFor(await searchParams);
   const noticeBlock = notice ? (

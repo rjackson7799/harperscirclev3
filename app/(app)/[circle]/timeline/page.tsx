@@ -1,6 +1,6 @@
-import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
-import { liveSessionClaims } from '@/lib/auth/session';
+import { gatePage } from '@/lib/auth/gate';
+import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -21,8 +21,16 @@ export default async function TimelinePage({
 }) {
   const { circle } = await params;
   const supabase = await asUser();
-  const claims = await liveSessionClaims(supabase);
-  if (!claims?.sub) redirect(`/sign-in?next=${encodeURIComponent(`/${circle}/timeline`)}`);
+  // 7B B1 (GTE-01): three outcomes; unavailable is a STATE, never a sign-in.
+  const gate = await gatePage(supabase, `/${circle}/timeline`);
+  if (gate.kind === 'unavailable') {
+    return (
+      <>
+        <PageHeader title="Timeline" />
+        <SessionUnavailable next={`/${circle}/timeline`} />
+      </>
+    );
+  }
 
   const { data: events } = await supabase
     .from('timeline_events')

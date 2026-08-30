@@ -6,7 +6,7 @@ import {
   AuthUnknownError,
 } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { liveSessionClaims, readLiveSession } from '@/lib/auth/session';
+import { readLiveSession } from '@/lib/auth/session';
 
 // ============================================================================
 // ROUND-19 F-2 — the session gate must not render an OUTAGE as a SIGN-OUT.
@@ -138,31 +138,12 @@ describe('F-2 · readLiveSession separates "not signed in" from "could not tell"
   });
 });
 
-describe('F-2 · liveSessionClaims keeps its contract for the twelve PAGE gates', () => {
-  it('signed-in still yields claims', async () => {
-    expect(await liveSessionClaims(client(async () => USER))).toMatchObject({ sub: 'u1' });
-  });
-
-  it('signed-out still yields null — the redirect the pages take is unchanged', async () => {
-    expect(await liveSessionClaims(client(async () => ({ data: { user: null }, error: null })))).toBeNull();
-  });
-
-  it('a fault still yields null for PAGES, but SAYS SO — a silent sign-out is the defect', async () => {
-    const said: unknown[] = [];
-    const spy = vi.spyOn(console, 'error').mockImplementation((...a) => void said.push(a.join(' ')));
-    try {
-      const out = await liveSessionClaims(
-        client(async () => ({
-          data: { user: null },
-          error: new AuthRetryableFetchError('fetch failed', 0),
-        })),
-      );
-      expect(out).toBeNull();
-    } finally {
-      spy.mockRestore();
-    }
-    // The INSTRUMENT half of F-2: r2 could not say which of the two happened,
-    // because nothing was written down. A gate must never have to guess again.
-    expect(said.join('\n')).toMatch(/session/i);
-  });
-});
+// ---------------------------------------------------------------------------
+// 7B B1 (GTE-01, OW-11): the describe that stood here — "liveSessionClaims
+// keeps its contract for the twelve PAGE gates: a fault still yields null for
+// PAGES, but SAYS SO" — pinned the collapse this round removes. The
+// two-outcome function is gone; the page and route gates that replaced it are
+// pinned in tests/app/gate.test.ts (the helpers) and tests/app/page-gate.test.ts
+// (every site on disk). The instrument half survives there: the fault is still
+// written down, at the site that read it.
+// ---------------------------------------------------------------------------

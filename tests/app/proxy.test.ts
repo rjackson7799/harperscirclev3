@@ -87,7 +87,7 @@ describe('GTE-01 · the proxy answers the 503 a page cannot', () => {
     const body = await res.text();
     expect(body).toContain("We couldn't check your sign-in just now.");
     expect(body).toContain('href="/c-1/tasks?filter=mine"');
-    expect(body).not.toContain('sign-in');
+    expect(body).not.toContain('/sign-in');
   });
 
   it('a 502 from the gateway, a 429, and a THROW are faults too', async () => {

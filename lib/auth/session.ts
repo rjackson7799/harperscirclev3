@@ -1,11 +1,7 @@
 import 'server-only';
-import {
-  isAuthApiError,
-  isAuthRetryableFetchError,
-  isAuthSessionMissingError,
-} from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestClaims } from '@/lib/db';
+import { faultText, isAuthenticationAnswer } from './session-outcome';
 
 /**
  * The page gate (AC-AUTH-10, AC-PERM-3). getClaims() validates a JWT
@@ -29,10 +25,17 @@ import type { RequestClaims } from '@/lib/db';
  * answered as a fact about the reader.
  *
  * The collapse was one line — `if (error || !userData?.user) return null` —
- * and null is the shape of "there is no session". Twenty call sites read it
- * that way: twelve pages redirect to /sign-in and eight routes refuse. So an
- * auth server that stalls, a gateway that 502s, and a rate limit each signed a
- * family out of their own record during an availability incident.
+ * and null is the shape of "there is no session". ADR-0028 D15 counted the
+ * sites that read it that way: TWENTY-ONE — 3 refuse with a status (the
+ * artifact route, upload/token, upload/complete) · 10 pages redirect to
+ * /sign-in · 5 form routes redirect exactly as the pages do · 1 layout
+ * degrades · 2 do not gate at all. So an auth server that stalls, a gateway
+ * that 502s, and a rate limit each signed a family out of their own record
+ * during an availability incident.
+ *
+ * [7B B1 · OW-15: this paragraph read "Twenty call sites … twelve pages
+ * redirect to /sign-in and eight routes refuse" until D15 corrected the
+ * enumeration; the product code did not follow until now.]
  *
  * This is the SAME defect the artifact route fixed one layer up in round 18
  * (ADR-0027 D2) — "a session the route could not READ in time is not a session
@@ -41,7 +44,8 @@ import type { RequestClaims } from '@/lib/db';
  * caller WHY, because this function had already thrown the reason away.
  *
  * THE RULE: ONLY AN AUTHENTICATION ANSWER MEANS SIGNED OUT. A fault is not an
- * authentication answer, and neither is silence.
+ * authentication answer, and neither is silence. The classifier lives in
+ * ./session-outcome.ts so the request proxy can share it.
  */
 
 /**
@@ -57,39 +61,18 @@ export type SessionRead =
   | { kind: 'unavailable'; why: string };
 
 /**
- * An authentication answer, or a fault? Only the first may sign anybody out.
+ * THE gate, with its three outcomes intact — and, since 7B B1, the ONLY gate.
  *
- * `AuthSessionMissingError` and a 4xx from GoTrue are the auth server telling
- * us about the session. Everything else — a fetch that failed
- * (`AuthRetryableFetchError` is what supabase-js wraps a dead socket in), a
- * 5xx from Kong or GoTrue, a 429, and anything unclassifiable — is the auth
- * server failing to tell us anything at all.
- *
- * 429 is called out because it is the most tempting to mis-file: a rate limit
- * arrives as a 4xx and reads like a refusal, but being throttled is not being
- * signed out, and `token_refresh = 150 / 5 min / IP` is shared by every
- * browser context a gate runs.
- */
-function isAuthenticationAnswer(error: unknown): boolean {
-  if (isAuthSessionMissingError(error)) return true;
-  if (isAuthRetryableFetchError(error)) return false;
-  if (isAuthApiError(error)) {
-    const { status } = error;
-    if (status === 429) return false;
-    return status < 500;
-  }
-  return false;
-}
-
-function why(error: unknown): string {
-  const e = error as { name?: string; status?: number; message?: string };
-  return `${e?.name ?? 'Error'}${e?.status ? ` ${e.status}` : ''}: ${e?.message ?? String(error)}`;
-}
-
-/**
- * The gate, with its three outcomes intact. Callers that answer a person with
- * a status use THIS; `liveSessionClaims` below is the two-outcome shape the
- * page gates still take.
+ * `liveSessionClaims` — the two-outcome shape the twelve, then ten, page
+ * gates took: claims, or null, with `unavailable` collapsed onto null — is
+ * GONE (OW-11, ADR-0028 D8 item 2). Its own comment had recorded the debt:
+ * "the twelve pages themselves still render an outage as a sign-in redirect
+ * … the same harm as the 401 this fixes … a wider change than the finding
+ * supports." Round 24 changed the functions 7B calls and 7B adds pages to
+ * the gate, so the gate is fixed once, before any new page uses it. Pages
+ * and form routes now go through lib/auth/gate.ts (`gatePage`, `gateRoute`),
+ * which read all three outcomes and cannot drop the third by construction;
+ * tests/app/page-gate.test.ts pins every site on disk to that.
  */
 export async function readLiveSession(supabase: SupabaseClient): Promise<SessionRead> {
   // Round-trip one: the live session store. A throw here is a fault by
@@ -101,11 +84,11 @@ export async function readLiveSession(supabase: SupabaseClient): Promise<Session
     if (res.error) {
       return isAuthenticationAnswer(res.error)
         ? { kind: 'signed-out' }
-        : { kind: 'unavailable', why: why(res.error) };
+        : { kind: 'unavailable', why: faultText(res.error) };
     }
     userData = res.data;
   } catch (err) {
-    return { kind: 'unavailable', why: why(err) };
+    return { kind: 'unavailable', why: faultText(err) };
   }
   if (!userData?.user) return { kind: 'signed-out' };
 
@@ -114,39 +97,12 @@ export async function readLiveSession(supabase: SupabaseClient): Promise<Session
   try {
     const { data, error } = await supabase.auth.getClaims();
     if (error && !isAuthenticationAnswer(error)) {
-      return { kind: 'unavailable', why: why(error) };
+      return { kind: 'unavailable', why: faultText(error) };
     }
     const claims = data?.claims;
     if (!claims?.sub) return { kind: 'signed-out' };
     return { kind: 'signed-in', claims: { ...claims } as RequestClaims };
   } catch (err) {
-    return { kind: 'unavailable', why: why(err) };
+    return { kind: 'unavailable', why: faultText(err) };
   }
-}
-
-/**
- * The two-outcome gate the twelve PAGE gates still take, unchanged in
- * contract: claims, or null. A fault still yields null here — a page has one
- * honest move and it is the sign-in redirect — but it is no longer SILENT.
- *
- * That log line is the instrument half of F-2. r2 could not say whether the
- * founder's session had been revoked or merely gone unread, because nothing
- * was written down; the round spent its budget on a refresh-token-rotation
- * hypothesis that the evidence then refuted. A gate must never have to guess
- * that again.
- *
- * OWED, and deliberately not taken here: the twelve pages themselves still
- * render an outage as a sign-in redirect. That is the same harm as the 401
- * this fixes, and the r2 gate did not observe it; changing twelve page gates
- * on an unobserved inference is a wider change than the finding supports.
- */
-export async function liveSessionClaims(
-  supabase: SupabaseClient,
-): Promise<RequestClaims | null> {
-  const read = await readLiveSession(supabase);
-  if (read.kind === 'signed-in') return read.claims;
-  if (read.kind === 'unavailable') {
-    console.error(`session: the live session could not be READ — ${read.why}`);
-  }
-  return null;
 }
