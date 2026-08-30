@@ -267,22 +267,24 @@ test.describe('the 6B review legs', () => {
     await f.page.waitForURL('**?decided=1');
     await expect(f.page.locator('body')).toContainText('Your decision was recorded');
 
-    // The receipt names the destination and the link RESOLVES (Tasks is live).
+    // The receipt names the destination and the link RESOLVES — 7B B4: to
+    // THE TASK ITSELF, not the section, and the task is ON the page it lands
+    // on (the plan's B4 row: "not only that the page is 200").
     const receipt = f.page.locator('.review-receipt');
     await expect(receipt).toContainText('Call Riverbend about the follow-up');
-    const taskLink = receipt.locator(`a[href="/${f.circleId}/tasks"]`);
-    await expect(taskLink).toBeVisible();
-    const resolved = await f.page.request.get(`/${f.circleId}/tasks`);
-    expect(resolved.status()).toBe(200);
-
-    // And the written record is real: the task exists, claimed by its commit.
+    // The written record is real: the task exists, claimed by its commit.
     const task = await query(
-      `select t.title from public.tasks t
+      `select t.id, t.title from public.tasks t
         join public.proposal_commits c on c.object_id = t.id and c.object_type = 'task'
         where c.proposal_id = $1`,
       [taskId],
     );
     expect(task.rows[0]?.title).toBe('Call Riverbend about the follow-up');
+    const taskLink = receipt.locator(`a[href="/${f.circleId}/tasks/${task.rows[0].id}"]`);
+    await expect(taskLink).toBeVisible();
+    const resolved = await f.page.request.get(`/${f.circleId}/tasks/${task.rows[0].id}`);
+    expect(resolved.status()).toBe(200);
+    expect(await resolved.text()).toContain('Call Riverbend about the follow-up');
 
     // The OTHER receipt shape — a destination whose surface does NOT exist
     // is NAMED and said plainly, never linked (RCP-02 stays pending; the
@@ -547,15 +549,19 @@ test.describe('the 6B review legs', () => {
           () => (document.activeElement as HTMLElement)?.className ?? '',
         );
         expect(first).toContain('review-fact');
+        // 7B B4 (OW-06; ADR-0027 D17 item 6, D13): the guard that read
+        // `if (factCount > 1)` silently skipped this leg's headline claim on
+        // a thin fixture. It is an ASSERTION now — a fixture with one fact
+        // goes RED here, in the leg's own words, instead of passing while
+        // checking less than its title says.
         const factCount = await page.locator('button.review-fact').count();
-        if (factCount > 1) {
-          await page.keyboard.press('Tab');
-          const second = await page.evaluate(() => ({
-            className: (document.activeElement as HTMLElement)?.className ?? '',
-            text: (document.activeElement as HTMLElement)?.textContent ?? '',
-          }));
-          expect(second.className).toContain('review-fact');
-        }
+        expect(factCount, 'A11Y-07 needs at least two facts to Tab BETWEEN').toBeGreaterThan(1);
+        await page.keyboard.press('Tab');
+        const second = await page.evaluate(() => ({
+          className: (document.activeElement as HTMLElement)?.className ?? '',
+          text: (document.activeElement as HTMLElement)?.textContent ?? '',
+        }));
+        expect(second.className).toContain('review-fact');
 
         // Enter SELECTS and moves focus to the cited region (the letter of
         // A11Y-07): the active element after Enter is the region highlight,

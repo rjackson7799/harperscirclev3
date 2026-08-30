@@ -259,17 +259,21 @@ function receiptLine(r: ReceiptRow, circle: string): React.ReactNode {
       </>
     );
   }
-  if (r.object_type === 'task') {
+  // 7B B4 (ADR-0023 R5/F-6; the plan's B4 row): the link is to THE OBJECT
+  // ITSELF now that its page exists — hc.receipt_for hands back `object_id`
+  // exactly when `visible` — and no longer to the section. A receipt that
+  // says "filed to Tasks" and lands on a list is a criterion half met.
+  if (r.object_type === 'task' && r.object_id) {
     return (
       <>
-        <a href={`/${circle}/tasks`}>{r.label}</a> — filed to Tasks.{corrected}
+        <a href={`/${circle}/tasks/${r.object_id}`}>{r.label}</a> — filed to Tasks.{corrected}
       </>
     );
   }
-  if (r.object_type === 'timeline_event') {
+  if (r.object_type === 'timeline_event' && r.object_id) {
     return (
       <>
-        <a href={`/${circle}/timeline`}>{r.label}</a> — filed to the Timeline.{corrected}
+        <a href={`/${circle}/timeline/${r.object_id}`}>{r.label}</a> — filed to the Timeline.{corrected}
       </>
     );
   }
