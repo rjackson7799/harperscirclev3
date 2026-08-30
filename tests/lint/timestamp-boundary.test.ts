@@ -50,11 +50,37 @@ const EXTENSIONS = new Set(['.ts']);
 // log line and key builder in the DB layer, and a scanner nobody can leave on
 // is not a mechanism. Its negative control is as long as its positive one.
 const TEMPORAL = "[A-Za-z_$][\\w$.?[\\]'\\\"]*(?:_at|_on)";
+// Any string literal: '…', "…", `…` — the concatenation partner in the
+// `+ ""` family, whichever side of the `+` it sits on.
+const STRING_LITERAL = "(?:'[^']*'|\\\"[^\\\"]*\\\"|`[^`]*`)";
+// 7B B1 · OW-17 (ADR-0028 D15 item 3): the class, not three spellings of it.
+// Eight branches; each one has a positive case and a negative control below,
+// and the corpus scan at the bottom holds every lib/hc and lib/db file to
+// all of them at once. The ONE sanctioned crossing stays lib/hc/rows.ts.
 const BARE_TIMESTAMP_STRING = new RegExp(
   [
+    // 1. String(x_at)
     "\\bString\\(\\s*" + TEMPORAL + "\\b",
+    // 2. `${x_at}` — as the whole interpolation OR as a fragment: the bytes
+    //    are the same wherever the interpolation sits in the template.
     "\\$\\{\\s*" + TEMPORAL + "\\s*\\}",
-    TEMPORAL + "\\s*\\+\\s*(?:''|\\\"\\\")",
+    // 3. x_at + '' / x_at + "…" / x_at + `…` — any string literal, suffix.
+    TEMPORAL + "\\s*\\+\\s*" + STRING_LITERAL,
+    // 4. '' + x_at / '…' + x_at — the same, prefix.
+    STRING_LITERAL + "\\s*\\+\\s*" + TEMPORAL + "\\b",
+    // 5. x_at.toString() / .toISOString() / .toLocale…String() / .toDateString()
+    //    — every method that hands back a string, the ISO one included: it
+    //    assumes a Date the driver may not have handed back, and throws on
+    //    text. One named function, no exceptions.
+    TEMPORAL + "\\??\\.to[A-Za-z]*String\\(",
+    // 6. new Date(x_at) / Date(x_at) — a re-wrap that re-enters the class on
+    //    the next line. `new Date()` and `Date.UTC(…)` are not temporal-named.
+    "(?<![\\w$.])(?:new\\s+)?Date\\(\\s*" + TEMPORAL + "\\b",
+    // 7. JSON.stringify(x_at) — a quoted sibling of the same string.
+    "\\bJSON\\.stringify\\(\\s*" + TEMPORAL + "\\b",
+    // 8. x_at as unknown as T — OW-02 typed the boundary; the double
+    //    assertion is the one hatch TypeScript leaves open by design.
+    TEMPORAL + "\\s*\\)?\\s*as\\s+unknown\\s*\\)?\\s+as\\b",
   ].join('|'),
 );
 
@@ -111,6 +137,11 @@ describe('6B · a timestamp column never becomes String(Date)', () => {
   // THE SCANNER'S HONEST BOUND IS UNCHANGED and is still the naming one: a
   // query that aliases a moment to something else hides the type from it. What
   // changes here is only that the three spellings of ONE coercion are one rule.
+  //
+  // [7B B1 · OW-17 (ADR-0028 D15 item 3): "three spellings are one rule" was
+  // itself the narrow reading — the class had ≥ 8 spellings and this file
+  // pinned 3. The regex above now carries eight branches, each with its own
+  // positive case and negative control below; the 6B prose is preserved.]
   // ==========================================================================
   it('ROUND-18 F-4: the two BYTE-IDENTICAL spellings are the same defect and are caught too', () => {
     expect(BARE_TIMESTAMP_STRING.test('received_at: `${row.received_at}`,')).toBe(true);
