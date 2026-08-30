@@ -6,7 +6,9 @@ the 7A kickoff — one docs-only merge past the `ba80ec0` the kickoff named;
 nothing under `supabase/`, `lib/` or `app/` moved between them).
 **Date:** 2026-08-29. **Tier:** T1, ruled at the plan gate (Q3).
 **Scope:** four migrations `20260829120001`–`120004` (M1–M4 of the ≤ 6
-bound, the plan's Q2 table verbatim); **M5 stays reserved** for the round-24
+bound, the plan's Q2 table as ruled — with the departures recorded in D5, D6
+and D7, and D6's shared preview/move gate RATIFIED at ADR-0033 D19.15 over the
+BINDING row's "coordinator-readable preview"); **M5 stays reserved** for the round-24
 dispositions; **M6 closes UNCONSUMED** (Q2: the window ACCEPTED, LOG-03 opens
 never green). Authority order: the plan (M-rows BINDING) → TSD §3.5–§3.7,
 §2.6, §7.1 → PRD §4.3, §4.5, §4.6, §7.3–§7.6 → ADR-0027/0028's inherited
@@ -77,8 +79,8 @@ every kept id must be this assignment's live share (066:43–44).
 NAMED `freeze_active` (they can widen who reads). `unassign_task` lets a
 **live coordinator** reduce under one — `visible_at` is hidden for everyone,
 so the coordinator check is the only door, exactly `remove_member`'s and
-`set_grant`'s lower arm — and `revoke_share` checks no freeze (066:49–50,
-068:28–29). 007's freeze-referent set grew eleven → seventeen.
+`set_grant`'s lower arm — and `revoke_share` checks no freeze (066:51–52,
+068:28–29; the earlier "066:49–50" were red-leg numbers — ADR-0033 R5/F-1). 007's freeze-referent set grew eleven → seventeen.
 
 ## D5 — M2: the holder completes at `summary`, and the line is argued
 
@@ -119,7 +121,10 @@ unmanageable and the nonexistent alike (069:22); `shares_for_member` for a
 coordinator or the person herself. `document_references` and
 `shares_for_member` are counted-never-named through each object's OWN
 policy predicate (`hc.object_label_at`); AC-PERM-10 falls out at the read
-(069:20). No policy moved. **Q-B, Q-C, Q-E.**
+(069:20). No policy moved. **Q-B, Q-C, Q-E.** One DECLARED widening: every
+member's `accounts.slice` is returned to every member of the circle, which
+`accounts_select_self` alone would refuse — `slice` IS a People-list fact (PRD
+§4.6.1), and the widening is intended (ADR-0033 D19.13, R4/F-6).
 
 ## D8 — Claim (self-assignment) is NOT provided
 

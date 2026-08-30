@@ -29,7 +29,7 @@ Never write "unchanged" for a tally. **State it exactly**, every time.
 | `db:verify --fail-on warning` | ✓ | if DDL | — |
 | upgrade leg | ✓ | if DDL | — |
 | vitest, count exact | ✓ | ✓ | ✓ |
-| local browser gate, **new total stated exactly** | ✓ | if person-facing | ✓ |
+| local browser gate, **new total stated exactly** | ✓ — unconditional, whatever moved (ADR-0033 D19.14) | if person-facing | ✓ |
 | lint · typecheck · production build | ✓ | ✓ | ✓ |
 | gitleaks | ✓ | ✓ | ✓ |
 | coverage rows flipped (never early) | ✓ | ✓ | ✓ |

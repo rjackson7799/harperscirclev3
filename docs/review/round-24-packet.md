@@ -111,9 +111,11 @@ owner and revokes in the same commit (ADR-0032 D2).
 **2. `unassign_task` refused under a freeze.** The first body authorized on
 `hc.visible_at` alone, which is hidden for everyone under a freeze, so a
 coordinator could not reduce reach mid-freeze — the opposite of
-`remove_member`. 066:50 caught it; the coordinator door was added (D4).
+`remove_member`. 066:52 caught it (the red-leg number was 50 — ADR-0033 R5/F-1);
+the coordinator door was added (D4).
 
-**3. Four `->>` precedence errors and one InitPlan ordering error in the
+**3. Five `->>` precedence errors (the list below names five; the commits say
+two + three — ADR-0033 R5/F-3) and one InitPlan ordering error in the
 tests' own probes** (067:17/22, 068:13/21/22, 067:22 split) — the functions
 were right, the probes were not; each fixed in its green commit and named
 there.
@@ -122,8 +124,9 @@ there.
 message overstates the run; corrected on the record in `fcc322b` and
 ADR-0032 D10. The fixed test's red state was not re-measured.
 
-**5. Thirteen exact-set re-pins, every one caught by the suite** (ADR-0032
-D9): 001 once, 002 four sets across four migrations, 007 four times.
+**5. Six exact-set pins moved, nineteen same-commit re-pin events, every one
+caught by the suite** (ADR-0032 D9; "thirteen" was 002's share alone — ADR-0033
+R5/F-3): 001 twice, 002 four sets across four migrations, 007 four times.
 
 ---
 
@@ -172,7 +175,8 @@ to.
   (its `.git` is a pointer the container cannot follow).
 - **Local browser gate (LOCAL-only, never CI): 38 legs — NOT RUN at this
   head.** None of `app/`, `lib/`, `e2e/` moved (`git diff --name-only
-  da51c00..4cc3aa0` is `supabase/migrations` ×4, `supabase/tests` ×8,
+  da51c00..4cc3aa0` is `supabase/migrations` ×4, `supabase/tests` ×7 (not ×8 —
+  ADR-0033 R5/F-3),
   `scripts/concurrency/run.mjs`, and nothing else); the kickoff's exit rule
   binds the gate to those three directories. `supabase/` DID move, and the
   6A precedent ran the gate on that ground — **Q-G puts the choice to the
@@ -249,7 +253,9 @@ taking on nobody's work is the smaller act — or defer it to 7B's plan.
 ## Coverage rows
 
 `docs/coverage.md` gains `## 7 — the four destinations` with **twenty-one
-rows opening** (the plan's table, minus the four that already existed).
+rows opening** (the plan's table has 26 rows, minus the FIVE that already
+existed — SHR-02, RCP-02, A11Y-09, A11Y-10, A11Y-11; "four" was wrong, ADR-0033
+R5/F-6).
 Only what this layer proves is flipped: the pgTAP halves of **TSK-01,
 TSK-02, DOC-03, DOC-04** are green with their app halves named as owed;
 **SHR-02 flips at the pgTAP layer** (line 205, pending since 1D). Everything

@@ -57,7 +57,7 @@ racing a coordinator's keep · a freeze committing mid-assignment.
 
 Exit: closure evidence at ONE declared head (reset exact 69 + N · pgTAP
 counted exactly · concurrency teed · `db:verify` · upgrade leg · vitest by run
-· the gate's total stated exactly if `app/ lib/ e2e/` moved), coverage rows
+· the gate's total stated exactly if `app/ lib/ e2e/` moved — SUPERSEDED, ADR-0033 D19.14: the gate is unconditional for T1), coverage rows
 flipped never early, **ADR-0032** the deltas ADR (`Status: proposed`, target
 150 lines), the round-24 packet, the PR titled
 `[DO NOT MERGE without owner sign-off]`.
