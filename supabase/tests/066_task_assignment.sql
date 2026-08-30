@@ -41,6 +41,10 @@
 --     (D19.4, D19.6); revoke_share refuses a LIVE assignment's share and
 --     accepts a kept one (D19.2); assignment closes the original's open
 --     instructions unconditionally (R2/F-8). 61-75.
+--   · The freeze is named to MEMBERS (ADR-0033 cluster E): the caller's
+--     live membership in this circle is checked before the freeze, so a
+--     stranger, a removed member and a nonexistent id are one shape
+--     (76-77).
 --   · A freeze refuses assignment with the NAMED freeze_active (PRD §7.5 —
 --     assignment is a widening act) and permits unassignment (it reduces
 --     reach: the remove_member precedent).
@@ -58,7 +62,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(75);
+select plan(77);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038/063 pattern).
@@ -1082,6 +1086,45 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   current_setting('t.t_plain'), current_setting('t.m_gone'))),
   'ERROR:P0001:assign_refused/ERROR:P0001:assign_refused',
   'R3/F-5, the assignee shapes: a subject-member row (nobody to do the work) and a REMOVED member are refused in the one shape — two separate calls, joined outside the statement (069:14''s shape)');
+
+-- ----------------------------------------------------------------------------
+-- 76–77 · ADR-0033 cluster E (R1/F-6, R2/F-3): the freeze is named to
+--         MEMBERS. A freeze is opened (the one from 51–52 went at 53). A
+--         STRANGER — an account with no membership anywhere — and the
+--         REMOVED member from 75 meet one shape whether the task exists or
+--         not; a live member still meets the named signature.
+-- ----------------------------------------------------------------------------
+set session_replication_role = replica;
+do $$
+declare u uuid := pg_temp.mk_user(gen_random_uuid());
+begin
+  insert into public.accounts (id, kind, display_name) values (u, 'member', 'Stranger');
+  perform set_config('t.u_stranger', u::text, true);
+  perform set_config('t.u_gone', (select m.account_id::text from public.circle_members m
+                                    where m.id = current_setting('t.m_gone')::uuid), true);
+end $$;
+set session_replication_role = default;
+do $$
+begin
+  insert into public.freezes (circle_id) values (current_setting('t.c1')::uuid);
+end $$;
+select is(pg_temp.call_as(current_setting('t.u_stranger')::uuid, format(
+  $$ select hc.assign_task(%L, %L)::text $$,
+  current_setting('t.t_plain'), current_setting('t.m_ruth')))
+  || '/' || pg_temp.call_as(current_setting('t.u_gone')::uuid, format(
+  $$ select hc.assign_task(%L, %L)::text $$,
+  current_setting('t.t_plain'), current_setting('t.m_ruth')))
+  || '/' || pg_temp.call_as(current_setting('t.u_stranger')::uuid, format(
+  $$ select hc.assign_task(gen_random_uuid(), %L)::text $$,
+  current_setting('t.m_ruth'))),
+  'ERROR:P0001:assign_refused/ERROR:P0001:assign_refused/ERROR:P0001:assign_refused',
+  'under a freeze a STRANGER and a REMOVED member assigning an existing task, and the stranger a nonexistent one, meet ONE shape — before, the existing task answered freeze_active and told an outsider that the task exists and the circle is frozen; the named signature is for members (PRD §7.5). Three calls, joined outside the statement');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.assign_task(%L, %L)::text $$,
+  current_setting('t.t_plain'), current_setting('t.m_ruth'))),
+  'ERROR:P0001:freeze_active',
+  'and a live member still meets the NAMED freeze_active — the order moved, the signature did not (51 again, with the membership check in front of it)');
 
 select * from finish();
 rollback;

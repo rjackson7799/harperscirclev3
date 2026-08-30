@@ -32,7 +32,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(30);
+select plan(32);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038/063 pattern).
@@ -385,6 +385,36 @@ select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
   current_setting('t.t_dan'))),
   'ERROR:P0001:freeze_active',
   'and so does snoozing');
+
+-- ----------------------------------------------------------------------------
+-- 31–32 · ADR-0033 cluster E (R1/F-6, R2/F-3): the freeze is named to
+--         MEMBERS. The freeze from 29–30 is still open; a STRANGER — an
+--         account with no membership anywhere — meets one shape on an open
+--         task, a done one and a nonexistent one.
+-- ----------------------------------------------------------------------------
+set session_replication_role = replica;
+do $$
+declare u uuid := pg_temp.mk_user(gen_random_uuid());
+begin
+  insert into public.accounts (id, kind, display_name) values (u, 'member', 'Stranger');
+  perform set_config('t.u_stranger', u::text, true);
+end $$;
+set session_replication_role = default;
+select is(pg_temp.call_as(current_setting('t.u_stranger')::uuid, format(
+  $$ select hc.complete_task(%L)::text $$, current_setting('t.t_dan')))
+  || '/' || pg_temp.call_as(current_setting('t.u_stranger')::uuid, format(
+  $$ select hc.complete_task(%L)::text $$, current_setting('t.t_lena')))
+  || '/' || pg_temp.call_as(current_setting('t.u_stranger')::uuid,
+  $$ select hc.complete_task(gen_random_uuid())::text $$),
+  'ERROR:P0001:complete_refused/ERROR:P0001:complete_refused/ERROR:P0001:complete_refused',
+  'under the freeze a STRANGER completing an OPEN task, a DONE one and a nonexistent one meets ONE shape — before, the open task answered freeze_active and the done one complete_refused: an open/done oracle on top of a freeze oracle, handed to an outsider (R1/F-6, R2/F-3). Three calls, joined outside the statement');
+
+select is(pg_temp.call_as(current_setting('t.u_stranger')::uuid, format(
+  $$ select hc.snooze_task(%L, '2026-09-16', 'America/New_York')::text $$, current_setting('t.t_dan')))
+  || '/' || pg_temp.call_as(current_setting('t.u_stranger')::uuid,
+  $$ select hc.snooze_task(gen_random_uuid(), '2026-09-16', 'America/New_York')::text $$),
+  'ERROR:P0001:snooze_refused/ERROR:P0001:snooze_refused',
+  'and so for snoozing: the named freeze_active is for members (PRD §7.5), and a stranger with a uuid learns nothing');
 
 select * from finish();
 rollback;

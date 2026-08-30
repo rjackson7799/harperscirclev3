@@ -39,7 +39,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(29);
+select plan(30);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038/063 pattern).
@@ -462,6 +462,26 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select (hc.revoke_share(%L)) ->> 'share_id' $$, current_setting('t.sh_lena'))),
   current_setting('t.sh_lena'),
   'and a freeze permits unsharing — containment never blocks reduction');
+
+-- ----------------------------------------------------------------------------
+-- 30 · ADR-0033 cluster E (R1/F-6, R2/F-3): the freeze is named to MEMBERS.
+--      The freeze from 28–29 is still open; a STRANGER moving an existing
+--      document and a nonexistent one meets one shape.
+-- ----------------------------------------------------------------------------
+set session_replication_role = replica;
+do $$
+declare u uuid := pg_temp.mk_user(gen_random_uuid());
+begin
+  insert into public.accounts (id, kind, display_name) values (u, 'member', 'Stranger');
+  perform set_config('t.u_stranger', u::text, true);
+end $$;
+set session_replication_role = default;
+select is(pg_temp.call_as(current_setting('t.u_stranger')::uuid, format(
+  $$ select hc.recategorize_document(%L, 'financial')::text $$, current_setting('t.d_med')))
+  || '/' || pg_temp.call_as(current_setting('t.u_stranger')::uuid,
+  $$ select hc.recategorize_document(gen_random_uuid(), 'financial')::text $$),
+  'ERROR:P0001:recategorize_refused/ERROR:P0001:recategorize_refused',
+  'under the freeze a STRANGER moving an existing document and a nonexistent one meets ONE shape — before, the existing one answered freeze_active (R1/F-6, R2/F-3). Two calls, joined outside the statement');
 
 select * from finish();
 rollback;

@@ -20,10 +20,11 @@
 -- `shares_for` gains the `removed_at is null` term `shares_for_member`
 -- already had (R4/F-5: the two reads disagreed about the same share).
 --
--- NO DDL: seven `create or replace` bodies — three for cluster A here, two
--- for cluster B (`assign_task`, `unassign_task`, which cluster C then edits
--- in place), two for cluster C (`complete_task`, `revoke_share`) — no schema
--- change. Ownership,
+-- NO DDL: nine `create or replace` bodies — three for cluster A here, two
+-- for cluster B (`assign_task`, `unassign_task`, which clusters C and E then
+-- edit in place), two for cluster C (`complete_task`, `revoke_share`), two
+-- for cluster E (`snooze_task`, `recategorize_document`) — no schema change.
+-- Ownership,
 -- revocations and grants are RESTATED — a replaced body does not restate them
 -- for you, and 002's definer invariants read the catalog.
 -- ============================================================================
@@ -302,6 +303,16 @@ begin
     raise exception 'assign_refused' using errcode = 'P0001';
   end if;
 
+  -- ADR-0033 cluster E (R1/F-6, R2/F-3): the caller is a live member of THIS
+  -- circle BEFORE the freeze is named - set_grant's order. A stranger, a
+  -- removed member and a nonexistent id are one shape; the named signature
+  -- is for members (PRD S7.5: "cannot be done quietly" - to members).
+  if not exists (select 1 from public.circle_members m
+                 where m.circle_id = v_task.circle_id
+                   and m.account_id = v_actor
+                   and m.removed_at is null) then
+    raise exception 'assign_refused' using errcode = 'P0001';
+  end if;
   -- PRD §7.5: no new grants under any freeze — handing a task to someone
   -- is a widening act, and the refusal is NAMED (set_grant's raise arm).
   if exists (select 1 from public.freezes f
@@ -752,6 +763,16 @@ begin
     raise exception 'complete_refused' using errcode = 'P0001';
   end if;
 
+  -- ADR-0033 cluster E (R1/F-6, R2/F-3): the caller is a live member of THIS
+  -- circle BEFORE the freeze is named - set_grant's order. A stranger, a
+  -- removed member and a nonexistent id are one shape; the named signature
+  -- is for members (PRD S7.5: "cannot be done quietly" - to members).
+  if not exists (select 1 from public.circle_members m
+                 where m.circle_id = v_task.circle_id
+                   and m.account_id = v_actor
+                   and m.removed_at is null) then
+    raise exception 'complete_refused' using errcode = 'P0001';
+  end if;
   if exists (select 1 from public.freezes f
              where f.circle_id = v_task.circle_id
                and f.state in ('open', 'unresolved')) then
@@ -953,3 +974,287 @@ alter function hc.revoke_share(uuid) owner to hc_internal;
 revoke execute on function hc.revoke_share(uuid)
   from public, anon, hc_pipeline, hc_admin;
 grant execute on function hc.revoke_share(uuid) to authenticated;
+
+-- ============================================================================
+-- CLUSTER E (ADR-0033 D13 / D14) - the freeze is named to MEMBERS. R1/F-6,
+-- R2/F-3.
+--
+-- All four widening/lifecycle writers raised the NAMED freeze_active before
+-- the caller was known to be anyone: an account outside the circle holding
+-- a task or document id learned that the object exists and that the circle
+-- is frozen (an existing id answered freeze_active, a nonexistent one the
+-- generic refusal), and on a done task the stranger got the generic shape
+-- while on an open one the named one - an open/done oracle on top of the
+-- freeze oracle. set_grant authorises the actor first and names the freeze
+-- only after (round9_fixes :288-294, :326-331); these four now do the same:
+-- a live-membership-in-THIS-circle check precedes the freeze predicate.
+-- Members still meet the named signature (PRD S7.5 tells members); a
+-- stranger, a removed member and a nonexistent id are one shape.
+--
+-- RESIDUAL, recorded: a live MEMBER holding nothing on the object still
+-- meets freeze_active for an existing id and the generic refusal for a
+-- nonexistent one (R1/F-6's probe P2a). Under a freeze hc.visible_at is
+-- hidden for everyone (rung 2), so the object-level authorisation cannot
+-- precede the freeze without ignoring the freeze; the ruling took
+-- set_grant's shape, whose "authorisation" is membership and tier.
+--
+-- assign_task and complete_task carry the check in place above; the two
+-- bodies below are M2's (snooze_task) and M3's (recategorize_document)
+-- VERBATIM with the same marked addition.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- hc.snooze_task
+-- ----------------------------------------------------------------------------
+create or replace function hc.snooze_task(p_task uuid, p_due_on date, p_due_zone text)
+returns jsonb language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_actor uuid := hc.uid();
+  v_actor_name text;
+  v_task record;
+  v_before jsonb;
+  v_after jsonb;
+  v_rev int;
+begin
+  if v_actor is null then
+    raise exception 'snooze_refused' using errcode = 'P0001';
+  end if;
+  select a.display_name into v_actor_name from public.accounts a where a.id = v_actor;
+  if v_actor_name is null then
+    raise exception 'snooze_refused' using errcode = 'P0001';
+  end if;
+
+  -- The due pair travels together, and a snooze needs a date to move to.
+  if p_due_on is null or p_due_zone is null or btrim(p_due_zone) = '' then
+    raise exception 'snooze_refused' using errcode = 'P0001';
+  end if;
+
+  select t.* into v_task from public.tasks t
+   where t.id = p_task and t.deleted_at is null;
+  if v_task.id is null then
+    raise exception 'snooze_refused' using errcode = 'P0001';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext('taint:' || v_task.circle_id::text));
+  select t.* into v_task from public.tasks t
+   where t.id = p_task and t.deleted_at is null
+   for update;
+  if v_task.id is null or v_task.status <> 'open' then
+    raise exception 'snooze_refused' using errcode = 'P0001';
+  end if;
+
+  -- ADR-0033 cluster E (R1/F-6, R2/F-3): the caller is a live member of THIS
+  -- circle BEFORE the freeze is named - set_grant's order. A stranger, a
+  -- removed member and a nonexistent id are one shape; the named signature
+  -- is for members (PRD S7.5: "cannot be done quietly" - to members).
+  if not exists (select 1 from public.circle_members m
+                 where m.circle_id = v_task.circle_id
+                   and m.account_id = v_actor
+                   and m.removed_at is null) then
+    raise exception 'snooze_refused' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from public.freezes f
+             where f.circle_id = v_task.circle_id
+               and f.state in ('open', 'unresolved')) then
+    raise exception 'freeze_active' using errcode = 'P0001';
+  end if;
+
+  if not hc.may_act_on_task(v_task.circle_id, v_task.subject_id, v_task.taint,
+                            v_task.taint_resolved, p_task, v_task.owner_member_id,
+                            v_actor) then
+    raise exception 'snooze_refused' using errcode = 'P0001';
+  end if;
+
+  -- A snooze moves the date FORWARD. No date, or an earlier one, is an
+  -- edit — hc.revise_object's business, with its own revision.
+  if v_task.due_on is null or p_due_on <= v_task.due_on then
+    raise exception 'snooze_refused' using errcode = 'P0001';
+  end if;
+
+  v_before := to_jsonb(v_task);
+  update public.tasks
+     set due_on = p_due_on, due_zone = p_due_zone, snooze_count = snooze_count + 1
+   where id = p_task;
+  select to_jsonb(t) into v_after from public.tasks t where t.id = p_task;
+
+  -- "by whom and how many times" (§4.5.4): one revision per snooze, the
+  -- revise_object numbering.
+  select coalesce(max(r.revision_no), 0) + 1 into v_rev
+    from public.record_revisions r
+   where r.object_type = 'task' and r.object_id = p_task;
+  insert into public.record_revisions
+    (circle_id, object_type, object_id, revision_no, changed_by,
+     changer_display_name, before, after)
+  values
+    (v_task.circle_id, 'task', p_task, v_rev, v_actor, v_actor_name, v_before, v_after);
+
+  perform hc.log(v_task.circle_id, 'task_snoozed', v_actor_name,
+                 p_actor_account_id => v_actor,
+                 p_subject_id => v_task.subject_id,
+                 p_target_member_id => v_task.owner_member_id,
+                 p_object_type => 'task', p_object_id => p_task,
+                 p_detail => jsonb_build_object(
+                   'from_due_on', v_task.due_on, 'to_due_on', p_due_on,
+                   'from_due_zone', v_task.due_zone, 'to_due_zone', p_due_zone,
+                   'snooze_count', v_task.snooze_count + 1,
+                   'revision_no', v_rev));
+
+  return jsonb_build_object('task_id', p_task, 'due_on', p_due_on,
+                            'due_zone', p_due_zone,
+                            'snooze_count', v_task.snooze_count + 1,
+                            'revision_no', v_rev);
+end $$;
+
+alter function hc.snooze_task(uuid, date, text) owner to hc_internal;
+revoke execute on function hc.snooze_task(uuid, date, text)
+  from public, anon, hc_pipeline, hc_admin;
+grant execute on function hc.snooze_task(uuid, date, text) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- hc.recategorize_document — the move.
+-- ----------------------------------------------------------------------------
+create or replace function hc.recategorize_document(p_document uuid, p_category hc.doc_category)
+returns jsonb language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_actor uuid := hc.uid();
+  v_actor_name text;
+  v_doc record;
+  v_ctx jsonb;
+  v_own_old hc.domain;
+  v_own_new hc.domain;
+  v_taint_before hc.domain[];
+  v_taint_after  hc.domain[];
+  v_before jsonb;
+  v_after  jsonb;
+  v_gained jsonb;
+  v_lost   jsonb;
+  v_res    jsonb;
+begin
+  if v_actor is null then
+    raise exception 'recategorize_refused' using errcode = 'P0001';
+  end if;
+  select a.display_name into v_actor_name from public.accounts a where a.id = v_actor;
+  if v_actor_name is null then
+    raise exception 'recategorize_refused' using errcode = 'P0001';
+  end if;
+
+  select d.* into v_doc from public.documents d
+   where d.id = p_document and d.deleted_at is null;
+  if v_doc.id is null then
+    raise exception 'recategorize_refused' using errcode = 'P0001';
+  end if;
+
+  -- R-rule: the taint lock (growth and shrink serialise here), then the
+  -- re-read FOR UPDATE, then every authorization under the lock.
+  perform pg_advisory_xact_lock(hashtext('taint:' || v_doc.circle_id::text));
+  select d.* into v_doc from public.documents d
+   where d.id = p_document and d.deleted_at is null
+   for update;
+  if v_doc.id is null then
+    raise exception 'recategorize_refused' using errcode = 'P0001';
+  end if;
+
+  -- ADR-0033 cluster E (R1/F-6, R2/F-3): the caller is a live member of THIS
+  -- circle BEFORE the freeze is named - set_grant's order. A stranger, a
+  -- removed member and a nonexistent id are one shape; the named signature
+  -- is for members (PRD S7.5: "cannot be done quietly" - to members).
+  if not exists (select 1 from public.circle_members m
+                 where m.circle_id = v_doc.circle_id
+                   and m.account_id = v_actor
+                   and m.removed_at is null) then
+    raise exception 'recategorize_refused' using errcode = 'P0001';
+  end if;
+  if exists (select 1 from public.freezes f
+             where f.circle_id = v_doc.circle_id
+               and f.state in ('open', 'unresolved')) then
+    raise exception 'freeze_active' using errcode = 'P0001';
+  end if;
+
+  v_own_old := hc.own_domain('document', v_doc.category, null, null);
+  v_own_new := hc.own_domain('document', p_category, null, null);
+
+  v_ctx := hc.ctx();
+  if hc.visible_at(v_ctx, v_doc.subject_id, v_doc.taint, v_doc.taint_resolved,
+                   'document', p_document, null) < 'manage'
+     or not ((v_ctx -> 'subjects' -> v_doc.subject_id::text -> 'manage')
+             @> to_jsonb(array[v_own_new])) then
+    raise exception 'recategorize_refused' using errcode = 'P0001';
+  end if;
+
+  if p_category = v_doc.category then
+    return jsonb_build_object('document_id', p_document, 'category', p_category,
+                              'domain', v_own_new, 'changed', false);
+  end if;
+
+  -- The audience BEFORE, from every member's own vectors, read before any
+  -- row moves.
+  v_taint_before := v_doc.taint;
+  select coalesce(jsonb_agg(jsonb_build_object('member_id', r.member_id, 'name', r.display_name,
+                                               'tier', r.tier, 'level', r.before)
+                            order by r.display_name, r.member_id)
+                  filter (where r.before > 'hidden'), '[]'::jsonb)
+    into v_before
+    from hc.document_audience_rows(p_document, v_taint_before, v_doc.taint_resolved,
+                                   v_taint_before, v_doc.taint_resolved) r;
+
+  -- The category, with title and summary_text in the SET list so the 1D
+  -- builders fire: tsv_summary and the document_search_content row are
+  -- rebuilt in THIS transaction (§4.3.6).
+  update public.documents
+     set category = p_category, title = title, summary_text = summary_text
+   where id = p_document;
+
+  -- The domain moved: the ONE shrinking path recomputes this document and
+  -- every descendant to a fixed point. Together, or not at all.
+  if v_own_old <> v_own_new then
+    v_res := hc.reclassify_taint('document', p_document);
+    if not coalesce((v_res ->> 'completed')::boolean, false) then
+      raise exception 'recategorize_refused' using errcode = 'P0001';
+    end if;
+  end if;
+  select d.taint, d.taint_resolved into v_taint_after, v_doc.taint_resolved
+    from public.documents d where d.id = p_document;
+
+  -- The audience AFTER, from the taint as it now stands.
+  select coalesce(jsonb_agg(jsonb_build_object('member_id', r.member_id, 'name', r.display_name,
+                                               'tier', r.tier, 'level', r.after)
+                            order by r.display_name, r.member_id)
+                  filter (where r.after > 'hidden'), '[]'::jsonb),
+         coalesce(jsonb_agg(r.display_name order by r.display_name, r.member_id)
+                  filter (where r.before = 'hidden' and r.after > 'hidden'), '[]'::jsonb),
+         coalesce(jsonb_agg(r.display_name order by r.display_name, r.member_id)
+                  filter (where r.before > 'hidden' and r.after = 'hidden'), '[]'::jsonb)
+    into v_after, v_gained, v_lost
+    from hc.document_audience_rows(p_document, v_taint_before, v_doc.taint_resolved,
+                                   v_taint_after, v_doc.taint_resolved) r;
+
+  -- The person's entry: both audiences, by name (§4.3.2).
+  perform hc.log(v_doc.circle_id, 'audience_changed', v_actor_name,
+                 p_actor_account_id => v_actor,
+                 p_subject_id => v_doc.subject_id,
+                 p_object_type => 'document', p_object_id => p_document,
+                 p_detail => jsonb_build_object(
+                   'category_before', v_doc.category, 'category_after', p_category,
+                   'domain_before', v_own_old, 'domain_after', v_own_new,
+                   'taint_before', to_jsonb(v_taint_before),
+                   'taint_after',  to_jsonb(v_taint_after),
+                   'audience_before', v_before, 'audience_after', v_after,
+                   'gained', v_gained, 'lost', v_lost));
+
+  return jsonb_build_object(
+    'document_id', p_document, 'category', p_category, 'domain', v_own_new,
+    'changed', true,
+    'taint_before', to_jsonb(v_taint_before), 'taint_after', to_jsonb(v_taint_after),
+    'gained', jsonb_array_length(v_gained), 'lost', jsonb_array_length(v_lost),
+    'gained_names', v_gained, 'lost_names', v_lost);
+end $$;
+
+alter function hc.recategorize_document(uuid, hc.doc_category) owner to hc_internal;
+revoke execute on function hc.recategorize_document(uuid, hc.doc_category)
+  from public, anon, hc_pipeline, hc_admin;
+grant execute on function hc.recategorize_document(uuid, hc.doc_category) to authenticated;
+
