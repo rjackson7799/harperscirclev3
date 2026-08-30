@@ -242,6 +242,15 @@ async function chipCount(page: Page, label: string): Promise<number> {
 }
 
 test.describe('the 7B record legs', () => {
+  // Each leg may pay for the memoized provisions it is first to need — a
+  // founder with two subjects and up to three invited members, every one of
+  // them a real create-account → invite → accept flow — plus dev-mode cold
+  // compiles of the six new routes. On the 8 GB host that is more than the
+  // config's 120 s per leg (the first targeted run: two legs timed out at
+  // their final assertions with every product step behind them green). The
+  // budget here is per leg and explicit; it is not a retry.
+  test.describe.configure({ timeout: 300_000 });
+
   test.afterAll(async () => {
     if (founderMemo) await founderMemo.then((f) => f.context.close()).catch(() => {});
     for (const m of Object.values(memberMemo)) await m?.then((x) => x.context.close()).catch(() => {});
@@ -456,6 +465,10 @@ test.describe('the 7B record legs', () => {
     const all = f.page.locator('main .choice-list .card');
     await expect(all.first()).toContainText(/Nell.s record was opened/);
     await expect(all.filter({ hasText: line })).toHaveCount(1);
-    await expect(all.filter({ hasText: line }).locator('.provenance')).toContainText(/Entered by Record Founder on August 15/);
+    // §4.4.3: "entered by that person, on that date" — the date of ENTRY
+    // (today), while the row's own date is the event's (August 15). The first
+    // targeted run asserted August 15 here and the product was right.
+    await expect(all.filter({ hasText: line })).toContainText('August 15');
+    await expect(all.filter({ hasText: line }).locator('.provenance')).toContainText(/Entered by Record Founder on /);
   });
 });
