@@ -39,7 +39,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(29);
+select plan(39);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038/063 pattern).
@@ -217,8 +217,8 @@ set session_replication_role = default;
 -- ----------------------------------------------------------------------------
 select has_function('hc', 'document_audience', array['uuid', 'hc.doc_category'],
   'hc.document_audience(document, category) exists');
-select has_function('hc', 'recategorize_document', array['uuid', 'hc.doc_category'],
-  'hc.recategorize_document(document, category) exists');
+select has_function('hc', 'recategorize_document', array['uuid', 'hc.doc_category', 'hc.doc_category'],
+  'hc.recategorize_document(document, category, expected_category) exists — the preview binds the move (ADR-0033 D19.5)');
 select has_function('hc', 'revoke_share', array['uuid'],
   'hc.revoke_share(share) exists');
 
@@ -275,12 +275,12 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
 --         rule), and nothing moves.
 -- ----------------------------------------------------------------------------
 select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
-  $$ select hc.recategorize_document(%L, 'legal')::text $$, current_setting('t.d_med'))),
+  $$ select hc.recategorize_document(%L, 'legal', 'medical')::text $$, current_setting('t.d_med'))),
   'ERROR:P0001:recategorize_refused',
   '"Re-categorisation cannot be used to widen your own access": Dan holds manage on the source and nothing on the destination — refused');
 
 select is(pg_temp.call_as(current_setting('t.u_ruth')::uuid, format(
-  $$ select hc.recategorize_document(%L, 'legal')::text || (select d.category::text from public.documents d where d.id = %L) $$,
+  $$ select hc.recategorize_document(%L, 'legal', 'medical')::text || (select d.category::text from public.documents d where d.id = %L) $$,
   current_setting('t.d_med'), current_setting('t.d_med'))),
   'ERROR:P0001:recategorize_refused',
   'Ruth holds view on the destination and nothing on the source — refused in the same one shape');
@@ -306,7 +306,7 @@ select is(
 
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select (r ->> 'category') || '/' || (r ->> 'domain') || '/' || (r ->> 'gained') || '/' || (r ->> 'lost')
-       from hc.recategorize_document(%L, 'legal') r $$,
+       from hc.recategorize_document(%L, 'legal', 'medical') r $$,
   current_setting('t.d_med'))),
   'legal/documents/2/2',
   'a coordinator holding manage on both domains moves the document medical → legal: two people gain it, two lose it');
@@ -336,9 +336,13 @@ select is(
     $$ select count(*)::text from public.document_search_content where document_id = %L $$, current_setting('t.d_med')))
   || '/' ||
   pg_temp.call_as(current_setting('t.u_omar')::uuid, format(
-    $$ select count(*)::text from public.documents where id = %L $$, current_setting('t.d_med'))),
-  '0/1/1/0/1',
-  'AFTER, on each person''s NEXT query: Priya has lost it, Ruth has gained it AND its index row, Priya holds no index row, Omar still reads it through his share — a share names one object for one person and a domain move does not touch it (§4.3.5)');
+    $$ select count(*)::text from public.documents where id = %L $$, current_setting('t.d_med')))
+  || '/' ||
+  pg_temp.scalar(format(
+    $$ select (c.search_text_full is not null and c.tsv_full is not null)::text
+         from public.document_search_content c where c.document_id = %L $$, current_setting('t.d_med'))),
+  '0/1/1/0/1/true',
+  'AFTER, on each person''s NEXT query: Priya has lost it, Ruth has gained it AND its index row, Priya holds no index row, Omar still reads it through his share — a share names one object for one person and a domain move does not touch it (§4.3.5) — and the index row was REBUILT in the move''s transaction: the fixture wrote it under replica with its derived columns null, and the move''s SET list fired the 1D builders (R3/F-6: membership follows the policy by construction, so the rebuild is what this half now reads)');
 
 -- ----------------------------------------------------------------------------
 -- 17–19 · The log: the person's entry carries BOTH audiences by name; the
@@ -390,7 +394,7 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
 select is(pg_temp.call_as(current_setting('t.u_kim')::uuid, format(
   $$ select (r ->> 'changed') || '/' || (r ->> 'category') || '/' || (r ->> 'gained') || '/' || (r ->> 'lost')
             || '/' || (select d.taint::text from public.documents d where d.id = %L)
-       from hc.recategorize_document(%L, 'other') r $$,
+       from hc.recategorize_document(%L, 'other', 'legal') r $$,
   current_setting('t.d_med'), current_setting('t.d_med'))),
   'true/other/0/0/{documents}',
   'legal → other stays inside the documents domain: the category moves, the taint does not, nobody gains or loses — still logged, as an empty audience change');
@@ -400,7 +404,7 @@ select is(pg_temp.call_as(current_setting('t.u_kim')::uuid, format(
             (select count(*)::text from public.access_log l
               where l.circle_id = %L and l.event_type = 'audience_changed' and l.object_id = %L
                 and l.actor_account_id = %L)
-       from hc.recategorize_document(%L, 'other') r $$,
+       from hc.recategorize_document(%L, 'other', 'other') r $$,
   current_setting('t.c1'), current_setting('t.d_med'), current_setting('t.u_kim'),
   current_setting('t.d_med'))),
   'false/1',
@@ -440,9 +444,10 @@ select is(pg_temp.call_as(current_setting('t.u_ruth')::uuid, format(
   'neither the granter nor a coordinator: refused');
 
 select is(pg_temp.call_as(current_setting('t.u_kim')::uuid, format(
-  $$ select hc.revoke_share(%L)::text || hc.revoke_share(gen_random_uuid())::text $$,
-  current_setting('t.sh_mar'))),
-  'ERROR:P0001:revoke_refused',
+  $$ select hc.revoke_share(%L)::text $$, current_setting('t.sh_mar')))
+  || '/' || pg_temp.call_as(current_setting('t.u_sarah')::uuid,
+  $$ select hc.revoke_share(gen_random_uuid())::text $$),
+  'ERROR:P0001:revoke_refused/ERROR:P0001:revoke_refused',
   'an already-revoked share and a nonexistent one land in the same one shape (DEF-10)');
 
 -- ----------------------------------------------------------------------------
@@ -454,7 +459,7 @@ begin
   insert into public.freezes (circle_id) values (current_setting('t.c1')::uuid);
 end $$;
 select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
-  $$ select hc.recategorize_document(%L, 'financial')::text $$, current_setting('t.d_med'))),
+  $$ select hc.recategorize_document(%L, 'financial', 'other')::text $$, current_setting('t.d_med'))),
   'ERROR:P0001:freeze_active',
   'a freeze refuses an audience change with the named freeze_active — moving a document can widen who reads it');
 
@@ -462,6 +467,148 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   $$ select (hc.revoke_share(%L)) ->> 'share_id' $$, current_setting('t.sh_lena'))),
   current_setting('t.sh_lena'),
   'and a freeze permits unsharing — containment never blocks reduction');
+
+-- ----------------------------------------------------------------------------
+-- 30 · ADR-0033 cluster E (R1/F-6, R2/F-3): the freeze is named to MEMBERS.
+--      The freeze from 28–29 is still open; a STRANGER moving an existing
+--      document and a nonexistent one meets one shape.
+-- ----------------------------------------------------------------------------
+set session_replication_role = replica;
+do $$
+declare u uuid := pg_temp.mk_user(gen_random_uuid());
+begin
+  insert into public.accounts (id, kind, display_name) values (u, 'member', 'Stranger');
+  perform set_config('t.u_stranger', u::text, true);
+end $$;
+set session_replication_role = default;
+select is(pg_temp.call_as(current_setting('t.u_stranger')::uuid, format(
+  $$ select hc.recategorize_document(%L, 'financial', 'other')::text $$, current_setting('t.d_med')))
+  || '/' || pg_temp.call_as(current_setting('t.u_stranger')::uuid,
+  $$ select hc.recategorize_document(gen_random_uuid(), 'financial', 'other')::text $$),
+  'ERROR:P0001:recategorize_refused/ERROR:P0001:recategorize_refused',
+  'under the freeze a STRANGER moving an existing document and a nonexistent one meets ONE shape — before, the existing one answered freeze_active (R1/F-6, R2/F-3). Two calls, joined outside the statement');
+
+-- ----------------------------------------------------------------------------
+-- 31–39 · ADR-0033, the M3 audience cluster. D19.3 (R1/F-3a): the preview
+--         and the person's entry NAME the derived objects whose holders
+--         change level. D19.10 (R4/F-3): below coordinator, only
+--         gained/lost — the levels are NULL. D19.5 (R2/F-6): the preview
+--         binds the move. F (R2/F-2, R6/F-3): an unresolved document's
+--         entry names nobody as lost who never had it.
+--         The freeze from 28–30 is removed. Fixtures under replica: d_med2
+--         (medical, {health}) with t_der2 drafted from it and HELD BY DAN
+--         (manage on health, finances, schedule; nothing on documents);
+--         d_unres (medical, {health}, UNRESOLVED).
+-- ----------------------------------------------------------------------------
+delete from public.freezes where circle_id = current_setting('t.c1')::uuid;
+set session_replication_role = replica;
+do $$
+declare
+  d_med2 uuid := gen_random_uuid(); t_der2 uuid := gen_random_uuid(); d_unres uuid := gen_random_uuid();
+  c1 uuid := current_setting('t.c1')::uuid; s1 uuid := current_setting('t.s1')::uuid;
+  u_sarah uuid := current_setting('t.u_sarah')::uuid;
+  m_dan uuid := (select m.id from public.circle_members m where m.circle_id = current_setting('t.c1')::uuid
+                  and m.account_id = current_setting('t.u_dan')::uuid);
+  a1 uuid := (select d.artifact_arrival_id from public.documents d where d.id = current_setting('t.d_med')::uuid);
+begin
+  insert into public.documents (id, circle_id, subject_id, title, category, summary_text,
+    artifact_arrival_id, filed_at, approved_by, approved_at, approver_display_name, taint, taint_resolved)
+  values (d_med2, c1, s1, 'Physio plan · Aug 3', 'medical', 'Twice weekly for six weeks.',
+          a1, now(), u_sarah, now(), 'Sarah', '{health}', true),
+         (d_unres, c1, s1, 'Second opinion · Aug 9', 'medical', null,
+          a1, now(), u_sarah, now(), 'Sarah', '{health}', false);
+  insert into public.tasks (id, circle_id, subject_id, title, status, owner_member_id,
+    assigned_by, assigned_at, approved_by, approved_at, approver_display_name, taint)
+  values (t_der2, c1, s1, 'Book the first physio session', 'open', m_dan,
+          u_sarah, now(), u_sarah, now(), 'Sarah', '{schedule,health}');
+  insert into public.provenance_edges (circle_id, child_type, child_id, parent_type, parent_id)
+  values (c1, 'task', t_der2, 'document', d_med2);
+  perform set_config('t.d_med2', d_med2::text, true);
+  perform set_config('t.t_der2', t_der2::text, true);
+  perform set_config('t.d_unres', d_unres::text, true);
+end $$;
+set session_replication_role = default;
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select string_agg(a.display_name || ':' || a.before::text || '>' || a.after::text || ':' || a.change, ',' order by a.display_name)
+       from hc.document_audience(%L, 'legal') a $$,
+  current_setting('t.d_med2'))),
+  'Dan:manage>hidden:lost,Lena:hidden>summary:gained,Priya:summary>hidden:lost,Ruth:hidden>view:gained',
+  'a coordinator''s preview of the physio plan medical → legal: the four whose level changes, by name, both levels, and the DIRECTION (D19.10''s new column)');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select string_agg(x.object_type::text || ':' || x.label || ':' || x.holder_name || ':' || x.before::text || '>' || x.after::text || ':' || x.change, ',')
+       from hc.document_audience_derived(%L, 'legal') x $$,
+  current_setting('t.d_med2'))),
+  'task:Book the first physio session:Dan:manage>hidden:lost',
+  'D19.3, THE DERIVED OBJECT NAMED: "Dan will lose the physio task drafted from this" — the preview names the held descendant whose holder''s level moves, predicted by reclassify''s own fixed point without writing (R1/F-3a: before, no row, entry or return value carried it)');
+
+select is(pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
+  $$ select string_agg(a.display_name || ':' || coalesce(a.before::text, 'NULL') || '>' || coalesce(a.after::text, 'NULL') || ':' || a.change, ',' order by a.display_name)
+       from hc.document_audience(%L, 'financial') a $$,
+  current_setting('t.d_med2'))),
+  'Priya:NULL>NULL:lost',
+  'D19.10, BELOW COORDINATOR ONLY GAINED/LOST: Dan (family, manage on health and finances) previews medical → financial and is told Priya loses it — and NOT her levels, which access_grants_select_own withholds from him; null renders as undisclosed, never as a hidden grant (R4/F-3, Q-C''s rider)');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select string_agg(a.display_name || ':' || a.before::text || '>' || a.after::text || ':' || a.change, ',' order by a.display_name)
+       from hc.document_audience(%L, 'financial') a $$,
+  current_setting('t.d_med2')))
+  || '/' || pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
+  $$ select count(*)::text from hc.document_audience_derived(%L, 'legal') $$,
+  current_setting('t.d_med2'))),
+  'Priya:summary>hidden:lost/ERROR:P0001:audience_refused',
+  'the same fact with its levels for a coordinator; and the derived preview shares the move''s gate — Dan cannot preview legal, so he cannot preview what legal does to the task either');
+
+select is(pg_temp.call_as(current_setting('t.u_kim')::uuid, format(
+  $$ select hc.recategorize_document(%L, 'legal', 'financial')::text $$, current_setting('t.d_med2')))
+  || '/' || pg_temp.scalar(format(
+  $$ select d.category::text from public.documents d where d.id = %L $$, current_setting('t.d_med2'))),
+  'ERROR:P0001:document_changed/medical',
+  'D19.5, THE PREVIEW BINDS THE MOVE: a move confirmed against a category that is no longer the document''s refuses with the NAMED document_changed (the proposal_version_changed shape), and nothing moves (R2/F-6, R6''s third dissent)');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (r ->> 'gained') || '/' || (r ->> 'lost') || '/' ||
+            (select string_agg((e ->> 'holder_name') || ':' || (e ->> 'before') || '>' || (e ->> 'after'), ',')
+               from jsonb_array_elements(r -> 'derived') e)
+       from hc.recategorize_document(%L, 'legal', 'medical') r $$,
+  current_setting('t.d_med2'))),
+  '2/2/Dan:manage>hidden',
+  'the move, confirmed against the category the person saw: two gain, two lose, and the return NAMES the held task Dan loses');
+
+select is(pg_temp.scalar(format(
+  $$ select (e ->> 'holder_name') || ':' || ((e ->> 'object_id') = %L)::text || ':' || (e ->> 'before') || '>' || (e ->> 'after')
+       from public.access_log l, jsonb_array_elements(l.detail -> 'derived') e
+      where l.circle_id = %L and l.event_type = 'audience_changed' and l.object_id = %L
+        and l.actor_account_id = %L $$,
+  current_setting('t.t_der2'), current_setting('t.c1'), current_setting('t.d_med2'),
+  current_setting('t.u_sarah')))
+  || '/' || pg_temp.call_as(current_setting('t.u_dan')::uuid, format(
+  $$ select count(*)::text from public.tasks t where t.id = %L $$, current_setting('t.t_der2'))),
+  'Dan:true:manage>hidden/0',
+  'and the person''s entry carries it — `derived` names the task, its holder, and his level before and after — while Dan''s own next query no longer shows him the task he still holds (R1/F-3''s C5, now ON the record)');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select string_agg(a.display_name || ':' || a.before::text || '>' || a.after::text || ':' || a.change, ',' order by a.display_name)
+       from hc.document_audience(%L, 'legal') a $$,
+  current_setting('t.d_unres'))),
+  'Lena:hidden>summary:gained,Ruth:hidden>view:gained',
+  'an UNRESOLVED document: rung 3 hides it from everyone below manage×5, so the preview of medical → legal says only that Lena and Ruth gain it — nobody loses what nobody had');
+
+select pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.recategorize_document(%L, 'legal', 'medical')::text $$, current_setting('t.d_unres')));
+select is(pg_temp.scalar(format(
+  $$ select coalesce((select string_agg(x, ',' order by x) from jsonb_array_elements_text(l.detail -> 'lost') x), '-')
+            || '/' || coalesce((select string_agg(x, ',' order by x) from jsonb_array_elements_text(l.detail -> 'gained') x), '-')
+            || '/' || (select string_agg(e ->> 'name', ',' order by e ->> 'name') from jsonb_array_elements(l.detail -> 'audience_before') e)
+            || '/' || (select d.taint_resolved::text from public.documents d where d.id = %L)
+       from public.access_log l
+      where l.circle_id = %L and l.event_type = 'audience_changed' and l.object_id = %L
+        and l.actor_account_id = %L $$,
+  current_setting('t.d_unres'), current_setting('t.c1'), current_setting('t.d_unres'),
+  current_setting('t.u_sarah'))),
+  '-/Lena,Ruth/Kim,Sarah/true',
+  'CLUSTER F: the entry for the unresolved move — nobody LOST it, Lena and Ruth gained it, and audience_before names the two who could see it (Kim and Sarah, manage×5). Before, the after-recompute resolved flag was fed to the BEFORE side and the same entry named Dan and Priya as losing a document its own audience_before said they never had (R2/F-2, R6/F-3). The move resolved it');
 
 select * from finish();
 rollback;

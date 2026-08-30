@@ -33,6 +33,12 @@
 -- a FROZEN circle returns the people and NO levels, because a freeze
 -- suspends all interactive access and the list does not pretend otherwise.
 --
+-- ONE DECLARED WIDENING (ADR-0033 D19.13, R4/F-6): every member's declared
+-- `accounts.slice` is returned to every member of the circle, which
+-- accounts_select_self alone would refuse. `slice` IS a People-list fact
+-- (PRD §4.6.1) and the widening is intended — named here AS a widening, so
+-- nobody re-derives it as a leak.
+--
 -- WHO READS WHOSE LEVELS, fail closed: a coordinator reads everyone's; any
 -- other member reads her own and the subjects' standing (public by §7.5)
 -- and gets NULL for the rest — null, not hidden, so "not yours to know" and

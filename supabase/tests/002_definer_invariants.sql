@@ -86,11 +86,13 @@ select is((
     -- per-node formula); both run AS the calling definer and join this
     -- inventory and NOT the definer set
     'document_audience(p_document uuid, p_category hc.doc_category)',
+    'document_audience_derived(p_document uuid, p_category hc.doc_category)',
     'document_audience_rows(p_document uuid, p_taint_before hc.domain[], p_resolved_before boolean, p_taint_after hc.domain[], p_resolved_after boolean)',
     -- 7A M4: everything in the record that references a document, at the
     -- caller's own level, counted-never-named (the receipt's discipline)
     'document_references(p_document uuid)',
     'document_taint_under(p_document uuid, p_category hc.doc_category)',
+    'document_taint_walk_under(p_document uuid, p_category hc.doc_category)',
     'dom(p jsonb)',
     'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'execute_wasnt_me(p_token text)',
@@ -128,6 +130,7 @@ select is((
     -- 7A M4: a member's grant levels per subject per domain, hidden spelled
     -- out — owner-only, running AS the calling definer
     'member_levels(p_circle uuid, p_member uuid)',
+    'member_levels_frozen(p_circle uuid, p_member uuid)',
     'mint_step_up(p_operation text, p_target_ref text)',
     'note_suspicious_attempts(p_identifier text)',
     -- 7A M4: one record object's label and the caller's level through the
@@ -145,7 +148,7 @@ select is((
     -- 7A M3: the move — category, taint (through the ONE shrinking path),
     -- the index row, and the person's audience_changed entry with both
     -- audiences by name, in one transaction. `reca` sorts before `rece`
-    'recategorize_document(p_document uuid, p_category hc.doc_category)',
+    'recategorize_document(p_document uuid, p_category hc.doc_category, p_expected_category hc.doc_category)',
     -- 6A M5: §4.2.4's receipt. proposal_commits holds NO member privilege
     -- and does not get a blanket one — the table IS the
     -- one-proposal-one-object claim, so the receipt gets ONE definer
@@ -229,7 +232,8 @@ select is((
         'complete_security_action','complete_task','consume_step_up','create_account',
         'create_arrival',
         'create_circle','create_invite','create_manual_proposal',
-        'ctx','ctx_for','describe_invite','document_audience','document_references',
+        'ctx','ctx_for','describe_invite','document_audience','document_audience_derived',
+        'document_references',
         'execute_wasnt_me','expire_held_mail',
         'expire_scan_results','extractions_for',
         'finalize_extraction','finalize_interpretation','finalize_scan',
@@ -253,7 +257,7 @@ select is((
         'sweeper_pass',
         -- 7A M1: the second assignment writer
         'unassign_task']::name[],
-  'SECURITY DEFINER is exactly the eighty-three boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the eighty-four boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -422,6 +426,9 @@ with actual as (
   -- document_audience_rows and document_taint_under are owner-only and
   -- appear in no grant row by design
   union all select 'document_audience', 'authenticated'
+  -- ADR-0033 D19.3: the derived-object preview, the same gate in-function;
+  -- document_taint_walk_under is owner-only and appears in no grant row
+  union all select 'document_audience_derived', 'authenticated'
   union all select 'recategorize_document', 'authenticated'
   union all select 'revoke_share', 'authenticated'
   -- 7A M4: the four definer READS — each filters per row through

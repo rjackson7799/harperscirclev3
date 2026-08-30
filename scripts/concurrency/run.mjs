@@ -3178,15 +3178,17 @@ async function case51(admin) {
     const kim = await mkMember(admin, fx, 'Kim', 'coordinator',
       { memories: 'manage', health: 'manage', schedule: 'manage', documents: 'manage', finances: 'manage' });
 
-    // S1 (Sarah) moves the invoice financial → legal and holds the transaction open.
+    // S1 (Sarah) moves the invoice financial → legal, confirmed against the
+    // category she saw (ADR-0033 D19.5), and holds the transaction open.
     await asUser(s1, fx.u1);
     await s1.query('begin');
     const r1 = (await s1.query(
-      `select (hc.recategorize_document($1, 'legal')) ->> 'changed' as c`, [fx.doc])).rows[0].c;
+      `select (hc.recategorize_document($1, 'legal', 'financial')) ->> 'changed' as c`, [fx.doc])).rows[0].c;
 
-    // S2 (Kim) makes the SAME move and blocks on the circle lock.
+    // S2 (Kim) makes the SAME move, confirmed against the same sentence (the
+    // invoice is still financial when she reads it), and blocks on the lock.
     await asUser(s2, kim.u);
-    const p2 = s2.query(`select hc.recategorize_document($1, 'legal') as r`, [fx.doc])
+    const p2 = s2.query(`select hc.recategorize_document($1, 'legal', 'financial') as r`, [fx.doc])
       .then(r => r.rows[0].r).catch(e => e);
     const pid2 = await findActivePid(admin, 'select hc.recategorize_document%', 'recategorize backend');
     await waitForLockWait(admin, pid2, 's2 recategorize blocked on the circle lock');
@@ -3203,8 +3205,8 @@ async function case51(admin) {
                 where l.circle_id = $2 and l.event_type = 'audience_changed'
                   and l.object_id = $1 and l.actor_display_name = 'Reclassification') as machine_entries`,
       [fx.doc, fx.c])).rows[0];
-    check('case51 (7A M3): two coordinators re-categorising ONE document to the same category serialise on the circle lock — the second re-reads the moved row and is a quiet no-op, so there is ONE audience change and ONE person entry (plus the taint machinery\'s one), and the row reads legal/{documents}',
-      r1 === 'true' && r2 && r2.changed === false
+    check('case51 (7A M3 · ADR-0033 D19.5): two coordinators re-categorising ONE document to the same category serialise on the circle lock — the second re-reads the MOVED row, and the sentence she confirmed ("financial → legal") no longer describes it: refused with the NAMED document_changed, never silently folded into her confirmation (R2/F-6). ONE audience change, ONE person entry (plus the taint machinery\'s one), and the row reads legal/{documents}',
+      r1 === 'true' && r2 instanceof Error && r2.code === 'P0001' && r2.message === 'document_changed'
         && st.doc === 'legal/{documents}' && st.person_entries === 1 && st.machine_entries === 1,
       `first=${r1} second=${r2 instanceof Error ? r2.message : JSON.stringify(r2)} doc=${st.doc} person=${st.person_entries} machine=${st.machine_entries}`);
   } finally {
@@ -3225,16 +3227,17 @@ async function case52(admin) {
     // Lena holds health view and no schedule: the {schedule} task is a
     // crossing, so Sarah assigns it by PATH 2 naming the invoice.
     const lena = await mkMember(admin, fx, 'Lena', 'family', { health: 'view' });
-    const assignPath2 = async () => {
+    const assignPath2 = async (who) => {
       const token = await mintStepUp(admin, fx.u1, 'share_object',
         `task:${fx.task}+document:${fx.doc}`);
       await asUser(s2, fx.u1);
       const r = (await s2.query(
-        `select hc.assign_task($1, $2, null, $3, $4) as r`, [fx.task, lena.m, fx.doc, token]))
+        `select hc.assign_task($1, $2, null, $3, $4) as r`, [fx.task, who.m, fx.doc, token]))
         .rows[0].r;
       const shares = (await admin.query(
         `select sh.id, sh.object_type::text as t from public.object_shares sh
-          where sh.created_by_assignment_of = $1 and sh.revoked_at is null`, [fx.task])).rows;
+          where sh.created_by_assignment_of = $1 and sh.member_id = $2 and sh.revoked_at is null`,
+        [fx.task, who.m])).rows;
       return { path: r.path, doc: shares.find(s => s.t === 'document')?.id,
                task: shares.find(s => s.t === 'task')?.id };
     };
@@ -3247,7 +3250,7 @@ async function case52(admin) {
         [fx.task, fx.c])).rows[0];
 
     // (a) The coordinator's KEEP commits while a plain unassign waits.
-    const a = await assignPath2();
+    const a = await assignPath2(lena);
     await asUser(s1, fx.u1);
     await s1.query('begin');
     await s1.query(`select hc.unassign_task($1, array[$2::uuid])`, [fx.task, a.doc]);
@@ -3264,11 +3267,15 @@ async function case52(admin) {
         && stA.s === 'document:true,task:false' && stA.entries === 1,
       `path=${a.path} err=${ea ? ea.code + ':' + ea.message : 'none'} shares=${stA.s} entries=${stA.entries}`);
 
-    // (b) The other order: the plain unassign commits while the keep waits.
-    // The kept document share from (a) is revoked first so this assignment
-    // creates both shares afresh.
-    await admin.query(`update public.object_shares set revoked_at = now() where id = $1`, [a.doc]);
-    const b = await assignPath2();
+    // (b) The other order: the plain unassign commits while the keep waits —
+    // and the SECOND cycle of the same task goes to ANOTHER person. Lena's
+    // kept document share from (a) is left exactly as the coordinator left
+    // it: live, still carrying this task's marker. That is the state
+    // ADR-0033 cluster B is about (R1/F-2, R2/F-1, R6/F-2): this step used
+    // to revoke it by hand, and without that the plain unassign below
+    // revoked it as if it were Ruth's.
+    const ruth = await mkMember(admin, fx, 'Ruth', 'family', { health: 'view' });
+    const b = await assignPath2(ruth);
     await asUser(s1, fx.u2);
     await s1.query('begin');
     await s1.query(`select hc.unassign_task($1)`, [fx.task]);
@@ -3281,9 +3288,9 @@ async function case52(admin) {
     await s1.query('commit');
     const eb = await withTimeout(pb, 'case52b keep after the plain unassign');
     const stB = await shareState();
-    check('case52b (7A M1): in the other order the plain unassign commits and the KEEP arrives at a task nobody holds — refused whole, and the shares stand as the first unassign left them: every share this assignment created revoked, a second task_unassigned entry and no third',
+    check('case52b (7A M1 · ADR-0033 cluster B): in the other order the plain unassign commits and the KEEP arrives at a task nobody holds — refused whole, and the shares stand as the first unassign left them: both shares RUTH\'s cycle created revoked, LENA\'s kept document share from (a) untouched by a cycle that was not hers, a second task_unassigned entry and no third',
       b.path === 'share' && eb !== null && eb.code === 'P0001' && eb.message === 'unassign_refused'
-        && stB.s === 'document:false,document:false,task:false,task:false' && stB.entries === 2,
+        && stB.s === 'document:true,document:false,task:false,task:false' && stB.entries === 2,
       `path=${b.path} err=${eb ? eb.code + ':' + eb.message : 'none'} shares=${stB.s} entries=${stB.entries}`);
   } finally {
     await s1.query('rollback').catch(() => {});
@@ -3334,6 +3341,56 @@ async function case53(admin) {
       `a=${ea ? ea.code + ':' + ea.message : 'none'} b=${eb ? eb.code + ':' + eb.message : 'none'} owner=${st.owner} instructions=${st.instructions} shares=${st.shares} entries=${st.entries}`);
   } finally {
     await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
+// --- case 54: 7A M1 · ADR-0033 R2/F-9 — path 2 racing share_object -----------
+
+async function case54(admin) {
+  const fx = await mkCircle(admin, 'c54');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // Lena holds health view and no schedule: the {schedule} task is a
+    // crossing, so path 2 names the invoice. share_object is the recorded
+    // R-rule exception — it takes no advisory lock — so S2's share on the
+    // same (task, Lena) is INVISIBLE to S1's `not exists` and S1's insert
+    // blocks on object_shares_live; when S2 commits, S1's insert collides.
+    const lena = await mkMember(admin, fx, 'Lena', 'family', { health: 'view' });
+    const tokShare = await mintStepUp(admin, fx.u2, 'share_object', `task:${fx.task}`);
+    const tokPair = await mintStepUp(admin, fx.u1, 'share_object',
+      `task:${fx.task}+document:${fx.doc}`);
+
+    await asUser(s2, fx.u2);
+    await s2.query('begin');
+    await s2.query(`select hc.share_object('task', $1, $2, $3)`, [fx.task, lena.m, tokShare]);
+
+    await asUser(s1, fx.u1);
+    const p1 = s1.query(`select hc.assign_task($1, $2, null, $3, $4)`, [fx.task, lena.m, fx.doc, tokPair])
+      .then(() => null).catch(e => e);
+    const pid1 = await findActivePid(admin, 'select hc.assign_task%', 'assign backend');
+    await waitForLockWait(admin, pid1, 's1 assign blocked on the live-share index behind the uncommitted share');
+    await s2.query('commit');
+    const e1 = await withTimeout(p1, 'case54 assign after the share commits');
+
+    const st = (await admin.query(
+      `select (select t.owner_member_id from public.tasks t where t.id = $1) as owner,
+              (select string_agg(sh.object_type::text || ':' || (sh.created_by_assignment_of is null)::text, ',' order by sh.object_type)
+                 from public.object_shares sh where sh.member_id = $2 and sh.revoked_at is null) as shares,
+              (select count(*)::int from public.access_log l
+                where l.circle_id = $3 and l.event_type in ('task_assigned', 'task_reassigned')) as entries,
+              (select count(*)::int from public.step_up_tokens s
+                where s.account_id in ($4, $5) and s.consumed_at is not null) as burnt`,
+      [fx.task, lena.m, fx.c, fx.u1, fx.u2])).rows[0];
+    check('case54 (7A M1 · ADR-0033 R2/F-9): path 2 racing share_object on the same (task, member) — the assignment collides on object_shares_live when the share commits and refuses in the ONE shape, assign_refused, never a raw 23505; nothing of it lands (no holder, no entry, the pair token unconsumed) and Lena keeps exactly the share S2 gave her',
+      e1 !== null && e1.code === 'P0001' && e1.message === 'assign_refused'
+        && st.owner === null && st.shares === 'task:true' && st.entries === 0 && st.burnt === 1,
+      `err=${e1 ? e1.code + ':' + e1.message : 'none'} owner=${st.owner} shares=${st.shares} entries=${st.entries} tokens_burnt=${st.burnt}`);
+  } finally {
+    await s2.query('rollback').catch(() => {});
     await s1.end();
     await s2.end();
     await cleanupCircle(admin, fx.c);
@@ -3398,6 +3455,7 @@ try {
   await case51(admin);
   await case52(admin);
   await case53(admin);
+  await case54(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;
