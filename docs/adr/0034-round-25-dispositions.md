@@ -1,6 +1,28 @@
 # ADR-0034 — round-25 dispositions: the forty-two round-24 rows, re-verified at `986ef6e` and PUT for ruling
 
-**Status: PUT, NOT RULED.** Proposed on evidence, awaiting owner sign-off.
+**Status: RULED — OWNER SIGN-OFF 2026-08-30. All eleven ballot items
+RATIFIED AS PUT** (the owner: *"proceed with best recommendation for the 11
+ballot items"*).
+
+The verdicts have moved in the commit that stamps this line. **All
+forty-two `OWED` rows of ADR-0033** — D13's thirty-six, each cell rewritten
+with a pointer to its section here, and the six R6 rows carried in D14's
+cluster column, the original verdict struck and preserved — now read `FIXED`
+at `986ef6e`.
+
+The post-ruling tally was **re-derived from the rewritten table**, not
+asserted from D12: D13 counts **36 FIXED · 0 OWED · 0 OWNER · 2 NOTED = 38**,
+D14 carries the six R6 rows `FIXED` — **42 FIXED · 0 OWED · 0 OWNER ·
+2 NOTED = 44**, the `OWED` class empty. D12's self-check is satisfied by
+measurement rather than by intent. **ADR-0033 and the tree now agree.**
+
+**Discharged with it:** ADR-0033 D20's *"it merges nothing"* — PR #26 may
+merge once #27, #28 and this PR are in, in the owner's hands (`--no-ff`,
+the SHA stamped back).
+
+*(The paragraph below is the ballot as it was PUT, preserved unaltered.)*
+
+~~**Status: PUT, NOT RULED.**~~ Proposed on evidence, awaiting owner sign-off.
 **No verdict in ADR-0033 has moved** — the thirty-six `OWED` rows of D13 and
 the six R6 rows ruled through D2–D7/D19 all still read `OWED`. They move in a
 second commit, after sign-off, each carrying a pointer back here — the
