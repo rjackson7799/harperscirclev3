@@ -176,7 +176,9 @@ describe('B3 · the add route — one action, landing on the event', () => {
     ]) {
       res = await POST(post(bad), ctx);
       expect(res.status).toBe(303);
-      expect(res.headers.get('location')).toBe(`/${CIRCLE}/timeline?subject=${bad.subject_id === 'nope' ? NELL : NELL}&e=add`);
+      expect(res.headers.get('location')).toBe(
+        bad.subject_id === 'nope' ? `/${CIRCLE}/timeline?e=add` : `/${CIRCLE}/timeline?subject=${NELL}&e=add`,
+      );
     }
     expect(tlHc.addManualEvent).toHaveBeenCalledTimes(1);
   });

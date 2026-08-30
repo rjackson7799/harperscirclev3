@@ -71,6 +71,7 @@ const CIRCLE = '11111111-0000-4000-8000-000000000001';
 const ARRIVAL = '55555555-0000-4000-8000-000000000005';
 const TASK = 'aaaaaaaa-0000-4000-8000-0000000000a1';
 const MEMBER = '44444444-0000-4000-8000-000000000005';
+const EVENT = 'eeeeeeee-0000-4000-8000-0000000000e1';
 const UNAVAILABLE = { kind: 'unavailable', why: 'AuthRetryableFetchError: fetch failed' } as const;
 const SIGNED_OUT = { kind: 'signed-out' } as const;
 
@@ -149,6 +150,13 @@ const GATED: Record<string, Entry> = {
     next: `/${CIRCLE}/tasks/${TASK}/assign?member=${MEMBER}`,
     load: () => import('@/app/(app)/[circle]/tasks/[task]/assign/page'),
     props: { params: params({ circle: CIRCLE, task: TASK }), searchParams: sp({ member: MEMBER }) },
+  },
+  // ---- 7B B3 --------------------------------------------------------------
+  '/[circle]/timeline/[event]': {
+    kind: 'page',
+    next: `/${CIRCLE}/timeline/${EVENT}`,
+    load: () => import('@/app/(app)/[circle]/timeline/[event]/page'),
+    props: { params: params({ circle: CIRCLE, event: EVENT }), searchParams: sp() },
   },
   '/account': {
     kind: 'page',
@@ -238,6 +246,12 @@ const GATED: Record<string, Entry> = {
     load: () => import('@/app/(app)/[circle]/tasks/[task]/snooze/submit/route'),
     params: { circle: CIRCLE, task: TASK },
   },
+  '/[circle]/timeline/add/submit': {
+    kind: 'route',
+    next: `/${CIRCLE}/timeline`,
+    load: () => import('@/app/(app)/[circle]/timeline/add/submit/route'),
+    params: { circle: CIRCLE },
+  },
   // ---- the three that already answer a status, and the two special routes --
   '/api/artifact/[id]': { kind: 'elsewhere', where: 'tests/routes/artifact.test.ts — 503 session_unavailable, never 404' },
   '/api/upload/token': { kind: 'elsewhere', where: 'tests/routes/upload.test.ts — 503, never 401' },
@@ -292,10 +306,10 @@ describe('GTE-01 · the gated set is PINNED to the filesystem both ways', () => 
     expect(stale, `entries with no gated file behind them: ${stale.join(', ')}`).toEqual([]);
   });
 
-  it('the D15 enumeration holds on disk, plus what 7B added: ten + two pages, five + one + four form routes, one layout', () => {
+  it('the D15 enumeration holds on disk, plus what 7B added: ten + three pages, five + one + five form routes, one layout', () => {
     const kinds = Object.values(GATED).map((e) => e.kind);
-    expect(kinds.filter((k) => k === 'page').length).toBe(12);
-    expect(kinds.filter((k) => k === 'route').length).toBe(10);
+    expect(kinds.filter((k) => k === 'page').length).toBe(13);
+    expect(kinds.filter((k) => k === 'route').length).toBe(11);
     expect(kinds.filter((k) => k === 'layout').length).toBe(1);
   });
 });

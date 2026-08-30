@@ -126,7 +126,9 @@ beforeEach(() => {
   session.readLiveSession.mockResolvedValue({ kind: 'signed-in', claims: CLAIMS });
   tasksHc.circleSubjects.mockResolvedValue(SUBJECTS);
   tlHc.listEvents.mockImplementation(async (_c: unknown, _circle: string, opts: { subject: string; kind?: string }) => {
-    let rows = opts.subject === 'all' ? [...NELL_EVENTS, MARCUS_EVENT] : opts.subject === NELL ? NELL_EVENTS : opts.subject === MARCUS ? [MARCUS_EVENT] : [];
+    // The module's contract: chronological by sort_at, whatever the subject.
+    let rows = (opts.subject === 'all' ? [...NELL_EVENTS, MARCUS_EVENT] : opts.subject === NELL ? NELL_EVENTS : opts.subject === MARCUS ? [MARCUS_EVENT] : []).slice();
+    rows.sort((a, b) => String(a.sort_at).localeCompare(String(b.sort_at)));
     if (opts.kind) rows = rows.filter((r) => r.kind === opts.kind);
     return rows;
   });
@@ -197,7 +199,8 @@ describe('B3 · two subjects, two threads, a switch, and a labelled combined vie
 describe('B3 · filters: by kind (never `memory`) and by date range', () => {
   it('kind chips are medical · care · admin, and memory does not render as an empty filter', async () => {
     const html = await render();
-    for (const k of ['medical', 'care', 'admin']) expect(html).toContain(`href="/${CIRCLE}/timeline?subject=${NELL}&kind=${k}"`);
+    // Static markup escapes the query's `&` as `&amp;`.
+    for (const k of ['medical', 'care', 'admin']) expect(html).toContain(`href="/${CIRCLE}/timeline?subject=${NELL}&amp;kind=${k}"`);
     expect(html).not.toContain('kind=memory');
     expect(html).not.toMatch(/>Memories?</);
   });
@@ -232,7 +235,8 @@ describe('B3 · every row: its source, its date by its own kind, and the episode
     expect(html).toMatch(/approved by Sarah/);
     expect(html).toMatch(/Entered by Sarah on July 20/);
     expect(html).toContain('an item in the Care Inbox');
-    expect(html.split('class="provenance"').length - 1).toBe(3);
+    // Three events, and the creation row carries its own provenance too.
+    expect(html.split('class="provenance"').length - 1).toBe(4);
   });
 
   it('dates: a date, an appointment with its zone, a floating time that says so', async () => {

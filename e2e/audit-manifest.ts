@@ -56,6 +56,7 @@ export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/[circle]/timeline': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}` },
   '/[circle]/tasks': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}` },
   '/[circle]/tasks/[task]': { leg: RECORD_LEG },
+  '/[circle]/timeline/[event]': { leg: RECORD_LEG },
   '/[circle]/tasks/[task]/assign': {
     leg: 'record.spec — "cross-taint: not offered where she cannot see the subject; the sentence and exactly two paths where she can; path 1 readable and the original invisible FROM HER LIVE CONTEXT (TSK-01, AC-TASK-6)" drives it over a live crossing; axe runs inside that leg',
   },
