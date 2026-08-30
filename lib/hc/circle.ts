@@ -31,11 +31,11 @@ export async function createCircleFromSetup(
   input: SetupCircleInput,
 ): Promise<{ circle_id: string }> {
   return withRequestRole('authenticated', claims, async (q) => {
-    const r = await q.query(
+    const r = await q.query<{ result: { circle_id: string } }>(
       `select hc.create_circle($1, $2::jsonb, '{}', $3) as result`,
       [input.name, JSON.stringify(input.subjects), input.relationship ?? null],
     );
-    return { circle_id: r.rows[0].result.circle_id as string };
+    return { circle_id: r.rows[0].result.circle_id };
   });
 }
 

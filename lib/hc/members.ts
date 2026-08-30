@@ -16,7 +16,7 @@ export async function removeMember(
   keepShareIds?: string[],
 ): Promise<{ account_id: string }> {
   return withRequestRole('authenticated', claims, async (q) => {
-    const r = await q.query('select hc.remove_member($1, $2) as result', [
+    const r = await q.query<{ result: { account_id: string } }>('select hc.remove_member($1, $2) as result', [
       memberId,
       keepShareIds ?? null,
     ]);

@@ -66,8 +66,8 @@ describe('A2 · withRequestRole assumes the request role for one transaction', (
       'authenticated',
       { sub, role: 'authenticated', email: 'holder.2b@example.invalid' },
       async (q) => {
-        const who = await q.query('select current_user as u');
-        const claims = await q.query(
+        const who = await q.query<{ u: string }>('select current_user as u');
+        const claims = await q.query<{ c: { sub?: string; email?: string } }>(
           "select current_setting('request.jwt.claims', true)::jsonb as c",
         );
         const tiers = await q.query(

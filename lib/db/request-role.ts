@@ -1,5 +1,5 @@
 import 'server-only';
-import { Pool, type PoolClient, type QueryResult } from 'pg';
+import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
 
 /**
  * The request-role server channel (TSD §1.2/§1.3; ADR-0013 F1).
@@ -49,8 +49,30 @@ export type RequestClaims = {
   [claim: string]: unknown;
 };
 
+/**
+ * THE ROW BOUNDARY IS TYPED — 7B B1, OW-02 (ADR-0027 D17 item 2, F-4's larger
+ * half). pg's `QueryResult<R = any>` made `rows: any[]`, which is the root of
+ * round-16 R5/F-1 and of ADR-0028 D15 item 2's class: a `Date` that satisfied
+ * a declared `string` because `any` satisfies everything, and broke the first
+ * consumer that sliced it.
+ *
+ * The default row type is now `BoundaryRow` — every column `unknown` until
+ * the caller SAYS what it is. A bare `received_at: row.received_at` in a
+ * typed return no longer compiles; a wrapper names its row type
+ * (`q.query<{ id: string; accepted_at: Date }>`) and crosses each temporal
+ * column through the ONE named function (`lib/hc/rows.ts#isoText`), or reads a
+ * single value with an explicit, single assertion. The double assertion
+ * `as unknown as T` is the one escape a type cannot refuse; the boundary
+ * scanner (`tests/lint/timestamp-boundary.test.ts`) forbids it in this layer.
+ * `tests/db/request-role-rows.types.ts` is the type pin, run by `tsc`.
+ */
+export type BoundaryRow = Record<string, unknown>;
+
 export interface RequestRoleQuery {
-  query(text: string, params?: unknown[]): Promise<QueryResult>;
+  query<R extends QueryResultRow = BoundaryRow>(
+    text: string,
+    params?: unknown[],
+  ): Promise<QueryResult<R>>;
 }
 
 // The local default is the seed-provisioned runtime login (B8's flip):
@@ -148,7 +170,8 @@ export async function withRequestRole<T>(
       claims ? JSON.stringify(claims) : '',
     ]);
     const result = await fn({
-      query: (text, params) => client.query(text, params),
+      query: <R extends QueryResultRow = BoundaryRow>(text: string, params?: unknown[]) =>
+        client.query<R>(text, params),
     });
     await client.query('commit');
     return result;
