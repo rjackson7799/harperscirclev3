@@ -23,15 +23,14 @@ Traps, constraints and authority order are auto-loaded (`CLAUDE.md`,
 - Evidence at `abb0398` (CI green): reset exact **74** · pgTAP **69 files**,
   Σ `plan(N)` **1,809** · concurrency **54 cases / 82**, teed · vitest **982 /
   79** by run · gate **38/38** at `986ef6e`. New legs count against **38**.
-- Coverage flips here: TSK-03, TSK-04, TLN-01/02/03, GTE-01, A11Y-09, NAV-01's
-  7B half, and the **app halves** of TSK-01, TSK-02, SHR-02 (pgTAP halves green
-  at 7A). RCP-02 flips at 7C even though B4 moves the receipt's links.
+- Coverage flips here: TSK-03/04, TLN-01/02/03, GTE-01, A11Y-09, NAV-01's 7B
+  half, and the **app halves** of TSK-01/02 and SHR-02. RCP-02 flips at 7C.
 - `docs/owed.md`: **6 OPEN of 25** (13 TAKEN · 1 RISK · 2 CLOSED). 7B holds
   **nine** TAKEN rows — OW-01, 02, 11, 15, 17, 18, 20 in **B1**; OW-03, 06 in
   **B4** — each flipped `CLOSED(sha)` by the build; quota measured at close.
-- NOT activated, unchanged: G4/G7 block · G9 OPEN · G3 open ·
-  `BAND_ARTIFACT_ALLOWLIST` EMPTY · SIG-01 NOT absorbed · G12-01 pending.
-- **What round 24 changed in the functions 7B calls** (ADR-0033 D19):
+- NOT activated, unchanged: G4/G7 block · G9 OPEN · G3 open · the band
+  allowlist EMPTY · SIG-01 NOT absorbed · G12-01 pending. **Round 24 changed
+  the functions 7B calls** (ADR-0033 D19):
   `assign_task` refuses an assignee without a deliberate `log`-or-higher grant
   (D19.7) — *not offered* is computed from `hc.circle_people` the same way; an
   instruction row is never assigned or unassigned; `complete_task` on an
@@ -86,5 +85,5 @@ solo · gitleaks · coverage never early · ADR-0035 · the PR body checked in.
 
 ## ⏸ AT THE GATE, STOP
 
-Next leg: the **round-26 review** (Tier 2 — one reviewer session, a
-dispositions table), owner sign-off, merge commit never squash. **STOP.**
+Next leg: the **round-26 review** (Tier 2 — one reviewer session, a dispositions
+table), owner sign-off, merge commit never squash. **STOP at the gate.**
