@@ -117,7 +117,9 @@ export default async function AssignPage({
               &apos;s record at all — a coordinator would have to give them some access first.
             </p>
             <p className="meta">
-              <a href={back}>Back to the task</a>
+              <a className="back-link" href={back}>
+                Back to the task
+              </a>
             </p>
           </>
         );
@@ -238,7 +240,9 @@ export default async function AssignPage({
           </div>
 
           <p className="meta">
-            <a href={back}>Back to the task without handing it over</a>
+            <a className="back-link" href={back}>
+              Back to the task without handing it over
+            </a>
           </p>
         </>
       );

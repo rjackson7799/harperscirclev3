@@ -127,11 +127,17 @@ h2 {
    R5/F-6 pinned-manifest legs (a11y.spec.ts:344), which failed on it
    immediately. An enumerated floor silently exempts whatever nobody
    listed, so the CI half now pins the SELECTOR LIST, not just the
-   declaration (tests/design/touch-targets.test.ts). */
+   declaration (tests/design/touch-targets.test.ts).
+
+   7B B4: `input[type='date']` joined the same way, for the same reason —
+   the snooze and date-range controls are the first date inputs any surface
+   ships, and the record-surfaces audit measured the native widget at
+   115×21 the first time anything LOOKED. */
 input[type='text'],
 input[type='email'],
 input[type='password'],
 input[type='file'],
+input[type='date'],
 select,
 textarea {
   width: 100%;
@@ -1092,9 +1098,20 @@ a:focus-visible {
 .record-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 16px;
   align-items: flex-start;
   margin-top: 12px;
+}
+/* WCAG 2.2 target-size/offset (the record-surfaces audit found both): a
+   bare navigation link keeps the 44px floor, and a submit button never
+   sits flush against the 44px choice targets above it. */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.record-section form button[type='submit'] {
+  margin-top: 14px;
 }
 .record-controls form {
   margin: 0;

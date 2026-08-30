@@ -291,7 +291,9 @@ export default async function TaskPage({
           ) : null}
 
           <p className="meta">
-            <a href={`/${circle}/tasks`}>All tasks</a>
+            <a className="back-link" href={`/${circle}/tasks`}>
+              All tasks
+            </a>
           </p>
         </>
       );

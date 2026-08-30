@@ -143,7 +143,9 @@ export default async function EventPage({
             </dl>
           </Card>
           <p className="meta">
-            <a href={`/${circle}/timeline?subject=${event.subject_id}`}>Back to {event.subject_name}&apos;s thread</a>
+            <a className="back-link" href={`/${circle}/timeline?subject=${event.subject_id}`}>
+              Back to {event.subject_name}&apos;s thread
+            </a>
           </p>
         </>
       );
