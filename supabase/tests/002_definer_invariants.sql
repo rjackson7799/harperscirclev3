@@ -49,15 +49,25 @@ select is((
     'arrival_auth_detail(p_arrival uuid)',
     'assert_claimed()',
     'assert_manual_flag()',
+    -- 7A M1: task assignment — the assignee's taint from her OWN vectors,
+    -- §4.5.6's two human paths, a §5.7 token bound to the pair for path 2
+    'assign_task(p_task uuid, p_member uuid, p_instruction text, p_share_document uuid, p_step_up_token text)',
     'auth_throttle(p_identifier text)',
     'build_dsc()',
     'cancel_arrival(p_arrival uuid)',
     'check_quota(p_circle uuid, p_sender text)',
     'circle_frozen(p_circle uuid, p_subject uuid)',
+    -- 7A M4: the People list of ONE circle — subjects as people, levels per
+    -- subject per domain (a coordinator's read of others'), invites for
+    -- coordinators only, a frozen circle without levels
+    'circle_people(p_circle uuid)',
     'claim_security_actions(p_limit integer)',
     'claim_stage(p_arrival uuid, p_stage text, p_model_id text, p_prompt_version text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
     'close_extraction_run()',
     'complete_security_action(p_action_id uuid)',
+    -- 7A M2: the holder (at the level she sees the task as its holder) or
+    -- a manage-holder closes the work; done is terminal
+    'complete_task(p_task uuid)',
     'consume_step_up(p_token text, p_operation text, p_target_ref text, p_account uuid)',
     'contact_key(p text)',
     'create_account(p_display_name text)',
@@ -70,6 +80,19 @@ select is((
     'describe_invite(p_token text)',
     'detect_duplicate(p_arrival uuid, p_circle uuid, p_sha bytea)',
     'detect_stage2_duplicate(p_arrival uuid, p_circle uuid, p_subject uuid, p_facts jsonb, p_proposals jsonb)',
+    -- 7A M3: the audience preview (the move's own gate), and its two
+    -- owner-only halves — every member's level under two taints from her
+    -- OWN vectors, and the predicted taint under a category (reclassify's
+    -- per-node formula); both run AS the calling definer and join this
+    -- inventory and NOT the definer set
+    'document_audience(p_document uuid, p_category hc.doc_category)',
+    'document_audience_derived(p_document uuid, p_category hc.doc_category)',
+    'document_audience_rows(p_document uuid, p_taint_before hc.domain[], p_resolved_before boolean, p_taint_after hc.domain[], p_resolved_after boolean)',
+    -- 7A M4: everything in the record that references a document, at the
+    -- caller's own level, counted-never-named (the receipt's discipline)
+    'document_references(p_document uuid)',
+    'document_taint_under(p_document uuid, p_category hc.doc_category)',
+    'document_taint_walk_under(p_document uuid, p_category hc.doc_category)',
     'dom(p jsonb)',
     'draft_proposal(p_arrival uuid, p_circle uuid, p_subject uuid, p_kind hc.proposal_kind, p_payload jsonb)',
     'execute_wasnt_me(p_token text)',
@@ -100,8 +123,20 @@ select is((
     'log_sign_out()',
     'mark_unresolved_one(p_type hc.object_type, p_id uuid)',
     'mark_unresolved_subtree(p_type hc.object_type, p_id uuid)',
+    -- 7A M2: the one authorization complete_task and snooze_task share —
+    -- owner-only, running AS the calling definer (the 6A write-half
+    -- pattern), so it joins this inventory and NOT the definer set
+    'may_act_on_task(p_task_circle uuid, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_task uuid, p_owner uuid, p_actor uuid)',
+    -- 7A M4: a member's grant levels per subject per domain, hidden spelled
+    -- out — owner-only, running AS the calling definer
+    'member_levels(p_circle uuid, p_member uuid)',
+    'member_levels_frozen(p_circle uuid, p_member uuid)',
     'mint_step_up(p_operation text, p_target_ref text)',
     'note_suspicious_attempts(p_identifier text)',
+    -- 7A M4: one record object's label and the caller's level through the
+    -- object's OWN policy predicate — owner-only, shared by the two
+    -- counted-never-named reads
+    'object_label_at(p_ctx jsonb, p_type hc.object_type, p_id uuid)',
     'outbox_ack(p_outbox_ids uuid[])',
     'outbox_drain(p_limit integer)',
     'own_domain(p_type hc.object_type, p_category hc.doc_category, p_kind hc.timeline_kind, p_declared hc.domain)',
@@ -110,6 +145,10 @@ select is((
     'presence(p_subject uuid)',
     'product_state(p_arrival uuid)',
     'propagate_taint_growth(p_type hc.object_type, p_id uuid, p_delta hc.domain[])',
+    -- 7A M3: the move — category, taint (through the ONE shrinking path),
+    -- the index row, and the person's audience_changed entry with both
+    -- audiences by name, in one transaction. `reca` sorts before `rece`
+    'recategorize_document(p_document uuid, p_category hc.doc_category, p_expected_category hc.doc_category)',
     -- 6A M5: §4.2.4's receipt. proposal_commits holds NO member privilege
     -- and does not get a blanket one — the table IS the
     -- one-proposal-one-object claim, so the receipt gets ONE definer
@@ -131,6 +170,8 @@ select is((
     'revise_object(p_object_type hc.object_type, p_object_id uuid, p_patch jsonb)',
     'revoke_invite(p_invite_id uuid)',
     'revoke_sender(p_sender_id uuid)',
+    -- 7A M3: unshare in one action — the granter or a coordinator
+    'revoke_share(p_share_id uuid)',
     'run_taint_sweep()',
     'scan_cache_lookup(p_sha256 bytea)',
     'sender_lookalike(p_circle uuid, p_domain text)',
@@ -139,6 +180,13 @@ select is((
     'set_opening_context(p_circle uuid, p_context text[])',
     'set_slice(p_slice text)',
     'share_object(p_object_type hc.object_type, p_object_id uuid, p_member_id uuid, p_step_up_token text)',
+    -- 7A M4: the live shares on an object (a manage-holder's read; zero
+    -- rows otherwise) and the live shares a person holds (a coordinator's
+    -- or her own; counted-never-named)
+    'shares_for(p_object_type hc.object_type, p_object_id uuid)',
+    'shares_for_member(p_member uuid)',
+    -- 7A M2: moves the date FORWARD, counts, one revision row per snooze
+    'snooze_task(p_task uuid, p_due_on date, p_due_zone text)',
     'state_label(p hc.arrival_state)',
     'state_rank(p hc.arrival_state)',
     'sweep_provenance()',
@@ -157,6 +205,9 @@ select is((
     'tsv_tasks()',
     'tsv_timeline_events()',
     'uid()',
+    -- 7A M1: revokes EXACTLY the assignment's shares (SHR-02), a
+    -- coordinator's keep list by id, closes the written instruction
+    'unassign_task(p_task uuid, p_keep_share_ids uuid[])',
     'visible_at(p_ctx jsonb, p_subject uuid, p_taint hc.domain[], p_resolved boolean, p_object_type hc.object_type, p_object_id uuid, p_owner_member uuid)',
     'write_extractions(p_arrival uuid, p_lease uuid, p_facts jsonb)',
     'write_proposals(p_arrival uuid, p_lease uuid, p_proposals jsonb)',
@@ -175,12 +226,15 @@ select is((
   array['accept_invite','accept_sender','activate_forwarding',
         'adjudicate_freeze','advance_arrival','approve_proposal',
         'arrival_auth_detail','assert_claimed',
-        'assert_manual_flag','auth_throttle','cancel_arrival','check_quota',
+        'assert_manual_flag','assign_task','auth_throttle','cancel_arrival','check_quota',
+        'circle_people',
         'claim_security_actions','claim_stage','close_extraction_run',
-        'complete_security_action','consume_step_up','create_account',
+        'complete_security_action','complete_task','consume_step_up','create_account',
         'create_arrival',
         'create_circle','create_invite','create_manual_proposal',
-        'ctx','ctx_for','describe_invite','execute_wasnt_me','expire_held_mail',
+        'ctx','ctx_for','describe_invite','document_audience','document_audience_derived',
+        'document_references',
+        'execute_wasnt_me','expire_held_mail',
         'expire_scan_results','extractions_for',
         'finalize_extraction','finalize_interpretation','finalize_scan',
         'finalize_store',
@@ -190,18 +244,20 @@ select is((
         'mint_step_up','note_suspicious_attempts',
         'outbox_ack','outbox_drain','pending_security_actions','presence',
         'product_state',
-        'propagate_taint_growth','receipt_for','reclassify_taint',
+        'propagate_taint_growth','recategorize_document','receipt_for','reclassify_taint',
         'record_auth_failure',
         'record_auth_success','record_context_for','record_tombstone',
         'reject_proposal','remove_member',
         'request_freeze','resolve_duplicate','resolve_forwarding',
         'revise_object','revoke_invite',
-        'revoke_sender',
+        'revoke_sender','revoke_share',
         'run_taint_sweep','scan_cache_lookup','sender_lookalike',
         'sender_recognised','set_grant','set_opening_context','set_slice',
-        'share_object','sweep_provenance',
-        'sweeper_pass']::name[],
-  'SECURITY DEFINER is exactly the seventy-two boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+        'share_object','shares_for','shares_for_member','snooze_task','sweep_provenance',
+        'sweeper_pass',
+        -- 7A M1: the second assignment writer
+        'unassign_task']::name[],
+  'SECURITY DEFINER is exactly the eighty-four boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -355,6 +411,33 @@ with actual as (
   -- 6A M5: the receipt read — authenticated only, gated in-function on
   -- the arrival exactly as approve, reject and extractions_for are
   union all select 'receipt_for', 'authenticated'
+  -- 7A M1: the assignment writers — a member act, authorized in-function
+  -- (manage on the task; the assignee's own vectors). hc_pipeline is
+  -- deliberately absent: the AI has no path into assignment (PRD §6.5)
+  union all select 'assign_task', 'authenticated'
+  union all select 'unassign_task', 'authenticated'
+  -- 7A M2: the lifecycle writers — the holder's or a manage-holder's act,
+  -- authorized in-function through hc.may_act_on_task, which is owner-only
+  -- and appears in no grant row by design
+  union all select 'complete_task', 'authenticated'
+  union all select 'snooze_task', 'authenticated'
+  -- 7A M3: the audience preview and the move (manage on BOTH domains,
+  -- in-function) and unshare (the granter or a coordinator, in-function);
+  -- document_audience_rows and document_taint_under are owner-only and
+  -- appear in no grant row by design
+  union all select 'document_audience', 'authenticated'
+  -- ADR-0033 D19.3: the derived-object preview, the same gate in-function;
+  -- document_taint_walk_under is owner-only and appears in no grant row
+  union all select 'document_audience_derived', 'authenticated'
+  union all select 'recategorize_document', 'authenticated'
+  union all select 'revoke_share', 'authenticated'
+  -- 7A M4: the four definer READS — each filters per row through
+  -- hc.visible_at and authorizes in-function; member_levels and
+  -- object_label_at are owner-only and appear in no grant row by design
+  union all select 'circle_people', 'authenticated'
+  union all select 'document_references', 'authenticated'
+  union all select 'shares_for', 'authenticated'
+  union all select 'shares_for_member', 'authenticated'
   -- 5A M3: close_extraction_run is a trigger function — hc_internal-owned,
   -- granted to nobody; it appears in no grant row by design
 )
@@ -647,10 +730,14 @@ select is((
         'subjects_internal','subjects_internal_activate_forwarding',
         'subjects_internal_create',
         'tasks_internal','tasks_internal_revise','tasks_internal_write',
+        -- 7A M1: the written instruction's insert policy — the pair, no
+        -- source, taint = {schedule}; the claim machinery widened by
+        -- exactly that shape
+        'tasks_internal_write_instruction',
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated one hundred three');
+  'the hc_internal policy list is exactly the enumerated one hundred four');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:

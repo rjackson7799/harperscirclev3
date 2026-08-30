@@ -116,6 +116,13 @@ clean · upgrade leg green · vitest count recorded exactly · **the local brows
 gate with its new total stated exactly, never as "unchanged"** ·
 lint/typecheck/production build clean · gitleaks clean · coverage rows flipped.
 
+**The browser gate is unconditional for Tier 1** — it runs whether or not
+`app/`, `lib/` or `e2e/` moved. A migration that replaces a global trigger body
+or moves `supabase/` is person-facing through the approve path the gate's legs
+exercise, and a kickoff may not narrow this (ADR-0033 D19.14, R5/F-2 and R6's
+Q-G: the 7A kickoff had bound the gate to those three directories, and the
+ritual and the kickoff disagreed).
+
 ### The narrative
 
 The dispositions record holds the decision and its consequences. It does **not**
