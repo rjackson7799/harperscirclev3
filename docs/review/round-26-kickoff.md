@@ -9,10 +9,10 @@ dissent, not a finding. `pending` never counts as green.
 
 ## What you are reviewing
 
-- Branch `slice/7b-record-app`, head `716cd49` — evidence at that ONE head
-  in ADR-0035's evidence block and the checked-in PR body
-  (`docs/review/round-26-pr-body.md`); the PR is the one opened from this
-  branch, `[DO NOT MERGE without owner sign-off]` in its title.
+- Branch `slice/7b-record-app`, **PR #31**, evidence head `716cd49` — the
+  evidence at that ONE head in ADR-0035's evidence block and the checked-in
+  PR body (`docs/review/round-26-pr-body.md`); every commit past it is
+  docs-only, `[DO NOT MERGE without owner sign-off]` in the PR's title.
 - The record: `docs/adr/0035-7b-record-app-deltas.md` is the deltas doc AND
   the collapsed packet — commits red→green with signatures, ten decisions,
   seven pointed questions (Q-A…Q-G) with recommended answers. An unanswered
