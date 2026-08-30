@@ -316,7 +316,15 @@ test.describe('the 6B review legs', () => {
     // `waitForURL('**?decided=1')` matches the STALE url and returns
     // immediately, and the leg stops waiting for the navigation it exists to
     // check.)
-    test.setTimeout(240_000);
+    // 7B close-out: the same arithmetic, worse host. The fixture's pipeline
+    // drafts ~12 proposals; at the ~18 s per tap the memory-bounded host now
+    // delivers (two dev-mode loads each, the DB probe showing 12 pending on
+    // every reject arrival), the loop alone is ~220 s — the 240 s budget the
+    // 6B close-out set was 100% consumed twice at 18fbdba (245 s in gate run
+    // 3; 245 s alone in a targeted run at 396c44f, the product asserting
+    // nothing wrong either time). A timeout constant is the tier rule's own
+    // Tier-3 example; raised to the same margin the 6B raise bought.
+    test.setTimeout(420_000);
 
     const f = await theFounder(browser);
     const arrival = await readyArrival(f, 'rejectall');
