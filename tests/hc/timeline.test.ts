@@ -240,7 +240,33 @@ describe('B3 · the creation entry is the first thing on every thread (§4.4.4)'
     ]);
     expect(entries[0].occurred_at).toMatch(ISO);
     expect(entries[0].declared_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect((await tl.creationEntries(claimsOf('ruth'), circleId)).length).toBe(2);
+  });
+
+  it("…under the log's own rule: a declaration is a SUBJECT entry with no domain, visible at log on all five and hidden below (ADR-0009)", async () => {
+    // FOUND BY THE FIRST LIVE RUN. The declaration carries the subject it
+    // names, so access_log_select fails it closed to all five domains: Ruth
+    // (summary on health and schedule, hidden on the rest) does not see the
+    // first row of Nell's thread. Not a defect — the log's settled rule —
+    // but a bound the page must render honestly (no creation row for her,
+    // never a claim that there is none). One deliberate `log` on each of the
+    // other three makes it hers to see.
+    expect(await tl.creationEntries(claimsOf('ruth'), circleId)).toEqual([]);
+    await raw.query('set session_replication_role = replica');
+    const ruth = (
+      await raw.query('select id from public.circle_members where circle_id = $1 and account_id = $2', [
+        circleId,
+        people.ruth.id,
+      ])
+    ).rows[0].id;
+    await raw.query(
+      `insert into public.access_grants (circle_id, member_id, subject_id, domain, level, granted_by)
+       select $1, $2, $3, d, 'log'::hc.access_level, $4
+         from unnest(array['memories','documents','finances']::hc.domain[]) d`,
+      [circleId, ruth, nell, people.sarah.id],
+    );
+    await raw.query('set session_replication_role = default');
+    const now = await tl.creationEntries(claimsOf('ruth'), circleId);
+    expect(now.map((e) => e.subject_name)).toEqual(['Nell']);
   });
 });
 
