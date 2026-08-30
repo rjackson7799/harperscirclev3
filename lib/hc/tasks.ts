@@ -251,19 +251,65 @@ export async function taskById(
   });
 }
 
-/** The caller's own live member row in this circle — the `Mine` filter's
- *  key — or null for an outsider. `circle_members_select` is the gate. */
-export async function myMemberId(claims: RequestClaims, circleId: string): Promise<string | null> {
+export type Membership = { id: string; tier: 'coordinator' | 'family' | 'care_circle' };
+
+/** The caller's own live membership in this circle — the `Mine` filter's
+ *  key and the tier that picks the empty sentence (§4.5.5) — or null for
+ *  an outsider. `circle_members_select` is the gate. */
+export async function myMembership(claims: RequestClaims, circleId: string): Promise<Membership | null> {
   if (!UUID_RE.test(circleId)) return null;
   return withRequestRole('authenticated', claims, async (q) => {
-    const r = await q.query<{ id: string }>(
-      `select m.id from public.circle_members m
+    const r = await q.query<{ id: string; tier: string }>(
+      `select m.id, m.tier::text as tier from public.circle_members m
         where m.circle_id = $1 and m.account_id = (select auth.uid())
           and m.removed_at is null and m.subject_id is null
         limit 1`,
       [circleId],
     );
-    return r.rows[0]?.id ?? null;
+    const row = r.rows[0];
+    return row ? { id: row.id, tier: row.tier as Membership['tier'] } : null;
+  });
+}
+
+export async function myMemberId(claims: RequestClaims, circleId: string): Promise<string | null> {
+  return (await myMembership(claims, circleId))?.id ?? null;
+}
+
+/** The live coordinators' names — who a caregiver should expect tasks from
+ *  (§4.5.5: her first open is never blank). */
+export async function circleCoordinators(claims: RequestClaims, circleId: string): Promise<string[]> {
+  if (!UUID_RE.test(circleId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<{ name: string }>(
+      `select m.display_name_at_join as name from public.circle_members m
+        where m.circle_id = $1 and m.tier = 'coordinator'
+          and m.removed_at is null and m.subject_id is null
+        order by m.joined_at, m.id`,
+      [circleId],
+    );
+    return r.rows.map((row) => row.name);
+  });
+}
+
+export type SubjectRow = { id: string; first_name: string; timezone: string; seq: number };
+
+/** The circle's subjects in founding order, with their zones (a due date
+ *  is the SUBJECT's day, §13.6) — the subject filter and the snooze form. */
+export async function circleSubjects(claims: RequestClaims, circleId: string): Promise<SubjectRow[]> {
+  if (!UUID_RE.test(circleId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<{ id: string; first_name: string; timezone: string; seq: number }>(
+      `select s.id, s.first_name, s.timezone, sq.seq
+         from public.subjects s join (${SUBJECT_SEQ}) sq on sq.id = s.id
+        order by sq.seq`,
+      [circleId],
+    );
+    return r.rows.map((row) => ({
+      id: row.id,
+      first_name: row.first_name,
+      timezone: row.timezone,
+      seq: Number(row.seq),
+    }));
   });
 }
 

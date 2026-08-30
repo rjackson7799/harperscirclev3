@@ -226,7 +226,8 @@ describe('B2 · assign in two taps — the people offered are exactly those with
     expect(html).toContain(`name="member_id" value="${RUTH}"`);
     expect(html).toContain(`name="member_id" value="${MARISOL}"`);
     expect(html).not.toContain(`value="${OMAR}"`);
-    expect(html).toMatch(/Omar[^<]*can.t see Nell.s record/);
+    // Static markup escapes the apostrophe as &#x27;.
+    expect(html).toMatch(/Omar[^<]*can(?:'|&#x27;)t see Nell(?:'|&#x27;)s record/);
     // The assigner herself is a choice too (a coordinator may take it).
     expect(html).toContain(`name="member_id" value="${ME}"`);
     expect(html).toContain(`action="/${CIRCLE}/tasks/${TASK}/assign/submit"`);
@@ -275,7 +276,7 @@ describe('B2 · assign in two taps — the people offered are exactly those with
 describe('B2 · the crossing screen: the sentence and EXACTLY two paths (§4.5.6)', () => {
   it('names the person and where the task came from, offers path 1 EMPTY and path 2 behind the step-up bound to the pair', async () => {
     const html = await renderAssign({ member: MARISOL });
-    expect(html).toMatch(/Marisol can.t see this task\. It came from/);
+    expect(html).toMatch(/Marisol can(?:'|&#x27;)t see this task\. It came from/);
     expect(html).toContain('Discharge summary');
     // Path 1: the assigner types it; nothing is pre-filled.
     expect(html).toMatch(/<textarea[^>]*name="instruction"[^>]*><\/textarea>/);
@@ -309,7 +310,7 @@ describe('B2 · the crossing screen: the sentence and EXACTLY two paths (§4.5.6
 
   it('a person NOT offered gets the plain reason and no path', async () => {
     const html = await renderAssign({ member: OMAR });
-    expect(html).toMatch(/Omar can.t be handed this/);
+    expect(html).toMatch(/Omar can(?:'|&#x27;)t be handed this/);
     expect(html).not.toContain('name="instruction"');
     expect(html).not.toContain('name="target_ref"');
   });

@@ -69,6 +69,8 @@ vi.mock('@/lib/db/user', () => ({
 
 const CIRCLE = '11111111-0000-4000-8000-000000000001';
 const ARRIVAL = '55555555-0000-4000-8000-000000000005';
+const TASK = 'aaaaaaaa-0000-4000-8000-0000000000a1';
+const MEMBER = '44444444-0000-4000-8000-000000000005';
 const UNAVAILABLE = { kind: 'unavailable', why: 'AuthRetryableFetchError: fetch failed' } as const;
 const SIGNED_OUT = { kind: 'signed-out' } as const;
 
@@ -135,6 +137,19 @@ const GATED: Record<string, Entry> = {
     load: () => import('@/app/(app)/[circle]/upload/page'),
     props: { params: params({ circle: CIRCLE }) },
   },
+  // ---- 7B B2: the pages the pin demanded the moment they existed ---------
+  '/[circle]/tasks/[task]': {
+    kind: 'page',
+    next: `/${CIRCLE}/tasks/${TASK}`,
+    load: () => import('@/app/(app)/[circle]/tasks/[task]/page'),
+    props: { params: params({ circle: CIRCLE, task: TASK }), searchParams: sp() },
+  },
+  '/[circle]/tasks/[task]/assign': {
+    kind: 'page',
+    next: `/${CIRCLE}/tasks/${TASK}/assign?member=${MEMBER}`,
+    load: () => import('@/app/(app)/[circle]/tasks/[task]/assign/page'),
+    props: { params: params({ circle: CIRCLE, task: TASK }), searchParams: sp({ member: MEMBER }) },
+  },
   '/account': {
     kind: 'page',
     next: '/account',
@@ -198,6 +213,31 @@ const GATED: Record<string, Entry> = {
     load: () => import('@/app/account/activate-forwarding/submit/route'),
     params: {},
   },
+  // ---- 7B B2: the four task writes ---------------------------------------
+  '/[circle]/tasks/[task]/assign/submit': {
+    kind: 'route',
+    next: `/${CIRCLE}/tasks/${TASK}`,
+    load: () => import('@/app/(app)/[circle]/tasks/[task]/assign/submit/route'),
+    params: { circle: CIRCLE, task: TASK },
+  },
+  '/[circle]/tasks/[task]/unassign/submit': {
+    kind: 'route',
+    next: `/${CIRCLE}/tasks/${TASK}`,
+    load: () => import('@/app/(app)/[circle]/tasks/[task]/unassign/submit/route'),
+    params: { circle: CIRCLE, task: TASK },
+  },
+  '/[circle]/tasks/[task]/complete/submit': {
+    kind: 'route',
+    next: `/${CIRCLE}/tasks/${TASK}`,
+    load: () => import('@/app/(app)/[circle]/tasks/[task]/complete/submit/route'),
+    params: { circle: CIRCLE, task: TASK },
+  },
+  '/[circle]/tasks/[task]/snooze/submit': {
+    kind: 'route',
+    next: `/${CIRCLE}/tasks/${TASK}`,
+    load: () => import('@/app/(app)/[circle]/tasks/[task]/snooze/submit/route'),
+    params: { circle: CIRCLE, task: TASK },
+  },
   // ---- the three that already answer a status, and the two special routes --
   '/api/artifact/[id]': { kind: 'elsewhere', where: 'tests/routes/artifact.test.ts — 503 session_unavailable, never 404' },
   '/api/upload/token': { kind: 'elsewhere', where: 'tests/routes/upload.test.ts — 503, never 401' },
@@ -252,10 +292,10 @@ describe('GTE-01 · the gated set is PINNED to the filesystem both ways', () => 
     expect(stale, `entries with no gated file behind them: ${stale.join(', ')}`).toEqual([]);
   });
 
-  it('the D15 enumeration holds on disk: ten pages, five form routes + the one 7B added, one layout', () => {
+  it('the D15 enumeration holds on disk, plus what 7B added: ten + two pages, five + one + four form routes, one layout', () => {
     const kinds = Object.values(GATED).map((e) => e.kind);
-    expect(kinds.filter((k) => k === 'page').length).toBe(10);
-    expect(kinds.filter((k) => k === 'route').length).toBe(6);
+    expect(kinds.filter((k) => k === 'page').length).toBe(12);
+    expect(kinds.filter((k) => k === 'route').length).toBe(10);
     expect(kinds.filter((k) => k === 'layout').length).toBe(1);
   });
 });

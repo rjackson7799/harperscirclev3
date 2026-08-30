@@ -1044,3 +1044,68 @@ a:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* --------------------------------------------------------------------------
+   7B · the record surfaces (Tasks, Timeline). Composed from the slice-3
+   system: rows are cards, filters are pill links at the 44px touch floor
+   (§8.7), the subject label is a legend dot beside the NAME (never colour
+   alone), counts are plain prose (§8.6).
+   -------------------------------------------------------------------------- */
+
+.subject-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted-text);
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--white);
+  color: var(--ink);
+  font-size: 13px;
+  text-decoration: none;
+}
+.filter-chip[aria-current='true'] {
+  background: var(--green);
+  border-color: var(--green);
+  color: var(--white);
+}
+.filter-chip .filter-count {
+  margin-left: 6px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.record-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 12px;
+}
+.record-controls form {
+  margin: 0;
+}
+.record-section {
+  margin-top: 22px;
+}
+.record-section h2 {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.record-thread-day {
+  margin-top: 16px;
+}

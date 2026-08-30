@@ -72,6 +72,14 @@ vi.mock('@/lib/db/user', () => ({
   asUser: async () => ({ auth: { getClaims, getUser }, from }),
 }));
 
+// 7B B2: the Tasks page reads through lib/hc/tasks now, and its empty
+// sentence is per tier (§4.5.5) — "Nothing open." for a coordinator.
+const tasksHc = { listTasks: vi.fn(), myMembership: vi.fn(), circleSubjects: vi.fn(), circleCoordinators: vi.fn() };
+vi.mock('@/lib/hc/tasks', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/hc/tasks')>('@/lib/hc/tasks');
+  return { ...actual, ...tasksHc };
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   getClaims.mockResolvedValue({
@@ -139,14 +147,17 @@ describe('D8 · the migrated stubs render the system with the 2B copy intact', (
     expect(html).toContain('July 12');
   });
 
-  it('tasks, empty: PageHeader + EmptyState, the sentence unchanged', async () => {
-    from.mockImplementation((t: string) => tableReturning(t === 'subjects' ? SUBJECTS : []));
+  it('tasks, empty: PageHeader + EmptyState, the coordinator sentence', async () => {
+    tasksHc.listTasks.mockResolvedValue([]);
+    tasksHc.myMembership.mockResolvedValue({ id: 'm-1', tier: 'coordinator' });
+    tasksHc.circleSubjects.mockResolvedValue([]);
+    tasksHc.circleCoordinators.mockResolvedValue(['Sarah']);
     const { default: Page } = await import('@/app/(app)/[circle]/tasks/page');
     const html = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ circle: 'c-1' }) }),
     );
     expect(html).toMatch(/<h1[^>]*>Your tasks<\/h1>/);
     expect(html).toContain('empty-state');
-    expect(html).toContain('Nothing assigned to you right now.');
+    expect(html).toContain('Nothing open.');
   });
 });
