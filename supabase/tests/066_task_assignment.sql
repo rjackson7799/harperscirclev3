@@ -45,6 +45,12 @@
 --     live membership in this circle is checked before the freeze, so a
 --     stranger, a removed member and a nonexistent id are one shape
 --     (76-77).
+--   · The objected-to member is NOT a live coordinator during their own
+--     freeze: unassign_task and revoke_share refuse them (ADR-0033 D19.1,
+--     78-81).
+--   · "Context on the subject" is AT LEAST ONE DELIBERATE log-or-higher
+--     grant, asked of the assignee's ladder, not of the key's presence
+--     (ADR-0033 D19.7, 82-84).
 --   · A freeze refuses assignment with the NAMED freeze_active (PRD §7.5 —
 --     assignment is a widening act) and permits unassignment (it reduces
 --     reach: the remove_member precedent).
@@ -62,7 +68,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(77);
+select plan(84);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038/063 pattern).
@@ -1125,6 +1131,94 @@ select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
   current_setting('t.t_plain'), current_setting('t.m_ruth'))),
   'ERROR:P0001:freeze_active',
   'and a live member still meets the NAMED freeze_active — the order moved, the signature did not (51 again, with the membership check in front of it)');
+
+-- ----------------------------------------------------------------------------
+-- 78–81 · ADR-0033 cluster D (D19.1 — R1/F-5, R6's Q-F): the objected-to
+--         member is NOT "a live coordinator" during their own freeze. The
+--         open freeze from 76 is adjudicated UNRESOLVED by hand, naming
+--         Priya — a second live coordinator — as the objected-to member.
+--         t_c is Ruth's (72); the foreign bank-statement share is Lena's.
+-- ----------------------------------------------------------------------------
+set session_replication_role = replica;
+update public.freezes
+   set state = 'unresolved', adjudicated_at = now(),
+       adjudicated_by = current_setting('t.u_sarah')::uuid,
+       objected_to_member_id = (select m.id from public.circle_members m
+                                 where m.circle_id = current_setting('t.c1')::uuid
+                                   and m.account_id = current_setting('t.u_priya')::uuid)
+ where circle_id = current_setting('t.c1')::uuid and state = 'open';
+set session_replication_role = default;
+
+select is(pg_temp.call_as(current_setting('t.u_priya')::uuid, format(
+  $$ select hc.unassign_task(%L)::text $$, current_setting('t.t_c'))),
+  'ERROR:P0001:unassign_refused',
+  'the objected-to coordinator may NOT unassign under the finding that names her — "all interactive access suspended" (PRD §7.5) includes reduction; before, she walked through the live-coordinator door the freeze leaves open (R1/F-5, Q-F)');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (hc.unassign_task(%L)) ->> 'former_owner_name' $$, current_setting('t.t_c'))),
+  'Ruth',
+  'and a coordinator the finding does NOT name still reduces under it — the remove_member precedent stands for everyone but the objected-to member');
+
+select is(pg_temp.call_as(current_setting('t.u_priya')::uuid, format(
+  $$ select hc.revoke_share(%L)::text $$, current_setting('t.sh_foreign'))),
+  'ERROR:P0001:revoke_refused',
+  'the same door in revoke_share: the objected-to coordinator may not revoke a share under her own finding');
+
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select ((hc.revoke_share(%L)) ->> 'member_id' = %L)::text $$,
+  current_setting('t.sh_foreign'), current_setting('t.m_lena'))),
+  'true',
+  'and Sarah, not named, still may — revocation reduces reach and a freeze never blocks reduction for anyone the finding does not name');
+
+-- ----------------------------------------------------------------------------
+-- 82–84 · ADR-0033 cluster G (D19.7 — R3/F-1, R6/F-4): "context on the
+--         subject" is AT LEAST ONE DELIBERATE log-or-higher GRANT. Omar
+--         holds grants on MARCUS only; on Nell his ctx entry is the one
+--         grant_vectors manufactures for every live member — four empty
+--         arrays — and the old gate (is the key null?) never fired for him
+--         or for anyone. The freeze is removed first.
+-- ----------------------------------------------------------------------------
+delete from public.freezes where circle_id = current_setting('t.c1')::uuid;
+select pg_temp.mint(current_setting('t.u_sarah')::uuid, 'share_object',
+  'task:' || current_setting('t.t_plain') || '+document:' || current_setting('t.d_legal'), 'tok_g');
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select hc.assign_task(%L, %L, null, %L, %L)::text $$,
+  current_setting('t.t_plain'), current_setting('t.m_omar'), current_setting('t.d_legal'),
+  current_setting('t.tok_g'))),
+  'ERROR:P0001:assign_refused',
+  'PATH 2 to a member with NO deliberate grant on Nell REFUSES — §4.5.5 "not offered": before, rung 5 lifted the two named objects to view for a member hidden on every domain, the post-condition passed, and a person the PRD says is not offered held the task and the document (R3/F-1 probe A6, R6/F-4)');
+
+select is(pg_temp.scalar(format(
+  $$ select (select (s.consumed_at is null)::text from public.step_up_tokens s
+              where s.token_hash = extensions.digest(%L, 'sha256'))
+            || '/' ||
+            (select count(*)::text from public.object_shares sh
+              where sh.created_by_assignment_of = %L and sh.member_id = %L)
+            || '/' ||
+            (select (t.owner_member_id is null)::text from public.tasks t where t.id = %L) $$,
+  current_setting('t.tok_g'), current_setting('t.t_plain'), current_setting('t.m_omar'),
+  current_setting('t.t_plain')))
+  || '/' || pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select string_agg(e.v, ',' order by e.k)
+       from hc.circle_people(%L) p, jsonb_each_text(p.levels -> %L) e(k, v)
+      where p.member_id = %L $$,
+  current_setting('t.c1'), current_setting('t.s1'), current_setting('t.m_omar'))),
+  'true/0/true/hidden,hidden,hidden,hidden,hidden',
+  'nothing was written — the token stands, no share, nobody holds it — and the People list (hc.circle_people: hidden ×5 for Omar on Nell) and the database now AGREE, which is what ADR-0032 D1 promised');
+
+set session_replication_role = replica;
+insert into public.access_grants (circle_id, member_id, subject_id, domain, level, granted_by)
+values (current_setting('t.c1')::uuid, current_setting('t.m_omar')::uuid, current_setting('t.s1')::uuid,
+        'memories', 'log', current_setting('t.u_sarah')::uuid);
+set session_replication_role = default;
+select pg_temp.mint(current_setting('t.u_sarah')::uuid, 'share_object',
+  'task:' || current_setting('t.t_plain') || '+document:' || current_setting('t.d_legal'), 'tok_g2');
+select is(pg_temp.call_as(current_setting('t.u_sarah')::uuid, format(
+  $$ select (hc.assign_task(%L, %L, null, %L, %L)) ->> 'path' $$,
+  current_setting('t.t_plain'), current_setting('t.m_omar'), current_setting('t.d_legal'),
+  current_setting('t.tok_g2'))),
+  'share',
+  'ONE deliberate grant at log — memories, the lowest rung that is a grant — IS context: the same assignment now goes through by path 2. The share is still what shows him the task; the grant is what makes him someone the subject''s circle chose to tell anything at all');
 
 select * from finish();
 rollback;

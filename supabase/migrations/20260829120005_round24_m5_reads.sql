@@ -24,7 +24,8 @@
 -- for cluster B (`assign_task`, `unassign_task`, which clusters C and E then
 -- edit in place), two for cluster C (`complete_task`, `revoke_share`), two
 -- for cluster E (`snooze_task`, `recategorize_document`) — no schema change.
--- Ownership,
+-- Clusters D (D19.1: unassign_task, revoke_share) and G (D19.7: assign_task)
+-- edit those bodies in place, marked. Ownership,
 -- revocations and grants are RESTATED — a replaced body does not restate them
 -- for you, and 002's definer invariants read the catalog.
 -- ============================================================================
@@ -250,6 +251,7 @@ declare
   v_sh_doc uuid;
   v_revoked int := 0;
   v_closed int := 0;
+  v_sub jsonb;
   r record;
 begin
   if v_actor is null then
@@ -342,8 +344,19 @@ begin
 
   -- THE ASSIGNEE'S OWN VECTORS, never the caller's. No context on the
   -- subject at all ⇒ refused, no path offered (PRD §4.5.5).
+  -- ADR-0033 D19.7 (cluster G - R3/F-1, R6/F-4): "context on the subject"
+  -- is AT LEAST ONE DELIBERATE log-or-higher GRANT. The subject key that
+  -- grant_vectors manufactures for every live member (empty arrays when she
+  -- holds nothing) is not context, so the gate asks her LADDER, not the
+  -- key's presence: the old test was dead for every live member, and path 2
+  -- could hand a task and a document to someone hidden on every domain.
   v_ctx_a := hc.ctx_for(v_member.account_id);
-  if v_ctx_a -> 'subjects' -> v_task.subject_id::text is null then
+  v_sub := v_ctx_a -> 'subjects' -> v_task.subject_id::text;
+  if v_sub is null
+     or coalesce(jsonb_array_length(v_sub -> 'manage'), 0)
+        + coalesce(jsonb_array_length(v_sub -> 'view'), 0)
+        + coalesce(jsonb_array_length(v_sub -> 'summary'), 0)
+        + coalesce(jsonb_array_length(v_sub -> 'log'), 0) = 0 then
     raise exception 'assign_refused' using errcode = 'P0001';
   end if;
 
@@ -579,6 +592,18 @@ begin
   -- ADR-0033 cluster C (R2/F-4, R6/F-6): an instruction is never unassigned
   -- by itself - unassigning the ORIGINAL closes it (below). One shape.
   if v_task.written_from_task_id is not null then
+    raise exception 'unassign_refused' using errcode = 'P0001';
+  end if;
+  -- ADR-0033 D19.1 (cluster D - R1/F-5, R6 Q-F): the objected-to member is
+  -- NOT "a live coordinator" during their own freeze. "All interactive
+  -- access suspended" (PRD S7.5) includes reduction: the door that lets a
+  -- live coordinator reduce under a freeze is closed to the member the
+  -- finding names, on any open/unresolved freeze of this circle. One shape.
+  if exists (select 1 from public.freezes f
+             join public.circle_members m on m.id = f.objected_to_member_id
+             where f.circle_id = v_task.circle_id
+               and f.state in ('open', 'unresolved')
+               and m.account_id = v_actor) then
     raise exception 'unassign_refused' using errcode = 'P0001';
   end if;
 
@@ -925,6 +950,18 @@ begin
     raise exception 'revoke_refused' using errcode = 'P0001';
   end if;
 
+  -- ADR-0033 D19.1 (cluster D - R1/F-5, R6 Q-F): the objected-to member is
+  -- NOT "a live coordinator" during their own freeze. "All interactive
+  -- access suspended" (PRD S7.5) includes reduction: the door that lets a
+  -- live coordinator reduce under a freeze is closed to the member the
+  -- finding names, on any open/unresolved freeze of this circle. One shape.
+  if exists (select 1 from public.freezes f
+             join public.circle_members m on m.id = f.objected_to_member_id
+             where f.circle_id = v_share.circle_id
+               and f.state in ('open', 'unresolved')
+               and m.account_id = v_actor) then
+    raise exception 'revoke_refused' using errcode = 'P0001';
+  end if;
   -- The granter, or a live coordinator of the circle. No freeze check:
   -- revocation reduces reach.
   if v_share.granted_by <> v_actor
