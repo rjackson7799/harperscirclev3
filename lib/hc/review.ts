@@ -59,9 +59,11 @@ export type ReviewFact = {
  * The middle region's read (6B B7): `hc.extractions_for`, gated in-function
  * at the arrival's view×5 — the same one answer `arrivalForReview` resolved
  * — then filtered through `extractions_select`'s own predicate, so the
- * definer is never wider than the RLS it stands in for. Zero rows for the
- * unauthorized is the same shape as zero facts; the page only calls this
- * past `can_view`, so here zero means zero.
+ * definer is never wider than the RLS it stands in for. Below the gate the
+ * definer REFUSES by name (`extraction_refused`, 20260824120002) — not zero
+ * rows, as this comment claimed until tests/hc/review.test.ts drove it live
+ * (7B B1, OW-01). The page only calls this past `can_view`, so a throw here
+ * is a page defect, and the wrapper does not launder it into "no facts".
  */
 export async function extractionsFor(
   claims: RequestClaims,

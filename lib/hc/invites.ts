@@ -25,7 +25,9 @@ export async function createInvite(
   input: CreateInviteInput,
 ): Promise<{ invite_id: string; token: string; expires_at: string }> {
   return withRequestRole('authenticated', claims, async (q) => {
-    const r = await q.query('select hc.create_invite($1, $2, $3::hc.tier, $4::uuid[], $5) as result', [
+    const r = await q.query<{
+      result: { invite_id: string; token: string; expires_at: string };
+    }>('select hc.create_invite($1, $2, $3::hc.tier, $4::uuid[], $5) as result', [
       input.circle_id,
       input.invited_email,
       input.tier,
@@ -47,7 +49,9 @@ export async function acceptInvite(
   token: string,
 ): Promise<{ circle_id: string; tier: InvitableTier; member_id: string }> {
   return withRequestRole('authenticated', claims, async (q) => {
-    const r = await q.query('select hc.accept_invite($1) as result', [token]);
+    const r = await q.query<{
+      result: { circle_id: string; tier: InvitableTier; member_id: string };
+    }>('select hc.accept_invite($1) as result', [token]);
     return r.rows[0].result;
   });
 }

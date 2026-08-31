@@ -23,7 +23,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 // legs under the local-gate protocol.
 // ============================================================================
 
-const session = { liveSessionClaims: vi.fn() };
+const session = { readLiveSession: vi.fn() };
 vi.mock('@/lib/auth/session', () => session);
 vi.mock('@/lib/db/user', () => ({
   asUser: async () => ({ auth: { getClaims: vi.fn(), getUser: vi.fn() } }),
@@ -119,7 +119,7 @@ const PROPOSALS = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  session.liveSessionClaims.mockResolvedValue(CLAIMS);
+  session.readLiveSession.mockResolvedValue({ kind: 'signed-in', claims: CLAIMS });
   review.arrivalForReview.mockResolvedValue(ROW);
   review.extractionsFor.mockResolvedValue(FACTS);
   review.proposalsFor.mockResolvedValue(PROPOSALS);
@@ -323,23 +323,27 @@ describe('6B B8 · the receipt: what went where (§4.2.4)', () => {
     expect(review.receiptFor).not.toHaveBeenCalled();
   });
 
-  it('a task destination links to the LIVE tasks surface, by name', async () => {
+  // 7B B4: the first two links land on THE OBJECT, not the section
+  // (ADR-0023 R5/F-6; the plan's B4 row). object_id is what hc.receipt_for
+  // hands back exactly when `visible`.
+  it('a task destination links to THE TASK ITSELF, by name', async () => {
     review.proposalsFor.mockResolvedValueOnce(DECIDED_PROPOSALS);
     review.receiptFor.mockResolvedValueOnce(RECEIPT);
     const html = await renderArrival();
     expect(review.receiptFor).toHaveBeenCalledWith(CLAIMS, ARRIVAL);
     expect(html).toContain('Call the pharmacy');
-    expect(html).toContain(`href="/${CIRCLE}/tasks"`);
+    expect(html).toContain(`href="/${CIRCLE}/tasks/${RECEIPT[0].object_id}"`);
+    expect(html).not.toContain(`href="/${CIRCLE}/tasks"`);
   });
 
-  it('a timeline destination links to the LIVE timeline surface', async () => {
+  it('a timeline destination links to THE EVENT ITSELF', async () => {
     review.proposalsFor.mockResolvedValueOnce(DECIDED_PROPOSALS);
     review.receiptFor.mockResolvedValueOnce([
       { ...RECEIPT[0], object_type: 'timeline_event', label: 'Cardiology visit' },
     ]);
     const html = await renderArrival();
     expect(html).toContain('Cardiology visit');
-    expect(html).toContain(`href="/${CIRCLE}/timeline"`);
+    expect(html).toContain(`href="/${CIRCLE}/timeline/${RECEIPT[0].object_id}"`);
   });
 
   it('a document destination is NAMED and says plainly its surface opens later — never a dead link', async () => {

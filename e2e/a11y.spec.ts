@@ -1,5 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import pg from 'pg';
+import { randomUUID } from 'node:crypto';
 
 // ============================================================================
 // D7 · The browser a11y leg (Q3 ruling; ADR-0015 R6 local gate; A11Y-03/
@@ -366,6 +368,140 @@ test.describe('the D7 browser a11y leg', () => {
   }) => {
     await auditRoute(page, '/reset/confirm');
     await auditRoute(page, '/accept/not-a-real-token');
+  });
+
+  // ==========================================================================
+  // 7B B4 (slice-7 plan, G12 per increment; A11Y-09). The record surfaces are
+  // audited over LIVE rows — list and detail — because an empty list audits
+  // nothing: a task and an event are fixtured onto the a11y circle (the
+  // gate's standing replica-role concession), and the keyboard leg drives
+  // the filters and the assign flow end to end at 390px AND desktop.
+  // ==========================================================================
+  const DB_URL = 'postgresql://postgres:postgres@127.0.0.1:54342/postgres';
+  async function query(text: string, params: unknown[] = [], replica = false) {
+    const client = new pg.Client({ connectionString: DB_URL });
+    await client.connect();
+    try {
+      if (replica) await client.query('set session_replication_role = replica');
+      return await client.query(text, params);
+    } finally {
+      await client.end();
+    }
+  }
+
+  let recordMemo: Promise<{ taskId: string; eventId: string }> | null = null;
+  function ensureRecordRows(browser: Browser): Promise<{ taskId: string; eventId: string }> {
+    recordMemo ??= (async () => {
+      const circle = await ensureCircle(browser);
+      const account = await query('select id from public.accounts where email = $1', [EMAIL]);
+      const subject = await query('select id from public.subjects where circle_id = $1 order by created_at limit 1', [circle]);
+      const accountId = account.rows[0].id as string;
+      const subjectId = subject.rows[0].id as string;
+      const taskId = randomUUID();
+      const eventId = randomUUID();
+      await query(
+        `insert into public.tasks (id, circle_id, subject_id, title, due_on, due_zone, status,
+           approved_by, approved_at, approver_display_name, taint)
+         values ($1, $2, $3, 'Call the pharmacy about the refill', '2099-09-04', 'America/New_York', 'open',
+                 $4, now(), 'Avery', '{schedule}')`,
+        [taskId, circle, subjectId, accountId],
+        true,
+      );
+      await query(
+        `insert into public.timeline_events (id, circle_id, subject_id, kind, summary, occurred_on, occurred_zone,
+           approved_by, approved_at, approver_display_name, taint)
+         values ($1, $2, $3, 'care', 'Home health nurse started weekly visits', '2026-08-15', 'America/New_York',
+                 $4, now(), 'Avery', '{health}')`,
+        [eventId, circle, subjectId, accountId],
+        true,
+      );
+      return { taskId, eventId };
+    })();
+    return recordMemo;
+  }
+
+  test('the record surfaces: tasks and timeline, list and detail, audited at 390px', async ({
+    browser,
+    page,
+  }) => {
+    const circle = await ensureCircle(browser);
+    const { taskId, eventId } = await ensureRecordRows(browser);
+    await signIn(page);
+    for (const path of [
+      `/${circle}/tasks`,
+      `/${circle}/tasks/${taskId}`,
+      `/${circle}/timeline`,
+      `/${circle}/timeline/${eventId}`,
+    ]) {
+      await auditRoute(page, path);
+    }
+    // Positive control: the audits ran over real rows, not empty states.
+    await page.goto(`/${circle}/tasks`);
+    expect(await page.locator('main .choice-list a.row-title').count()).toBeGreaterThan(0);
+    // §8.7: the subject label carries the NAME, never colour alone.
+    await expect(page.locator('main .subject-label').first()).toContainText('Nell');
+  });
+
+  test('A11Y-09: the filters and the assign flow, keyboard-operable end to end, at 390px and desktop', async ({
+    browser,
+  }) => {
+    const circle = await ensureCircle(browser);
+    const { taskId } = await ensureRecordRows(browser);
+    const active = (page: Page) =>
+      page.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null;
+        if (!el) return null;
+        const s = getComputedStyle(el);
+        return {
+          tag: el.tagName.toLowerCase(),
+          className: el.className,
+          name: el.getAttribute('name') ?? '',
+          text: (el.textContent ?? '').trim(),
+          outline: `${s.outlineWidth} ${s.outlineStyle} ${s.outlineColor}`,
+        };
+      });
+    /** Tab until the active element satisfies `until`, or fail in its own words. */
+    async function tabTo(page: Page, until: (a: NonNullable<Awaited<ReturnType<typeof active>>>) => boolean, what: string) {
+      for (let hops = 0; hops < 40; hops++) {
+        await page.keyboard.press('Tab');
+        const a = await active(page);
+        if (a && until(a)) return a;
+      }
+      throw new Error(`Tab never reached ${what}`);
+    }
+
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 1280, height: 900 },
+    ]) {
+      const context = await browser.newContext({ viewport });
+      try {
+        const page = await context.newPage();
+        await signIn(page);
+
+        // The filters: Tab reaches a chip, the ring is visible, Enter follows it.
+        await page.goto(`/${circle}/tasks`);
+        const chip = await tabTo(page, (a) => a.className.includes('filter-chip') && a.text.startsWith('Mine'), 'the Mine chip');
+        expect(chip.outline).toBe('2px solid rgb(47, 91, 78)');
+        await page.keyboard.press('Enter');
+        await page.waitForURL('**filter=mine**');
+        await expect(page.locator('a.filter-chip[aria-current="true"]')).toContainText('Mine');
+
+        // The assign flow: Tab to the person, Space selects, Tab to the
+        // button, Enter hands it over — two taps, none of them a pointer.
+        await page.goto(`/${circle}/tasks/${taskId}`);
+        await tabTo(page, (a) => a.name === 'member_id', 'the first person offered');
+        await page.keyboard.press('Space');
+        expect(await page.locator('input[name="member_id"]:checked').count()).toBe(1);
+        const button = await tabTo(page, (a) => a.tag === 'button' && /Hand it over/.test(a.text), 'the hand-over button');
+        expect(button.outline).toBe('2px solid rgb(47, 91, 78)');
+        await page.keyboard.press('Enter');
+        await page.waitForURL('**?assigned=1');
+        await expect(page.locator('[role="status"]')).toContainText('Handed over');
+      } finally {
+        await context.close();
+      }
+    }
   });
 
   test('styleguide: contrast-on axe over every composition; reduced motion stills the pulse', async ({

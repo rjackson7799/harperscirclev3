@@ -72,6 +72,21 @@ vi.mock('@/lib/db/user', () => ({
   asUser: async () => ({ auth: { getClaims, getUser }, from }),
 }));
 
+// 7B B2/B3: the two record pages read through lib/hc/tasks and
+// lib/hc/timeline now (RLS-true joins), and the Tasks empty sentence is per
+// tier (§4.5.5) — "Nothing open." for a coordinator.
+const tasksHc = { listTasks: vi.fn(), myMembership: vi.fn(), circleSubjects: vi.fn(), circleCoordinators: vi.fn() };
+vi.mock('@/lib/hc/tasks', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/hc/tasks')>('@/lib/hc/tasks');
+  return { ...actual, ...tasksHc };
+});
+const tlHc = { listEvents: vi.fn(), creationEntries: vi.fn(), canAddByHand: vi.fn(), subjectDocuments: vi.fn() };
+vi.mock('@/lib/hc/timeline', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/hc/timeline')>('@/lib/hc/timeline');
+  return { ...actual, ...tlHc };
+});
+const NELL_ROW = { id: 's-1', first_name: 'Nell', timezone: 'America/New_York', seq: 1 };
+
 beforeEach(() => {
   vi.clearAllMocks();
   getClaims.mockResolvedValue({
@@ -80,54 +95,72 @@ beforeEach(() => {
   });
 });
 
-function tableReturning(rows: unknown[]) {
-  return {
-    select: () => ({
-      eq: () => ({
-        order: () => ({
-          limit: async () => ({ data: rows }),
-        }),
-      }),
-    }),
-  };
-}
+// 7B B1 (OW-20): the pins below used to hand the timeline `title,
+// happened_on` rows through a supabase-js chain — the columns the page asked
+// for and the table never had, which is exactly the defect OW-20 names. At
+// B2/B3 both pages read through lib/hc (mocked above), so the chain is gone.
 
 describe('D8 · the migrated stubs render the system with the 2B copy intact', () => {
   it('timeline, empty: PageHeader + EmptyState, the sentence unchanged', async () => {
-    from.mockReturnValue(tableReturning([]));
+    tasksHc.circleSubjects.mockResolvedValue([NELL_ROW]);
+    tlHc.listEvents.mockResolvedValue([]);
+    tlHc.creationEntries.mockResolvedValue([]);
+    tlHc.canAddByHand.mockResolvedValue(false);
     const { default: Page } = await import('@/app/(app)/[circle]/timeline/page');
     const html = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ circle: 'c-1' }) }),
     );
     expect(html).toMatch(/<h1[^>]*>Timeline<\/h1>/);
     expect(html).toContain('empty-state');
-    expect(html).toContain('Nothing on the timeline yet.');
+    // 7B B3: the 2B stub's placeholder ("Nothing on the timeline yet.")
+    // becomes PRD §4.4.4's own sentence.
+    expect(html).toContain('Nothing on the thread yet.');
     expect(html).not.toContain('auth-shell');
   });
 
-  it('timeline, with events: rows are cards with title · date', async () => {
-    from.mockReturnValue(
-      tableReturning([
-        { id: 'e-1', title: 'Nell moved to Denver General', happened_on: '2026-07-12' },
-      ]),
-    );
+  it('timeline, with events: rows are cards with summary · a human date (§8.6)', async () => {
+    tasksHc.circleSubjects.mockResolvedValue([NELL_ROW]);
+    tlHc.creationEntries.mockResolvedValue([]);
+    tlHc.canAddByHand.mockResolvedValue(false);
+    tlHc.listEvents.mockResolvedValue([
+      {
+        id: 'e-1',
+        circle_id: 'c-1',
+        subject_id: 's-1',
+        subject_name: 'Nell',
+        subject_seq: 1,
+        kind: 'care',
+        summary: 'Nell moved to Denver General',
+        when: { kind: 'date', on: '2026-07-12' },
+        sort_at: '2026-07-12T12:00:00.000Z',
+        episode: null,
+        source: { kind: 'none' },
+        extraction: null,
+        linked_documents: [],
+        approved_at: '2026-07-13T09:00:00Z',
+        approver_display_name: 'Sarah',
+      },
+    ]);
     const { default: Page } = await import('@/app/(app)/[circle]/timeline/page');
     const html = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ circle: 'c-1' }) }),
     );
     expect(html).toContain('card');
     expect(html).toContain('Nell moved to Denver General');
-    expect(html).toContain('2026-07-12');
+    expect(html).toContain('July 12');
   });
 
-  it('tasks, empty: PageHeader + EmptyState, the sentence unchanged', async () => {
-    from.mockReturnValue(tableReturning([]));
+  it('tasks, empty: PageHeader + EmptyState, the coordinator sentence', async () => {
+    tasksHc.listTasks.mockResolvedValue([]);
+    tasksHc.myMembership.mockResolvedValue({ id: 'm-1', tier: 'coordinator' });
+    tasksHc.circleSubjects.mockResolvedValue([]);
+    tasksHc.circleCoordinators.mockResolvedValue(['Sarah']);
     const { default: Page } = await import('@/app/(app)/[circle]/tasks/page');
     const html = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ circle: 'c-1' }) }),
     );
     expect(html).toMatch(/<h1[^>]*>Your tasks<\/h1>/);
     expect(html).toContain('empty-state');
-    expect(html).toContain('Nothing assigned to you right now.');
+    expect(html).toContain('Nothing open.');
   });
 });

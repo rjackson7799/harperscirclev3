@@ -15,7 +15,10 @@ export async function mintStepUp(
   targetRef: string | null,
 ): Promise<{ token: string; expires_at: string }> {
   return withRequestRole('authenticated', claims, async (q) => {
-    const r = await q.query('select hc.mint_step_up($1, $2) as result', [operation, targetRef]);
+    const r = await q.query<{ result: { token: string; expires_at: string } }>(
+      'select hc.mint_step_up($1, $2) as result',
+      [operation, targetRef],
+    );
     return r.rows[0].result;
   });
 }

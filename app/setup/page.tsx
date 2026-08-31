@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
 import { asUser } from '@/lib/db/user';
 import { resumeStep } from '@/lib/setup/steps';
-import { liveSessionClaims } from '@/lib/auth/session';
+import { gatePage } from '@/lib/auth/gate';
+import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 
 /**
  * The resume router (AC-AUTH-9): return sends the person to the furthest
@@ -12,9 +13,16 @@ import { liveSessionClaims } from '@/lib/auth/session';
  */
 export default async function SetupRouter() {
   const supabase = await asUser();
-  const claims = await liveSessionClaims(supabase);
-  const sub = claims?.sub;
-  if (!sub) redirect('/sign-in?next=%2Fsetup');
+  // 7B B1 (GTE-01): three outcomes; unavailable is a STATE, never a sign-in.
+  const gate = await gatePage(supabase, '/setup');
+  if (gate.kind === 'unavailable') {
+    return (
+      <main className="setup-card">
+        <SessionUnavailable next="/setup" />
+      </main>
+    );
+  }
+  const sub = gate.claims.sub;
 
   const { data: circles } = await supabase
     .from('circles')

@@ -1,5 +1,5 @@
 import { asUser } from '@/lib/db/user';
-import { liveSessionClaims } from '@/lib/auth/session';
+import { readLiveSession } from '@/lib/auth/session';
 import { logSignOut } from '@/lib/hc/accounts';
 import { redirect303 } from '@/lib/auth/http';
 
@@ -20,8 +20,13 @@ import { redirect303 } from '@/lib/auth/http';
 export async function POST(req: Request): Promise<Response> {
   const supabase = await asUser();
   try {
-    const claims = await liveSessionClaims(supabase);
-    if (claims?.sub) await logSignOut(claims);
+    // 7B B1 (GTE-01): the three outcomes, read. Sign-out is never refused, so
+    // `unavailable` skips the entry and SAYS so; the kill still proceeds.
+    const read = await readLiveSession(supabase);
+    if (read.kind === 'signed-in') await logSignOut(read.claims);
+    else if (read.kind === 'unavailable') {
+      console.error(`sign-out-everywhere: the session could not be READ — ${read.why}; the signed_out entry is skipped and the kill proceeds`);
+    }
   } catch (err) {
     console.error(`sign-out-everywhere: signed_out entry failed: ${(err as Error).message}`);
   }

@@ -37,6 +37,10 @@ const accountsHc = {
 };
 vi.mock('@/lib/hc/accounts', () => accountsHc);
 
+// 7B B1 · OW-18: the activation pass offered again rides lib/hc/ingest.
+const ingest = { activateForwardingAfterVerification: vi.fn() };
+vi.mock('@/lib/hc/ingest', () => ingest);
+
 const signOut = vi.fn(async () => ({ error: null }));
 const signInWithPassword = vi.fn();
 const getClaims = vi.fn();
@@ -106,6 +110,68 @@ describe('A7 · the account screen', () => {
     const { default: Page } = await import('@/app/account/page');
     const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
     expect(html).not.toContain('/verify-email/submit');
+  });
+
+  // 7B B1 · OW-18 (ADR-0028 D15 item 4): "Everything is on" is claimed only
+  // when the activation pass ran; when it did not, the page says what is on,
+  // what is not, and offers the pass again.
+  function verifiedAccount() {
+    from.mockReturnValue({
+      select: () => ({
+        eq: () => ({
+          single: async () => ({
+            data: { email: 'sarah@example.com', email_verified_at: '2026-08-18T00:00:00Z', display_name: 'Sarah' },
+          }),
+        }),
+      }),
+    });
+  }
+
+  it('?verified=1 alone still says everything is on', async () => {
+    verifiedAccount();
+    const { default: Page } = await import('@/app/account/page');
+    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({ verified: '1' }) }));
+    expect(html).toContain('Everything is on.');
+    expect(html).not.toContain('/account/activate-forwarding/submit');
+  });
+
+  it('?verified=1&forwarding=failed never says everything is on — it says what did not finish and offers the pass again', async () => {
+    verifiedAccount();
+    const { default: Page } = await import('@/app/account/page');
+    const html = renderToStaticMarkup(
+      await Page({ searchParams: Promise.resolve({ verified: '1', forwarding: 'failed' }) }),
+    );
+    expect(html).not.toContain('Everything is on.');
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('Your email is verified.');
+    expect(html).toContain("didn&#x27;t finish");
+    expect(html).toContain('/account/activate-forwarding/submit');
+  });
+
+  it('?forwarding=on confirms the pass ran', async () => {
+    verifiedAccount();
+    const { default: Page } = await import('@/app/account/page');
+    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({ forwarding: 'on' }) }));
+    expect(html).toContain('The forwarding addresses are on.');
+  });
+});
+
+describe('7B B1 · the activation pass, offered again (OW-18)', () => {
+  it('runs the idempotent pass on the live claims and lands on forwarding=on', async () => {
+    ingest.activateForwardingAfterVerification.mockResolvedValueOnce({ activated: 1 });
+    const { POST } = await import('@/app/account/activate-forwarding/submit/route');
+    const res = await POST(post('/account/activate-forwarding/submit'));
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toBe('/account?forwarding=on');
+    expect(ingest.activateForwardingAfterVerification).toHaveBeenCalledTimes(1);
+    expect(ingest.activateForwardingAfterVerification.mock.calls[0][0]).toMatchObject({ sub: 'u-1' });
+  });
+
+  it('a pass that fails lands back on the honest marker, never on "everything is on"', async () => {
+    ingest.activateForwardingAfterVerification.mockRejectedValueOnce(new Error('connect ETIMEDOUT'));
+    const { POST } = await import('@/app/account/activate-forwarding/submit/route');
+    const res = await POST(post('/account/activate-forwarding/submit'));
+    expect(res.headers.get('location')).toBe('/account?verified=1&forwarding=failed');
   });
 });
 

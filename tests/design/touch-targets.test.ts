@@ -61,7 +61,11 @@ describe('D7 · every control class carries the 44px floor', () => {
     const m = /input\[type='text'\][^{]*\{/.exec(sheet);
     expect(m, 'the shared input rule').not.toBeNull();
     const selectors = m![0];
-    for (const type of ['text', 'email', 'password', 'file']) {
+    // 7B B4: 'date' joined exactly the way 'file' did — the snooze and
+    // date-range controls are the first date inputs any surface ships, and
+    // the record-surfaces audit measured the native widget at 115×21 the
+    // first time anything looked.
+    for (const type of ['text', 'email', 'password', 'file', 'date']) {
       expect(selectors, `input[type='${type}'] carries the touch floor`).toContain(
         `input[type='${type}']`,
       );

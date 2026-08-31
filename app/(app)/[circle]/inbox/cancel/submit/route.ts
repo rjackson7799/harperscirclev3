@@ -1,5 +1,5 @@
 import { asUser } from '@/lib/db/user';
-import { liveSessionClaims } from '@/lib/auth/session';
+import { gateRoute } from '@/lib/auth/gate';
 import { formFields, redirect303 } from '@/lib/auth/http';
 import { cancelArrival } from '@/lib/hc/inbox';
 
@@ -14,10 +14,10 @@ export async function POST(
 ): Promise<Response> {
   const { circle } = await ctx.params;
   const supabase = await asUser();
-  const claims = await liveSessionClaims(supabase);
-  if (!claims?.sub) {
-    return redirect303(req, `/sign-in?next=${encodeURIComponent(`/${circle}/inbox`)}`);
-  }
+  // 7B B1 (GTE-01): signed-out 303s to sign-in; unavailable answers 503.
+  const gate = await gateRoute(supabase, req, `/${circle}/inbox`);
+  if (gate.kind === 'refused') return gate.response;
+  const claims = gate.claims;
 
   const fields = await formFields(req);
   if (!fields.arrival_id) return redirect303(req, `/${circle}/inbox?e=cancel`);

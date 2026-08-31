@@ -25,6 +25,11 @@ const RECOVERY_LEG = 'a11y.spec — "the recovery surfaces: reset/confirm, and a
 const SETUP_LEG = 'a11y.spec — "setup steps 1–4 and completion, audited; keyboard traversal of step 1"';
 const SHELL_LEG = 'a11y.spec — "the (app) shell routes and account, audited at 390px"';
 const INBOX_LEG = 'a11y.spec — "the Care Inbox family: inbox, senders, upload, invite/created, audited at 390px"';
+// 7B B4 (slice-7 plan, G12 per increment): the record surfaces' own audit
+// leg, over LIVE rows — list and detail, at 390px — plus the A11Y-09
+// keyboard leg for the filters and the assign flow.
+const RECORD_LEG =
+  'a11y.spec — "the record surfaces: tasks and timeline, list and detail, audited at 390px"; keyboard: "A11Y-09: the filters and the assign flow, keyboard-operable end to end, at 390px and desktop"';
 
 export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/': {
@@ -48,8 +53,13 @@ export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/styleguide': {
     leg: 'a11y.spec — "styleguide: contrast-on axe over every composition; reduced motion stills the pulse"',
   },
-  '/[circle]/timeline': { leg: SHELL_LEG },
-  '/[circle]/tasks': { leg: SHELL_LEG },
+  '/[circle]/timeline': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}` },
+  '/[circle]/tasks': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}` },
+  '/[circle]/tasks/[task]': { leg: RECORD_LEG },
+  '/[circle]/timeline/[event]': { leg: RECORD_LEG },
+  '/[circle]/tasks/[task]/assign': {
+    leg: 'record.spec — "cross-taint: not offered where she cannot see the subject; the sentence and exactly two paths where she can; path 1 readable and the original invisible FROM HER LIVE CONTEXT (TSK-01, AC-TASK-6)" drives it over a live crossing; axe runs inside that leg',
+  },
   '/[circle]/invite': { leg: SHELL_LEG },
   '/[circle]/invite/created': { leg: INBOX_LEG },
   '/[circle]/inbox': { leg: INBOX_LEG },

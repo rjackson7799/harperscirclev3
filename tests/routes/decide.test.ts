@@ -27,7 +27,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Test class: MOCKED ROUTE CONTRACT.
 // ============================================================================
 
-const session = { liveSessionClaims: vi.fn() };
+const session = { readLiveSession: vi.fn() };
 vi.mock('@/lib/auth/session', () => session);
 vi.mock('@/lib/db/user', () => ({
   asUser: async () => ({ auth: { getClaims: vi.fn(), getUser: vi.fn() } }),
@@ -46,7 +46,7 @@ const CLAIMS = { sub: '33333333-0000-4000-8000-000000000003', role: 'authenticat
 
 beforeEach(() => {
   vi.clearAllMocks();
-  session.liveSessionClaims.mockResolvedValue(CLAIMS);
+  session.readLiveSession.mockResolvedValue({ kind: 'signed-in', claims: CLAIMS });
   review.approveProposal.mockResolvedValue({ status: 'approved', arrival_state: 'filed' });
   review.rejectProposal.mockResolvedValue({ status: 'rejected', arrival_state: 'nothing_filed' });
 });
@@ -213,7 +213,7 @@ describe('6B B8 · refusals carry their NAMED markers; everything else is one sh
 
 describe('6B B8 · nothing malformed reaches the definer', () => {
   it('no session ⇒ sign-in with next back to this arrival, and nothing is decided', async () => {
-    session.liveSessionClaims.mockResolvedValueOnce(null);
+    session.readLiveSession.mockResolvedValueOnce({ kind: 'signed-out' });
     const res = await post({ proposal_id: PROPOSAL, p_expected_version: '3', decision: 'approve' });
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain('/sign-in');
