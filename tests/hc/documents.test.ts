@@ -62,6 +62,7 @@ const member: Record<Person, string> = { sarah: '', marisol: '', ruth: '', lena:
 let circleId: string;
 let nell: string;
 let arrival: string;
+let aInFlight: string; // an upload-channel arrival still in the pipeline
 let dMed: string; // the discharge summary — taint {health}, category medical
 let dMed2: string; // a SECOND health document — AC-DOC-5's control
 let tDerived: string; // a task derived from dMed — the count-never-name row
@@ -134,10 +135,12 @@ beforeAll(async () => {
   await grant('lena', 'schedule', 'log');
 
   arrival = randomUUID();
+  aInFlight = randomUUID();
   await raw.query(
     `insert into public.arrivals (id, circle_id, subject_id, channel, state, sender_display_name, sender_address)
-     values ($1, $2, $3, 'email', 'filed', 'Riverbend Cardiology', 'records@riverbend.example')`,
-    [arrival, circleId, nell],
+     values ($1, $3, $4, 'email', 'filed', 'Riverbend Cardiology', 'records@riverbend.example'),
+            ($2, $3, $4, 'upload', 'extracting', null, null)`,
+    [arrival, aInFlight, circleId, nell],
   );
   dMed = randomUUID();
   dMed2 = randomUUID();
@@ -378,6 +381,37 @@ describe('documentAudience / recategorizeDocument — an audience change, named 
     expect(personEntry!.detail.category_after).toBe('insurance');
     expect(personEntry!.detail.audience_before).toBeDefined();
     expect(personEntry!.detail.audience_after).toBeDefined();
+  });
+});
+
+describe('documentsFor / uploadArrivalsInFlight — the list at the caller own level (C1; the fixture state here is post-move: dMed is insurance/{finances})', () => {
+  it('the coordinator lists both documents; a subject filter holds; counts are the rows RLS returned', async () => {
+    const all = await docsLib.documentsFor(claimsOf('sarah'), circleId, {});
+    const titles = all.map((r) => r.title);
+    expect(titles).toContain('Discharge summary · Jul 12');
+    expect(titles).toContain('Cardiology consult · Aug 2');
+    expect(all.length).toBe(2);
+    const forNell = await docsLib.documentsFor(claimsOf('sarah'), circleId, { subject: nell });
+    expect(forNell.length).toBe(2);
+  });
+
+  it("the list is RLS-true: Ruth (health summary) sees only the health document from her live context; the moved one is gone", async () => {
+    const rows = await docsLib.documentsFor(claimsOf('ruth'), circleId, {});
+    expect(rows.map((r) => r.title)).toEqual(['Cardiology consult · Aug 2']);
+  });
+
+  it('a member with no domain reach lists NOTHING — and a malformed circle is [] before the DB', async () => {
+    expect(await docsLib.documentsFor(claimsOf('marisol'), circleId, {})).toEqual([]);
+    expect(await docsLib.documentsFor(claimsOf('sarah'), 'not-a-uuid', {})).toEqual([]);
+  });
+
+  it('an upload arrival still in the pipeline is an in-flight row with the §4.2.2 label from hc.product_state — the filed one is not', async () => {
+    const inFlight = await docsLib.uploadArrivalsInFlight(claimsOf('sarah'), circleId);
+    const row = inFlight.find((r) => r.arrival_id === aInFlight);
+    expect(row).toBeDefined();
+    expect(typeof row!.label).toBe('string');
+    expect(row!.label.length).toBeGreaterThan(0);
+    expect(inFlight.some((r) => r.arrival_id === arrival)).toBe(false);
   });
 });
 
