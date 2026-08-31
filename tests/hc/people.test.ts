@@ -40,16 +40,27 @@ const claimsOf = (p: Person) => ({
   email: `${p}.pp.${tag}@example.invalid`,
 });
 
+/** Claims a step-up mint accepts: a password factor within the last 300 s. */
+const freshClaimsOf = (p: Person) => ({
+  ...claimsOf(p),
+  aal: 'aal1',
+  amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }],
+});
+
 const member: Record<Person, string> = { sarah: '', ruth: '', marisol: '' };
 let circleId: string;
 let nell: string;
 let pendingInvite: string;
 let expiredInvite: string;
+let tOpen: string;
+let tDone: string;
+let stepUp: typeof import('@/lib/hc/step-up');
 
 beforeAll(async () => {
   peopleLib = await import('@/lib/hc/people');
   invitesLib = await import('@/lib/hc/invites');
   circleLib = await import('@/lib/hc/circle');
+  stepUp = await import('@/lib/hc/step-up');
   raw = new pg.Client({ connectionString: process.env.HC_DB_URL });
   await raw.connect();
   for (const p of Object.keys(people) as Person[]) {
@@ -99,8 +110,19 @@ beforeAll(async () => {
   }
   await raw.query(
     `insert into public.access_grants (circle_id, member_id, subject_id, domain, level, granted_by)
-     values ($1, $2, $3, 'health', 'summary', $4), ($1, $2, $3, 'schedule', 'summary', $4)`,
-    [circleId, member.ruth, nell, people.sarah.id],
+     values ($1, $2, $3, 'health', 'summary', $4), ($1, $2, $3, 'schedule', 'summary', $4),
+            ($1, $5, $3, 'schedule', 'summary', $4)`,
+    [circleId, member.ruth, nell, people.sarah.id, member.marisol],
+  );
+  tOpen = randomUUID();
+  tDone = randomUUID();
+  await raw.query(
+    `insert into public.tasks (id, circle_id, subject_id, title, due_on, due_zone, status,
+       owner_member_id, approved_by, approved_at, approver_display_name, taint)
+     values
+       ($1, $3, $4, 'Call the pharmacy', '2026-09-04', 'America/New_York', 'open', $5, $6, now(), 'Sarah', '{schedule}'),
+       ($2, $3, $4, 'Book the follow-up', null, null, 'done', $5, $6, now(), 'Sarah', '{schedule}')`,
+    [tOpen, tDone, circleId, nell, member.ruth, people.sarah.id],
   );
   await raw.query('set session_replication_role = default');
 
@@ -132,7 +154,10 @@ beforeAll(async () => {
 
   return async () => {
     await raw.query('set session_replication_role = replica');
-    for (const t of ['invites', 'access_grants', 'access_log', 'circle_members', 'subjects']) {
+    await raw.query(`delete from public.step_up_tokens where account_id = any($1)`, [
+      Object.values(people).map((p) => p.id),
+    ]);
+    for (const t of ['tasks', 'invites', 'access_grants', 'access_log', 'circle_members', 'subjects']) {
       await raw.query(`delete from public.${t} where circle_id = $1`, [circleId]);
     }
     await raw.query(`delete from public.circles where id = $1`, [circleId]);
@@ -180,6 +205,61 @@ describe('circlePeople — one read, each caller handed exactly her own reach', 
 
   it('a malformed circle is [] before the DB; a non-member is refused in ONE shape', async () => {
     expect(await peopleLib.circlePeople(claimsOf('sarah'), 'not-a-uuid')).toEqual([]);
+  });
+});
+
+describe('setGrant — lower without a token, raise only through the §5.7 step-up, the ceiling structural', () => {
+  it('a coordinator LOWERS without any token, and the log entry carries both levels', async () => {
+    await peopleLib.setGrant(claimsOf('sarah'), member.ruth, nell, 'health', 'log', null);
+    const logged = await raw.query(
+      `select level_before::text as b, level_after::text as a from public.access_log
+        where circle_id = $1 and event_type = 'grant_changed' and target_member_id = $2
+          and domain = 'health' order by seq desc limit 1`,
+      [circleId, member.ruth],
+    );
+    expect(logged.rows[0]).toEqual({ b: 'summary', a: 'log' });
+  });
+
+  it('a RAISE without a token is refused; with a fresh token bound to member:subject:domain it lands', async () => {
+    await expect(
+      peopleLib.setGrant(claimsOf('sarah'), member.ruth, nell, 'health', 'summary', null),
+    ).rejects.toThrow(/grant_refused/);
+    const minted = await stepUp.mintStepUp(
+      freshClaimsOf('sarah'),
+      'raise_grant',
+      `${member.ruth}:${nell}:health`,
+    );
+    await peopleLib.setGrant(claimsOf('sarah'), member.ruth, nell, 'health', 'summary', minted.token);
+    const rows = await peopleLib.circlePeople(claimsOf('sarah'), circleId);
+    const ruth = rows.find((r) => r.kind === 'member' && r.display_name === 'Ruth');
+    expect(ruth!.levels?.[nell]?.health).toBe('summary');
+  });
+
+  it('the care-circle ceiling holds in the DATABASE: a raise above it is refused even with a valid token', async () => {
+    const minted = await stepUp.mintStepUp(
+      freshClaimsOf('sarah'),
+      'raise_grant',
+      `${member.marisol}:${nell}:schedule`,
+    );
+    await expect(
+      peopleLib.setGrant(claimsOf('sarah'), member.marisol, nell, 'schedule', 'view', minted.token),
+    ).rejects.toThrow(/grant_refused/);
+  });
+});
+
+describe('sharesForMember / contributionFor — the person page reads', () => {
+  it('sharesForMember answers (empty here; 069 is the shape authority)', async () => {
+    expect(await peopleLib.sharesForMember(claimsOf('sarah'), member.ruth)).toEqual([]);
+  });
+
+  it('contribution is plain counts and lists: owns now, completed, last active — and never-active is null, not a fake date', async () => {
+    const ruth = await peopleLib.contributionFor(claimsOf('sarah'), circleId, member.ruth);
+    expect(ruth.owns_now.map((t) => t.title)).toEqual(['Call the pharmacy']);
+    expect(ruth.completed_count).toBe(1);
+    expect(ruth.last_active).toBeNull();
+
+    const sarah = await peopleLib.contributionFor(claimsOf('sarah'), circleId, member.sarah);
+    expect(typeof sarah.last_active).toBe('string');
   });
 });
 
