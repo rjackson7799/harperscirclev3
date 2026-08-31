@@ -116,6 +116,30 @@ Inbox family and recovery-surfaces audits — the R5/F-6 pinned list's
 demand), the ingestion leg and the extraction leg stay the regression
 instrument, unchanged.
 
+**Slice 7 (7B B4) adds the RECORD legs** — `e2e/record.spec.ts`, five
+legs (tasks · cross-taint · complete/snooze · unassign · timeline) plus
+the record-surfaces and A11Y-09 audits in `a11y.spec.ts` — taking the
+gate from 38 to **45 legs**. Per-leg budgets are IN-FILE for
+provisioning-heavy specs: `record.spec.ts` 300 s;
+`review.spec.ts`'s reject-all 420 s (the T3 budget commit `716cd49`).
+
+**Slice 7 (7C C6) adds the DOCUMENTS and PEOPLE legs** —
+`e2e/documents.spec.ts`, five legs (the list · the detail at summary AND
+view with the machine-read sibling · re-categorise with the audience
+named first · share/unshare from the grantee's LIVE context · A11Y-11),
+and `e2e/people.spec.ts`, seven legs (the list with the plain line
+before any matrix · adjust with the raise through step-up and the care
+ceiling · the nav composition per tier · **revoke with the
+pre-revocation URL** (AC-PPL-4's document row: fetched before, refused
+after, from the revoked member's own context) · the log rendered and
+printed · the subject's page · A11Y-10) — taking the gate from 45 to
+**57 legs**. Both specs budget 420 s per leg in-file (each pays a real
+founder, invited members and one real pipeline drive). Both drive ONE
+real image upload through the workers so the viewer and the
+pre-revocation URL serve bytes a worker actually promoted; the FILING of
+those documents is the standing fixture concession — the
+drafting/approval dance belongs to the review legs.
+
 **The targeted run (D8 condition 5).** After a repair to the suite, the
 two owed legs are executed BY TITLE and recorded as a **targeted run,
 never as a gate result**:

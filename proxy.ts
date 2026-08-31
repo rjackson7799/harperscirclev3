@@ -58,6 +58,13 @@ export async function proxy(request: NextRequest) {
     return sessionUnavailablePage(here);
   }
 
+  // 7C C4 (PPL-03; §4.6.3's cached-responses channel): every user-scoped
+  // answer this proxy passes through is `private, no-store` — nothing
+  // personal is cacheable at a shared layer, and a revoked member's cached
+  // page must not outlive the revocation. Static assets never match this
+  // proxy (the matcher below); the 503 branch and the artifact route each
+  // say the same thing for themselves.
+  response.headers.set('cache-control', 'private, no-store');
   return response;
 }
 
