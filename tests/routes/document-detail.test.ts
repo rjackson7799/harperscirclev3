@@ -207,10 +207,12 @@ describe('the detail at view — the pages through the ONE byte path, the siblin
     }
   });
 
-  it('the machine-read sibling is reachable per page and carries §6.9 label EXACTLY', async () => {
+  it('the machine-read sibling is reachable per page through the ONE shared control, §6.9 label EXACTLY — a toggle that classifies, never a dead link', async () => {
     const html = await renderPage();
-    expect(html).toContain(`href="/api/artifact/${ARRIVAL}?page=1&amp;text=1"`);
-    expect(html).toContain('machine-read — may contain errors');
+    const toggles = html.match(/machine-read — may contain errors/g) ?? [];
+    expect(toggles.length).toBe(2); // one per page
+    expect(html).toContain('review-machine-text-toggle');
+    expect(html).not.toContain('text=1'); // no raw navigation to the sibling
   });
 
   it('the facts render with the citation page and the risk_class WORD', async () => {

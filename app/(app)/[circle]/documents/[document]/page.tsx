@@ -20,6 +20,7 @@ import {
 } from '@/lib/hc/documents';
 import { readableRendition, type ReadableRendition } from '@/lib/hc/artifacts';
 import { extractionsFor, type ReviewFact } from '@/lib/hc/review';
+import { MachineReadText } from '@/components/review/MachineReadText';
 import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -256,12 +257,11 @@ export default async function DocumentPage({
                       alt={`Page ${n} of ${doc!.title}`}
                       loading={n > 1 ? 'lazy' : undefined}
                     />
-                    <p className="meta">
-                      Page {n} ·{' '}
-                      <a href={`/api/artifact/${doc!.artifact_arrival_id}?page=${n}&text=1`}>
-                        machine-read — may contain errors
-                      </a>
-                    </p>
+                    <p className="meta">Page {n}</p>
+                    {/* ONE control, shared with the review screen: the sibling
+                        is fetched through the fence on demand, and a page with
+                        no sibling SAYS so — never a dead link (A11Y-11). */}
+                    <MachineReadText arrivalId={doc!.artifact_arrival_id} page={n} />
                   </li>
                 ))}
               </ol>
