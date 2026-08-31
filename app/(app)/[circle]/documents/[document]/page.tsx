@@ -145,13 +145,16 @@ export default async function DocumentPage({
 
   return withPageBudget(
     async (budget) => {
+      // THE ROW DECIDES FIRST (gate run r3's product catch): for a hidden
+      // document, hc.document_references RAISES references_refused — read
+      // in parallel with the row, that refusal landed in the catch-all and
+      // a member who may not see the document got a 200 "couldn't load"
+      // instead of the one 404. The row read runs alone; null is
+      // notFound(); only a document the caller can see reaches the
+      // references read, where a refusal can no longer occur.
       let doc: DocumentDetail | null;
-      let refs: ReferenceRow[];
       try {
-        [doc, refs] = await Promise.all([
-          budget.race(documentById(claims, circle, documentId), 'documentById'),
-          budget.race(documentReferences(claims, documentId), 'documentReferences'),
-        ]);
+        doc = await budget.race(documentById(claims, circle, documentId), 'documentById');
       } catch (err) {
         if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
         console.error(`document: read failed: ${(err as Error).message}`);
@@ -159,6 +162,15 @@ export default async function DocumentPage({
       }
       // Nonexistent, foreign, deleted and hidden: ONE shape.
       if (!doc) notFound();
+
+      let refs: ReferenceRow[];
+      try {
+        refs = await budget.race(documentReferences(claims, documentId), 'documentReferences');
+      } catch (err) {
+        if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
+        console.error(`document: references read failed: ${(err as Error).message}`);
+        return loadFailed(next, false);
+      }
 
       // The view side, only past the one resolution — never below it.
       let rendition: ReadableRendition | null = null;

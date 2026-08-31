@@ -271,6 +271,10 @@ describe('the grant write', () => {
     );
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain('e=step-up');
+    // three params, never a colon-joined triple — safeNext refuses ':'
+    expect(res.headers.get('location')).toContain(`rs=${NELL}`);
+    expect(res.headers.get('location')).toContain('rd=health');
+    expect(res.headers.get('location')).toContain('rl=view');
     expect(peopleHc.setGrant).not.toHaveBeenCalled();
   });
 

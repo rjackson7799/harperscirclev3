@@ -132,8 +132,18 @@ export default async function MemberPage({
       const notice = noticeFor(sp);
       const removing = sp.remove === '1';
       const stepUp = (await cookies()).get(STEP_UP_COOKIE)?.value ?? null;
-      const raise = typeof sp.raise === 'string' ? sp.raise : null;
-      const [raiseSubject, raiseDomain, raiseLevel] = raise ? raise.split(':') : [null, null, null];
+      // THREE params, never a colon-joined triple: safeNext refuses any ':'
+      // in a next as scheme-shaped, so the step-up round-trip dropped the
+      // raise entirely (gate r3: the founder landed on /account).
+      const raiseSubject = typeof sp.rs === 'string' ? sp.rs : null;
+      const raiseDomain =
+        typeof sp.rd === 'string' && DOMAINS.includes(sp.rd as Domain) ? sp.rd : null;
+      const raiseLevel =
+        typeof sp.rl === 'string' && (LEVELS as readonly string[]).includes(sp.rl) ? sp.rl : null;
+      const raise =
+        raiseSubject && raiseDomain && raiseLevel
+          ? `rs=${raiseSubject}&rd=${raiseDomain}&rl=${raiseLevel}`
+          : null;
 
       // The care-circle ceiling, from the ONE tiers module: only its
       // domains are offered, and nothing above its level.
@@ -185,7 +195,7 @@ export default async function MemberPage({
                   <p className="field-help">Raising access needs a fresh confirmation that it&apos;s you.</p>
                   <input type="hidden" name="operation" value="raise_grant" />
                   <input type="hidden" name="target_ref" value={`${memberId}:${raiseSubject}:${raiseDomain}`} />
-                  <input type="hidden" name="next" value={`${next}?raise=${raise}`} />
+                  <input type="hidden" name="next" value={`${next}?${raise}`} />
                   <Field label="Your password">
                     <Input type="password" name="password" required />
                   </Field>

@@ -69,7 +69,9 @@ export async function POST(
       const raising = LEVEL_RANK[level] > LEVEL_RANK[current];
       const token = raising ? cookieValue(req, STEP_UP_COOKIE) : null;
       if (raising && !token) {
-        return redirect303(req, `${back}?raise=${subjectId}:${domain}:${level}&e=step-up`);
+        // Three params — a colon-joined triple in the next is refused by
+        // safeNext as scheme-shaped (gate r3).
+        return redirect303(req, `${back}?rs=${subjectId}&rd=${domain}&rl=${level}&e=step-up`);
       }
 
       try {

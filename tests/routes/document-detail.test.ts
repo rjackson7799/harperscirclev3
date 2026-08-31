@@ -178,6 +178,12 @@ describe('the detail at summary — a list of sentences, not a viewer (settled i
     docsHc.documentById.mockResolvedValue(null);
     await expect(renderPage()).rejects.toThrow('NEXT_NOT_FOUND');
   });
+
+  it('a HIDDEN document is the SAME 404 even while the references read would refuse — the row decides first (gate r3)', async () => {
+    docsHc.documentById.mockResolvedValue(null);
+    docsHc.documentReferences.mockRejectedValue(new Error('references_refused'));
+    await expect(renderPage()).rejects.toThrow('NEXT_NOT_FOUND');
+  });
 });
 
 describe('the detail at view — the pages through the ONE byte path, the sibling labelled with §6.9 exact words', () => {

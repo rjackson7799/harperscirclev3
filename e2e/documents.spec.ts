@@ -48,6 +48,22 @@ const MEMBERS = {
 type MemberKey = keyof typeof MEMBERS;
 const MACHINE_READ_LABEL = 'machine-read — may contain errors';
 
+// The §8.7 faint/label redundancy exemption — a11y.spec's OWN named list,
+// replicated verbatim (gate r3: an axe call without it flags the shell's
+// deliberately-faint labels on every page). G12 re-audits each use.
+const CONTRAST_EXEMPT = ['.section-label', '.micro-meta'];
+async function axeViolations(page: Page) {
+  let builder = new AxeBuilder({ page }).withTags([
+    'wcag2a',
+    'wcag2aa',
+    'wcag21a',
+    'wcag21aa',
+    'wcag22aa',
+  ]);
+  for (const selector of CONTRAST_EXEMPT) builder = builder.exclude(selector);
+  return (await builder.analyze()).violations;
+}
+
 async function query(text: string, params: unknown[] = []) {
   const client = new pg.Client({ connectionString: DB_URL });
   await client.connect();
@@ -451,10 +467,7 @@ test.describe('the 7C documents legs', () => {
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
       );
       expect(overflow).toBe(false);
-      const results = await new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
-        .analyze();
-      expect(results.violations).toEqual([]);
+      expect(await axeViolations(page)).toEqual([]);
     } finally {
       await context.close();
     }

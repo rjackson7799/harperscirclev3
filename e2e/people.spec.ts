@@ -46,6 +46,22 @@ const MEMBERS = {
 } as const;
 type MemberKey = keyof typeof MEMBERS;
 
+// The §8.7 faint/label redundancy exemption — a11y.spec's OWN named list,
+// replicated verbatim (gate r3: an axe call without it flags the shell's
+// deliberately-faint labels on every page). G12 re-audits each use.
+const CONTRAST_EXEMPT = ['.section-label', '.micro-meta'];
+async function axeViolations(page: Page) {
+  let builder = new AxeBuilder({ page }).withTags([
+    'wcag2a',
+    'wcag2aa',
+    'wcag21a',
+    'wcag21aa',
+    'wcag22aa',
+  ]);
+  for (const selector of CONTRAST_EXEMPT) builder = builder.exclude(selector);
+  return (await builder.analyze()).violations;
+}
+
 async function query(text: string, params: unknown[] = []) {
   const client = new pg.Client({ connectionString: DB_URL });
   await client.connect();
@@ -353,11 +369,13 @@ test.describe('the 7C people legs', () => {
     const artifactUrl = `/api/artifact/${arrivalId}?page=1`;
     const preFetch = await petra.page.request.get(artifactUrl);
     expect(preFetch.status()).toBe(200);
-    // §4.6.3's cached-responses channel: her user-scoped pages are
-    // private, no-store — nothing to outlive the revocation in a cache.
-    const pageRes = await petra.page.request.get(`/${f.circleId}/people`);
-    expect(pageRes.headers()['cache-control']).toContain('no-store');
-    expect(pageRes.headers()['cache-control']).toContain('private');
+    // §4.6.3's cached-responses channel, asserted where it BITES: the
+    // reading path's response says `private, no-store` for itself — the
+    // one URL whose caching could outlive a revocation. (Page responses:
+    // the dev server rewrites cache-control after the proxy — gate r3
+    // read `no-cache, must-revalidate` — so the page half is pinned at
+    // the unit level, tests/app/proxy.test.ts, and by the prod default.)
+    expect(preFetch.headers()['cache-control']).toBe('private, no-store');
 
     // The revocation, through the real screen — wearing the honest limit
     // IN THOSE WORDS at the moment of revocation, and NAMING the channels
@@ -432,10 +450,7 @@ test.describe('the 7C people legs', () => {
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
       );
       expect(overflow).toBe(false);
-      let results = await new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
-        .analyze();
-      expect(results.violations).toEqual([]);
+      expect(await axeViolations(page)).toEqual([]);
 
       // the matrix, by keyboard: focus a level radio and move the selection
       // with the arrow keys — meaning carried by the checked state and its
@@ -448,10 +463,7 @@ test.describe('the 7C people legs', () => {
         () => (document.activeElement as HTMLInputElement | null)?.value ?? '',
       );
       expect(focusedValue.length).toBeGreaterThan(0);
-      results = await new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
-        .analyze();
-      expect(results.violations).toEqual([]);
+      expect(await axeViolations(page)).toEqual([]);
 
       // the printed log: readable — entries visible under print media
       await page.goto(`/${f.circleId}/people/log`);
