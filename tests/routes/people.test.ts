@@ -35,7 +35,7 @@ vi.mock('@/lib/db/user', () => ({
 
 const peopleHc = {
   circlePeople: vi.fn(),
-  resendInvite: vi.fn(),
+  retireInvite: vi.fn(),
 };
 vi.mock('@/lib/hc/people', async () => {
   const actual = await vi.importActual<typeof import('@/lib/hc/people')>('@/lib/hc/people');

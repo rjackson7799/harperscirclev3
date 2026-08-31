@@ -38,13 +38,15 @@ async function tierLevels(tier: string): Promise<Record<string, string>> {
 }
 
 describe('the vocabulary is the enum, plus hidden as absence', () => {
-  it('LEVEL_WORD and LEVEL_PHRASE carry exactly hc.access_level values', async () => {
+  it("LEVEL_WORD and LEVEL_PHRASE carry exactly hc.access_level's values MINUS hidden — hidden has NO word by design (nothing implies the domain exists), so an unworded level can never leak into a sentence", async () => {
     const r = await raw.query(
       `select enum_range(null::hc.access_level)::text[] as levels`,
     );
     const enumLevels = (r.rows[0].levels as string[]).sort();
-    expect(Object.keys(phrases.LEVEL_WORD).sort()).toEqual(enumLevels);
-    expect(Object.keys(phrases.LEVEL_PHRASE).sort()).toEqual(enumLevels);
+    expect(enumLevels).toContain('hidden');
+    const worded = enumLevels.filter((l) => l !== 'hidden');
+    expect(Object.keys(phrases.LEVEL_WORD).sort()).toEqual(worded);
+    expect(Object.keys(phrases.LEVEL_PHRASE).sort()).toEqual(worded);
   });
 
   it('DOMAIN_LABEL carries exactly hc.domain values', async () => {

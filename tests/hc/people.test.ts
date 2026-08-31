@@ -122,9 +122,12 @@ beforeAll(async () => {
     })
   ).invite_id;
   await raw.query('set session_replication_role = replica');
-  await raw.query(`update public.invites set expires_at = now() - interval '1 day' where id = $1`, [
-    expiredInvite,
-  ]);
+  await raw.query(
+    `update public.invites
+        set created_at = now() - interval '8 days', expires_at = now() - interval '1 day'
+      where id = $1`,
+    [expiredInvite],
+  );
   await raw.query('set session_replication_role = default');
 
   return async () => {
@@ -180,28 +183,22 @@ describe('circlePeople — one read, each caller handed exactly her own reach', 
   });
 });
 
-describe('resendInvite — a NEW invite, never a resurrected token', () => {
-  it('revokes the expired one and mints a fresh pending invite for the same person, same tier, same subjects', async () => {
-    const r = await peopleLib.resendInvite(claimsOf('sarah'), expiredInvite);
-    expect(r.invite_id).not.toBe(expiredInvite);
+describe('retireInvite — the old token dies; the fresh invite rides the ONE create path', () => {
+  it('revokes the expired invite (the revokeInvite path finally has a caller) and hands back the prefill — address and tier', async () => {
+    const r = await peopleLib.retireInvite(claimsOf('sarah'), circleId, expiredInvite);
+    expect(r.invited_email).toBe(`helper.pp.${tag}@example.invalid`);
+    expect(r.tier).toBe('care_circle');
 
     const old = await raw.query(`select revoked_at from public.invites where id = $1`, [
       expiredInvite,
     ]);
     expect(old.rows[0].revoked_at).not.toBeNull();
-    const fresh = await raw.query(
-      `select invited_email::text as email, tier::text as tier, subject_ids, expires_at > now() as live
-         from public.invites where id = $1`,
-      [r.invite_id],
-    );
-    expect(fresh.rows[0].email).toBe(`helper.pp.${tag}@example.invalid`);
-    expect(fresh.rows[0].tier).toBe('care_circle');
-    expect(fresh.rows[0].subject_ids).toEqual([nell]);
-    expect(fresh.rows[0].live).toBe(true);
   });
 
-  it('a non-coordinator is refused by the definers themselves, and nothing moves', async () => {
-    await expect(peopleLib.resendInvite(claimsOf('ruth'), pendingInvite)).rejects.toThrow();
+  it("a non-coordinator sees no invite rows at all — 'not yours' and 'not there' are one shape, and nothing moves", async () => {
+    await expect(
+      peopleLib.retireInvite(claimsOf('ruth'), circleId, pendingInvite),
+    ).rejects.toThrow(/invite_refused/);
     const still = await raw.query(`select revoked_at from public.invites where id = $1`, [
       pendingInvite,
     ]);

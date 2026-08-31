@@ -72,21 +72,26 @@ describe('D3 · TopBar — design_spec §4 order, honest slots', () => {
 });
 
 describe('D3 · LeftNav — manifest-driven, live routes only', () => {
-  it('renders exactly the live routes: Tasks, Invite, Timeline (THE RECORD), Account (utility)', async () => {
+  it('renders exactly the live routes: Tasks, Invite, Timeline + Documents (THE RECORD), People (CONNECTION — its first live entry, 7C C3), Account (utility)', async () => {
     const { LeftNav } = await import('@/components/shell/LeftNav');
     const html = renderToStaticMarkup(<LeftNav circle="c-1" />);
     expect(html).toContain('href="/c-1/tasks"');
     expect(html).toContain('href="/c-1/invite"');
     expect(html).toContain('href="/c-1/timeline"');
+    expect(html).toContain('href="/c-1/documents"');
+    expect(html).toContain('href="/c-1/people"');
     expect(html).toContain('href="/account"');
-    // The record group label present (ALL-CAPS via .section-label CSS);
-    // Connection has no live routes and must not appear.
+    // Both group labels present (ALL-CAPS via .section-label CSS) — the
+    // Connection group appeared the moment its first live route landed,
+    // exactly as the manifest's "never promise what isn't built" rule says.
     expect(html).toContain('The record');
-    expect(html).not.toMatch(/connection/i);
-    // Order: ungrouped primary → THE RECORD group; utility pinned last.
+    expect(html).toContain('Connection');
+    // Order: ungrouped primary → THE RECORD → CONNECTION; utility pinned last.
     expect(html.indexOf('/c-1/tasks')).toBeLessThan(html.indexOf('The record'));
     expect(html.indexOf('The record')).toBeLessThan(html.indexOf('/c-1/timeline'));
-    expect(html.indexOf('/c-1/timeline')).toBeLessThan(html.indexOf('/account'));
+    expect(html.indexOf('/c-1/timeline')).toBeLessThan(html.indexOf('Connection'));
+    expect(html.indexOf('Connection')).toBeLessThan(html.indexOf('/c-1/people'));
+    expect(html.indexOf('/c-1/people')).toBeLessThan(html.indexOf('/account'));
     expect(html).toContain('nav-utility');
   });
 
