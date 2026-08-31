@@ -58,6 +58,110 @@ export async function circlePeople(claims: RequestClaims, circleId: string): Pro
 }
 
 /**
+ * hc.set_grant — per subject, per domain (GRT-01, AC-PERM-5). LOWER never
+ * needs a token; RAISE demands a fresh §5.7 token bound to
+ * `member:subject:domain`, consumed in the definer's own transaction; the
+ * care-circle cap is structural in-function. Every change is logged with
+ * both levels by the definer.
+ */
+export async function setGrant(
+  claims: RequestClaims,
+  memberId: string,
+  subjectId: string,
+  domain: string,
+  level: string,
+  stepUpToken: string | null,
+): Promise<unknown> {
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<{ r: unknown }>(
+      `select hc.set_grant($1, $2, $3::hc.domain, $4::hc.access_level, $5) as r`,
+      [memberId, subjectId, domain, level, stepUpToken],
+    );
+    return r.rows[0].r;
+  });
+}
+
+export type MemberShareRow = {
+  share_id: string;
+  object_type: string;
+  object_id: string | null;
+  label: string | null;
+  visible: boolean;
+  granted_by: string;
+  granter_name: string;
+  granted_at: string;
+  created_by_assignment_of: string | null;
+};
+
+type MemberShareSql = Omit<MemberShareRow, 'granted_at'> & { granted_at: Date | string };
+
+/** hc.shares_for_member — what this person has been handed object by
+ *  object (D19.9: the floor, except for the holder herself). */
+export async function sharesForMember(
+  claims: RequestClaims,
+  memberId: string,
+): Promise<MemberShareRow[]> {
+  if (!UUID_RE.test(memberId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<MemberShareSql>(
+      `select share_id, object_type::text as object_type, object_id, label, visible,
+              granted_by, granter_name, granted_at, created_by_assignment_of
+         from hc.shares_for_member($1)`,
+      [memberId],
+    );
+    return r.rows.map((row) => ({ ...row, granted_at: isoText(row.granted_at) }));
+  });
+}
+
+export type Contribution = {
+  owns_now: { id: string; title: string }[];
+  completed_count: number;
+  /** null when this person has never appeared in the log the READER can
+   *  see — rendered as the honest words, never a fake date. */
+  last_active: string | null;
+};
+
+/** §4.6.4: plain counts and lists — what they own now, what they have
+ *  completed, when they were last active. Every read is RLS-true, so the
+ *  counts are over what the READER may see, which is the only honest
+ *  count a filtered surface can show. */
+export async function contributionFor(
+  claims: RequestClaims,
+  circleId: string,
+  memberId: string,
+): Promise<Contribution> {
+  if (!UUID_RE.test(circleId) || !UUID_RE.test(memberId)) {
+    return { owns_now: [], completed_count: 0, last_active: null };
+  }
+  return withRequestRole('authenticated', claims, async (q) => {
+    const owns = await q.query<{ id: string; title: string }>(
+      `select id, title from public.tasks
+        where circle_id = $1 and owner_member_id = $2 and status = 'open' and deleted_at is null
+        order by due_on nulls last, id
+        limit 100`,
+      [circleId, memberId],
+    );
+    const done = await q.query<{ n: number }>(
+      `select count(*)::int as n from public.tasks
+        where circle_id = $1 and owner_member_id = $2 and status = 'done' and deleted_at is null`,
+      [circleId, memberId],
+    );
+    const active = await q.query<{ at: Date | string | null }>(
+      `select max(l.occurred_at) as at
+         from public.access_log l
+         join public.circle_members m on m.id = $2
+        where l.circle_id = $1 and l.actor_account_id = m.account_id`,
+      [circleId, memberId],
+    );
+    return {
+      owns_now: owns.rows,
+      completed_count: Number(done.rows[0].n),
+      last_active: isoTextOrNull(active.rows[0]?.at ?? null),
+    };
+  });
+}
+
+/**
  * Send again, step one — retire the old invite (§4.6.2: a NEW invite,
  * never a resurrected token). The invites table is DEFINER-ONLY (the
  * request role holds no grant at all — by design, since the token hash

@@ -160,8 +160,9 @@ describe('the matrix — per subject per domain, words from the ONE module, lowe
     expect(html).toMatch(/health &amp; care/);
     expect(html).toContain('value="manage"');
     expect(html).toContain('value="hidden"');
-    // the current level is the checked radio
-    expect(html).toMatch(/value="summary"[^>]*checked/);
+    // the current level is the checked radio (React SSR emits `checked`
+    // before `value`)
+    expect(html).toMatch(/checked[^>]*value="summary"/);
   });
 
   it('the care-circle ceiling: nothing above it is OFFERED, no other domain is offered, and the ceiling sentence renders', async () => {
@@ -171,7 +172,7 @@ describe('the matrix — per subject per domain, words from the ONE module, lowe
     expect(html).not.toContain('value="view"');
     expect(html).not.toContain('value="manage"');
     // no adjust controls for domains outside the ceiling
-    expect(html).not.toMatch(/health &amp; care.*value="summary"/s);
+    expect(html).not.toMatch(/health &amp; care[\s\S]*value="summary"/);
   });
 
   it('a non-coordinator constructing the URL by hand gets the one 404', async () => {

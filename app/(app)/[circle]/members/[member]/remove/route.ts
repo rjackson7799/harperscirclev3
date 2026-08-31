@@ -1,6 +1,6 @@
 import { asUser } from '@/lib/db/user';
 import { removeMember, revokeSessionsForAccount } from '@/lib/hc/members';
-import { formFields, redirect303 } from '@/lib/auth/http';
+import { redirect303 } from '@/lib/auth/http';
 
 /**
  * POST /[circle]/members/[member]/remove (TSD §5.8; AC-PERM-3). The DB
@@ -22,10 +22,16 @@ export async function POST(
     return redirect303(req, `/sign-in?next=${encodeURIComponent(`/${circle}/timeline`)}`);
   }
 
-  const fields = await formFields(req);
-  const keepShares = fields.keep_share_ids
-    ? fields.keep_share_ids.split(',').filter(Boolean)
-    : undefined;
+  // 7C C4: the People surface posts one checkbox PER share (no-JS forms
+  // cannot compose a comma list), so every value is collected; the old
+  // comma-separated single-field contract the E2E drove still parses.
+  const form = await req.formData();
+  const keepValues = form
+    .getAll('keep_share_ids')
+    .filter((v): v is string => typeof v === 'string')
+    .flatMap((v) => v.split(','))
+    .filter(Boolean);
+  const keepShares = keepValues.length > 0 ? keepValues : undefined;
 
   try {
     const { account_id } = await removeMember({ ...claims }, member, keepShares);

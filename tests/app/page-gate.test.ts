@@ -171,6 +171,12 @@ const GATED: Record<string, Entry> = {
     load: () => import('@/app/(app)/[circle]/people/page'),
     props: { params: params({ circle: CIRCLE }), searchParams: sp() },
   },
+  '/[circle]/people/[member]': {
+    kind: 'page',
+    next: `/${CIRCLE}/people/${MEMBER}`,
+    load: () => import('@/app/(app)/[circle]/people/[member]/page'),
+    props: { params: params({ circle: CIRCLE, member: MEMBER }), searchParams: sp() },
+  },
   // ---- 7B B3 --------------------------------------------------------------
   '/[circle]/timeline/[event]': {
     kind: 'page',
@@ -291,6 +297,12 @@ const GATED: Record<string, Entry> = {
     load: () => import('@/app/(app)/[circle]/documents/[document]/recategorize/submit/route'),
     params: { circle: CIRCLE, document: DOCUMENT },
   },
+  '/[circle]/people/[member]/grant/submit': {
+    kind: 'route',
+    next: `/${CIRCLE}/people/${MEMBER}`,
+    load: () => import('@/app/(app)/[circle]/people/[member]/grant/submit/route'),
+    params: { circle: CIRCLE, member: MEMBER },
+  },
   '/[circle]/people/invites/[invite]/again/submit': {
     kind: 'route',
     next: `/${CIRCLE}/people`,
@@ -353,8 +365,8 @@ describe('GTE-01 · the gated set is PINNED to the filesystem both ways', () => 
 
   it('the D15 enumeration holds on disk, plus 7B and 7C C2: ten + three + one pages, five + one + five + three form routes, one layout', () => {
     const kinds = Object.values(GATED).map((e) => e.kind);
-    expect(kinds.filter((k) => k === 'page').length).toBe(16);
-    expect(kinds.filter((k) => k === 'route').length).toBe(15);
+    expect(kinds.filter((k) => k === 'page').length).toBe(17);
+    expect(kinds.filter((k) => k === 'route').length).toBe(16);
     expect(kinds.filter((k) => k === 'layout').length).toBe(1);
   });
 });

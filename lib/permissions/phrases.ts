@@ -44,6 +44,17 @@ export const DOMAIN_LABEL: Record<Domain, string> = {
   finances: 'finances',
 };
 
+/** The ladder's arithmetic, hidden at the floor — the same ranking
+ *  hc.visible_at's ladder implies, used by the adjust surface to tell a
+ *  raise from a lower (the definer re-decides regardless). */
+export const LEVEL_RANK: Record<string, number> = {
+  hidden: 0,
+  log: 1,
+  summary: 2,
+  view: 3,
+  manage: 4,
+};
+
 const LEVEL_ORDER: readonly AccessLevel[] = ['manage', 'view', 'summary', 'log'];
 const ALL_DOMAINS: readonly Domain[] = ['memories', 'health', 'schedule', 'documents', 'finances'];
 

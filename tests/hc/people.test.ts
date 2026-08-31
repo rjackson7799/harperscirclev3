@@ -235,6 +235,13 @@ describe('setGrant — lower without a token, raise only through the §5.7 step-
     expect(ruth!.levels?.[nell]?.health).toBe('summary');
   });
 
+  it("lowering all the way to hidden is a legal move and the domain disappears from the member's levels", async () => {
+    await peopleLib.setGrant(claimsOf('sarah'), member.ruth, nell, 'schedule', 'hidden', null);
+    const rows = await peopleLib.circlePeople(claimsOf('sarah'), circleId);
+    const ruth = rows.find((r) => r.kind === 'member' && r.display_name === 'Ruth');
+    expect(ruth!.levels?.[nell]?.schedule ?? 'hidden').toBe('hidden');
+  });
+
   it('the care-circle ceiling holds in the DATABASE: a raise above it is refused even with a valid token', async () => {
     const minted = await stepUp.mintStepUp(
       freshClaimsOf('sarah'),

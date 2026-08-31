@@ -68,6 +68,9 @@ export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/[circle]/people': {
     leg: 'people.spec — "people: subjects as people with custodians named; the plain line before any matrix (PPL-01, AC-PPL-2/3)"; keyboard/390px: "A11Y-10: the plain line first; the matrix keyboard-operable; meaning never by colour; the printed log readable"',
   },
+  '/[circle]/people/[member]': {
+    leg: 'people.spec — "adjust: a raise through step-up, a lower without; the care ceiling never offered above (PPL-02)" and "revoke: the pre-revocation URL leg with the honest limit in the PRD\'s words (PPL-03, AC-PPL-4)"; A11Y-10 covers the matrix keyboard pass',
+  },
   '/[circle]/timeline/[event]': { leg: RECORD_LEG },
   '/[circle]/tasks/[task]/assign': {
     leg: 'record.spec — "cross-taint: not offered where she cannot see the subject; the sentence and exactly two paths where she can; path 1 readable and the original invisible FROM HER LIVE CONTEXT (TSK-01, AC-TASK-6)" drives it over a live crossing; axe runs inside that leg',
