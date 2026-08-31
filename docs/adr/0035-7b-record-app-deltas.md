@@ -2,6 +2,8 @@
 
 **Status:** proposed — the 7B build record, put to round 26 (Tier 2: this one
 document plus one dispositions table, one reviewer session).
+**RULED — ADR-0036 (2026-08-31): round 26 closed by owner ruling without a
+reviewer session; Q-A…Q-H ruled on the record.**
 **Branch:** `slice/7b-record-app`, from `origin/main` @ `7d2d395` (PR #30, the
 7B kickoff — one docs-only merge past the `abb0398` the kickoff named; nothing
 under `app/`, `lib/`, `e2e/` or `supabase/` moved between them).
