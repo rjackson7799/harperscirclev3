@@ -68,6 +68,12 @@ export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/[circle]/people': {
     leg: 'people.spec — "people: subjects as people with custodians named; the plain line before any matrix (PPL-01, AC-PPL-2/3)"; keyboard/390px: "A11Y-10: the plain line first; the matrix keyboard-operable; meaning never by colour; the printed log readable"',
   },
+  '/[circle]/people/log': {
+    leg: 'people.spec — "the access log rendered and printed (PPL-04, AC-PPL-5/7)" with a print-media snapshot; A11Y-10\'s "printed log readable" half covers it',
+  },
+  '/[circle]/people/subject/[subject]': {
+    leg: 'people.spec — "the subject\'s page: the custodianship declaration and the profile facts at view (Q4(b), RCP-02\'s profile link)"; audited inside the people 390px pass (C6)',
+  },
   '/[circle]/people/[member]': {
     leg: 'people.spec — "adjust: a raise through step-up, a lower without; the care ceiling never offered above (PPL-02)" and "revoke: the pre-revocation URL leg with the honest limit in the PRD\'s words (PPL-03, AC-PPL-4)"; A11Y-10 covers the matrix keyboard pass',
   },

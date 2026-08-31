@@ -211,7 +211,7 @@ export default async function ArrivalPage({
           ) : null}
           <ul>
             {receipt.map((r) => (
-              <li key={r.proposal_id}>{receiptLine(r, circle)}</li>
+              <li key={r.proposal_id}>{receiptLine(r, circle, row.subject_id)}</li>
             ))}
           </ul>
         </section>
@@ -245,7 +245,7 @@ const REASON_LABELS: Record<string, string> = {
  * survives (hc.receipt_for returns it), the name, the id and any handle do
  * not — "you may not see this" must never read as "there is nothing here".
  */
-function receiptLine(r: ReceiptRow, circle: string): React.ReactNode {
+function receiptLine(r: ReceiptRow, circle: string, subjectId: string): React.ReactNode {
   if (r.status === 'rejected') {
     const reason = r.reject_reason ? ` — ${REASON_LABELS[r.reject_reason] ?? r.reject_reason}` : '';
     return <>Not filed{reason}.</>;
@@ -277,15 +277,38 @@ function receiptLine(r: ReceiptRow, circle: string): React.ReactNode {
       </>
     );
   }
-  const destination =
-    r.object_type === 'profile_fact'
-      ? 'filed to the profile'
-      : r.object_type === 'episode'
-        ? 'filed as an episode'
-        : 'filed as a document';
+  // 7C C5 (RCP-02): the remaining destinations resolve too — a document to
+  // ITS page, a profile fact to the subject's page (Q4(b): the Phase-1
+  // home for "filed to the profile"), an episode to the Timeline where its
+  // wrapper renders. Never a dead link, never a silent omission — and
+  // nothing "opens in an upcoming update" any more.
+  if (r.object_type === 'document' && r.object_id) {
+    return (
+      <>
+        <a href={`/${circle}/documents/${r.object_id}`}>{r.label}</a> — filed to Documents.
+        {corrected}
+      </>
+    );
+  }
+  if (r.object_type === 'profile_fact') {
+    return (
+      <>
+        <a href={`/${circle}/people/subject/${subjectId}`}>{r.label}</a> — filed to the profile.
+        {corrected}
+      </>
+    );
+  }
+  if (r.object_type === 'episode') {
+    return (
+      <>
+        <a href={`/${circle}/timeline`}>{r.label}</a> — filed as an episode; it wraps its events
+        on the Timeline.{corrected}
+      </>
+    );
+  }
   return (
     <>
-      <strong>{r.label}</strong> — {destination}; its page opens in an upcoming update.{corrected}
+      <strong>{r.label}</strong> — filed to the record.{corrected}
     </>
   );
 }

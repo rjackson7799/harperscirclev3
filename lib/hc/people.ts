@@ -57,6 +57,136 @@ export async function circlePeople(claims: RequestClaims, circleId: string): Pro
   });
 }
 
+// ---------------------------------------------------------------------------
+// The access log and the subject's page (C5).
+// ---------------------------------------------------------------------------
+
+export type LogEntry = {
+  seq: number;
+  event_type: string;
+  actor_display_name: string;
+  target_name: string | null;
+  subject_id: string | null;
+  subject_name: string | null;
+  domain: string | null;
+  level_before: string | null;
+  level_after: string | null;
+  object_type: string | null;
+  collapsed_count: number;
+  occurred_at: string;
+  detail: Record<string, unknown>;
+};
+
+type LogSql = Omit<LogEntry, 'occurred_at' | 'seq' | 'collapsed_count'> & {
+  occurred_at: Date | string;
+  seq: number | string;
+  collapsed_count: number | string;
+};
+
+const LOG_SELECT = `
+  select l.seq, l.event_type, l.actor_display_name,
+         tm.display_name_at_join as target_name,
+         l.subject_id, s.first_name as subject_name,
+         l.domain::text as domain, l.level_before::text as level_before,
+         l.level_after::text as level_after, l.object_type::text as object_type,
+         l.collapsed_count, l.occurred_at, l.detail
+    from public.access_log l
+    left join public.circle_members tm on tm.id = l.target_member_id
+    left join public.subjects s on s.id = l.subject_id`;
+
+function toLogEntry(row: LogSql): LogEntry {
+  return {
+    ...row,
+    seq: Number(row.seq),
+    collapsed_count: Number(row.collapsed_count),
+    occurred_at: isoText(row.occurred_at),
+  };
+}
+
+/**
+ * The reader's projection of the log (LOG-01/02; AC-PPL-5/7). The surface
+ * adds nothing and subtracts nothing: access_log_select is the filter —
+ * circle-level entries to every live member, subject entries at >= log on
+ * the entry's domain, no-domain entries failing closed — and this read
+ * simply orders what the policy already decided. Printing renders the
+ * same rows.
+ */
+export async function accessLog(
+  claims: RequestClaims,
+  circleId: string,
+  limit = 200,
+): Promise<LogEntry[]> {
+  if (!UUID_RE.test(circleId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<LogSql>(
+      `${LOG_SELECT}
+        where l.circle_id = $1
+        order by l.seq desc
+        limit $2`,
+      [circleId, Math.min(Math.max(limit, 1), 500)],
+    );
+    return r.rows.map(toLogEntry);
+  });
+}
+
+/**
+ * The first row of the circle's log for a subject — the custodianship
+ * declaration (§7.5; AC-AUTH-6). Written with subject_id set and no
+ * domain, so access_log_select fails it closed to all five domains (D4):
+ * a member at log×5 on the subject sees it; a family default does not,
+ * and the page renders it where shown and NEVER claims there is none.
+ */
+export async function custodianshipDeclaration(
+  claims: RequestClaims,
+  circleId: string,
+  subjectId: string,
+): Promise<LogEntry | null> {
+  if (!UUID_RE.test(circleId) || !UUID_RE.test(subjectId)) return null;
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<LogSql>(
+      `${LOG_SELECT}
+        where l.circle_id = $1 and l.subject_id = $2
+          and l.event_type = 'custodianship_declared'
+        order by l.seq asc
+        limit 1`,
+      [circleId, subjectId],
+    );
+    return r.rows.length === 1 ? toLogEntry(r.rows[0]) : null;
+  });
+}
+
+export type ProfileFact = {
+  id: string;
+  field: string;
+  value: unknown;
+  risk_class: string;
+  approver_display_name: string;
+  approved_at: string;
+};
+
+type ProfileFactSql = Omit<ProfileFact, 'approved_at'> & { approved_at: Date | string };
+
+/** The profile facts at `view` (the one table whose floor is view, §3.4) —
+ *  live rows only; RLS decides, and a summary member simply gets none. */
+export async function profileFactsFor(
+  claims: RequestClaims,
+  subjectId: string,
+): Promise<ProfileFact[]> {
+  if (!UUID_RE.test(subjectId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<ProfileFactSql>(
+      `select id, field, value, risk_class::text as risk_class,
+              approver_display_name, approved_at
+         from public.profile_facts
+        where subject_id = $1 and deleted_at is null and superseded_at is null
+        order by field, id
+        limit 200`,
+      [subjectId],
+    );
+    return r.rows.map((row) => ({ ...row, approved_at: isoText(row.approved_at) }));
+  });
+}
+
 /**
  * hc.set_grant — per subject, per domain (GRT-01, AC-PERM-5). LOWER never
  * needs a token; RAISE demands a fresh §5.7 token bound to

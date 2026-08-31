@@ -208,9 +208,14 @@ describe('D3 · the §8.3 CSS: container queries, grids, shell metrics', () => {
     const css = sheet();
     expect(css).toContain('@container (max-width: 899px)');
     expect(css).toContain('@container (min-width: 900px)');
-    // The only @media in first-party CSS stays prefers-reduced-motion.
+    // The only @media in first-party CSS are prefers-reduced-motion and
+    // `print` (7C C5, PPL-04: the printed log hides the chrome) — neither
+    // is a VIEWPORT query; layout responsiveness stays container queries.
     const medias = css.match(/@media[^{]+/g) ?? [];
-    expect(medias.every((m) => m.includes('prefers-reduced-motion'))).toBe(true);
+    expect(
+      medias.every((m) => m.includes('prefers-reduced-motion') || m.includes('print')),
+    ).toBe(true);
+    expect(medias.some((m) => /width/.test(m))).toBe(false);
   });
 
   it('the browsing grid is repeat(auto-fill, minmax(324px, 1fr)) at 14px gap', () => {

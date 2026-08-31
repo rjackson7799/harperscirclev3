@@ -1126,3 +1126,25 @@ a:focus-visible {
 .record-thread-day {
   margin-top: 16px;
 }
+
+/* 7C C5 (PPL-04, A11Y-10): the printed log is the SAME filtered read - the
+   print sheet hides the chrome and the controls and adds nothing. */
+@media print {
+  .left-nav,
+  .topbar,
+  .back-link,
+  button,
+  .record-controls {
+    display: none !important;
+  }
+  .log-entries li {
+    break-inside: avoid;
+  }
+}
+
+.log-entries {
+  padding-left: 18px;
+}
+.log-entries li {
+  margin-bottom: 6px;
+}
