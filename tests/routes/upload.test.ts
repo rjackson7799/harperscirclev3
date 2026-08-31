@@ -181,6 +181,115 @@ describe('B3 · the mint route — subject-scoped, right-to-ingest checked FIRST
   });
 });
 
+describe('7C C2 · OW-19/OW-07 — the ingress and hop bounds, named at their sites', () => {
+  const KEY = `intake/upload/${CIRCLE}/${SUBJECT}/44444444-0000-4000-8000-00000000000b`;
+  const UPSTREAM = `${SUPABASE_URL}/storage/v1/upload/resumable/xyz%2Fabc`;
+  const OVER_CAP = 'x'.repeat(8_192);
+
+  function rawPost(path: string, body: string): Request {
+    return new Request(`http://local.test${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+    });
+  }
+
+  function tusCreate(headers: Record<string, string>): Request {
+    return new Request('http://local.test/api/upload/tus', {
+      method: 'POST',
+      headers: {
+        'tus-resumable': '1.0.0',
+        'upload-metadata':
+          'bucketName YXJ0aWZhY3Rz,objectName ' + Buffer.from(KEY).toString('base64'),
+        ...headers,
+      },
+    });
+  }
+
+  it('token: a body over the ingress cap answers 413 BEFORE any parse or probe (OW-19)', async () => {
+    const res = await tokenRoute.POST(rawPost('/api/upload/token', OVER_CAP));
+    expect(res.status).toBe(413);
+    expect(upload.canIngestForSubject).not.toHaveBeenCalled();
+  });
+
+  it('complete: the same cap, the same order — nothing downloaded, nothing probed', async () => {
+    const res = await completeRoute.POST(rawPost('/api/upload/complete', OVER_CAP));
+    expect(res.status).toBe(413);
+    expect(upload.canIngestForSubject).not.toHaveBeenCalled();
+    expect(storageIO.downloadObject).not.toHaveBeenCalled();
+  });
+
+  it('tus creation: Upload-Length over the P5 cap answers 413 and the upstream is never contacted — the pre-read bound (OW-19)', async () => {
+    const tusRoute = (await import('@/app/api/upload/tus/[[...id]]/route')) as {
+      POST: (r: Request) => Promise<Response>;
+    };
+    const grant = artifacts.mintUploadGrant(KEY);
+    const res = await tusRoute.POST(
+      tusCreate({ 'x-hc-grant': grant, 'upload-length': String(52428801) }),
+    );
+    expect(res.status).toBe(413);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('tus creation: a missing Upload-Length is refused the same way — fail closed, the client always declares it', async () => {
+    const tusRoute = (await import('@/app/api/upload/tus/[[...id]]/route')) as {
+      POST: (r: Request) => Promise<Response>;
+    };
+    const grant = artifacts.mintUploadGrant(KEY);
+    const res = await tusRoute.POST(tusCreate({ 'x-hc-grant': grant }));
+    expect(res.status).toBe(413);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('the two TUS hops carry the named time bound on the upstream fetch (OW-07 sites 3–4)', async () => {
+    const tusRoute = (await import('@/app/api/upload/tus/[[...id]]/route')) as {
+      POST: (r: Request) => Promise<Response>;
+      PATCH: (r: Request, ctx: { params: Promise<{ id?: string[] }> }) => Promise<Response>;
+    };
+    fetchMock.mockResolvedValue(
+      new Response(null, { status: 201, headers: { location: UPSTREAM, 'tus-resumable': '1.0.0' } }),
+    );
+    const grant = artifacts.mintUploadGrant(KEY);
+    await tusRoute.POST(tusCreate({ 'x-hc-grant': grant, 'upload-length': '4' }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const creationInit = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(creationInit.signal).toBeInstanceOf(AbortSignal);
+
+    const target = artifacts.signUploadTarget(UPSTREAM, KEY);
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 204, headers: { 'upload-offset': '4' } }),
+    );
+    await tusRoute.PATCH(
+      new Request(`http://local.test/api/upload/tus/${target}`, {
+        method: 'PATCH',
+        headers: {
+          'tus-resumable': '1.0.0',
+          'upload-offset': '0',
+          'content-type': 'application/offset+octet-stream',
+          'x-hc-grant': grant,
+          'x-hc-key': KEY,
+        },
+      }),
+      { params: Promise.resolve({ id: [target] }) },
+    );
+    const patchInit = fetchMock.mock.calls[1][1] as RequestInit;
+    expect(patchInit.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("complete's eager store fire carries the named time bound (OW-07 site 5)", async () => {
+    const target = artifacts.signUploadTarget(UPSTREAM, KEY);
+    const res = await completeRoute.POST(
+      post('/api/upload/complete', { subject_id: SUBJECT, token: target }),
+    );
+    expect(res.status).toBe(200);
+    expect(afterCallbacks.length).toBe(1);
+    await afterCallbacks[0]();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const fireInit = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(fireInit.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
 describe('B9 · the TUS proxy — signed continuation target, grant bound to the target circle', () => {
   const KEY_A = `intake/upload/${CIRCLE}/${SUBJECT}/44444444-0000-4000-8000-00000000000a`;
   const UPSTREAM_A = `${SUPABASE_URL}/storage/v1/upload/resumable/abc%2Fdef`;
