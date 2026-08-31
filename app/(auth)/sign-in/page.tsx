@@ -57,6 +57,9 @@ export default async function SignInPage({
         </div>
       )}
       {e === 'missing' && <p className="notice">Both the email and the password are needed.</p>}
+      {e === 'slow' && (
+        <p className="notice">That took too long to answer. Nothing is lost — try again.</p>
+      )}
 
       <form method="post" action="/sign-in/submit">
         {next && <input type="hidden" name="next" value={next} />}

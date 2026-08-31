@@ -252,7 +252,7 @@ describe('7C C2 · OW-19/OW-07 — the ingress and hop bounds, named at their si
     const grant = artifacts.mintUploadGrant(KEY);
     await tusRoute.POST(tusCreate({ 'x-hc-grant': grant, 'upload-length': '4' }));
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const creationInit = fetchMock.mock.calls[0][1] as RequestInit;
+    const [, creationInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(creationInit.signal).toBeInstanceOf(AbortSignal);
 
     const target = artifacts.signUploadTarget(UPSTREAM, KEY);
@@ -272,7 +272,7 @@ describe('7C C2 · OW-19/OW-07 — the ingress and hop bounds, named at their si
       }),
       { params: Promise.resolve({ id: [target] }) },
     );
-    const patchInit = fetchMock.mock.calls[1][1] as RequestInit;
+    const [, patchInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
     expect(patchInit.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -285,7 +285,7 @@ describe('7C C2 · OW-19/OW-07 — the ingress and hop bounds, named at their si
     expect(afterCallbacks.length).toBe(1);
     await afterCallbacks[0]();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const fireInit = fetchMock.mock.calls[0][1] as RequestInit;
+    const [, fireInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(fireInit.signal).toBeInstanceOf(AbortSignal);
   });
 });

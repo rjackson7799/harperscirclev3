@@ -1,6 +1,7 @@
 import { asUser } from '@/lib/db/user';
 import { acceptInvite } from '@/lib/hc/invites';
 import { redirect303 } from '@/lib/auth/http';
+import { withRouteBudget } from '@/lib/http/page-budget';
 
 /**
  * POST /accept/[token]/submit (TSD §5.10). One DB transaction decides
@@ -14,21 +15,28 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> },
 ): Promise<Response> {
   const { token } = await params;
-  const supabase = await asUser();
-  const { data } = await supabase.auth.getClaims();
-  const claims = data?.claims;
-  if (!claims?.sub) {
-    return redirect303(req, `/sign-in?next=${encodeURIComponent(`/accept/${token}`)}`);
-  }
+  // 7C C2 (OW-23): a person's wait answers inside the route budget.
+  return withRouteBudget(
+    async (budget) => {
+      const supabase = await asUser();
+      const { data } = await budget.race(supabase.auth.getClaims(), 'getClaims');
+      const claims = data?.claims;
+      if (!claims?.sub) {
+        return redirect303(req, `/sign-in?next=${encodeURIComponent(`/accept/${token}`)}`);
+      }
 
-  try {
-    const result = await acceptInvite({ ...claims }, token);
-    const landing =
-      result.tier === 'care_circle'
-        ? `/${result.circle_id}/tasks`
-        : `/${result.circle_id}/timeline`;
-    return redirect303(req, landing);
-  } catch {
-    return redirect303(req, `/accept/${token}?e=refused`);
-  }
+      try {
+        const result = await budget.race(acceptInvite({ ...claims }, token), 'acceptInvite');
+        const landing =
+          result.tier === 'care_circle'
+            ? `/${result.circle_id}/tasks`
+            : `/${result.circle_id}/timeline`;
+        return redirect303(req, landing);
+      } catch (err) {
+        if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
+        return redirect303(req, `/accept/${token}?e=refused`);
+      }
+    },
+    () => redirect303(req, `/accept/${encodeURIComponent(token)}?e=slow`),
+  );
 }

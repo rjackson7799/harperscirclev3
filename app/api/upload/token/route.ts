@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { asUser } from '@/lib/db/user';
 import { readLiveSession } from '@/lib/auth/session';
 import { sessionUnavailable } from '@/lib/http/session-unavailable';
+import { withRouteBudget } from '@/lib/http/page-budget';
+import { boundedJsonText } from '@/lib/http/bounded-json';
 import { canIngestForSubject } from '@/lib/hc/upload';
 import { mintUploadGrant, uploadStagingKey } from '@/lib/storage/artifacts';
 
@@ -34,9 +36,13 @@ export async function POST(req: Request): Promise<Response> {
   if (read.kind !== 'signed-in') return new Response('sign in first', { status: 401 });
   const claims = read.claims;
 
+  // 7C C2 (OW-19): the ingress cap, BEFORE any parse or probe.
+  const text = await boundedJsonText(req);
+  if (text === null) return new Response('too large', { status: 413 });
+
   let subjectId: string;
   try {
-    const body = (await req.json()) as { subject_id?: unknown };
+    const body = JSON.parse(text) as { subject_id?: unknown };
     if (typeof body.subject_id !== 'string' || !body.subject_id) {
       return new Response('malformed', { status: 400 });
     }
@@ -45,26 +51,33 @@ export async function POST(req: Request): Promise<Response> {
     return new Response('malformed', { status: 400 });
   }
 
-  const right = await canIngestForSubject(claims, subjectId);
-  if (!right) return new Response('not found', { status: 404 });
+  // 7C C2 (OW-19): a person waits on this mint; it answers inside the
+  // route budget like every other wait.
+  return withRouteBudget(
+    async (budget) => {
+      const right = await budget.race(canIngestForSubject(claims, subjectId), 'canIngestForSubject');
+      if (!right) return new Response('not found', { status: 404 });
 
-  const uploadId = randomUUID();
-  const key = uploadStagingKey(right.circle_id, subjectId, uploadId);
-  // The server-minted, subject-scoped, EXPIRING grant (§2.12): an HMAC
-  // over exactly this staging key. The same-origin TUS proxy verifies
-  // it on every hop (B9: the local storage build ignores x-signature
-  // on its resumable endpoint, so the proxy is the mechanism).
-  const grant = mintUploadGrant(key);
+      const uploadId = randomUUID();
+      const key = uploadStagingKey(right.circle_id, subjectId, uploadId);
+      // The server-minted, subject-scoped, EXPIRING grant (§2.12): an HMAC
+      // over exactly this staging key. The same-origin TUS proxy verifies
+      // it on every hop (B9: the local storage build ignores x-signature
+      // on its resumable endpoint, so the proxy is the mechanism).
+      const grant = mintUploadGrant(key);
 
-  // Completion reconciles off the server-signed continuation target the
-  // proxy returns (finding 1), not an id echoed by the client — so the
-  // mint hands back only what the browser drives the upload with.
-  return Response.json({
-    upload: {
-      bucket: 'artifacts',
-      key,
-      grant,
-      endpoint: '/api/upload/tus',
+      // Completion reconciles off the server-signed continuation target the
+      // proxy returns (finding 1), not an id echoed by the client — so the
+      // mint hands back only what the browser drives the upload with.
+      return Response.json({
+        upload: {
+          bucket: 'artifacts',
+          key,
+          grant,
+          endpoint: '/api/upload/tus',
+        },
+      });
     },
-  });
+    () => Response.json({ refused: 'slow' }, { status: 504 }),
+  );
 }

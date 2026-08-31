@@ -31,6 +31,18 @@ export default async function WasntMePage({
     );
   }
 
+  if (params.e === 'slow') {
+    return (
+      <main className="auth-card">
+        <h1>That took too long to confirm</h1>
+        <p>
+          Try the link once more. If it already worked, every session is being signed out and
+          the link will simply say it is no longer valid.
+        </p>
+      </main>
+    );
+  }
+
   if (params.e === 'link-invalid' || !token) {
     return (
       <main className="auth-card">
