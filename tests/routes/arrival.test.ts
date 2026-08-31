@@ -346,14 +346,56 @@ describe('6B B8 · the receipt: what went where (§4.2.4)', () => {
     expect(html).toContain(`href="/${CIRCLE}/timeline/${RECEIPT[0].object_id}"`);
   });
 
-  it('a document destination is NAMED and says plainly its surface opens later — never a dead link', async () => {
+  // 7C C5 (RCP-02): every receipt link resolves to the created object —
+  // Documents and profile facts included; nothing "opens in an upcoming
+  // update" any more.
+  it('a document destination links to THE DOCUMENT ITSELF (RCP-02)', async () => {
     review.proposalsFor.mockResolvedValueOnce(DECIDED_PROPOSALS);
     review.receiptFor.mockResolvedValueOnce(RECEIPT);
     const html = await renderArrival();
     expect(html).toContain('Discharge summary (corrected)');
-    expect(html).toMatch(/opens in an upcoming update/i);
-    // No link points at a surface that does not exist.
-    expect(html).not.toContain(`href="/${CIRCLE}/documents"`);
+    expect(html).toContain(`href="/${CIRCLE}/documents/${RECEIPT[1].object_id}"`);
+    expect(html).not.toMatch(/opens in an upcoming update/i);
+  });
+
+  it("a profile fact links to the subject's page — the Phase-1 home for 'filed to the profile' (RCP-02, Q4(b))", async () => {
+    review.proposalsFor.mockResolvedValueOnce(DECIDED_PROPOSALS);
+    review.receiptFor.mockResolvedValueOnce([
+      {
+        proposal_id: PROPOSALS[0].id,
+        status: 'approved',
+        reject_reason: null,
+        object_type: 'profile_fact',
+        object_id: 'cccccccc-0000-4000-8000-0000000000f1',
+        label: 'Date of birth',
+        visible: true,
+      },
+    ]);
+    const html = await renderArrival();
+    expect(html).toContain('Date of birth');
+    expect(html).toContain(
+      `href="/${CIRCLE}/people/subject/22222222-0000-4000-8000-000000000002"`,
+    );
+    expect(html).not.toMatch(/opens in an upcoming update/i);
+  });
+
+  it('an episode resolves to the Timeline, where its wrapper renders — a resolving link, never a dead one', async () => {
+    review.proposalsFor.mockResolvedValueOnce(DECIDED_PROPOSALS);
+    review.receiptFor.mockResolvedValueOnce([
+      {
+        proposal_id: PROPOSALS[0].id,
+        status: 'approved',
+        reject_reason: null,
+        object_type: 'episode',
+        object_id: 'dddddddd-0000-4000-8000-0000000000e1',
+        label: 'The hospital week',
+        visible: true,
+      },
+    ]);
+    const html = await renderArrival();
+    expect(html).toContain('The hospital week');
+    expect(html).toContain(`href="/${CIRCLE}/timeline"`);
+    expect(html).not.toMatch(/opens in an upcoming update/i);
   });
 
   it('an edited approval SAYS the value was corrected — the receipt can say it because the commit recorded it', async () => {

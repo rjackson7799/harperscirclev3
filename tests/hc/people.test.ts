@@ -54,6 +54,7 @@ let pendingInvite: string;
 let expiredInvite: string;
 let tOpen: string;
 let tDone: string;
+let fLive: string;
 let stepUp: typeof import('@/lib/hc/step-up');
 
 beforeAll(async () => {
@@ -114,6 +115,15 @@ beforeAll(async () => {
             ($1, $5, $3, 'schedule', 'summary', $4)`,
     [circleId, member.ruth, nell, people.sarah.id, member.marisol],
   );
+  fLive = randomUUID();
+  await raw.query(
+    `insert into public.profile_facts (id, circle_id, subject_id, field, value, risk_class,
+       approved_by, approved_at, approver_display_name, taint, superseded_at)
+     values
+       ($1, $2, $3, 'date_of_birth', '"1941-03-02"', 'high', $4, now(), 'Sarah', '{health}', null),
+       ($5, $2, $3, 'date_of_birth', '"1941-03-01"', 'high', $4, now(), 'Sarah', '{health}', now())`,
+    [fLive, circleId, nell, people.sarah.id, randomUUID()],
+  );
   tOpen = randomUUID();
   tDone = randomUUID();
   await raw.query(
@@ -157,7 +167,7 @@ beforeAll(async () => {
     await raw.query(`delete from public.step_up_tokens where account_id = any($1)`, [
       Object.values(people).map((p) => p.id),
     ]);
-    for (const t of ['tasks', 'invites', 'access_grants', 'access_log', 'circle_members', 'subjects']) {
+    for (const t of ['profile_facts', 'tasks', 'invites', 'access_grants', 'access_log', 'circle_members', 'subjects']) {
       await raw.query(`delete from public.${t} where circle_id = $1`, [circleId]);
     }
     await raw.query(`delete from public.circles where id = $1`, [circleId]);
@@ -267,6 +277,44 @@ describe('sharesForMember / contributionFor — the person page reads', () => {
 
     const sarah = await peopleLib.contributionFor(claimsOf('sarah'), circleId, member.sarah);
     expect(typeof sarah.last_active).toBe('string');
+  });
+});
+
+describe('accessLog / custodianshipDeclaration / profileFactsFor — the C5 reads, each RLS-true', () => {
+  it('the coordinator reads the log newest-first: the grant change carries actor, target, domain and BOTH levels', async () => {
+    const rows = await peopleLib.accessLog(claimsOf('sarah'), circleId, 200);
+    expect(rows.length).toBeGreaterThan(0);
+    const grant = rows.find(
+      (r) => r.event_type === 'grant_changed' && r.domain === 'health' && r.level_after === 'log',
+    );
+    expect(grant).toBeDefined();
+    expect(grant!.actor_display_name).toBe('Sarah');
+    expect(grant!.target_name).toBe('Ruth');
+    expect(grant!.level_before).toBe('summary');
+    expect(typeof grant!.occurred_at).toBe('string');
+    const seqs = rows.map((r) => r.seq);
+    expect([...seqs].sort((a, b) => b - a)).toEqual(seqs);
+  });
+
+  it("the log is filtered by the READER's own access by construction: the health grant entry is not Marisol's to see", async () => {
+    const rows = await peopleLib.accessLog(claimsOf('marisol'), circleId, 200);
+    expect(rows.some((r) => r.event_type === 'grant_changed' && r.domain === 'health')).toBe(false);
+  });
+
+  it('the custodianship declaration: visible at log×5 on the subject, and NULL below — the page never claims there is none (D4, Q-E)', async () => {
+    const seen = await peopleLib.custodianshipDeclaration(claimsOf('sarah'), circleId, nell);
+    expect(seen).not.toBeNull();
+    expect(seen!.event_type).toBe('custodianship_declared');
+    expect(await peopleLib.custodianshipDeclaration(claimsOf('ruth'), circleId, nell)).toBeNull();
+  });
+
+  it('profile facts at view: the live fact with its risk word for the coordinator; nothing for a summary member; superseded rows never listed', async () => {
+    const facts = await peopleLib.profileFactsFor(claimsOf('sarah'), nell);
+    expect(facts.length).toBe(1);
+    expect(facts[0].id).toBe(fLive);
+    expect(facts[0].field).toBe('date_of_birth');
+    expect(facts[0].risk_class).toBe('high');
+    expect(await peopleLib.profileFactsFor(claimsOf('ruth'), nell)).toEqual([]);
   });
 });
 
