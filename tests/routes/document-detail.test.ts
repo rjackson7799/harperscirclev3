@@ -91,6 +91,7 @@ const DETAIL = {
   circle_id: CIRCLE,
   subject_id: NELL,
   subject_name: 'Nell',
+  subject_seq: 1,
   title: 'Discharge summary · Jul 12',
   category: 'medical',
   summary_text:

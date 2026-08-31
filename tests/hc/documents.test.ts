@@ -206,7 +206,7 @@ beforeAll(async () => {
 
 describe('documentById — the detail row at the caller own level, null in one shape', () => {
   it('the coordinator reads the full row: title, category, sentences, source, approver, the byte-path arrival', async () => {
-    const d = await docsLib.documentById(claimsOf('sarah'), dMed);
+    const d = await docsLib.documentById(claimsOf('sarah'), circleId, dMed);
     expect(d).not.toBeNull();
     expect(d!.title).toBe('Discharge summary · Jul 12');
     expect(d!.category).toBe('medical');
@@ -220,20 +220,38 @@ describe('documentById — the detail row at the caller own level, null in one s
     expect(d!.source!.channel).toBe('email');
     expect(d!.source!.sender_display_name).toBe('Riverbend Cardiology');
     expect(d!.taint).toEqual(['health']);
+    expect(d!.subject_seq).toBe(1);
+    // the coordinator: view×5 on the arrival, manage on the document —
+    // hc.visible_at itself answered, once per row.
+    expect(d!.can_view).toBe(true);
+    expect(d!.can_manage).toBe(true);
   });
 
-  it('a summary member reads the row — the summary/view line is drawn between TABLES, and this table is hers', async () => {
-    const d = await docsLib.documentById(claimsOf('ruth'), dMed);
+  it('the category→domain module agrees with hc.own_domain for all seven — pinned live, the tiers.ts discipline', async () => {
+    for (const c of docsLib.DOC_CATEGORIES) {
+      const r = await raw.query(
+        `select hc.own_domain('document', $1::hc.doc_category, null, null)::text as d`,
+        [c],
+      );
+      expect(`${c}:${docsLib.categoryDomain(c)}`).toBe(`${c}:${r.rows[0].d}`);
+    }
+  });
+
+  it('a summary member reads the row — the summary/view line is drawn between TABLES, and this table is hers; neither viewer nor controls are hers', async () => {
+    const d = await docsLib.documentById(claimsOf('ruth'), circleId, dMed);
     expect(d).not.toBeNull();
     expect(d!.summary_text).toMatch(/twice daily/);
+    expect(d!.can_view).toBe(false);
+    expect(d!.can_manage).toBe(false);
   });
 
   it('a member hidden on the domain gets null — the same null as not-exists, from her live context', async () => {
-    expect(await docsLib.documentById(claimsOf('marisol'), dMed)).toBeNull();
+    expect(await docsLib.documentById(claimsOf('marisol'), circleId, dMed)).toBeNull();
   });
 
   it('a malformed id is null before the database is touched', async () => {
-    expect(await docsLib.documentById(claimsOf('sarah'), 'not-a-uuid')).toBeNull();
+    expect(await docsLib.documentById(claimsOf('sarah'), circleId, 'not-a-uuid')).toBeNull();
+    expect(await docsLib.documentById(claimsOf('sarah'), 'not-a-uuid', dMed)).toBeNull();
   });
 });
 
@@ -260,7 +278,7 @@ describe('shareDocument / documentShares / unshareDocument — one object, one p
   let shareId: string;
 
   it('before any share, the grantee-to-be cannot read the row (the control)', async () => {
-    expect(await docsLib.documentById(claimsOf('marisol'), dMed)).toBeNull();
+    expect(await docsLib.documentById(claimsOf('marisol'), circleId, dMed)).toBeNull();
   });
 
   it('the share requires the live §5.7 token bound to document:<id> — a missing token is refused', async () => {
@@ -283,10 +301,10 @@ describe('shareDocument / documentShares / unshareDocument — one object, one p
   });
 
   it("the grantee's NEXT query reads THIS document — and the OTHER health document stays invisible (AC-DOC-5)", async () => {
-    const shared = await docsLib.documentById(claimsOf('marisol'), dMed);
+    const shared = await docsLib.documentById(claimsOf('marisol'), circleId, dMed);
     expect(shared).not.toBeNull();
     expect(shared!.title).toBe('Discharge summary · Jul 12');
-    expect(await docsLib.documentById(claimsOf('marisol'), dMed2)).toBeNull();
+    expect(await docsLib.documentById(claimsOf('marisol'), circleId, dMed2)).toBeNull();
   });
 
   it('a member who is neither granter nor coordinator cannot revoke it', async () => {
@@ -298,7 +316,7 @@ describe('shareDocument / documentShares / unshareDocument — one object, one p
   it("unshare is ONE action, and the grantee's next query loses the object", async () => {
     const r = await docsLib.unshareDocument(claimsOf('sarah'), shareId);
     expect(r.share_id).toBe(shareId);
-    expect(await docsLib.documentById(claimsOf('marisol'), dMed)).toBeNull();
+    expect(await docsLib.documentById(claimsOf('marisol'), circleId, dMed)).toBeNull();
   });
 });
 
@@ -323,7 +341,7 @@ describe('documentAudience / recategorizeDocument — an audience change, named 
     await expect(
       docsLib.recategorizeDocument(claimsOf('ruth'), dMed, 'financial', 'medical'),
     ).rejects.toThrow(/recategorize_refused/);
-    const still = await docsLib.documentById(claimsOf('sarah'), dMed);
+    const still = await docsLib.documentById(claimsOf('sarah'), circleId, dMed);
     expect(still!.category).toBe('medical');
   });
 
@@ -337,14 +355,14 @@ describe('documentAudience / recategorizeDocument — an audience change, named 
     const r = await docsLib.recategorizeDocument(claimsOf('sarah'), dMed, 'insurance', 'medical');
     expect(r.document_id).toBe(dMed);
     expect(r.changed).toBe(true);
-    const moved = await docsLib.documentById(claimsOf('sarah'), dMed);
+    const moved = await docsLib.documentById(claimsOf('sarah'), circleId, dMed);
     expect(moved!.category).toBe('insurance');
     // insurance → finances is ADR-0005's ruling (hc.own_domain,
     // 20260815230005:71), standing since 1B.
     expect(moved!.taint).toEqual(['finances']);
     // Ruth held health summary; insurance is the documents domain — her next
     // query loses the row, from her live context.
-    expect(await docsLib.documentById(claimsOf('ruth'), dMed)).toBeNull();
+    expect(await docsLib.documentById(claimsOf('ruth'), circleId, dMed)).toBeNull();
     // TWO entries is the pinned shape (068:19, ADR-0032 D6): the person's
     // entry carrying both audiences by name, and the machinery's own beside
     // it — the count is two, stated.
@@ -354,10 +372,12 @@ describe('documentAudience / recategorizeDocument — an audience change, named 
       [circleId, dMed],
     );
     expect(logged.rowCount).toBe(2);
-    const personEntry = logged.rows.find((r) => r.detail?.audience_before !== undefined);
+    const personEntry = logged.rows.find((r) => r.detail?.category_before !== undefined);
     expect(personEntry).toBeDefined();
     expect(personEntry!.detail.category_before).toBe('medical');
     expect(personEntry!.detail.category_after).toBe('insurance');
+    expect(personEntry!.detail.audience_before).toBeDefined();
+    expect(personEntry!.detail.audience_after).toBeDefined();
   });
 });
 

@@ -30,6 +30,11 @@ const INBOX_LEG = 'a11y.spec — "the Care Inbox family: inbox, senders, upload,
 // keyboard leg for the filters and the assign flow.
 const RECORD_LEG =
   'a11y.spec — "the record surfaces: tasks and timeline, list and detail, audited at 390px"; keyboard: "A11Y-09: the filters and the assign flow, keyboard-operable end to end, at 390px and desktop"';
+// 7C C2/C6 (slice-7 plan, G12 per increment): the documents viewer's own
+// leg — sentences at summary, the pages through the artifact route at view,
+// the machine-read sibling — plus A11Y-11's keyboard/390px half.
+const DOCS_DETAIL_LEG =
+  'documents.spec — "documents detail: sentences at summary with no viewer and no control; at view the pages through the artifact route with the machine-read sibling (DOC-02)"; keyboard: "A11Y-11: page navigation by keyboard; the machine-read sibling reachable as native text is; 390px"';
 
 export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/': {
@@ -56,6 +61,7 @@ export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/[circle]/timeline': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}` },
   '/[circle]/tasks': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}` },
   '/[circle]/tasks/[task]': { leg: RECORD_LEG },
+  '/[circle]/documents/[document]': { leg: DOCS_DETAIL_LEG },
   '/[circle]/timeline/[event]': { leg: RECORD_LEG },
   '/[circle]/tasks/[task]/assign': {
     leg: 'record.spec — "cross-taint: not offered where she cannot see the subject; the sentence and exactly two paths where she can; path 1 readable and the original invisible FROM HER LIVE CONTEXT (TSK-01, AC-TASK-6)" drives it over a live crossing; axe runs inside that leg',

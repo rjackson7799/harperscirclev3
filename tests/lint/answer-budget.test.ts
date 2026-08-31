@@ -20,7 +20,11 @@ import { join, relative } from 'node:path';
 // ============================================================================
 
 const repo = process.cwd();
-const RECORD_TREES = ['app/(app)/[circle]/tasks', 'app/(app)/[circle]/timeline'];
+const RECORD_TREES = [
+  'app/(app)/[circle]/tasks',
+  'app/(app)/[circle]/timeline',
+  'app/(app)/[circle]/documents',
+];
 
 function files(root: string, name: string): string[] {
   const out: string[] = [];

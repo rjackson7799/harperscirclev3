@@ -1,6 +1,7 @@
 import 'server-only';
 import { withRequestRole, type RequestClaims } from '@/lib/db/request-role';
 import { isoText, isoTextOrNull } from './rows';
+import { SUBJECT_SEQ } from './tasks';
 
 // ============================================================================
 // 7C C2 · the Documents detail's data half (PRD §4.3.2–§4.3.5; TSD §1.3,
@@ -35,6 +36,25 @@ export function isDocCategory(value: string): value is DocCategory {
   return (DOC_CATEGORIES as readonly string[]).includes(value);
 }
 
+/** Category → permission domain, mirroring hc.own_domain's document arm
+ *  (20260815230005:67-74; insurance/financial → finances is ADR-0005's
+ *  ruling). Snapshot-pinned LIVE against hc.own_domain in
+ *  tests/hc/documents.test.ts — the lib/permissions/tiers.ts discipline:
+ *  the words and the grants they describe cannot drift apart. */
+export const CATEGORY_DOMAIN: Record<DocCategory, string> = {
+  medical: 'health',
+  medications: 'health',
+  labs: 'health',
+  insurance: 'finances',
+  financial: 'finances',
+  legal: 'documents',
+  other: 'documents',
+};
+
+export function categoryDomain(category: DocCategory): string {
+  return CATEGORY_DOMAIN[category];
+}
+
 /** Where it came from — present when the arrival row is visible to the
  *  caller (arrivals are summary-readable at the arrival's own gate), null
  *  otherwise: linked when visible, never a dead link. */
@@ -51,6 +71,7 @@ export type DocumentDetail = {
   circle_id: string;
   subject_id: string;
   subject_name: string;
+  subject_seq: number;
   title: string;
   category: string;
   /** ≤ 3 sentences, plain language — the summary member's whole content. */
@@ -62,6 +83,13 @@ export type DocumentDetail = {
   approver_display_name: string;
   taint: string[];
   taint_resolved: boolean;
+  /** The arrival's view×5 — the one M2/M5-unified resolution (REV-01),
+   *  asked of hc.visible_at itself. Gates the pages AND the facts: the
+   *  page never calls extractionsFor below this. */
+  can_view: boolean;
+  /** The caller holds MANAGE on this document from their own context —
+   *  hc.visible_at, the policies' own function, asked once per row. */
+  can_manage: boolean;
   source: DocumentSource | null;
 };
 
@@ -70,6 +98,7 @@ type DocumentSql = {
   circle_id: string;
   subject_id: string;
   subject_name: string;
+  subject_seq: number;
   title: string;
   category: string;
   summary_text: string | null;
@@ -79,6 +108,8 @@ type DocumentSql = {
   approver_display_name: string;
   taint: string[];
   taint_resolved: boolean;
+  can_view: boolean;
+  can_manage: boolean;
   source_arrival_seen: string | null;
   source_channel: string | null;
   sender_display_name: string | null;
@@ -92,6 +123,7 @@ function toDetail(row: DocumentSql): DocumentDetail {
     circle_id: row.circle_id,
     subject_id: row.subject_id,
     subject_name: row.subject_name,
+    subject_seq: Number(row.subject_seq),
     title: row.title,
     category: row.category,
     summary_text: row.summary_text,
@@ -101,6 +133,8 @@ function toDetail(row: DocumentSql): DocumentDetail {
     approver_display_name: row.approver_display_name,
     taint: row.taint,
     taint_resolved: row.taint_resolved,
+    can_view: row.can_view,
+    can_manage: row.can_manage,
     source:
       row.source_arrival_seen && row.source_channel
         ? {
@@ -118,23 +152,30 @@ function toDetail(row: DocumentSql): DocumentDetail {
  *  shape (hidden and not-exists are the same null). */
 export async function documentById(
   claims: RequestClaims,
+  circleId: string,
   documentId: string,
 ): Promise<DocumentDetail | null> {
-  if (!UUID_RE.test(documentId)) return null;
+  if (!UUID_RE.test(circleId) || !UUID_RE.test(documentId)) return null;
   return withRequestRole('authenticated', claims, async (q) => {
     const r = await q.query<DocumentSql>(
       `select d.id, d.circle_id, d.subject_id, s.first_name as subject_name,
+              sq.seq as subject_seq,
               d.title, d.category::text as category, d.summary_text,
               d.artifact_arrival_id, d.filed_at, d.approved_at,
               d.approver_display_name, d.taint::text[] as taint, d.taint_resolved,
+              hc.visible_at(hc.ctx(), d.subject_id, hc.all_domains(), true,
+                            'arrival', d.artifact_arrival_id, null) >= 'view' as can_view,
+              hc.visible_at(hc.ctx(), d.subject_id, d.taint, d.taint_resolved,
+                            'document', d.id, null) >= 'manage' as can_manage,
               a.id as source_arrival_seen, a.channel::text as source_channel,
               a.sender_display_name, a.sender_address,
               a.received_at as source_received_at
          from public.documents d
          join public.subjects s on s.id = d.subject_id
+         join (${SUBJECT_SEQ}) sq on sq.id = d.subject_id
          left join public.arrivals a on a.id = d.source_arrival_id
-        where d.id = $1 and d.deleted_at is null`,
-      [documentId],
+        where d.circle_id = $1 and d.id = $2 and d.deleted_at is null`,
+      [circleId, documentId],
     );
     return r.rows.length === 1 ? toDetail(r.rows[0]) : null;
   });
