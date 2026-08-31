@@ -127,8 +127,11 @@ beforeAll(async () => {
   await grant('marisol', 'schedule', 'summary');
   // Ruth: health at summary — reads the row, loses it if the document moves out.
   await grant('ruth', 'health', 'summary');
-  // Lena: health at view.
+  // Lena: health at view, schedule at LOG — the derived task (taint
+  // {schedule,health}) sits at her min = log: counted, never named
+  // (ADR-0033 D2: below log the referent is not even counted).
   await grant('lena', 'health', 'view');
+  await grant('lena', 'schedule', 'log');
 
   arrival = randomUUID();
   await raw.query(
@@ -243,12 +246,13 @@ describe('documentReferences — everything in the record that references it, co
     expect(task!.label).toMatch(/discharge instructions/i);
   });
 
-  it('a member who cannot see the derived task gets a ROW with visible=false and NO label — never absent, never named', async () => {
+  it('a log-level member gets a ROW with visible=false, NO label and NO id — counted, never named (D2: id and label suppressed together)', async () => {
     const refs = await docsLib.documentReferences(claimsOf('lena'), dMed);
     const task = refs.find((r) => r.object_type === 'task');
     expect(task).toBeDefined();
     expect(task!.visible).toBe(false);
     expect(task!.label).toBeNull();
+    expect(task!.object_id).toBeNull();
   });
 });
 
@@ -323,27 +327,37 @@ describe('documentAudience / recategorizeDocument — an audience change, named 
     expect(still!.category).toBe('medical');
   });
 
-  it('a stale expected category is refused — the screen the person confirmed is the move that happens', async () => {
+  it('a stale expected category is refused with the NAMED document_changed (D19.5: the preview binds the move)', async () => {
     await expect(
       docsLib.recategorizeDocument(claimsOf('sarah'), dMed, 'financial', 'insurance'),
-    ).rejects.toThrow(/recategorize_refused|category_changed/);
+    ).rejects.toThrow(/document_changed/);
   });
 
   it('the move rewrites category AND taint in one transaction, and the log entry carries both audiences', async () => {
     const r = await docsLib.recategorizeDocument(claimsOf('sarah'), dMed, 'insurance', 'medical');
-    expect(r.document_id ?? r.id ?? dMed).toBe(dMed);
+    expect(r.document_id).toBe(dMed);
+    expect(r.changed).toBe(true);
     const moved = await docsLib.documentById(claimsOf('sarah'), dMed);
     expect(moved!.category).toBe('insurance');
-    expect(moved!.taint).toEqual(['documents']);
+    // insurance → finances is ADR-0005's ruling (hc.own_domain,
+    // 20260815230005:71), standing since 1B.
+    expect(moved!.taint).toEqual(['finances']);
     // Ruth held health summary; insurance is the documents domain — her next
     // query loses the row, from her live context.
     expect(await docsLib.documentById(claimsOf('ruth'), dMed)).toBeNull();
+    // TWO entries is the pinned shape (068:19, ADR-0032 D6): the person's
+    // entry carrying both audiences by name, and the machinery's own beside
+    // it — the count is two, stated.
     const logged = await raw.query(
-      `select 1 from public.access_log
+      `select detail from public.access_log
         where circle_id = $1 and event_type = 'audience_changed' and object_id = $2`,
       [circleId, dMed],
     );
-    expect(logged.rowCount).toBe(1);
+    expect(logged.rowCount).toBe(2);
+    const personEntry = logged.rows.find((r) => r.detail?.audience_before !== undefined);
+    expect(personEntry).toBeDefined();
+    expect(personEntry!.detail.category_before).toBe('medical');
+    expect(personEntry!.detail.category_after).toBe('insurance');
   });
 });
 
