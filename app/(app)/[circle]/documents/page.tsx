@@ -108,7 +108,9 @@ export default async function DocumentsPage({
         <>
           {header()}
           <p className="meta">
-            <a href={`/${circle}/upload`}>Add a document</a>
+            <a className="action-link" href={`/${circle}/upload`}>
+              Add a document
+            </a>
           </p>
 
           {inFlight.length > 0 ? (
@@ -117,7 +119,7 @@ export default async function DocumentsPage({
               <ul>
                 {inFlight.map((a) => (
                   <li key={a.arrival_id}>
-                    <a href={`/${circle}/inbox`}>
+                    <a className="action-link" href={`/${circle}/inbox`}>
                       {a.label} · {a.subject_name} · {formatShortDate(a.received_at.slice(0, 10))}
                     </a>
                   </li>
@@ -167,7 +169,9 @@ export default async function DocumentsPage({
               <ul className="record-list">
                 {filtered.map((d) => (
                   <li key={d.id}>
-                    <a href={`/${circle}/documents/${d.id}`}>{d.title}</a>
+                    <a className="action-link" href={`/${circle}/documents/${d.id}`}>
+                      {d.title}
+                    </a>
                     <p className="meta">
                       <SubjectLabel subjectId={d.subject_id} seq={d.subject_seq} name={d.subject_name} />
                       {' · '}

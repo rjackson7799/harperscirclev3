@@ -118,7 +118,17 @@ function referenceLine(circle: string, ref: ReferenceRow, key: number) {
       : ref.object_type === 'timeline_event'
         ? `/${circle}/timeline/${ref.object_id}`
         : null;
-  return <li key={key}>{href ? <a href={href}>{ref.label}</a> : ref.label}</li>;
+  return (
+    <li key={key}>
+      {href ? (
+        <a className="action-link" href={href}>
+          {ref.label}
+        </a>
+      ) : (
+        ref.label
+      )}
+    </li>
+  );
 }
 
 export default async function DocumentPage({
@@ -394,7 +404,9 @@ export default async function DocumentPage({
                     <Button type="submit">Move it to {CATEGORY_LABEL[move]}</Button>
                   </form>
                   <p className="meta">
-                    <a href={next}>Keep it where it is</a>
+                    <a className="action-link" href={next}>
+                      Keep it where it is
+                    </a>
                   </p>
                 </>
               ) : (

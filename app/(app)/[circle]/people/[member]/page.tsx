@@ -251,7 +251,9 @@ export default async function MemberPage({
                 <ul>
                   {contribution.owns_now.map((t) => (
                     <li key={t.id}>
-                      <a href={`/${circle}/tasks/${t.id}`}>{t.title}</a>
+                      <a className="action-link" href={`/${circle}/tasks/${t.id}`}>
+                        {t.title}
+                      </a>
                     </li>
                   ))}
                 </ul>
@@ -299,7 +301,9 @@ export default async function MemberPage({
               </form>
             ) : (
               <p className="meta">
-                <a href={`${next}?remove=1`}>Remove {person.display_name} from the circle</a>
+                <a className="action-link" href={`${next}?remove=1`}>
+                  Remove {person.display_name} from the circle
+                </a>
               </p>
             )}
           </section>

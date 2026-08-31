@@ -96,7 +96,7 @@ export default async function SubjectPage({
               This is <strong>{subject.display_name}</strong>&apos;s record, held on their
               behalf{subject.custodian_name ? <> by {subject.custodian_name} (custodian)</> : null}.
               Everything done with it is written down —{' '}
-              <a href={`/${circle}/people/log`}>the family&apos;s log</a> can be printed for them
+              <a className="action-link" href={`/${circle}/people/log`}>the family&apos;s log</a> can be printed for them
               today.
             </p>
             {declaration ? (

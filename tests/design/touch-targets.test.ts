@@ -34,6 +34,10 @@ describe('D7 · every control class carries the 44px floor', () => {
     '.button-quiet',
     '.nav-link',
     '.chip-dismiss',
+    // 7C C6 (A11Y-10, gate r4): a bare inline action <a> measured 16px at
+    // 390px — the two link classes join the enumerated floor.
+    '.back-link',
+    '.action-link',
   ]) {
     it(`${selector} min-height 44px`, () => {
       expect(block(selector)).toContain('min-height: 44px');

@@ -167,7 +167,9 @@ export default async function PeoplePage({
                 ))}
                 {coordinator && m.member_id ? (
                   <p className="meta">
-                    <a href={`/${circle}/people/${m.member_id}`}>Adjust what they can see</a>
+                    <a className="action-link" href={`/${circle}/people/${m.member_id}`}>
+                      Adjust what they can see
+                    </a>
                   </p>
                 ) : null}
               </Card>
