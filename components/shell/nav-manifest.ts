@@ -34,5 +34,6 @@ export const NAV_MANIFEST: NavEntry[] = [
   { key: 'tasks', label: 'Tasks', group: 'primary', href: (c) => `/${c}/tasks` },
   { key: 'invite', label: 'Invite', group: 'primary', href: (c) => `/${c}/invite` },
   { key: 'timeline', label: 'Timeline', group: 'record', href: (c) => `/${c}/timeline` },
+  { key: 'documents', label: 'Documents', group: 'record', href: (c) => `/${c}/documents` },
   { key: 'account', label: 'Account', group: 'utility', href: () => '/account' },
 ];

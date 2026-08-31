@@ -152,7 +152,13 @@ const GATED: Record<string, Entry> = {
     load: () => import('@/app/(app)/[circle]/tasks/[task]/assign/page'),
     props: { params: params({ circle: CIRCLE, task: TASK }), searchParams: sp({ member: MEMBER }) },
   },
-  // ---- 7C C2: the pin demanded these the moment they existed --------------
+  // ---- 7C C1/C2: the pin demanded these the moment they existed -----------
+  '/[circle]/documents': {
+    kind: 'page',
+    next: `/${CIRCLE}/documents`,
+    load: () => import('@/app/(app)/[circle]/documents/page'),
+    props: { params: params({ circle: CIRCLE }), searchParams: sp() },
+  },
   '/[circle]/documents/[document]': {
     kind: 'page',
     next: `/${CIRCLE}/documents/${DOCUMENT}`,
@@ -335,7 +341,7 @@ describe('GTE-01 · the gated set is PINNED to the filesystem both ways', () => 
 
   it('the D15 enumeration holds on disk, plus 7B and 7C C2: ten + three + one pages, five + one + five + three form routes, one layout', () => {
     const kinds = Object.values(GATED).map((e) => e.kind);
-    expect(kinds.filter((k) => k === 'page').length).toBe(14);
+    expect(kinds.filter((k) => k === 'page').length).toBe(15);
     expect(kinds.filter((k) => k === 'route').length).toBe(14);
     expect(kinds.filter((k) => k === 'layout').length).toBe(1);
   });

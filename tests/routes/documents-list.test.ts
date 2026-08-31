@@ -117,10 +117,9 @@ describe('the list — rows at the member own level, one fetch, counts post-filt
     expect(html).toMatch(/1 document\b/);
   });
 
-  it('a subject filter narrows the same way', async () => {
-    const html = await renderPage({ subject: NELL });
-    expect(html).toContain('Discharge summary · Jul 12');
-    expect(html).not.toContain('Cardiology consult · Aug 2');
+  it('a subject filter narrows server-side — the ONE fetch carries it, and the live test holds the narrowing', async () => {
+    await renderPage({ subject: NELL });
+    expect(docsHc.documentsFor).toHaveBeenCalledWith(CLAIMS, CIRCLE, { subject: NELL });
   });
 
   it('an unknown category param is ignored, never an error', async () => {

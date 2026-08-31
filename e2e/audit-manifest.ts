@@ -61,6 +61,9 @@ export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/[circle]/timeline': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}` },
   '/[circle]/tasks': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}` },
   '/[circle]/tasks/[task]': { leg: RECORD_LEG },
+  '/[circle]/documents': {
+    leg: 'documents.spec — "documents list: by category and subject at the member\'s own level, counts post-filter; Nothing filed yet.; Add a document is an ingestion (DOC-01, AC-DOC-2)"; audited inside the a11y shell pass at 390px when the spec lands (C6)',
+  },
   '/[circle]/documents/[document]': { leg: DOCS_DETAIL_LEG },
   '/[circle]/timeline/[event]': { leg: RECORD_LEG },
   '/[circle]/tasks/[task]/assign': {
