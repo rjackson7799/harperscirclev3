@@ -252,6 +252,13 @@ export default async function DocumentPage({
               <ol className="document-pages">
                 {Array.from({ length: rendition.page_count }, (_, i) => i + 1).map((n) => (
                   <li key={n}>
+                    {/* Deliberately a plain <img> (the ReviewScreen precedent):
+                        these bytes are PRIVATE pages served no-store through
+                        the authenticated artifact route, and next/image would
+                        put them through an optimizer cache — exactly the
+                        second byte path and second retention surface the
+                        fence forbids. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={`/api/artifact/${doc!.artifact_arrival_id}?page=${n}`}
                       alt={`Page ${n} of ${doc!.title}`}

@@ -428,7 +428,7 @@ test.describe('the 7C people legs', () => {
       // the list: axe clean at 390, no horizontal scroll
       await page.goto(`/${f.circleId}/people`);
       await expect(page.locator('main')).toContainText(/Nell: /);
-      let overflow = await page.evaluate(
+      const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
       );
       expect(overflow).toBe(false);
