@@ -24,6 +24,10 @@ const RECORD_TREES = [
   'app/(app)/[circle]/tasks',
   'app/(app)/[circle]/timeline',
   'app/(app)/[circle]/documents',
+  // 7E (R3/F-6): the people tree — six surfaces that carried a budget all
+  // along and were held to nothing. Added with the exact-set pin above, so
+  // the guarantee and the state can no longer drift apart silently.
+  'app/(app)/[circle]/people',
 ];
 
 // ── 7E · R3/F-6 (ADR-0038, ACCEPTED · TAKEN(7E)) ─────────────────────────
