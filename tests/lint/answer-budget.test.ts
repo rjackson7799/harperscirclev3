@@ -26,6 +26,43 @@ const RECORD_TREES = [
   'app/(app)/[circle]/documents',
 ];
 
+// ── 7E · R3/F-6 (ADR-0038, ACCEPTED · TAKEN(7E)) ─────────────────────────
+//
+// Round 27: `RECORD_TREES` gained `documents` in 7C and did not gain
+// `people`. Every one of the six surfaces under the people tree carries a
+// budget TODAY, so the STATE is right — but the GUARANTEE is missing, and
+// deleting `withRouteBudget` from the grant route broke no test. The list
+// below is why that could happen quietly: a tree is scanned only if some
+// human remembered to name it here.
+//
+// So the surfaces are pinned as an EXACT SET (ADR-0026: if it can be an
+// exact-set assertion, it must be). A new page or POST under a record tree
+// now fails this file until it is listed, which makes it a DECISION rather
+// than an omission — the same shape as the page-gate filesystem pin.
+const RECORD_SURFACES = [
+  'app/(app)/[circle]/documents/[document]/page.tsx',
+  'app/(app)/[circle]/documents/[document]/recategorize/submit/route.ts',
+  'app/(app)/[circle]/documents/[document]/share/submit/route.ts',
+  'app/(app)/[circle]/documents/[document]/unshare/submit/route.ts',
+  'app/(app)/[circle]/documents/page.tsx',
+  'app/(app)/[circle]/people/[member]/grant/submit/route.ts',
+  'app/(app)/[circle]/people/[member]/page.tsx',
+  'app/(app)/[circle]/people/invites/[invite]/again/submit/route.ts',
+  'app/(app)/[circle]/people/log/page.tsx',
+  'app/(app)/[circle]/people/page.tsx',
+  'app/(app)/[circle]/people/subject/[subject]/page.tsx',
+  'app/(app)/[circle]/tasks/[task]/assign/page.tsx',
+  'app/(app)/[circle]/tasks/[task]/assign/submit/route.ts',
+  'app/(app)/[circle]/tasks/[task]/complete/submit/route.ts',
+  'app/(app)/[circle]/tasks/[task]/page.tsx',
+  'app/(app)/[circle]/tasks/[task]/snooze/submit/route.ts',
+  'app/(app)/[circle]/tasks/[task]/unassign/submit/route.ts',
+  'app/(app)/[circle]/tasks/page.tsx',
+  'app/(app)/[circle]/timeline/[event]/page.tsx',
+  'app/(app)/[circle]/timeline/add/submit/route.ts',
+  'app/(app)/[circle]/timeline/page.tsx',
+];
+
 // 7C C2 (OW-23, ruled ADR-0036 Q-B): the auth submits are a person's wait.
 // D6 said five; the disk holds seven — the CLASS is what is held (the OW-17
 // precedent: the guard is wider than the finding's letter, and says so).
@@ -54,6 +91,13 @@ describe('OW-03 · every 7B page and POST opens an AnswerBudget', () => {
   it('finds the record surfaces (positive control)', () => {
     expect(pages.length).toBeGreaterThanOrEqual(5);
     expect(routes.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('scans EXACTLY the record surfaces — an unlisted tree is an omission, not a decision (R3/F-6)', () => {
+    const scanned = [...pages, ...routes]
+      .map((f) => relative(repo, f).replace(/\\/g, '/'))
+      .sort();
+    expect(scanned, 'scanned surfaces vs the pinned set').toEqual([...RECORD_SURFACES].sort());
   });
 
   it('every record page renders inside withPageBudget', () => {
