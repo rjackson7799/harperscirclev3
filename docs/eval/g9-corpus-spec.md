@@ -399,8 +399,9 @@ part, not reading.
 | ~~Blind items 12 → 40 (same builder, more spec rows)~~ **BOUGHT — Q10, built at 6B B10** | was: ~1 h build, ~+2 MB in-tree, ~2× eval cost per run (landed at ~+0.8 MB) | Bands at n = 12–27 per field: a real interval rather than a floor — delivered as §4.1 |
 | Photographed synthetic documents (print, photograph, label) | Owner time; a physical loop | The only way to measure the model's *vision* rather than our contract. **Still out (Q10 kept row 2 out)** |
 | A second annotator + inter-annotator agreement | Owner time | Turns "adjudicated" into a measured agreement rate |
+| **A coverage-terms / warranty-term / offer class** — policy pages (exclusions, deductible, named perils), warranty certificates (term, start, transferability), contractor quotes (total, validity window, licence) | Builder `SPEC` rows + fixtures, with §3, §4.1 and §6 re-pinned **in the same commit** (`tests/eval/corpus.test.ts` pins §4.1 exactly) | Bands for the **non-medical half of the vault**. The corpus today covers the medical family and the insurance *claims* family (`eob`); it carries no coverage-terms, warranty-term or offer class, so every field in those documents ships all-high-risk indefinitely under §6.5 — nothing pre-selected, ever. **Cheapest before signature**: §8 — changing a blind item after bands are signed invalidates those bands. Raised as PRD §12.13. |
 
-Rows 2 and 3 remain owner decisions at the gate, with evidence in hand.
+Rows 2, 3 and 4 remain owner decisions at the gate, with evidence in hand.
 
 ---
 
