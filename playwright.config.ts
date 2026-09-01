@@ -16,14 +16,39 @@ export default defineConfig({
   // Dev-server cold compiles land inside the first tests; the budget is
   // per-test and generous rather than flaky.
   timeout: 120_000,
+  // 7C 7E · OW-25 (ADR-0038 D1, Q-E RATIFIED 2026-08-31): THE RUN RECORDS
+  // ITSELF. r5 went 57/57 green and left no machine-readable record at all —
+  // the JSON reporter was a CLI override (`--reporter=list,json`) and
+  // PLAYWRIGHT_JSON_OUTPUT_FILE never produced its file in any run, so the
+  // tally had to be read from teed console text. traps §4 forbids exactly
+  // that: the Playwright status mark is `x` under bare conhost and `✘` under
+  // Windows Terminal, so a console tally is INTERMITTENTLY wrong.
+  //
+  // `list` keeps the console output the gate protocol tees. `json` is the
+  // record. It is written to `.gate/` — the gate's own state directory
+  // (scripts/preflight.mjs) — and NOT to `test-results/`, which Playwright
+  // wipes at the start of every run, a peer session's run included (traps
+  // §6). Pinned by tests/lint/gate-record.test.ts against this object.
+  reporter: [['list'], ['json', { outputFile: '.gate/e2e-run.json' }]],
   use: {
     baseURL: 'http://127.0.0.1:3000',
     // The walkthrough exercises no-JS-hostile flows too; keep JS on (the
     // product's default) — progressive-enhancement claims are unit-level.
-    // Round-10 finding 11: every gate run leaves inspectable artifacts —
-    // trace + screenshot retained on failure; a RECORDED gate run uses
-    // `--trace on` per docs/ops/e2e-local-gate.md and retains the report.
-    trace: 'retain-on-failure',
+    // Round-10 finding 11: every gate run leaves inspectable artifacts.
+    //
+    // 7E · OW-25's second half, and the reason Q-E WIDENED the item: under
+    // `retain-on-failure` a GREEN run retains nothing by design, so the run
+    // that matters most — the one whose 57/57 the round is asked to accept —
+    // is the one with no per-test evidence behind it. `on` is what
+    // docs/ops/e2e-local-gate.md already prescribes for a recorded gate run
+    // (`--trace on`, run that way since ADR-0015 R6); moving it here retires
+    // the flag, so no invocation can produce a record-less green.
+    //
+    // THE DISK COST IS ACCEPTED AND NAMED: a trace per test across the full
+    // suite, in `test-results/`, is hundreds of MB per run — and it is wiped
+    // by the next run, so a recorded gate run's directory is copied
+    // vault-side before anything is re-run (traps §6).
+    trace: 'on',
     screenshot: 'only-on-failure',
   },
   // 5B B9: TWO servers. The Anthropic FIXTURE SERVER comes up first and the
