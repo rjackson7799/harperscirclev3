@@ -508,7 +508,7 @@ Uploads directly, or lets the Care Inbox file for them. Browses by category. Sea
 
 Medical · Medications · Insurance · Legal · Financial · Labs · Other. Category is proposed by the AI and set by the approver.
 
-Category maps to a permission domain (§7.2): `Medical`, `Medications` and `Labs` to health & care; `Financial` to finances; `Insurance`, `Legal` and `Other` to documents. **Re-categorising is therefore an authorization change, not a filing preference,** and it is treated as one:
+Category maps to a permission domain (§7.2): `Medical`, `Medications` and `Labs` to health & care; `Insurance` and `Financial` to finances; `Legal` and `Other` to documents. **[ERRATUM, ADR-0038 Q-C, RATIFIED 2026-08-31 — this sentence previously read "`Financial` to finances; `Insurance`, `Legal` and `Other` to documents".]** `Insurance → finances` is ADR-0005's ruling, shipped in `hc.own_domain` since slice 1B and pinned LIVE for all seven categories in `tests/hc/documents.test.ts`; the ADR binds and the prose was the drift. No surface said "documents" of an insurance document — the only domain word a person reads is composed from `categoryDomain()`, so it has always rendered "finances", matching this section's own example sentence below. **Re-categorising is therefore an authorization change, not a filing preference,** and it is treated as one:
 
 - The interface computes and names the **exact before-and-after audience**, by name: *"This moves it out of finances. Dan and Ruth will be able to see it."* Explicit confirmation, not a generic warning.
 - Outstanding signed URLs for the document are revoked, and the search index is updated **in the same transaction** as the category.
@@ -917,8 +917,8 @@ Five, from Scope §4.8, each independently grantable:
 | **Memories** | Photos, voice notes, stories (Phase 3; the domain exists now) |
 | **Health & care** | Medical and medication documents, health-related facts, care events |
 | **Schedule** | Dated items, appointments, shifts, task due dates |
-| **Documents** | Insurance, legal and general documents |
-| **Finances** | Financial documents and money-related facts |
+| **Documents** | Legal and general documents (**erratum, ADR-0038 Q-C**: previously read "Insurance, legal and general documents"; insurance is **Finances** — ADR-0005) |
+| **Finances** | Insurance and financial documents, money-related facts |
 
 Document category maps to domain (§4.3.2). A document's domain is derived from its category, which is why re-categorising warns.
 

@@ -22,6 +22,36 @@ gate) → `docs/coverage.md`.
 
 ---
 
+## AMENDED BY ROUND 27 — the head index (ADR-0038, RATIFIED 2026-08-31)
+
+**Nothing below is rewritten.** Round 27 found seven sentences in this ADR that
+the tree falsifies or outruns; the original prose stands and each site carries a
+marker. This index is the whole list, so a later reader cannot miss one.
+
+| Site | What round 27 found | Finding |
+|---|---|---|
+| **D1** | The fence's GUARANTEE is narrower than the sentence claims. Four literal-name predicates, three shipping no control; it survives none of a re-export from `lib/db/**`, `createSignedUrls` (the plural escapes the word boundary), a byte-returning reader in `lib/storage/artifacts`, or `next/image`. Its REFERENT is clean — that was re-verified | R1/F-1, F-2, F-3, F-5 |
+| **D3** | *"every hop raced"* is false for the ingress read: `boundedJsonText`'s `req.text()` runs BEFORE `withRouteBudget` opens on both upload routes. OW-07 and OW-19 still stand CLOSED — this is a sixth hop neither named — and it is carried by OW-24 | R5/F-1 |
+| **D5** | *"hidden HAS no word"* is a MODULE-scoped property, not a tree-wide one: `people/log/page.tsx` and the adjust matrix both word it, correctly. And the line does not NAME a hidden domain but does not conceal that one exists — non-mention is weaker than non-inference, and it is harmless only because `hc.circle_people` guards member levels | R4/F-9 and R4's dissent |
+| **D7** | *"stamps `private, no-store` on every pass-through"* has one uncovered branch: `proxy.ts:30` returns before the stamp at `:67` when the Supabase env vars are unset. Q-D ratified with this folded into PPL-03's cell; the one-line fix lands at 7D | R5/F-2 |
+| **D8** | *"'opens in an upcoming update' is gone from the tree"* is **FALSE** at the evidence head — the string renders at `app/(app)/[circle]/timeline/[event]/page.tsx:137`, on a file 7C never touched, and a comment at `inbox/[arrival]/page.tsx:284` asserts its absence. Separately, the episode receipt link drops the `subjectId` `receiptLine` carries. And the C5 subject page shipped at `/[circle]/people/subject/[subject]`, not the plan's `/[circle]/people/[subject]` — a necessary disambiguation, unrecorded until now | R4/F-1, F-2, and R4's dissent |
+| **D10** | *"absent/empty/failed each said"* holds for three arms of four. The 404 arm renders a claim about STORAGE out of answers that are not about storage — every authorization refusal and every non-timeout storage error becomes *"No machine-read text is stored for this page."* | R1/F-4 |
+| **D12.1** | The enumeration understates: the row also carries the approver's name and the approval date, and the page shows them. Amended by Q-A to *"title, category, dates, the sentences, and who approved it and when"* | Q-A, R2's answer |
+
+**Two narrowings D12 does not name, ruled at round 27 and added here:**
+**(8)** the re-categorisation preview names the DOCUMENT audience only —
+`hc.document_audience_derived` has zero callers, so ADR-0034 D7's ruling that the
+preview names the derived objects is UNMET (R2/F-2, accepted, fixed at 7D, not
+re-read as a narrowing); **(9)** AC-DOC-6's refusal half has no app-layer
+evidence at any level — the offer is unfiltered and `audience_refused` is
+flattened into `loadFailed` (R2/F-1).
+
+The verdicts and their arguments: `docs/review/round-27-dispositions.md`. The
+rulings: `docs/adr/0038-round-27-dispositions.md`.
+
+---
+
+
 ## The commits (red → green per unit, the signature in every red)
 
 | Unit | Red | Green | Failure signature in the red |
@@ -39,6 +69,8 @@ gate) → `docs/coverage.md`.
 | C6 gate repairs | — | `4a77abe` `1d7fc36` `acbf0bd` `ccd854b` | each carries its run's verbatim mechanism — D11 |
 
 ## D1 — the byte path was asserted before the viewer existed, and stayed one path
+
+> **AMENDED (ADR-0038, round 27):** the REFERENT is clean and re-verified; the FENCE's guarantee is narrower than this section claims — see the head index, R1/F-1/F-2/F-3/F-5. Exact-set importer pins land at 7E.
 
 `tests/lint/byte-path-fence.test.ts` (the FIRST commit): the sanctioned
 `asServiceRole()` consumer is ONE FILE by filesystem scan — closing the hole
@@ -65,6 +97,8 @@ null row is still `NEXT_NOT_FOUND`).
 
 ## D3 — the bounds landed where the waits are (OW-07/16/19/23 CLOSED at f1cfc33)
 
+> **AMENDED (ADR-0038, round 27):** *"every hop raced"* is false for the ingress read (R5/F-1). OW-07/OW-16/OW-19/OW-23 all stand CLOSED; the sixth hop is OW-24.
+
 Both upload routes: a 4 KiB ingress cap answering 413 BEFORE any parse or
 probe, and `withRouteBudget` with every hop raced. The TUS creation refuses
 a missing or over-cap `Upload-Length` before a byte lands — the per-file
@@ -90,6 +124,8 @@ is re-chosen rather than copied.
 
 ## D5 — the plain line, from one module, with hidden deliberately unworded
 
+> **AMENDED (ADR-0038, round 27):** *"hidden HAS no word"* is module-scoped, not tree-wide, and non-mention is not non-inference (R4/F-9 — ACCEPTED-NOTE, no code).
+
 `lib/permissions/phrases` maps exactly `hc.access_level` MINUS `hidden` to
 words and phrases — hidden HAS no word by design, so an unworded level can
 never leak into a sentence — pinned LIVE against the enum and
@@ -112,6 +148,8 @@ token).
 
 ## D7 — revocation, and the honesty of the cached-responses channel
 
+> **AMENDED (ADR-0038, round 27):** one pass-through is unstamped — `proxy.ts:30`'s missing-env early return (R5/F-2). Q-D ratified with this folded into PPL-03.
+
 The revoke leg is AC-PPL-4's letter: the artifact URL fetched by a
 DEDICATED member before, the removal through the EXISTING route wearing
 *"a file already downloaded to someone's device cannot be recalled"* in
@@ -126,6 +164,8 @@ remove route now collects every `keep_share_ids` value (one checkbox per
 share); the old comma contract still parses and leg 29 is undisturbed.
 
 ## D8 — every receipt link resolves (RCP-02), and the log prints itself
+
+> **AMENDED (ADR-0038, round 27):** *"gone from the tree"* is FALSE (R4/F-1); the episode link drops its subject (R4/F-2, Q-B: fix then accept narrowed); and the subject page's shipped path is a narrowing this ADR never named. See the head index.
 
 Documents to THEIR page; profile facts to the subject's page (Q4(b)'s
 Phase-1 home — custodianship framing said the smaller true way, the
@@ -149,6 +189,8 @@ the layout hands the client nav the TIER string and the composition is
 computed client-side from the same module the vitest pins drive.
 
 ## D10 — the machine-read sibling is ONE component on both surfaces
+
+> **AMENDED (ADR-0038, round 27):** the 404 arm asserts a storage fact from non-storage answers (R1/F-4 — sentence ACCEPTED, the status split DECLINED for the authorization branches, which would be the oracle §1.3 forbids).
 
 Extracted from ReviewScreen verbatim (the F-5 label history kept): a toggle
 that fetches through the fence and CLASSIFIES — absent/empty/failed each
@@ -175,6 +217,8 @@ No leg was ever re-run to green: every red between runs has a commit whose
 message carries its mechanism, and r5 is one complete run at one head.
 
 ## D12 — narrowings and observations, named
+
+> **AMENDED (ADR-0038, round 27):** D12.1's enumeration is amended (Q-A), and two unnamed narrowings — (8) and (9) — are added in the head index.
 
 1. **A document share does not extend to the arrival's bytes or facts.** The
    share-holder reads the document ROW (title, category, dates, sentences);

@@ -1,5 +1,10 @@
 # Round-27 dispositions — the 42 rows, each with its argument
 
+> **RULED — OWNER SIGN-OFF 2026-08-31. All eleven ballot items RATIFIED AS PUT**
+> (the owner, on ADR-0038's D8 ballot: *"ok to proceed"*, confirmed against the
+> three readings offered). The verdicts below were PUT at `bebbdc2` and are
+> RULED at the commit that stamps this line. §7 records exactly what moved.
+
 **Companion to ADR-0038**, which holds only what a future session must obey.
 This file holds the per-finding verdicts, the exact replacement text for every
 coverage cell a verdict touches, and the ledger rows. It moves nothing: no
@@ -395,3 +400,48 @@ NOT RUN at `ccd854b`. Both exist to exercise DDL; 7C ships none; `supabase/` and
 at exact 74 and pgTAP on it are the migration-state evidence. Requiring the two
 legs at the dispositions head would add nothing the tree hash does not already
 prove.
+
+---
+
+## 7 — What the sign-off commit moved
+
+Only what a docs-only verdict may touch. **No code, test, leg or manifest**, so
+the evidence head stays `ccd854b` and this commit costs no gate run.
+
+**`docs/coverage.md` — 13 cells.** Eight `green` → `review` (RCP-02, DOC-01,
+DOC-03, DOC-05, PPL-01, PPL-04, A11Y-10, A11Y-11); four narrowed and still green
+(DOC-02, LOG-01, LOG-02, PPL-03); UXA-04 stays `pending`, its cell now carrying
+the round-27 read and the flip condition. Every cell keeps its original text and
+gains an `AMENDED BY RULING (ADR-0038 D4 …)` marker naming its finding — amend,
+never rewrite. Counts re-derived by the same parser shape the scanner uses, not
+asserted: **green 249 → 241 · review 9 → 17 · pending 9 unchanged · 267 rows
+unchanged.** The eight moved and the eight named agree.
+
+**`docs/owed.md` — three rows in, none out.** OW-24 `TAKEN(7C/7D)`, OW-25
+`TAKEN(7C/7E)`, OW-26 `OPEN` (home slice 8). OW-07 and OW-19 keep
+`CLOSED(f1cfc33)`, each gaining a struck-and-preserved marker recording that its
+acceptance condition is CONFIRMED and that the ingress read is a sixth hop it
+never named. **OPEN 6 → 7 / 25 · TAKEN 1 → 3 · RISK 1 · CLOSED 15 · 23 → 26
+rows**, prose and table reconciled by `tests/lint/process.test.ts`.
+
+**`docs/adr/0037-7c-sensitive-pair-deltas.md`.** A head index of the seven
+sentences round 27 found falsified or outrun (D1, D3, D5, D7, D8, D10, D12.1),
+plus a one-line marker at each of those sections, plus the two narrowings D12
+never named — (8) the derived audience, (9) AC-DOC-6's unevidenced refusal half.
+**Nothing rewritten** (ADR-0025 D6): the original prose stands everywhere.
+
+**`docs/PRD.md` — Q-C's erratum, and it was not one line.** §4.3.2's mapping
+sentence carried the drift, and so did **two rows of the §7.2 domain table**
+(`Documents` claiming insurance, `Finances` omitting it). All three corrected,
+each carrying the erratum marker with the prior wording preserved. The ruling
+said "a one-line PRD erratum"; the tree held three sites, and saying so is
+cheaper than a fourth round finding the other two.
+
+**Verified after the moves:** `tests/lint/process.test.ts` **29/29** — the
+coverage status vocabulary, no-green-row-without-evidence, the ledger's closed
+vocabulary, every OPEN row's acceptance condition, the cap, and the prose/table
+agreement all hold.
+
+**Next: 7E, then 7D.** Both cost the unconditional browser gate at one final
+head. `npm run test:e2e` is GLOBAL — it destroys a peer session's in-flight run
+— so the gate is confirmed before it is run, never launched on momentum.

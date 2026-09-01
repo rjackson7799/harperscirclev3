@@ -1,12 +1,29 @@
 # ADR-0038 — round-27 dispositions: the 42 rows ruled, and the six questions PUT
 
-**Status: PUT, NOT RULED.** Awaiting owner sign-off. **No verdict has moved** —
-`docs/coverage.md`, `docs/owed.md`, ADR-0037 and the PRD are untouched; no code,
-test, leg or manifest is changed. Verdicts move in a second commit after
-sign-off, each pointing back here (ADR-0025 D6, as rounds 21–25 did). **Head:**
-`slice/7c-sensitive-pair` @ `7e28e32`; evidence head **`ccd854b`**; base
-`origin/main` @ `18c362d`; PR **#34** open, `[DO NOT MERGE without owner
-sign-off]`.
+**Status: RULED — OWNER SIGN-OFF 2026-08-31. All eleven ballot items RATIFIED
+AS PUT** (the owner, on the D8 ballot: *"ok to proceed"*, confirmed against the
+three readings offered).
+
+**The verdicts have moved in the commit that stamps this line** — and only in
+the records a docs-only verdict may touch: `docs/coverage.md` (13 cells; **green
+249 → 241 · review 9 → 17 · pending 9 · 267 rows**, re-derived by command),
+`docs/owed.md` (**OPEN 6 → 7 / 25**), ADR-0037 (head index + 7 site markers,
+nothing rewritten), `docs/PRD.md` (Q-C's erratum, at two sections). Itemised in
+dispositions §7. **Not moved, deliberately:** no code, test, leg or manifest —
+the 40 accepted fixes are 7E then 7D and they cost the gate (D5). **PR #34 stays
+unmerged.**
+
+**Head:** `slice/7c-sensitive-pair`; evidence head **`ccd854b`** (unmoved — this
+commit is docs-only); base `origin/main` @ `18c362d`; PR **#34** open,
+`[DO NOT MERGE without owner sign-off]`.
+
+*(The paragraph below is the status as it was PUT, preserved unaltered.)*
+
+~~**Status: PUT, NOT RULED.**~~ Awaiting owner sign-off. **No verdict has
+moved** — `docs/coverage.md`, `docs/owed.md`, ADR-0037 and the PRD are
+untouched; no code, test, leg or manifest is changed. Verdicts move in a second
+commit after sign-off, each pointing back here (ADR-0025 D6, as rounds 21–25
+did).
 
 **This ADR holds only what a future session must obey.** The 42 verdicts with
 their arguments, the re-verification record, the questions' reasoning, the exact
@@ -128,12 +145,9 @@ level-bound step-up `target_ref`, since `hc.set_grant` computes it (R3's dissent
 > DECLINED 0 · OWNER 0.** By home: **7D 23 · 7E 17 · 7E+docs 1 · docs 1.**
 > Severity, unrestated: **MAJOR 16 · MINOR 21 · OBS 5.**
 
-Counted by the commands in dispositions §2, reconciled three ways — verdicts
-against the prose above, severities against the findings doc's headings, the
-ledger against the cap. **No row is `FIXED`**: a pre-merge round proposes
-verdicts, not completions. Two remedies are **DECLINED in part** (R1/F-4, R2/F-2).
-
 ## D8 — the ballot
+
+**RATIFIED AS PUT, all eleven, 2026-08-31.** Preserved below exactly as it was put.
 
 1. **Q-A RATIFIED**, on R2/F-7's pins and D12.1's amended enumeration.
 2. **Q-B: fix first, then ACCEPT the narrowed claim**, mechanisms 2–3 in RCP-02.
