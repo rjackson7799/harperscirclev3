@@ -50,7 +50,7 @@
 // signed-URL form matched, and a negative control per predicate.
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const ROOTS = ['app', 'lib', 'components'];
@@ -61,6 +61,9 @@ const SANCTIONED_ROUTE = 'app/api/artifact/[id]/route.ts';
 const DEFINING_MODULE = 'lib/db/service-role.ts';
 // The module that owns the storage plane's byte-returning readers.
 const STORAGE_MODULE = 'lib/storage/artifacts.ts';
+// The same two, extension-less: what an import specifier resolves TO.
+const SERVICE_ROLE_PATH = DEFINING_MODULE.replace(/\.ts$/, '');
+const STORAGE_PATH = STORAGE_MODULE.replace(/\.ts$/, '');
 
 function* walk(dir: string): Generator<string> {
   for (const entry of readdirSync(dir)) {
@@ -94,7 +97,10 @@ function filesMatching(pattern: RegExp, exclude: string[] = []): string[] {
 }
 
 const CALLS_SERVICE_ROLE = /\basServiceRole\s*\(/;
-const MINTS_SIGNED_URL = /\bcreateSignedUrl\b/;
+// R1/F-3: the trailing `s?`. `\b` between `l` and `s` is not a boundary, so
+// the singular-only form could not see the BATCH mint at all. Verified in
+// the installed @supabase/storage-js: createSignedUrl 30, createSignedUrls 15.
+const MINTS_SIGNED_URL = /\bcreateSignedUrls?\b/;
 const STREAMS_STORAGE_BODY = /\bfetchStorageWithin\s*\(|\bupstream\.body\b/;
 const PUBLIC_URL = /\bgetPublicUrl\b/;
 // R1/F-5: the prohibition D1 credits this file with. Both forms — the
@@ -111,17 +117,49 @@ const USES_NEXT_IMAGE = /['"]next\/image['"]|<Image[\s/>]/;
 // above it names the module, and a module cannot be consumed without being
 // imported.
 
-/** Every import of `<...>/<modulePath>` in a comment-stripped source, with
- *  the named bindings of the `import { a, b as c }` form. A bare
- *  `import '…'`, `import * as ns from '…'` or `import('…')` yields `[]`
- *  bindings and still counts as an import. */
-function moduleImports(source: string, modulePath: string): { bindings: string[] }[] {
-  const found: { bindings: string[] }[] = [];
-  const spec = `[^'"]*${modulePath.replace(/[/\\]/g, '\\/')}`;
-  const named = new RegExp(`import\\s*(?:type\\s+)?\\{([^}]*)\\}\\s*from\\s*['"]${spec}['"]`, 'g');
-  const bare = new RegExp(`(?<!\\{[^}]*\\}\\s*)from\\s*['"]${spec}['"]|import\\s*\\(\\s*['"]${spec}['"]`, 'g');
+/** An import specifier resolved to a repo-relative, extension-less module
+ *  path. `@/lib/db/service-role` becomes `lib/db/service-role`; and
+ *  `./service-role`, imported from `lib/db/reexport.ts`, becomes the same.
+ *  A bare package specifier resolves to itself and so matches nothing
+ *  under the walked roots.
+ *
+ *  Resolution is the point of the 7E rewrite. The RED matched the specifier
+ *  as a STRING containing `db/service-role`, and R1/F-1's bypass is a
+ *  re-export placed under `lib/db/**` — which writes `'./service-role'` and
+ *  contains no `db/` at all. A string test is not an import graph. */
+function resolveSpecifier(spec: string, fromFile: string): string {
+  const noExt = spec.replace(/\.(?:tsx?|jsx?|mjs|cjs)$/, '');
+  if (noExt.startsWith('.')) return posix.normalize(posix.join(posix.dirname(fromFile), noExt));
+  return noExt.replace(/^@\//, '');
+}
+
+/** Every import of the module at repo-relative, extension-less `modulePath`
+ *  in a comment-stripped `source` that lives at `fromFile`, carrying the
+ *  named bindings of the `import { a, b as c }` form.
+ *
+ *  A default import, `import * as ns`, a bare `import '…'`, an
+ *  `export * from '…'` and a dynamic `import('…')` each yield `[]` bindings
+ *  and still COUNT as imports — deliberately: every one of them reaches the
+ *  whole export set at once, and a module cannot be consumed without being
+ *  imported. That last clause is the property ADR-0037 D1's sentence claims
+ *  and the identifier grep never had. The re-export form `export { x } from
+ *  '…'` is read by the named pass, so it carries its bindings like any',
+ *  other import — which is exactly how the two-line bypass becomes visible. */
+function moduleImports(
+  source: string,
+  modulePath: string,
+  fromFile: string,
+): { bindings: string[] }[] {
   const clean = stripComments(source);
+  const found: { bindings: string[] }[] = [];
+  // Both passes end their match at the closing quote of the specifier, so
+  // the end offset is what keeps the second pass from re-counting the first.
+  const counted = new Set<number>();
+
+  const named = /\b(?:import|export)\s*(?:type\s+)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g;
   for (const m of clean.matchAll(named)) {
+    counted.add(m.index! + m[0].length);
+    if (resolveSpecifier(m[2], fromFile) !== modulePath) continue;
     found.push({
       bindings: m[1]
         .split(',')
@@ -129,7 +167,13 @@ function moduleImports(source: string, modulePath: string): { bindings: string[]
         .filter(Boolean),
     });
   }
-  for (const _ of clean.matchAll(bare)) found.push({ bindings: [] });
+
+  const any = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]/g;
+  for (const m of clean.matchAll(any)) {
+    if (counted.has(m.index! + m[0].length)) continue;
+    if (resolveSpecifier(m[1], fromFile) !== modulePath) continue;
+    found.push({ bindings: [] });
+  }
   return found;
 }
 
@@ -138,7 +182,7 @@ function moduleImports(source: string, modulePath: string): { bindings: string[]
 function importersOf(modulePath: string, exclude: string[] = []): string[] {
   return sourceFiles
     .filter((file) => !exclude.includes(file))
-    .filter((file) => moduleImports(readFileSync(file, 'utf8'), modulePath).length > 0)
+    .filter((file) => moduleImports(readFileSync(file, 'utf8'), modulePath, file).length > 0)
     .sort();
 }
 
@@ -147,7 +191,7 @@ function importersOfNames(modulePath: string, names: string[], exclude: string[]
   return sourceFiles
     .filter((file) => !exclude.includes(file))
     .filter((file) =>
-      moduleImports(readFileSync(file, 'utf8'), modulePath).some((i) =>
+      moduleImports(readFileSync(file, 'utf8'), modulePath, file).some((i) =>
         i.bindings.some((b) => names.includes(b)),
       ),
     )
@@ -270,7 +314,7 @@ describe('7C C2 · the byte-path fence — one consumer, one route, pinned both 
 
 describe('7E · the byte path pinned by its IMPORT GRAPH, not by identifiers (R1/F-1, R1/F-2)', () => {
   it(`lib/db/service-role is imported by exactly three files — a re-export under lib/db/** is the bypass this replaces (R1/F-1)`, () => {
-    expect(importersOf('db/service-role', [DEFINING_MODULE])).toEqual(SERVICE_ROLE_IMPORTERS);
+    expect(importersOf(SERVICE_ROLE_PATH, [DEFINING_MODULE])).toEqual(SERVICE_ROLE_IMPORTERS);
   });
 
   it('lib/db/service-role exports exactly four names — a FOURTH door to the same credential cannot appear unannounced (R1/F-1)', () => {
@@ -278,15 +322,15 @@ describe('7E · the byte path pinned by its IMPORT GRAPH, not by identifiers (R1
   });
 
   it("the storage plane's byte-returning readers are imported by exactly three pipeline WRITE routes — none of which returns the bytes (R1/F-2)", () => {
-    expect(importersOfNames('storage/artifacts', BYTE_READERS, [STORAGE_MODULE])).toEqual(
+    expect(importersOfNames(STORAGE_PATH, BYTE_READERS, [STORAGE_MODULE])).toEqual(
       BYTE_READER_IMPORTERS,
     );
   });
 
   it('no page, component or lib wrapper imports a byte-returning reader at all — the readers stay inside the pipeline (R1/F-2)', () => {
-    const outsideApi = importersOfNames('storage/artifacts', BYTE_READERS, [
-      STORAGE_MODULE,
-    ]).filter((file) => !file.startsWith('app/api/'));
+    const outsideApi = importersOfNames(STORAGE_PATH, BYTE_READERS, [STORAGE_MODULE]).filter(
+      (file) => !file.startsWith('app/api/'),
+    );
     expect(outsideApi).toEqual([]);
   });
 
@@ -308,10 +352,15 @@ describe('7E · the byte path pinned by its IMPORT GRAPH, not by identifiers (R1
     expect(MINTS_SIGNED_URL.test(stripComments('// never createSignedUrl here'))).toBe(false);
   });
 
-  it('control: PUBLIC_URL catches a real call and is carved out of comments', () => {
+  it('control: PUBLIC_URL catches a real call, is carved out of comments, and has no plural form to miss', () => {
     expect(PUBLIC_URL.test('const { data } = plane.from(B).getPublicUrl(key);')).toBe(true);
     expect(PUBLIC_URL.test(stripComments('// getPublicUrl is forbidden'))).toBe(false);
-    expect(PUBLIC_URL.test('const getPublicUrlsBanned = true;')).toBe(true);
+    // R1/F-3 is about `createSignedUrls`, and this predicate is NOT the same
+    // case: the installed @supabase/storage-js writes getPublicUrl 37 times
+    // and ships no plural, so the singular form has nothing to miss. What it
+    // must not do is fire on a longer identifier that merely begins with the
+    // name — that would be a false positive fencing an innocent file.
+    expect(PUBLIC_URL.test('const getPublicUrlsBanned = true;')).toBe(false);
   });
 
   it('control: STREAMS_STORAGE_BODY catches both idioms and is carved out of comments', () => {
@@ -338,6 +387,11 @@ describe('7E · the byte path pinned by its IMPORT GRAPH, not by identifiers (R1
   });
 
   it('control: the import reader sees the RE-EXPORT bypass that the identifier predicate misses (R1/F-1)', () => {
+    // R1/F-1, made concrete: a new file under lib/db/**, where every import
+    // fence is `no-restricted-imports: "off"`, re-exporting the credential to
+    // the whole tree. It writes a RELATIVE sibling specifier, which is why
+    // the reader has to resolve rather than substring-match.
+    const BYPASS_FILE = 'lib/db/reexport.ts';
     const bypass = [
       "import { asServiceRole as sr } from './service-role';",
       'export const svc = sr;',
@@ -345,11 +399,22 @@ describe('7E · the byte path pinned by its IMPORT GRAPH, not by identifiers (R1
     // The shipped predicate: no paren follows the identifier, so it misses it.
     expect(CALLS_SERVICE_ROLE.test(bypass)).toBe(false);
     // The import graph: the module was imported, which is the property.
-    expect(moduleImports(bypass, 'db/service-role')).toHaveLength(1);
-    expect(moduleImports(bypass, 'db/service-role')[0].bindings).toEqual(['asServiceRole']);
+    expect(moduleImports(bypass, SERVICE_ROLE_PATH, BYPASS_FILE)).toHaveLength(1);
+    expect(moduleImports(bypass, SERVICE_ROLE_PATH, BYPASS_FILE)[0].bindings).toEqual([
+      'asServiceRole',
+    ]);
+    // And the one-line form of the same bypass, which has no import statement
+    // at all — a re-export IS an import for the purpose of the consumer set.
+    expect(
+      moduleImports("export { asServiceRole } from './service-role';", SERVICE_ROLE_PATH, BYPASS_FILE),
+    ).toEqual([{ bindings: ['asServiceRole'] }]);
+    // Placed anywhere else, the same relative specifier resolves elsewhere and
+    // is NOT this module — resolution discriminates where a substring cannot.
+    expect(moduleImports(bypass, SERVICE_ROLE_PATH, 'lib/storage/reexport.ts')).toEqual([]);
   });
 
   it('control: the import reader sees a byte reader pulled into a route, and does NOT see a same-named local (R1/F-2)', () => {
+    const THUMBNAIL_FILE = 'app/api/upload/preview/route.ts';
     const thumbnail = [
       "import { downloadObject } from '@/lib/storage/artifacts';",
       'export async function GET(req: Request) {',
@@ -358,23 +423,40 @@ describe('7E · the byte path pinned by its IMPORT GRAPH, not by identifiers (R1
       '}',
     ].join('\n');
     expect(
-      moduleImports(thumbnail, 'storage/artifacts').some((i) =>
+      moduleImports(thumbnail, STORAGE_PATH, THUMBNAIL_FILE).some((i) =>
         i.bindings.some((b) => BYTE_READERS.includes(b)),
       ),
     ).toBe(true);
     // A local function of the same name, imported from nowhere, is not a
     // consumer of the module — the identifier grep cannot tell these apart.
     const local = 'function downloadObject(k: string) { return null; }';
-    expect(moduleImports(local, 'storage/artifacts')).toEqual([]);
+    expect(moduleImports(local, STORAGE_PATH, THUMBNAIL_FILE)).toEqual([]);
   });
 
   it('control: the export reader finds every declaration form, and the dynamic-import form counts as an import', () => {
     expect(exportNames(DEFINING_MODULE)).toContain('asServiceRole');
     expect(exportNames(DEFINING_MODULE)).toContain('asStoragePlane');
-    expect(moduleImports("const m = await import('@/lib/db/service-role');", 'db/service-role'))
-      .toHaveLength(1);
-    expect(moduleImports("import * as sr from '@/lib/db/service-role';", 'db/service-role'))
-      .toHaveLength(1);
-    expect(moduleImports("import { asUser } from '@/lib/db/user';", 'db/service-role')).toEqual([]);
+    const CALLER = 'app/api/artifact/[id]/route.ts';
+    expect(
+      moduleImports("const m = await import('@/lib/db/service-role');", SERVICE_ROLE_PATH, CALLER),
+    ).toHaveLength(1);
+    expect(
+      moduleImports("import * as sr from '@/lib/db/service-role';", SERVICE_ROLE_PATH, CALLER),
+    ).toHaveLength(1);
+    expect(
+      moduleImports("export * from '@/lib/db/service-role';", SERVICE_ROLE_PATH, CALLER),
+    ).toHaveLength(1);
+    // A sibling module of the same directory is not this module.
+    expect(
+      moduleImports("import { asUser } from '@/lib/db/user';", SERVICE_ROLE_PATH, CALLER),
+    ).toEqual([]);
+    // And the reader carves its own comments, like every predicate here.
+    expect(
+      moduleImports(
+        "// import { asServiceRole } from '@/lib/db/service-role';",
+        SERVICE_ROLE_PATH,
+        CALLER,
+      ),
+    ).toEqual([]);
   });
 });
