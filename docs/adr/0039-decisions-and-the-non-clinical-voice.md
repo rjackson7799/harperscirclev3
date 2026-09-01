@@ -1,7 +1,10 @@
 # ADR-0039 — Decisions in the record, and the product's voice outside health
 
-**Status:** proposed — owner amendment, docs-only
-**Date:** 2026-08-31
+**Status: RULED — OWNER SIGN-OFF 2026-09-01. All six ballot items RATIFIED AS
+PUT.** The owner's ruling, verbatim: *"RATIFY all six as put"*. The sign-off is §8.
+
+~~**Status:** proposed — owner amendment, docs-only~~ — as put, preserved.
+**Date:** 2026-08-31 · **Ruled:** 2026-09-01
 **Base:** `origin/main` @ `18c362d` (PR #33, round 26). PR #34 (slice 7C) is open and unmerged.
 **Supersedes:** nothing. **Amends:** PRD §3.1, §5, §6, §12; `docs/eval/g9-corpus-spec.md` §7.
 
@@ -147,3 +150,56 @@ No code, no migration, no fixture, no coverage row, no ledger row.
 | B4 | §12.12 and §12.13 as open questions, with the deadlines as stated | RATIFY / AMEND |
 | B5 | `g9-corpus-spec.md` §7 row 4 — priced, **not** bought in this PR | RATIFY / AMEND |
 | B6 | Merge order — this PR lands **after** PR #34 | RATIFY / AMEND |
+
+---
+
+## 8. OWNER SIGN-OFF, 2026-09-01 — all six ballot items RATIFIED AS PUT
+
+The owner's ruling, verbatim: **"RATIFY all six as put"**. Nothing moved. Each
+item is recorded below exactly as it was put in §7, with its consequence stated.
+
+| # | Item, as put | Ruling | Consequence |
+|---|---|---|---|
+| B1 | R1 — the product never states which option to take; §6.9 as written | **RATIFIED AS PUT** | PRD §6.9 is product law. It binds every surface that ever compares options, and its Test joins §6.6's adversarial string-template review. |
+| B2 | R2 — a new `decision` object, `episodes`' shape, when it is built | **RATIFIED AS PUT** | The shape is settled before the schema. `decision` appends to `hc.object_type` and `hc.proposal_kind` when a plan gate sets a bound; nothing is built here. |
+| B3 | R3 — docs-only now; the object goes to a plan gate, not this PR | **RATIFIED AS PUT** | No migration bound is created. Slice 7 is untouched; slice 8 stays Search + Home. |
+| B4 | §12.12 and §12.13 as open questions, with the deadlines as stated | **RATIFIED AS PUT** | Both are live. §12.12 is due before the decision object's schema is frozen; §12.13 before the owner signs G9's bands. |
+| B5 | `g9-corpus-spec.md` §7 row 4 — priced, **not** bought in this PR | **RATIFIED AS PUT** | The corpus does not move: `fixtures/g9` unchanged, §4.1's pins unchanged, `BAND_ARTIFACT_ALLOWLIST` stays empty. |
+| B6 | Merge order — this PR lands **after** PR #34 | **RATIFIED AS PUT** | PR #35 is held. `mergeable` read `MERGEABLE` at `b7c2a8e` against `main` @ `18c362d`; it is **re-checked after #34 lands**, not before. `--no-ff`, owner only. |
+
+Six items put, six ruled, none moved.
+
+### What the sign-off verified for itself
+
+Re-run at `b7c2a8e` on 2026-09-01, not carried over from the build session:
+
+| Check | Result |
+|---|---|
+| `tests/lint/process.test.ts` + `tests/eval/corpus.test.ts` | Test Files 2 passed (2) · Tests 57 passed (57) |
+| `npm run lint` · `npm run typecheck` | clean |
+| CI, per-step conclusions only (run 33493860014) | `checks pass`, 4m26s |
+| PR #35 | `OPEN` · base `main` · head `b7c2a8eb1e04…` · `MERGEABLE` |
+
+**The amendment discipline held, by a wider margin than §6 asked for.**
+`git diff --numstat 18c362d HEAD` gives `docs/PRD.md → 26 0`: the entire PRD diff
+carries **zero deletions**, so no original sentence was rewritten anywhere in
+the document — not merely in §6, which is all that was claimed. The single
+deletion in the whole PR is g9 §7's row-count sentence, corrected to *"Rows 2, 3
+and 4"* for the row this PR adds: arithmetic consequent on the addition, not a
+rewrite of an argument.
+
+No hunk matches `own_domain`, `ERRATUM`, `categoryDomain`, `Re-categorising` or
+`ADR-0005` — PR #34's ADR-0038 Q-C erratum sites at PRD §4.3.2 and §7.2 are
+untouched.
+
+### What this discharges, and what it does not
+
+**Discharges.** The amendment is ruled. §6.9 binds; §5 names the object and its
+model implication; §12.12 and §12.13 are live open questions with deadlines; and
+g9 §7 row 4 stands as a priced, unbought option.
+
+**Does not discharge.** No merge — the owner is sole merge authority and #34
+goes first. No coverage row and no owed row were opened, so the 25-cap and the
+burn-down quota sit exactly where they were. **G9 does not move**: the corpus is
+unchanged, and §12.13's window is still open and still closes at the owner's
+signature on the bands.
