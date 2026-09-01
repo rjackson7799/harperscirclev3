@@ -65,6 +65,8 @@ const ENTRY = {
   domain: 'health',
   level_before: 'summary',
   level_after: 'log',
+  object_type: null,
+  detail: {},
   collapsed_count: 1,
   occurred_at: '2026-08-30T10:00:00Z',
 };
@@ -79,9 +81,43 @@ const DENIAL = {
   domain: 'finances',
   level_before: null,
   level_after: null,
+  // ── 7E · R4/F-8 (ADR-0038, ACCEPTED · TAKEN(7E)) ───────────────────────
+  // The denial now CARRIES an object name. Before this the fixture had no
+  // object_type and no detail, so the test below - titled "NEVER an object
+  // name" - could not fail for naming one: there was nothing to name. It is
+  // LOG-02's app-layer evidence, and it could not fail.
+  //
+  // `object_id` is deliberately absent: LOG_SELECT in lib/hc/people.ts does
+  // not project it at all, so it cannot reach a page. That is a stronger
+  // guarantee than a negative assertion and the reason none is written for
+  // it here - the projection pin belongs with the SQL, not the render.
+  object_type: 'document',
+  detail: {
+    title: 'Riverbend cardiology discharge summary · 12 Jul',
+    category: 'medical',
+  },
   collapsed_count: 7,
   occurred_at: '2026-08-29T10:00:00Z',
 };
+
+/** The object name the denial carries and the page must never print. */
+const DENIED_OBJECT_NAME = DENIAL.detail.title;
+
+/** The BODY of the one `@media print` block, brace-balanced, so an
+ *  assertion cannot reach past its closing brace into the rest of the
+ *  stylesheet. R4/F-8: the old `/@media print[\s\S]*\.left-nav/` did
+ *  exactly that — `.log-entries` sits two lines BELOW the block. */
+function printBlock(css: string): string {
+  const at = css.indexOf('@media print');
+  if (at < 0) throw new Error('no @media print block in the stylesheet');
+  const start = css.indexOf('{', at);
+  let depth = 0;
+  for (let i = start; i < css.length; i++) {
+    if (css[i] === '{') depth++;
+    else if (css[i] === '}' && --depth === 0) return css.slice(start + 1, i);
+  }
+  throw new Error('unbalanced @media print block');
+}
 
 async function renderLog() {
   const { default: Page } = await import('@/app/(app)/[circle]/people/log/page');
@@ -157,17 +193,42 @@ describe('the access log — who did what, to whom, on which subject, in which d
     expect(html).toMatch(/log|activity/);
   });
 
-  it('a denial renders its collapsed count and NEVER an object name — and there is none to leak', async () => {
+  it('a denial renders its collapsed count and NEVER an object name — with an object name present to leak (R4/F-8)', async () => {
     const html = await renderLog();
     expect(html).toContain('Dan');
     expect(html).toMatch(/7/);
     expect(html).toMatch(/tried to open something/i);
+    // The fixture carries an object name and a category; neither may reach
+    // the page. Render `e.detail.title` in the access_denied branch and this
+    // is the assertion that fails — before, nothing did.
+    expect(html).not.toContain(DENIED_OBJECT_NAME);
+    expect(html).not.toContain('Riverbend');
+    // …and the phrase stays the UNNAMED one, which is the whole promise.
+    expect(html).toMatch(/tried to open something/i);
   });
 
-  it('the page is printable: the print stylesheet exists and hides the chrome, never the entries', () => {
+  it('the page is printable: the print block hides the chrome INSIDE its own braces, and never the entries (R4/F-8)', () => {
     const css = readFileSync(join(process.cwd(), 'app/globals.css'), 'utf8');
-    expect(css).toContain('@media print');
-    expect(css).toMatch(/@media print[\s\S]*\.left-nav/);
+    const block = printBlock(css);
+    // The chrome, hidden — each selector named, and INSIDE the block. The
+    // old form was /@media print[\s\S]*\.left-nav/, which spans the whole
+    // stylesheet: it matches a `.left-nav` written anywhere below the block,
+    // and passes just as well against a print block that hides the entries.
+    for (const sel of ['.left-nav', '.topbar', '.back-link', 'button', '.record-controls']) {
+      expect(block, `the print block hides ${sel}`).toContain(sel);
+    }
+    expect(block).toMatch(/display:\s*none/);
+    // And the entries NOT hidden — the half the title claims and the old
+    // assertion never checked. Every display:none rule in the block is read,
+    // and none of them may reach the log.
+    const hiddenRules = block
+      .split('}')
+      .filter((rule) => /display:\s*none/.test(rule))
+      .join(' ');
+    expect(hiddenRules).not.toMatch(/\.log-entries/);
+    expect(hiddenRules).not.toMatch(/\bmain\b/);
+    // The block knows about the entries and keeps them deliberately.
+    expect(block).toMatch(/\.log-entries li[\s\S]*break-inside/);
   });
 });
 
