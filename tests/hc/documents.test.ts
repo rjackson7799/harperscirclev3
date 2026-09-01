@@ -310,6 +310,34 @@ describe('shareDocument / documentShares / unshareDocument — one object, one p
     expect(await docsLib.documentById(claimsOf('marisol'), circleId, dMed2)).toBeNull();
   });
 
+  // ── 7E · R2/F-7 (ADR-0038, ACCEPTED · TAKEN(7E)) ────────────────────────
+  //
+  // A CONDITION on Q-A's ratification. Before this, the only can_view /
+  // can_manage assertions in this file were the coordinator's (true/true) and
+  // Ruth's (false/false) — and Ruth is a `summary` member BY GRANT, not a
+  // share-holder. Rung 5 lifts only the share-holder, and Ruth's document
+  // level is `summary` either way, so the single-token edit that widens the
+  // share left her case green while every share-holder in the system gained
+  // the pages and the facts. Marisol is the case that discriminates.
+  it("the share reaches the ROW and not the arrival — D12.1's enumeration, and neither viewer nor controls (R2/F-7)", async () => {
+    const shared = await docsLib.documentById(claimsOf('marisol'), circleId, dMed);
+    expect(shared).not.toBeNull();
+    // What a share DOES reach, in ADR-0038 D1's amended words: title,
+    // category, dates, the sentences, and who approved it and when.
+    expect(shared!.title).toBe('Discharge summary · Jul 12');
+    expect(shared!.category).toBe('medical');
+    expect(shared!.summary_text).toMatch(/twice daily/);
+    expect(shared!.approver_display_name).toBe('Sarah');
+    expect(typeof shared!.approved_at).toBe('string');
+    expect(typeof shared!.filed_at).toBe('string');
+    // What it does NOT reach — the pair the row exists for. Flip the single
+    // token `'arrival'` to `'document'` at the can_view call site and every
+    // assertion above still passes while these two turn true: the viewer and
+    // the controls arrive with the row, for every share-holder at once.
+    expect(shared!.can_view).toBe(false);
+    expect(shared!.can_manage).toBe(false);
+  });
+
   it('a member who is neither granter nor coordinator cannot revoke it', async () => {
     await expect(docsLib.unshareDocument(claimsOf('ruth'), shareId)).rejects.toThrow(
       /revoke_refused|share_refused/,

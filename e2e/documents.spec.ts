@@ -430,6 +430,12 @@ test.describe('the 7C documents legs', () => {
     // HER next look: the document, and ONLY the document.
     await marisol.page.goto(`/${f.circleId}/documents/${docId}`);
     await expect(marisol.page.locator('main')).toContainText(`Discharge instruction · ${stamp}`);
+    // R2/F-7: the share reaches the ROW, not the arrival's bytes. These are
+    // DOC-02's summary negatives, drawn again for a SHARE-HOLDER — the case a
+    // summary member by grant cannot stand in for, because rung 5 lifts only
+    // the share-holder. Without them the leg passes with the viewer open.
+    expect(await marisol.page.locator('section[aria-labelledby="the-document"]').count()).toBe(0);
+    expect(await marisol.page.locator('main img').count()).toBe(0);
     const derived = await marisol.page.request.get(`/${f.circleId}/tasks/${taskId}`);
     expect(derived.status()).toBe(404);
 
