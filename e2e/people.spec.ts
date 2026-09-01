@@ -84,6 +84,39 @@ async function fixtureInsert(text: string, params: unknown[] = []) {
   }
 }
 
+/** Seed `times` denials through hc.log_denied — the ONE denial writer, so
+  * the collapse window and the hash chain are the real ones. Called in a
+  * single transaction as the authenticated actor: the writer collapses
+  * repeats of the same actor/domain/subject inside an hour into ONE row
+  * whose collapsed_count is the count the page must print (AC-PPL-7).
+  *
+  * 7E · R6/F-10: the PPL-04 leg cited AC-PPL-7 and seeded no denial at all. */
+async function fixtureDenials(
+  circleId: string,
+  actorAccountId: string,
+  subjectId: string,
+  times: number,
+) {
+  const client = new pg.Client({ connectionString: DB_URL });
+  await client.connect();
+  try {
+    await client.query('begin');
+    await client.query(`select set_config('request.jwt.claims', $1, true)`, [
+      JSON.stringify({ sub: actorAccountId, role: 'authenticated' }),
+    ]);
+    await client.query('set local role authenticated');
+    for (let i = 0; i < times; i++) {
+      await client.query(`select hc.log_denied($1::uuid, 'finances'::hc.domain, $2::uuid)`, [
+        circleId,
+        subjectId,
+      ]);
+    }
+    await client.query('commit');
+  } finally {
+    await client.end();
+  }
+}
+
 type Founder = {
   context: BrowserContext;
   page: Page;
@@ -278,12 +311,27 @@ test.describe('the 7C people legs', () => {
     // the subject, as a person, custodian named — §7.5's framing, and
     // never the word the product cannot honestly use
     await expect(f.page.locator('main')).toContainText('highest access to their own record');
-    await expect(f.page.locator('main')).toContainText('custodian');
     await expect(f.page.locator('main')).not.toContainText(/authority/i);
+    // 7E · R6/F-4: the WHOLE clause, name tied to the slot. The old
+    // assertion was toContainText('custodian') — the label word, which
+    // renders beside the `?? 'named at setup'` fallback whether or not a
+    // custodian resolved, so AC-PPL-3 (a subject has a NAMED custodian) was
+    // unproven while PPL-01 was green.
+    await expect(f.page.locator('main')).toContainText(/custodian:\s*People Founder/);
+    await expect(f.page.locator('main')).not.toContainText('named at setup');
     // the plain line, per subject, before any matrix — and NO matrix here
     await expect(f.page.locator('main')).toContainText(/Nell: /);
     expect(await f.page.locator('main table').count()).toBe(0);
     expect(await f.page.locator('main input[type="checkbox"]').count()).toBe(0);
+    // 7E · R6/F-3: the matrix four files away is neither a table nor a
+    // checkbox — it is <form action=".../grant/submit"> → <label> → <input
+    // type="radio" name="level">. Asserting the absence of a table and a
+    // checkbox asserts the absence of a shape the product never had; paste
+    // the member page's block onto this list and both halves stay green
+    // while PPL-01's "the list page holds no matrix at all" is false on the
+    // shipped surface. These assert the shape that actually exists.
+    expect(await f.page.locator('main input[name="level"]').count()).toBe(0);
+    expect(await f.page.locator('main form[action*="/grant/submit"]').count()).toBe(0);
     // limit (1), said on screen
     await expect(f.page.locator('main')).toContainText('what each person can see in the record');
   });
@@ -398,16 +446,42 @@ test.describe('the 7C people legs', () => {
 
   test('the access log rendered and printed (PPL-04, AC-PPL-5/7)', async ({ browser }) => {
     const f = await theFounder(browser);
+    // 7E · R6/F-10: the leg cited AC-PPL-7 and seeded NO denial, so the
+    // clause about counted-never-named had nothing to be true of. Seven
+    // denials through the one writer collapse into ONE row counted seven.
+    await fixtureDenials(f.circleId, f.accountId, f.nell, 7);
     await f.page.goto(`/${f.circleId}/people/log`);
     // entries exist from circle creation onward; each is a sentence
     const entries = f.page.locator('.log-entries li');
     expect(await entries.count()).toBeGreaterThan(0);
     await expect(f.page.locator('main')).toContainText('People Founder');
-    // PRINTED: the same filtered read — the chrome hides, the entries stay
+    // AC-PPL-7: the denial is COUNTED and never NAMED. The count is read
+    // from the sentence itself, and the phrase stays the unnamed one.
+    const denial = f.page.locator('.log-entries li', { hasText: 'tried to open something' });
+    // The WHOLE shape, anchored: actor, the UNNAMED phrase, the subject,
+    // the domain, the collapsed count, the date — and nothing else. The
+    // domain belongs here: AC-PPL-5's sentence is who did what, to whom, on
+    // which subject, IN WHICH DOMAIN, when. What must never appear is the
+    // OBJECT, and an anchored whole-text match forbids one anywhere in the
+    // sentence — which a negative on any single word cannot.
+    await expect(denial.first()).toHaveText(
+      /^People Founder tried to open something in Nell.s finances · 7 times · .+$/,
+    );
+    // PRINTED: the same filtered read — the chrome hides, the entries stay.
+    // The CONTROL first: isVisible() is a non-retrying one-shot that returns
+    // false for a NON-EXISTENT element as readily as a hidden one, so
+    // renaming the nav class would have made this leg report that print
+    // hides chrome it never saw. Assert the nav exists and is visible on
+    // screen BEFORE asserting print hides it.
+    const nav = f.page.locator('nav.left-nav');
+    await expect(nav).toBeVisible();
     await f.page.emulateMedia({ media: 'print' });
     try {
-      expect(await f.page.locator('nav.left-nav').isVisible()).toBe(false);
+      expect(await nav.isVisible()).toBe(false);
       expect(await entries.first().isVisible()).toBe(true);
+      // the denial survives the print sheet too — the printed projection is
+      // the same filtered read, never a narrower one.
+      expect(await denial.first().isVisible()).toBe(true);
     } finally {
       await f.page.emulateMedia({ media: 'screen' });
     }
@@ -457,12 +531,59 @@ test.describe('the 7C people legs', () => {
       // WORD, never by colour alone.
       await page.goto(`/${f.circleId}/people/${dan.memberId}`);
       const scheduleForm = page.locator('form:has(input[name="domain"][value="schedule"])');
+      // 7E · R6/F-1: read the checked value BEFORE the key, and assert both
+      // MOVEMENT and SELECTION after. The old leg read nothing before and
+      // compared nothing after — `focusedValue.length > 0` was satisfied by
+      // the .focus() on the previous line, so giving the radios unique
+      // `name`s would destroy the radiogroup, make ArrowDown do nothing, and
+      // leave the leg green over a matrix that is not keyboard-operable.
+      const radios = scheduleForm.locator('input[name="level"]');
+      const names = await scheduleForm
+        .locator('input[type="radio"]')
+        .evaluateAll((els) => [...new Set(els.map((e) => (e as HTMLInputElement).name))]);
+      expect(names).toEqual(['level']);
+      const before = await scheduleForm.locator('input[name="level"]:checked').inputValue();
       await scheduleForm.locator('input[name="level"]:checked').focus();
       await page.keyboard.press('ArrowDown');
       const focusedValue = await page.evaluate(
         () => (document.activeElement as HTMLInputElement | null)?.value ?? '',
       );
-      expect(focusedValue.length).toBeGreaterThan(0);
+      // the focus MOVED to a different option…
+      expect(focusedValue).not.toBe(before);
+      // …and in a radiogroup the selection follows it, which is what makes
+      // the matrix operable rather than merely focusable.
+      const afterChecked = await scheduleForm
+        .locator('input[name="level"]:checked')
+        .inputValue();
+      expect(afterChecked).toBe(focusedValue);
+
+      // 7E · R6/F-9: meaning never by colour. The clause had NO assertion
+      // behind it — only a comment — and axe cannot stand in: 1.4.1 is not
+      // machine-checkable and is not in the rule set axe runs. Restyle the
+      // levels as swatches with the word in a `title` and nothing would
+      // fail. This is the exact-set check: every offered radio carries its
+      // OWN word, rendered as text, from LEVEL_OPTION_WORD.
+      //
+      // LEVEL_OPTION_WORD is `{ ...LEVEL_WORD, hidden: 'Nothing' }`, private
+      // to app/(app)/[circle]/people/[member]/page.tsx; e2e specs import no
+      // app module, so the mapping is mirrored here and any drift fails.
+      const LEVEL_OPTION_WORD: Record<string, string> = {
+        manage: 'full access',
+        view: 'sees everything',
+        summary: 'summary only',
+        log: 'activity only',
+        hidden: 'Nothing',
+      };
+      const rendered = await radios.evaluateAll((els) =>
+        els.map((e) => ({
+          value: (e as HTMLInputElement).value,
+          word: (e.closest('label')?.textContent ?? '').trim(),
+        })),
+      );
+      expect(rendered.length).toBeGreaterThan(1);
+      expect(rendered.map((r) => r.word)).toEqual(
+        rendered.map((r) => LEVEL_OPTION_WORD[r.value]),
+      );
       expect(await axeViolations(page)).toEqual([]);
 
       // the printed log: readable — entries visible under print media

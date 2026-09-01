@@ -420,6 +420,88 @@ test.describe('the D7 browser a11y leg', () => {
     return recordMemo;
   }
 
+  // ── 7E · R6/F-5 (ADR-0038, ACCEPTED · TAKEN(7E)) ────────────────────────
+  //
+  // This spec was not in the 7C diff, and its shell pass iterates four
+  // routes, none of them Documents. `expectTouchTargets` appears zero times
+  // in either 7C spec. So `/[circle]/documents` had no browser accessibility
+  // coverage at all, `/people/subject/[subject]` never saw axe, and
+  // `/people/log` was visited only for a print visibility check — while the
+  // three people pages that ARE audited are held to axe's 24×24 target-size
+  // floor rather than the project's own 44 px.
+  //
+  // Ruled FIX rather than the OWED option: C6 is BINDING, the manifest is
+  // what a reviewer reads to check C6, and this round already produced a
+  // real 44 px failure on the `.action-link` class the Documents list
+  // carries three of.
+  let docMemo: Promise<{ documentId: string; subjectId: string }> | null = null;
+  function ensureDocumentRow(
+    browser: Browser,
+  ): Promise<{ documentId: string; subjectId: string }> {
+    docMemo ??= (async () => {
+      const circle = await ensureCircle(browser);
+      const account = await query('select id from public.accounts where email = $1', [EMAIL]);
+      const subject = await query(
+        'select id from public.subjects where circle_id = $1 order by created_at limit 1',
+        [circle],
+      );
+      const accountId = account.rows[0].id as string;
+      const subjectId = subject.rows[0].id as string;
+      const documentId = randomUUID();
+      const arrivalId = randomUUID();
+      await query(
+        `insert into public.arrivals (id, circle_id, subject_id, channel, state, scan_verdict)
+         values ($1, $2, $3, 'upload', 'filed', 'clean')`,
+        [arrivalId, circle, subjectId],
+        true,
+      );
+      await query(
+        `insert into public.documents (id, circle_id, subject_id, title, category, summary_text,
+           artifact_arrival_id, filed_at, approved_by, approved_at, approver_display_name, taint)
+         values ($1, $2, $3, 'Discharge summary · 12 Jul', 'medical',
+                 'Wound care continues twice daily.', $4, now(), $5, now(), 'Avery', '{health}')`,
+        [documentId, circle, subjectId, arrivalId, accountId],
+        true,
+      );
+      return { documentId, subjectId };
+    })();
+    return docMemo;
+  }
+
+  test('the 7C surfaces: the documents list, the people list, the subject page and the access log, audited at 390px', async ({
+    browser,
+    page,
+  }) => {
+    // FOUR routes, each audited three ways (axe with contrast on, the 44 px
+    // touch-target pass, no horizontal scroll) — the same size as the shell
+    // pass, which this file's default 120 s has been observed to hold only
+    // sometimes: in two consecutive runs on this host the shell leg took 116 s
+    // and then 25 s, and four legs timed out at ~123 s. An audit leg must not
+    // be decided by which end of that spread it lands on, so this one names
+    // its own budget rather than inheriting the default.
+    test.setTimeout(300_000);
+    const circle = await ensureCircle(browser);
+    const { subjectId } = await ensureDocumentRow(browser);
+    await signIn(page);
+    for (const path of [
+      `/${circle}/documents`,
+      `/${circle}/people`,
+      `/${circle}/people/subject/${subjectId}`,
+      `/${circle}/people/log`,
+    ]) {
+      await auditRoute(page, path);
+    }
+    // Positive control: the audits ran over a real row, not an empty state,
+    // and over the .action-link class the round-27 44 px catch landed on —
+    // auditRoute's touch-target pass is the project's floor, not axe's.
+    await page.goto(`/${circle}/documents`);
+    expect(await page.locator('main .record-list > li').count()).toBeGreaterThan(0);
+    expect(await page.locator('main a.action-link').count()).toBeGreaterThan(0);
+    // …and the log renders entries, so its audit was over content.
+    await page.goto(`/${circle}/people/log`);
+    expect(await page.locator('.log-entries li').count()).toBeGreaterThan(0);
+  });
+
   test('the record surfaces: tasks and timeline, list and detail, audited at 390px', async ({
     browser,
     page,

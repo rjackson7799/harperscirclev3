@@ -279,7 +279,14 @@ async function provisionDocument(browser: Browser): Promise<Doc> {
 
 /** A fixture document with NO pipeline behind it — the re-categorise leg's
  *  own object, so no other leg's document moves under it. */
-async function fixtureDocument(f: Founder, title: string): Promise<string> {
+/** 7E · R6/F-7: `category` is a parameter now. The list leg needs a
+  * document OUTSIDE the category it filters to, or the count assertion is
+  * read only where filtered === all — the one case that cannot fail. */
+async function fixtureDocument(
+  f: Founder,
+  title: string,
+  category: 'medical' | 'financial' = 'medical',
+): Promise<string> {
   const id = randomUUID();
   const arrival = randomUUID();
   await fixtureInsert(
@@ -290,8 +297,18 @@ async function fixtureDocument(f: Founder, title: string): Promise<string> {
   await fixtureInsert(
     `insert into public.documents (id, circle_id, subject_id, title, category, summary_text,
        artifact_arrival_id, filed_at, approved_by, approved_at, approver_display_name, taint)
-     values ($1, $2, $3, $4, 'medical', 'A short note.', $5, now(), $6, now(), 'Docs Founder', '{health}')`,
-    [id, f.circleId, f.nell, title, arrival, f.accountId],
+     values ($1, $2, $3, $4, $7::hc.doc_category, 'A short note.', $5, now(), $6, now(),
+             'Docs Founder', $8::hc.domain[])`,
+    [
+      id,
+      f.circleId,
+      f.nell,
+      title,
+      arrival,
+      f.accountId,
+      category,
+      category === 'financial' ? '{finances}' : '{health}',
+    ],
   );
   return id;
 }
@@ -313,13 +330,49 @@ test.describe('the 7C documents legs', () => {
   }) => {
     const f = await theFounder(browser);
     const d = await theDocument(browser);
+    const dan = await theMember(browser, 'dan');
+    // 7E · R6/F-7: a document OUTSIDE the filtered category, so the filter
+    // has something to remove and the count is read where filtered < all.
+    await fixtureDocument(f, `Statement · ${stamp}`, 'financial');
     await f.page.goto(`/${f.circleId}/documents`);
     // the row, its category word and its subject, linking to the detail
     await expect(f.page.locator(`a[href="/${f.circleId}/documents/${d.documentId}"]`)).toBeVisible();
     await expect(f.page.locator('main')).toContainText('Medical');
-    // the count is over the rendered rows — read both and compare
-    const rows = await f.page.locator('.record-list > li').count();
-    await expect(f.page.locator('main')).toContainText(`${rows} document${rows === 1 ? '' : 's'}`);
+    const all = await f.page.locator('.record-list > li').count();
+
+    // The count is over the rendered rows POST-FILTER. Two defects here
+    // before: it was read only on the unfiltered view, where filtered ===
+    // all makes the claim unfalsifiable; and toContainText is a substring
+    // match over all of main, so `'2 documents'` is satisfied by
+    // `'12 documents'`. Anchored, on the caption element, after a filter.
+    await f.page.goto(`/${f.circleId}/documents?category=medical`);
+    const filtered = await f.page.locator('.record-list > li').count();
+    expect(filtered).toBeGreaterThan(0);
+    expect(all).toBeGreaterThan(filtered);
+    // The caption is the p.meta whose whole text IS a bare count — the
+    // "Add a document" control is a p.meta carrying the word too, which is
+    // what a /document/ filter picked up. The count itself is still
+    // asserted below, so this narrows WHICH element is read, not what it
+    // must say.
+    const COUNT_META = /^\d+ documents?$/;
+    const caption = f.page.locator('main p.meta').filter({ hasText: COUNT_META }).first();
+    await expect(caption).toHaveText(
+      new RegExp(`^${filtered} document${filtered === 1 ? '' : 's'}$`),
+    );
+
+    // "rows at the member's OWN level" needs a member: only the founder was
+    // ever driven, so the clause had no discriminating case. Dan reads the
+    // list ONCE, from his own context — health at summary, finances hidden.
+    await dan.page.goto(`/${f.circleId}/documents`);
+    await expect(
+      dan.page.locator(`a[href="/${f.circleId}/documents/${d.documentId}"]`),
+    ).toBeVisible();
+    const danRows = await dan.page.locator('.record-list > li').count();
+    expect(danRows).toBeLessThan(all);
+    const danCaption = dan.page.locator('main p.meta').filter({ hasText: COUNT_META }).first();
+    await expect(danCaption).toHaveText(
+      new RegExp(`^${danRows} document${danRows === 1 ? '' : 's'}$`),
+    );
     // Add a document leads to the EXISTING upload page — an ingestion, never
     // a bypass: the control is a link to /upload, not an input here.
     await f.page.click(`main a[href="/${f.circleId}/upload"]`);
@@ -371,8 +424,13 @@ test.describe('the 7C documents legs', () => {
     const f = await theFounder(browser);
     // Dan must EXIST for the audience to name him (family default: health
     // summary, finances hidden — the move out of health is his to lose).
-    await theMember(browser, 'dan');
+    const dan = await theMember(browser, 'dan');
     const docId = await fixtureDocument(f, `Statement to move · ${stamp}`);
+    // 7E · R6/F-2: the audience claim needs a BEFORE. Dan can read it now;
+    // if he could not, his 404 after the move would prove nothing.
+    expect(
+      (await dan.page.request.get(`/${f.circleId}/documents/${docId}`)).status(),
+    ).toBe(200);
 
     await f.page.goto(`/${f.circleId}/documents/${docId}`);
     await f.page.check('input[name="move"][value="financial"]');
@@ -383,8 +441,20 @@ test.describe('the 7C documents legs', () => {
     await expect(f.page.locator('main')).toContainText('Dan will no longer be able to see it');
     await f.page.click('button:has-text("Move it to Financial")');
     await f.page.waitForURL(/\?moved=1/);
+    // 7E · R6/F-2: both old assertions were independent of whether the
+    // category changed — "written in the family" is driven by the redirect's
+    // ?moved=1 alone, and "Financial" renders in the move radio list
+    // precisely BECAUSE the document is still Medical. A redirect built
+    // before a rolled-back write passed both, with Dan still seeing it.
     await expect(f.page.locator('main')).toContainText('written in the family');
-    await expect(f.page.locator('main')).toContainText('Financial');
+    // THE POST-STATE: the move list now offers moving it OUT of financial,
+    // which it can only do if the document is in financial.
+    await expect(f.page.locator('main')).toContainText(/Move it out of Financial/i);
+    // …and the audience the leg already set up, proved: finances is hidden
+    // to the family default, so the move took Dan with it.
+    expect(
+      (await dan.page.request.get(`/${f.circleId}/documents/${docId}`)).status(),
+    ).toBe(404);
   });
 
   test('share / unshare: one document to the caregiver — her context sees IT and not a task derived from it; unshare is one action and her next look loses it (DOC-04, AC-DOC-5, AC-PERM-10)', async ({
@@ -468,6 +538,15 @@ test.describe('the 7C documents legs', () => {
       await toggle.focus();
       await page.keyboard.press('Enter');
       await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      // 7E · R6/F-8: aria-expanded is set by MachineReadText's toggle()
+      // BEFORE and INDEPENDENTLY of the fetch, so the assertion above holds
+      // when the sibling 404s, fails, or returns empty — and the failure
+      // sentence is itself inside CONTRAST_EXEMPT, so axe does not see it
+      // either. The reachable-by-keyboard claim is about the TEXT arriving.
+      await expect(page.locator('pre.review-machine-text').first()).toContainText(
+        /Wound care|Discharge/,
+        { timeout: 20_000 },
+      );
       // no horizontal scroll at 390px
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth,

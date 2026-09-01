@@ -88,7 +88,12 @@ const ROWS = [
     tier: 'coordinator',
     subject_id: NELL,
     custodian_member_id: ME,
-    custodian_name: 'Sarah',
+    // 7E · R6/F-4: NOT 'Sarah'. The custodian name was the coordinator's own
+    // display name, so `toContain('Sarah')` matched her member card and the
+    // assertion could not tell a named custodian from an unnamed one. The
+    // name below belongs to no member row in this fixture, so only the
+    // custodian slot can produce it.
+    custodian_name: 'Vivian Okonkwo',
     levels: { [NELL]: { memories: 'manage', health: 'manage', schedule: 'manage', documents: 'manage', finances: 'manage' } },
   },
   {
@@ -158,6 +163,38 @@ describe('the list — the plain line before any matrix, and NO matrix here at a
     expect(html).toMatch(/Nell:/);
     expect(html).not.toContain('<table');
     expect(html).not.toContain('type="checkbox"');
+    // 7E · R6/F-3: the shape the matrix ACTUALLY has, four files away, is
+    // <form> → <label> → <input type="radio" name="level"> posting to
+    // /grant/submit — neither a table nor a checkbox. Pasting the member
+    // page's block onto this list left both halves green while PPL-01's
+    // "the list page holds no matrix at all" was false on the shipped
+    // surface. These two assert the absence of that shape by name.
+    expect(html).not.toMatch(/name="level"/);
+    expect(html).not.toMatch(/action="[^"]*\/grant\/submit/);
+  });
+
+  it('the subject line names its custodian IN the custodian slot — the whole clause, not the label word (R6/F-4)', async () => {
+    const html = await renderPage();
+    // AC-PPL-3's entire point is that a subject has a NAMED custodian. The
+    // old assertion was toContainText('custodian'), the label word, which
+    // renders beside the `?? 'named at setup'` fallback whether or not a
+    // custodian resolved. This asserts the clause the page emits.
+    expect(html).toMatch(/custodian:\s*Vivian Okonkwo/);
+    expect(html).not.toMatch(/named at setup/);
+  });
+
+  it('with NO custodian resolved the fallback shows and the name does not — the negative half of R6/F-4', async () => {
+    peopleHc.circlePeople.mockResolvedValue(
+      ROWS.map((r) =>
+        r.kind === 'subject' ? { ...r, custodian_member_id: null, custodian_name: null } : { ...r },
+      ),
+    );
+    const html = await renderPage();
+    expect(html).toMatch(/named at setup/);
+    expect(html).not.toContain('Vivian Okonkwo');
+    // and the label word alone still renders — which is exactly why the
+    // label word could never have been the assertion.
+    expect(html).toMatch(/custodian/i);
   });
 
   it("a null levels map renders NO line — 'not yours to know' implies nothing", async () => {
