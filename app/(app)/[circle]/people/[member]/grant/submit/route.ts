@@ -62,24 +62,32 @@ export async function POST(
 
   return withRouteBudget(
     async (budget) => {
-      let current: GrantLevel = 'hidden';
+      // 7D · R3/F-4: null is NOT hidden, and this route does not GUESS.
+      // `hc.circle_people` returns a null inner map where the level is not
+      // the caller's to read — a freeze, or a caller below coordinator — and
+      // treating that as `hidden` made every change look like a RAISE, so
+      // the LOWER that is a freeze's own remedy was charged the password
+      // hc.set_grant deliberately refuses to charge for revocation.
+      // `null` here means UNKNOWABLE, and it is a third answer, not a level.
+      let current: GrantLevel | null = null;
       try {
         const rows = await budget.race(circlePeople(claims, circle), 'circlePeople');
         const person = rows.find((r) => r.kind === 'member' && r.member_id === memberId);
         if (!person) return redirect303(req, `${back}?e=refused`);
-        // Fail CLOSED on a level this app does not know: `hidden` is the
-        // floor, so anything else reads as a raise and the token is demanded.
-        // (The DISPLAY may not do this — null is "not yours to know" there,
-        // R3/F-4 — but on the write path the floor is the safe default.)
         const held = person.levels?.[subjectId]?.[domain];
-        current = typeof held === 'string' && isGrantLevel(held) ? held : 'hidden';
+        current = typeof held === 'string' && isGrantLevel(held) ? held : null;
       } catch (err) {
         if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
         return redirect303(req, `${back}?e=refused`);
       }
 
-      const raising = LEVEL_RANK[level] > LEVEL_RANK[current];
-      const token = raising ? cookieValue(req, STEP_UP_COOKIE) : null;
+      // Three answers, not two: a raise, a lower, and "cannot be told from
+      // here". Only a KNOWN raise is bounced for a token; the unknown case
+      // posts through with whatever token is in hand and lets the definer
+      // decide — it refuses a tokenless raise itself, and under a freeze it
+      // refuses a raise with a token too.
+      const raising = current !== null && LEVEL_RANK[level] > LEVEL_RANK[current];
+      const token = current !== null && !raising ? null : cookieValue(req, STEP_UP_COOKIE);
       if (raising && !token) {
         // Three params — a colon-joined triple in the next is refused by
         // safeNext as scheme-shaped (gate r3).
@@ -91,10 +99,10 @@ export async function POST(
       } catch (err) {
         if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
         const res = redirect303(req, `${back}?e=refused`);
-        return raising ? clearStepUp(res) : res;
+        return token ? clearStepUp(res) : res;
       }
       const res = redirect303(req, `${back}?changed=1`);
-      return raising ? clearStepUp(res) : res;
+      return token ? clearStepUp(res) : res;
     },
     () => redirect303(req, `${back}?e=slow`),
   );

@@ -217,13 +217,29 @@ export default async function MemberPage({
 
           <section className="record-section" aria-labelledby="adjust">
             <h2 id="adjust">What {person.display_name} can see</h2>
-            {subjects.map((s) => (
+            {subjects.map((s) => {
+              // 7D · R3/F-4 + R4/F-5: null is NOT hidden. hc.circle_people
+              // returns a NULL inner map when this subject's levels are not
+              // the caller's to know — what a freeze emits — and rendering
+              // that as five *Nothing* radios states a false fact about
+              // access on the surface whose job is stating access, then
+              // invites a change that would be classified as a raise. There
+              // is nothing to offer here, so nothing is offered, and the
+              // page says which of the two it means.
+              const held = person.levels?.[s.subject_id ?? ''];
+              return (
               <Card key={s.member_id ?? s.subject_id ?? s.display_name}>
                 <p>
                   <strong>{s.display_name}</strong>
                 </p>
-                {offeredDomains.map((d) => {
-                  const current = person.levels?.[s.subject_id ?? '']?.[d] ?? 'hidden';
+                {held == null ? (
+                  <p className="meta">
+                    What {person.display_name} can see of {s.display_name}&apos;s record
+                    isn&apos;t shown here — this page can&apos;t say right now, which is not
+                    the same as nothing. Nothing about it can be changed from here.
+                  </p>
+                ) : offeredDomains.map((d) => {
+                  const current = held[d] ?? 'hidden';
                   return (
                     <form key={d} method="post" action={`${next}/grant/submit`}>
                       <input type="hidden" name="subject_id" value={s.subject_id ?? ''} />
@@ -250,7 +266,8 @@ export default async function MemberPage({
                   );
                 })}
               </Card>
-            ))}
+              );
+            })}
           </section>
 
           <section className="record-section" aria-labelledby="contribution">

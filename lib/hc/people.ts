@@ -29,9 +29,23 @@ export type PersonRow = {
   invite_id: string | null;
   invite_expires_at: string | null;
   invite_status: 'pending' | 'expired' | null;
-  /** subject_id → domain → level; null under a freeze, and null when the
-   *  member's levels are not the caller's to know. */
-  levels: Record<string, Record<string, string>> | null;
+  /**
+   * subject_id → domain → level.
+   *
+   * TWO nullable levels, and 7D · R4/F-5 is that the type only carried one.
+   * The OUTER null is "this member's levels are not yours to know at all"
+   * (hc.circle_people fails closed below coordinator). An INNER null is the
+   * same answer for ONE subject — what a freeze emits. The definer has
+   * always returned the inner null; the type claimed it could not, so a
+   * caller writing `Object.keys(row.levels[sid])` got no warning and would
+   * throw.
+   *
+   * Neither null is `hidden`. `hidden` is a level a caller may READ (and
+   * within a non-null inner map every domain carries a key, spelled out);
+   * null is the absence of the answer. Collapsing them makes a surface state
+   * a false fact about access — R3/F-4.
+   */
+  levels: Record<string, Record<string, string> | null> | null;
 };
 
 type PersonSql = Omit<PersonRow, 'joined_at' | 'invite_expires_at'> & {
