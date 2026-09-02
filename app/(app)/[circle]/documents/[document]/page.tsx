@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { asUser } from '@/lib/db/user';
 import { gatePage } from '@/lib/auth/gate';
@@ -16,8 +16,11 @@ import {
   type DocumentDetail,
   type ReferenceRow,
   type ShareCandidate,
+  type DocCategory,
   type ShareRow,
 } from '@/lib/hc/documents';
+import { circlePeople } from '@/lib/hc/people';
+import { myMembership } from '@/lib/hc/tasks';
 import { readableRendition, type ReadableRendition } from '@/lib/hc/artifacts';
 import { extractionsFor, type ReviewFact } from '@/lib/hc/review';
 import { MachineReadText } from '@/components/review/MachineReadText';
@@ -208,20 +211,72 @@ export default async function DocumentPage({
       let shares: ShareRow[] = [];
       let candidates: ShareCandidate[] = [];
       let audience: AudienceRow[] = [];
-      const move = typeof sp.move === 'string' && isDocCategory(sp.move) && sp.move !== doc.category ? sp.move : null;
+      // 7D · R2/F-1: THE OFFER IS AUTHORIZED. Plan C2 is binding — a
+      // re-categorise is "refused AND NOT OFFERED unless the member holds
+      // manage on both domains" — and `can_manage` only answers for the
+      // document's CURRENT taint, so every other category was offered
+      // unconditionally. hc.circle_people already hands the caller her own
+      // levels; no DDL is needed to ask the second half of the question.
+      let offerable: readonly DocCategory[] = [];
       if (doc.can_manage) {
         try {
-          [shares, candidates, audience] = await Promise.all([
+          const [people, me] = await Promise.all([
+            budget.race(circlePeople(claims, circle), 'circlePeople'),
+            budget.race(myMembership(claims, circle), 'myMembership'),
+          ]);
+          const mine = me
+            ? people.find((p) => p.kind === 'member' && p.member_id === me.id)?.levels?.[
+                doc.subject_id
+              ]
+            : null;
+          // null is NOT hidden and it is not manage either (R3/F-4): a level
+          // this caller cannot read cannot authorise an offer. Fail closed.
+          offerable = mine
+            ? DOC_CATEGORIES.filter(
+                (c) => c !== doc!.category && mine[categoryDomain(c)] === 'manage',
+              )
+            : [];
+        } catch (err) {
+          if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
+          console.error(`document: levels read failed: ${(err as Error).message}`);
+          return loadFailed(next, false);
+        }
+      }
+      const move =
+        typeof sp.move === 'string' &&
+        isDocCategory(sp.move) &&
+        (offerable as readonly string[]).includes(sp.move)
+          ? sp.move
+          : null;
+      if (doc.can_manage) {
+        try {
+          [shares, candidates] = await Promise.all([
             budget.race(documentShares(claims, documentId), 'documentShares'),
             budget.race(shareCandidates(claims, circle), 'shareCandidates'),
-            move
-              ? budget.race(documentAudience(claims, documentId, move), 'documentAudience')
-              : Promise.resolve([] as AudienceRow[]),
           ]);
         } catch (err) {
           if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
           console.error(`document: manage read failed: ${(err as Error).message}`);
           return loadFailed(next, false);
+        }
+        // 7D · R2/F-1, second half: THE AUDIENCE READ GETS ITS OWN CATCH. A
+        // grant can move between the render that offered the category and
+        // the click that previews it, and hc.document_audience then raises
+        // its named `audience_refused` — which, sharing the catch above,
+        // replaced the ENTIRE page (shares, share control and all) with
+        // "We couldn't load this document just now." The refusal is about
+        // the PREVIEW, so it lands on the preview's own marker.
+        if (move) {
+          try {
+            audience = await budget.race(
+              documentAudience(claims, documentId, move),
+              'documentAudience',
+            );
+          } catch (err) {
+            if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
+            console.error(`document: audience read refused: ${(err as Error).message}`);
+            redirect(`${next}?e=refused`);
+          }
         }
       }
 
@@ -431,7 +486,7 @@ export default async function DocumentPage({
                 <form method="get" action={next}>
                   <Field label={`Move it out of ${CATEGORY_LABEL[doc.category]}`}>
                     <div className="choice-list">
-                      {DOC_CATEGORIES.filter((c) => c !== doc!.category).map((c) => (
+                      {offerable.map((c) => (
                         <label key={c}>
                           <input type="radio" name="move" value={c} required />
                           <span>{CATEGORY_LABEL[c]}</span>
