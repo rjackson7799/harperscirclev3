@@ -9,6 +9,7 @@ import {
   type DocumentListRow,
   type InFlightRow,
 } from '@/lib/hc/documents';
+import { circlePeople, type PersonRow } from '@/lib/hc/people';
 import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { SubjectLabel } from '@/components/ui/SubjectLabel';
@@ -87,10 +88,16 @@ export default async function DocumentsPage({
     async (budget) => {
       let rows: DocumentListRow[];
       let inFlight: InFlightRow[];
+      let people: PersonRow[];
       try {
-        [rows, inFlight] = await Promise.all([
+        [rows, inFlight, people] = await Promise.all([
           budget.race(documentsFor(claims, circle, { subject }), 'documentsFor'),
           budget.race(uploadArrivalsInFlight(claims, circle), 'uploadArrivalsInFlight'),
+          // 7D · R2/F-5: the subject list comes from the CIRCLE, not from
+          // rows the subject filter has already narrowed. Derived from the
+          // narrowed rows it vanished exactly when it was needed — the
+          // moment a subject with nothing filed was selected.
+          budget.race(circlePeople(claims, circle), 'circlePeople'),
         ]);
       } catch (err) {
         if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
@@ -101,8 +108,10 @@ export default async function DocumentsPage({
       const counts = new Map<string, number>();
       for (const row of rows) counts.set(row.category, (counts.get(row.category) ?? 0) + 1);
       const filtered = category ? rows.filter((r) => r.category === category) : rows;
-      const subjectsSeen = [...new Map(rows.map((r) => [r.subject_id, r])).values()];
+      const subjects = people.filter((p) => p.kind === 'subject' && p.subject_id);
+      const subjectName = subjects.find((s) => s.subject_id === subject)?.display_name ?? null;
       const keepSubject = subject ? `&subject=${subject}` : '';
+      const keepCategory = category ? `?category=${category}` : '';
 
       return (
         <>
@@ -128,8 +137,44 @@ export default async function DocumentsPage({
             </section>
           ) : null}
 
+          {/* 7D · R2/F-5: the subject nav renders OUTSIDE the rows guard, so
+              it is there exactly when it is needed — when the filter has
+              emptied the list — and "All" drops `subject`, which is the way
+              back a person otherwise did not have. */}
+          {subjects.length > 1 ? (
+            <nav aria-label="Subject" className="chip-row">
+              <a
+                className="nav-link"
+                href={`${next}${keepCategory}`}
+                aria-current={subject === undefined ? 'true' : undefined}
+              >
+                All
+              </a>
+              {subjects.map((s) => (
+                <a
+                  key={s.subject_id}
+                  className="nav-link"
+                  href={`${next}?subject=${s.subject_id}${category ? `&category=${category}` : ''}`}
+                  aria-current={subject === s.subject_id ? 'true' : undefined}
+                >
+                  {s.display_name}
+                </a>
+              ))}
+            </nav>
+          ) : null}
+
           {rows.length === 0 ? (
-            <p className="meta">Nothing filed yet.</p>
+            // "Nothing filed yet." is a claim about the CIRCLE. Under a
+            // subject filter it was false over a circle of filed documents —
+            // and a malformed ?subject= reached it without the database
+            // being touched at all.
+            subject ? (
+              <p className="meta">
+                Nothing filed for {subjectName ?? 'that part of the record'} yet.
+              </p>
+            ) : (
+              <p className="meta">Nothing filed yet.</p>
+            )
           ) : (
             <>
               <nav aria-label="Category" className="chip-row">
@@ -147,21 +192,6 @@ export default async function DocumentsPage({
                   </a>
                 ))}
               </nav>
-              {subjectsSeen.length > 1 ? (
-                <nav aria-label="Subject" className="chip-row">
-                  {subjectsSeen.map((s) => (
-                    <a
-                      key={s.subject_id}
-                      className="nav-link"
-                      href={`${next}?subject=${s.subject_id}${category ? `&category=${category}` : ''}`}
-                      aria-current={subject === s.subject_id ? 'true' : undefined}
-                    >
-                      {s.subject_name}
-                    </a>
-                  ))}
-                </nav>
-              ) : null}
-
               <p className="meta">
                 {filtered.length} document{filtered.length === 1 ? '' : 's'}
               </p>
