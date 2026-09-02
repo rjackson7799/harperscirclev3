@@ -207,6 +207,61 @@ describe('the access log — who did what, to whom, on which subject, in which d
     expect(html).toMatch(/tried to open something/i);
   });
 
+
+  // ---------------------------------------------------------------------
+  // 7D · R4/F-3 — "Everything done with the record … it prints exactly the
+  // entries below", over `order by seq desc limit 300` with no cursor, no
+  // count and no disclosure. PPL-04's green cell says the surface
+  // "subtracts nothing" and accessLog's docstring says it "simply orders
+  // what the policy already decided."
+  //
+  // The failure is specific and load-bearing: `seq` 1 is the CUSTODIANSHIP
+  // DECLARATION, the §7.5 row the whole subject page rests on, and it is
+  // the FIRST row dropped — invisible from the surface that shows it,
+  // because the subject page reads it with a separate `order by seq asc
+  // limit 1`.
+  //
+  // Only the DISCLOSURE lands here. The cursor is the honest fix for an
+  // accountability surface and is not producible in this increment: it is
+  // OWED as OW-26, home slice 8.
+  // ---------------------------------------------------------------------
+  it('the page reads one MORE than it shows, so it can know whether it is showing everything', async () => {
+    await renderLog();
+    expect(peopleHc.accessLog).toHaveBeenCalledWith(expect.anything(), CIRCLE, 301);
+  });
+
+  it('inside the window, the promise is kept and unqualified — "exactly the entries below" is true here', async () => {
+    peopleHc.accessLog.mockResolvedValue([ENTRY, DENIAL]);
+    const html = await renderLog();
+    expect(html).toMatch(/prints exactly the entries below/);
+    expect(html).not.toMatch(/most recent 300/i);
+  });
+
+  it('past the window it SAYS SO, names what is missing, and shows exactly 300 — not 301', async () => {
+    const many = Array.from({ length: 301 }, (_, i) => ({ ...ENTRY, seq: 400 - i }));
+    peopleHc.accessLog.mockResolvedValue(many);
+    const html = await renderLog();
+    expect(html).toMatch(/most recent 300/i);
+    expect(html).toMatch(/older entries/i);
+    // the custodianship declaration is the first row dropped, and the
+    // surface that shows it must not imply it was never there
+    expect(html).toMatch(/set up|earliest|custodian/i);
+    expect((html.match(/<li>/g) ?? []).length).toBe(300);
+    // and the unqualified promise is withdrawn where it is false
+    expect(html).not.toMatch(/prints exactly the entries below/);
+  });
+
+  it('the disclosure survives PRINTING — it is not chrome, and the print block does not hide it', async () => {
+    const many = Array.from({ length: 301 }, (_, i) => ({ ...ENTRY, seq: 400 - i }));
+    peopleHc.accessLog.mockResolvedValue(many);
+    const html = await renderLog();
+    const disclosure = /<p class="meta"[^>]*>[^<]*most recent 300/i.exec(html);
+    expect(disclosure).not.toBeNull();
+    const css = readFileSync('app/globals.css', 'utf8');
+    const printBlock = css.slice(css.indexOf('@media print'));
+    const body = printBlock.slice(printBlock.indexOf('{'), printBlock.indexOf('}', printBlock.indexOf('display: none')));
+    expect(body).not.toMatch(/\.meta\b/);
+  });
   it('the page is printable: the print block hides the chrome INSIDE its own braces, and never the entries (R4/F-8)', () => {
     const css = readFileSync(join(process.cwd(), 'app/globals.css'), 'utf8');
     const block = printBlock(css);
