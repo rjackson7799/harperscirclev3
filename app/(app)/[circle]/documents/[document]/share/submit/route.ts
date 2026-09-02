@@ -3,6 +3,12 @@ import { gateRoute } from '@/lib/auth/gate';
 import { formFields, redirect303 } from '@/lib/auth/http';
 import { withRouteBudget } from '@/lib/http/page-budget';
 import { shareDocument } from '@/lib/hc/documents';
+import {
+  STEP_UP_COOKIE,
+  STEP_UP_FOR_COOKIE,
+  stepUpClearCookies,
+  stepUpConfirms,
+} from '@/lib/auth/step-up-cookie';
 
 /**
  * POST /[circle]/documents/[document]/share/submit — share ONE document with
@@ -13,7 +19,6 @@ import { shareDocument } from '@/lib/hc/documents';
  * derived objects, the log entry). This route clears the cookie either way.
  * A refusal is ONE marker, never a 500; a budget overrun is its own.
  */
-const STEP_UP_COOKIE = 'hc-step-up';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function cookieValue(req: Request, name: string): string | null {
@@ -26,7 +31,7 @@ function cookieValue(req: Request, name: string): string | null {
 }
 
 function clearStepUp(res: Response): Response {
-  res.headers.append('set-cookie', `${STEP_UP_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+  for (const cookie of stepUpClearCookies()) res.headers.append('set-cookie', cookie);
   return res;
 }
 
@@ -46,7 +51,18 @@ export async function POST(
   if (!UUID_RE.test(documentId) || !UUID_RE.test(memberId)) {
     return redirect303(req, `${back}?e=refused`);
   }
-  const token = cookieValue(req, STEP_UP_COOKIE);
+  // 7D · R2/F-3 + R3/F-8: the token must be FOR this share. A token minted
+  // for another operation (or another document) is not confirmation here —
+  // hc.share_object would refuse it, consuming nothing, and the old code
+  // then cleared the cookie anyway and burned an unrelated step-up. It is
+  // not sent, it is not cleared, and the caller is asked for the password
+  // she was always going to be asked for.
+  const bound = stepUpConfirms(
+    cookieValue(req, STEP_UP_FOR_COOKIE),
+    'share_object',
+    `document:${documentId}`,
+  );
+  const token = bound ? cookieValue(req, STEP_UP_COOKIE) : null;
   if (!token) return redirect303(req, `${back}?share=${memberId}&e=step-up`);
 
   return withRouteBudget(

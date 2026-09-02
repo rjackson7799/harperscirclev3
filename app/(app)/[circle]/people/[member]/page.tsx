@@ -23,6 +23,7 @@ import {
   type GrantLevel,
 } from '@/lib/permissions/phrases';
 import { TIERS, type Domain } from '@/lib/permissions/tiers';
+import { STEP_UP_COOKIE, STEP_UP_FOR_COOKIE, stepUpConfirms } from '@/lib/auth/step-up-cookie';
 import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -58,8 +59,9 @@ import { formatShortDate } from '@/lib/format/dates';
 // 7D · R3/F-7: DOMAINS and the level ladder are the phrase module's, not a
 // third copy of them here. The offer, the ceiling arithmetic and the write
 // path all read one list, pinned live against hc.domain and hc.access_level.
-const STEP_UP_COOKIE = 'hc-step-up';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The §5.7 operation this page's step-up is bound to (7D · R2/F-3). */
+const RAISE_OPERATION = 'raise_grant';
 
 function header(name?: string) {
   return <PageHeader title={name ?? 'A member'} />;
@@ -151,7 +153,7 @@ export default async function MemberPage({
       const subjects = rows.filter((r) => r.kind === 'subject');
       const notice = noticeFor(sp);
       const removing = sp.remove === '1';
-      const stepUp = (await cookies()).get(STEP_UP_COOKIE)?.value ?? null;
+      const jar = await cookies();
       // THREE params, never a colon-joined triple: safeNext refuses any ':'
       // in a next as scheme-shaped, so the step-up round-trip dropped the
       // raise entirely (gate r3: the founder landed on /account).
@@ -175,6 +177,21 @@ export default async function MemberPage({
               rd: raiseDomain,
               rl: raiseLevel,
             }).toString()
+          : null;
+      // 7D · R2/F-3: PRESENCE is not confirmation. One cookie name held
+      // whatever was minted last, so a token for a SHARE rendered "Raise it"
+      // here with no password — and the click dead-ended on a definer that
+      // matches operation AND target_ref exactly. Same two questions, asked
+      // before anything is offered.
+      const stepUp =
+        raiseSubject &&
+        raiseDomain &&
+        stepUpConfirms(
+          jar.get(STEP_UP_FOR_COOKIE)?.value,
+          RAISE_OPERATION,
+          `${memberId}:${raiseSubject}:${raiseDomain}`,
+        )
+          ? (jar.get(STEP_UP_COOKIE)?.value ?? null)
           : null;
 
       // The care-circle ceiling, from the ONE tiers module: only its
@@ -227,7 +244,7 @@ export default async function MemberPage({
               ) : (
                 <form method="post" action="/account/step-up/submit">
                   <p className="field-help">Raising access needs a fresh confirmation that it&apos;s you.</p>
-                  <input type="hidden" name="operation" value="raise_grant" />
+                  <input type="hidden" name="operation" value={RAISE_OPERATION} />
                   <input type="hidden" name="target_ref" value={`${memberId}:${raiseSubject}:${raiseDomain}`} />
                   <input type="hidden" name="next" value={`${next}?${raise}`} />
                   <Field label="Your password">

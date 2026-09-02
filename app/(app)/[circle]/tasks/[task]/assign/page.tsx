@@ -4,6 +4,7 @@ import { asUser } from '@/lib/db/user';
 import { gatePage } from '@/lib/auth/gate';
 import { withPageBudget } from '@/lib/http/page-budget';
 import { assignCandidates, sourceDocuments, taskById, type SourceDocument } from '@/lib/hc/tasks';
+import { STEP_UP_COOKIE, STEP_UP_FOR_COOKIE, stepUpConfirms } from '@/lib/auth/step-up-cookie';
 import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -37,7 +38,8 @@ import { formatShortDate } from '@/lib/format/dates';
  * and given no path. hc.assign_task re-checks every one of these in-function.
  */
 
-const STEP_UP_COOKIE = 'hc-step-up';
+/** The §5.7 operation this page's step-up is bound to (7D · R2/F-3). */
+const SHARE_OPERATION = 'share_object';
 
 function header() {
   return <PageHeader title="Hand it over" />;
@@ -131,7 +133,21 @@ export default async function AssignPage({
         documents[0]?.title ??
         (task.source.kind === 'arrival' ? task.source.label : `an item in ${task.subject_name}'s record`);
       const chosenDoc = typeof sp.document === 'string' ? documents.find((d) => d.id === sp.document) : undefined;
-      const stepUp = (await cookies()).get(STEP_UP_COOKIE)?.value ?? null;
+      // 7D · R2/F-3 + R3/F-8: presence is not confirmation — one cookie name
+      // held whatever was minted last, so a `raise_grant` token rendered this
+      // page's confirm-and-share form with no password, and the click
+      // dead-ended on a definer that matches operation AND target_ref.
+      const jar = await cookies();
+      const shareTargetRef = chosenDoc
+        ? `task:${task.id}+document:${chosenDoc.id}`
+        : documents[0]
+          ? `task:${task.id}+document:${documents[0].id}`
+          : null;
+      const stepUp =
+        shareTargetRef &&
+        stepUpConfirms(jar.get(STEP_UP_FOR_COOKIE)?.value, SHARE_OPERATION, shareTargetRef)
+          ? (jar.get(STEP_UP_COOKIE)?.value ?? null)
+          : null;
       const confirming = sp.path === 'share' && chosenDoc !== undefined && stepUp !== null;
       const stepUpFailed = typeof sp.e === 'string' ? sp.e : null;
 
@@ -217,7 +233,7 @@ export default async function AssignPage({
                       {documents[0].title} · {formatShortDate(documents[0].filed_on)}
                     </p>
                   )}
-                  <input type="hidden" name="operation" value="share_object" />
+                  <input type="hidden" name="operation" value={SHARE_OPERATION} />
                   <input
                     type="hidden"
                     name="target_ref"

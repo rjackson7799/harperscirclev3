@@ -3,6 +3,12 @@ import { gateRoute } from '@/lib/auth/gate';
 import { formFields, redirect303 } from '@/lib/auth/http';
 import { withRouteBudget } from '@/lib/http/page-budget';
 import { assignCandidates, assignTask, taskById } from '@/lib/hc/tasks';
+import {
+  STEP_UP_COOKIE,
+  STEP_UP_FOR_COOKIE,
+  stepUpClearCookies,
+  stepUpConfirms,
+} from '@/lib/auth/step-up-cookie';
 
 /**
  * POST /[circle]/tasks/[task]/assign/submit — hand a task over (7B B2; PRD
@@ -23,7 +29,7 @@ import { assignCandidates, assignTask, taskById } from '@/lib/hc/tasks';
  * only for the crossing, the post-condition, the freeze). A refusal is ONE
  * marker, never a 500; an overrun of the answer budget is its own.
  */
-const STEP_UP_COOKIE = 'hc-step-up';
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function cookieValue(req: Request, name: string): string | null {
@@ -36,7 +42,7 @@ function cookieValue(req: Request, name: string): string | null {
 }
 
 function clearStepUp(res: Response): Response {
-  res.headers.append('set-cookie', `${STEP_UP_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+  for (const cookie of stepUpClearCookies()) res.headers.append('set-cookie', cookie);
   return res;
 }
 
@@ -70,7 +76,16 @@ export async function POST(
         if (shareDocument) {
           // Path 2 — the token from the step-up cookie, consumed by the definer.
           if (!UUID_RE.test(shareDocument)) return redirect303(req, `${back}?e=assign`);
-          const token = cookieValue(req, STEP_UP_COOKIE);
+          // 7D · R2/F-3 + R3/F-8: the token must be FOR this task+document.
+          // A token minted for another operation is not confirmation here —
+          // it would buy a refusal the definer consumes nothing for, and the
+          // clear below would then burn it.
+          const bound = stepUpConfirms(
+            cookieValue(req, STEP_UP_FOR_COOKIE),
+            'share_object',
+            `task:${taskId}+document:${shareDocument}`,
+          );
+          const token = bound ? cookieValue(req, STEP_UP_COOKIE) : null;
           if (!token) {
             return redirect303(req, `${crossing}&path=share&document=${shareDocument}&e=step-up`);
           }

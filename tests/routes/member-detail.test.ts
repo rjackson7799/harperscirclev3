@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { stepUpFor } from '@/lib/auth/step-up-cookie';
 import { DOMAINS, GRANT_LEVELS, LEVEL_RANK } from '@/lib/permissions/phrases';
 
 // ============================================================================
@@ -80,6 +81,8 @@ const MARISOL_M = '44444444-0000-4000-8000-000000000005';
 const SHARE = 'cccccccc-0000-4000-8000-0000000000c1';
 const TASK = 'aaaaaaaa-0000-4000-8000-0000000000a1';
 const CLAIMS = { sub: '33333333-0000-4000-8000-000000000003', role: 'authenticated' };
+/** 7D · R2/F-3: what a token minted for THIS raise is for. */
+const RAISE_FOR = stepUpFor('raise_grant', `${RUTH_M}:${NELL}:health`);
 
 const base = {
   account_id: null,
@@ -281,10 +284,7 @@ describe('the matrix — per subject per domain, words from the ONE module, lowe
   // whatever was minted last, and this page read its presence as proof.
   it("a token minted for a SHARE is not confirmation of a raise — the page asks for the password rather than offering Raise it", async () => {
     stepUpCookie = 'tok';
-    stepUpForCookie = new URLSearchParams({
-      op: 'share_object',
-      ref: 'document:66666666-0000-4000-8000-000000000006',
-    }).toString();
+    stepUpForCookie = stepUpFor('share_object', 'document:66666666-0000-4000-8000-000000000006');
     const html = await renderPage(RUTH_M, { rs: NELL, rd: 'health', rl: 'view' });
     expect(html).toContain('action="/account/step-up/submit"');
     expect(html).not.toContain('Raise it');
@@ -292,10 +292,7 @@ describe('the matrix — per subject per domain, words from the ONE module, lowe
 
   it('a raise token for a DIFFERENT subject or domain is not confirmation of this one', async () => {
     stepUpCookie = 'tok';
-    stepUpForCookie = new URLSearchParams({
-      op: 'raise_grant',
-      ref: `${RUTH_M}:${NELL}:finances`,
-    }).toString();
+    stepUpForCookie = stepUpFor('raise_grant', `${RUTH_M}:${NELL}:finances`);
     const html = await renderPage(RUTH_M, { rs: NELL, rd: 'health', rl: 'view' });
     expect(html).toContain('action="/account/step-up/submit"');
     expect(html).not.toContain('Raise it');
@@ -524,6 +521,7 @@ describe('the grant write', () => {
 
   it('a RAISE with the token hands it to the definer and clears the cookie either way', async () => {
     stepUpCookie = 'tok';
+    stepUpForCookie = RAISE_FOR;
     peopleHc.setGrant.mockResolvedValue({});
     const POST = await grantRoute();
     const res = await POST(

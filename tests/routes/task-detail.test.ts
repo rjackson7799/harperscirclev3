@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { stepUpFor } from '@/lib/auth/step-up-cookie';
 
 // ============================================================================
 // 7B B2 · /[circle]/tasks/[task], the crossing screen and the four writes
@@ -47,9 +48,16 @@ vi.mock('@/lib/hc/tasks', async () => {
 });
 
 let stepUpCookie: string | null = null;
+/** 7D · R2/F-3: the companion that says what the token is FOR. */
+let stepUpForCookie: string | null = null;
 vi.mock('next/headers', () => ({
   cookies: async () => ({
-    get: (name: string) => (name === 'hc-step-up' && stepUpCookie ? { name, value: stepUpCookie } : undefined),
+    get: (name: string) => {
+      if (name === 'hc-step-up') return stepUpCookie ? { name, value: stepUpCookie } : undefined;
+      if (name === 'hc-step-up-for')
+        return stepUpForCookie ? { name, value: stepUpForCookie } : undefined;
+      return undefined;
+    },
   }),
 }));
 vi.mock('next/navigation', () => ({
@@ -68,6 +76,8 @@ const ARRIVAL = '55555555-0000-4000-8000-000000000005';
 const DOC = '66666666-0000-4000-8000-000000000006';
 const ME = '44444444-0000-4000-8000-000000000004';
 const MARISOL = '44444444-0000-4000-8000-000000000005';
+/** 7D · R2/F-3: what a token minted for THIS task+document share is for. */
+const SHARE_FOR = stepUpFor('share_object', `task:${TASK}+document:${DOC}`);
 const RUTH = '44444444-0000-4000-8000-000000000006';
 const OMAR = '44444444-0000-4000-8000-000000000007';
 const CLAIMS = { sub: '33333333-0000-4000-8000-000000000003', role: 'authenticated' };
@@ -291,6 +301,7 @@ describe('B2 · the crossing screen: the sentence and EXACTLY two paths (§4.5.6
 
   it('with the step-up cookie in hand, path 2 shows the confirmation of BOTH objects and the one button', async () => {
     stepUpCookie = 'tok';
+    stepUpForCookie = SHARE_FOR;
     const html = await renderAssign({ member: MARISOL, path: 'share', document: DOC });
     expect(html).toMatch(/Marisol will be able to see: this task, and the Discharge summary from July 12/);
     expect(html).toContain('name="share_document"');
@@ -351,7 +362,11 @@ describe('B2 · the four writes ride the wrappers with relative PRG redirects', 
     const { POST } = await import('@/app/(app)/[circle]/tasks/[task]/assign/submit/route');
     tasksHc.assignTask.mockResolvedValueOnce({ task_id: TASK, member_id: MARISOL, path: 'share', changed: true, share_ids: ['s1', 's2'] });
     let res = await POST(
-      post(`/${CIRCLE}/tasks/${TASK}/assign/submit`, { member_id: MARISOL, share_document: DOC }, 'hc-step-up=tok-123; other=x'),
+      post(
+        `/${CIRCLE}/tasks/${TASK}/assign/submit`,
+        { member_id: MARISOL, share_document: DOC },
+        `hc-step-up=tok-123; hc-step-up-for=${SHARE_FOR}; other=x`,
+      ),
       ctx,
     );
     expect(res.headers.get('location')).toBe(`/${CIRCLE}/tasks/${TASK}?assigned=1&path=share`);

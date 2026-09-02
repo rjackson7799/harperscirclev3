@@ -383,6 +383,31 @@ describe('A8 · step-up re-auth — the third F1 password path', () => {
     expect(cookie.toLowerCase()).toContain('httponly');
     expect(res.headers.get('location')).toContain('/c-1/documents');
   });
+  it('7D · R2/F-3: the mint hands back the token AND what it is FOR — the companion carries operation and target_ref, HttpOnly, the same five minutes', async () => {
+    signInWithPassword.mockResolvedValue({
+      data: { session: fakeSession('u-1', 'sarah@example.com') },
+      error: null,
+    });
+    stepUp.mintStepUp.mockResolvedValue({ token: 'e'.repeat(64), expires_at: 'x' });
+    const { POST } = await import('@/app/account/step-up/submit/route');
+    const res = await POST(
+      post('/account/step-up/submit', {
+        password: 'right-right-1',
+        operation: 'share_object',
+        target_ref: 'task:t-1+document:d-1',
+        next: '/c-1/tasks/t-1/assign',
+      }),
+    );
+    const cookies = res.headers.getSetCookie();
+    // The literal, spelled out ONCE in the tree: every other fixture derives
+    // from stepUpFor(), so this is what they all rest on. `+` is ESCAPED —
+    // URLSearchParams would have turned it back into a space.
+    expect(cookies).toContain(
+      'hc-step-up-for=share_object.task%3At-1%2Bdocument%3Ad-1; Path=/; Max-Age=300; HttpOnly; SameSite=Lax',
+    );
+    expect(cookies.some((c) => c.startsWith(`hc-step-up=${'e'.repeat(64)};`))).toBe(true);
+  });
+
 });
 
 describe('A8 · remove-member wiring (AC-PERM-3, §5.8 sessions row)', () => {

@@ -9,6 +9,7 @@ import { mintStepUp } from '@/lib/hc/step-up';
 import { decodeTrustedAccessToken } from '@/lib/auth/claims';
 import { nextWithMarkers, safeNext } from '@/lib/auth/redirect';
 import { formFields, redirect303 } from '@/lib/auth/http';
+import { stepUpSetCookies } from '@/lib/auth/step-up-cookie';
 
 /**
  * POST /account/step-up/submit — the THIRD and last password path the
@@ -57,10 +58,13 @@ export async function POST(req: Request): Promise<Response> {
   await recordSuccess('success', freshClaims);
   const { token } = await mintStepUp(freshClaims, operation, targetRef);
 
+  // 7D · R2/F-3: the token AND what it is for. hc.consume_step_up matches
+  // operation and target_ref exactly, so a surface that reads only the
+  // token's presence is claiming a proof the database will not honour —
+  // and, having claimed it, burns the token on the way to the refusal.
   const response = redirect303(req, next);
-  response.headers.append(
-    'set-cookie',
-    `hc-step-up=${token}; Path=/; Max-Age=300; HttpOnly; SameSite=Lax`,
-  );
+  for (const cookie of stepUpSetCookies(token, operation, targetRef)) {
+    response.headers.append('set-cookie', cookie);
+  }
   return response;
 }

@@ -21,6 +21,11 @@ import {
 import { readableRendition, type ReadableRendition } from '@/lib/hc/artifacts';
 import { extractionsFor, type ReviewFact } from '@/lib/hc/review';
 import { MachineReadText } from '@/components/review/MachineReadText';
+import {
+  STEP_UP_COOKIE,
+  STEP_UP_FOR_COOKIE,
+  stepUpConfirms,
+} from '@/lib/auth/step-up-cookie';
 import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -65,7 +70,8 @@ const CATEGORY_LABEL: Record<string, string> = {
   other: 'Other',
 };
 
-const STEP_UP_COOKIE = 'hc-step-up';
+/** The §5.7 operation and target this page's ONE step-up is bound to. */
+const SHARE_OPERATION = 'share_object';
 
 function header(doc?: DocumentDetail) {
   return <PageHeader title={doc?.title ?? 'Document'} />;
@@ -222,7 +228,19 @@ export default async function DocumentPage({
       const notice = noticeFor(sp);
       const shareWith = typeof sp.share === 'string' ? sp.share : null;
       const shareTarget = shareWith ? candidates.find((c) => c.member_id === shareWith) : undefined;
-      const stepUp = (await cookies()).get(STEP_UP_COOKIE)?.value ?? null;
+      // 7D · R2/F-3: PRESENCE is not confirmation. A live token minted for
+      // `raise_grant` used to render "Share it with …" with no password at
+      // all, and the click dead-ended at "That couldn't be done just now."
+      // while the honest e=step-up copy sat unreachable. This asks the same
+      // two questions hc.consume_step_up will ask.
+      const jar = await cookies();
+      const stepUp = stepUpConfirms(
+        jar.get(STEP_UP_FOR_COOKIE)?.value,
+        SHARE_OPERATION,
+        `document:${doc.id}`,
+      )
+        ? (jar.get(STEP_UP_COOKIE)?.value ?? null)
+        : null;
       const gainedNames = audience.filter((r) => r.change === 'gained').map((r) => r.display_name);
       const lostNames = audience.filter((r) => r.change === 'lost').map((r) => r.display_name);
       const changedNames = audience.filter((r) => r.change === 'changed').map((r) => r.display_name);
@@ -355,7 +373,7 @@ export default async function DocumentPage({
                     <p className="field-help">
                       Sharing needs a fresh confirmation that it&apos;s you.
                     </p>
-                    <input type="hidden" name="operation" value="share_object" />
+                    <input type="hidden" name="operation" value={SHARE_OPERATION} />
                     <input type="hidden" name="target_ref" value={`document:${doc.id}`} />
                     <input type="hidden" name="next" value={`${next}?share=${shareTarget.member_id}`} />
                     <Field label="Your password">

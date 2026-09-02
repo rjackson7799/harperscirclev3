@@ -9,6 +9,12 @@ import {
   isGrantLevel,
   type GrantLevel,
 } from '@/lib/permissions/phrases';
+import {
+  STEP_UP_COOKIE,
+  STEP_UP_FOR_COOKIE,
+  stepUpClearCookies,
+  stepUpConfirms,
+} from '@/lib/auth/step-up-cookie';
 
 /**
  * POST /[circle]/people/[member]/grant/submit — adjust one level (7C C4;
@@ -20,7 +26,6 @@ import {
  * ceiling, the coordinator gate and the log entry with both levels are
  * all the definer's.
  */
-const STEP_UP_COOKIE = 'hc-step-up';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function cookieValue(req: Request, name: string): string | null {
@@ -33,7 +38,7 @@ function cookieValue(req: Request, name: string): string | null {
 }
 
 function clearStepUp(res: Response): Response {
-  res.headers.append('set-cookie', `${STEP_UP_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+  for (const cookie of stepUpClearCookies()) res.headers.append('set-cookie', cookie);
   return res;
 }
 
@@ -87,7 +92,17 @@ export async function POST(
       // decide — it refuses a tokenless raise itself, and under a freeze it
       // refuses a raise with a token too.
       const raising = current !== null && LEVEL_RANK[level] > LEVEL_RANK[current];
-      const token = current !== null && !raising ? null : cookieValue(req, STEP_UP_COOKIE);
+      // 7D · R2/F-3 + R3/F-8: the token must be FOR this raise. Sending one
+      // minted for another operation, or another subject/domain, buys a
+      // refusal the definer consumes nothing for — and the clear below then
+      // burned it. Not bound, not sent, not burned.
+      const bound = stepUpConfirms(
+        cookieValue(req, STEP_UP_FOR_COOKIE),
+        'raise_grant',
+        `${memberId}:${subjectId}:${domain}`,
+      );
+      const token =
+        (current !== null && !raising) || !bound ? null : cookieValue(req, STEP_UP_COOKIE);
       if (raising && !token) {
         // Three params — a colon-joined triple in the next is refused by
         // safeNext as scheme-shaped (gate r3).

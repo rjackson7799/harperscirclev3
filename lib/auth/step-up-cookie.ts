@@ -27,6 +27,12 @@
  * sentence, and a token for another operation is simply not confirmation
  * here. It is not authorization: the definer still decides. It is the app no
  * longer claiming a proof it does not hold.
+ *
+ * SAID PLAINLY: the companion is NOT a security control and nothing rests on
+ * it. A client that forges it only causes the app to hand a token to a
+ * definer that will refuse it — exactly what happened before this existed.
+ * The authorization is hc.consume_step_up's exact match on operation and
+ * target_ref, and that is unchanged.
  */
 
 export const STEP_UP_COOKIE = 'hc-step-up';
@@ -35,9 +41,16 @@ export const STEP_UP_FOR_COOKIE = 'hc-step-up-for';
 /** Five minutes, the mint's own window (§5.7). */
 const MAX_AGE = 300;
 
-/** What the token is for, in a form a cookie value may carry verbatim. */
+/**
+ * What the token is for, in a form a cookie value may carry verbatim.
+ *
+ * NOT URLSearchParams: its serialisation turns `+` into a space on the way
+ * back, and a target_ref like `task:<id>+document:<id>` is exactly the shape
+ * that carries one. `encodeURIComponent` leaves `+` alone (it escapes it),
+ * and `.` is the separator because no operation name contains one.
+ */
 export function stepUpFor(operation: string, targetRef: string | null): string {
-  return new URLSearchParams({ op: operation, ref: targetRef ?? '' }).toString();
+  return `${encodeURIComponent(operation)}.${encodeURIComponent(targetRef ?? '')}`;
 }
 
 /** The pair the mint hands back: the token, and what it is for. */
@@ -71,5 +84,14 @@ export function stepUpConfirms(
   targetRef: string | null,
 ): boolean {
   if (typeof forValue !== 'string' || forValue === '') return false;
-  return forValue === stepUpFor(operation, targetRef);
+  const expected = stepUpFor(operation, targetRef);
+  if (forValue === expected) return true;
+  // Two readers, two encodings: `cookies()` hands back the raw value, while
+  // a route's own cookie parser decodes it once. Both are the same cookie,
+  // so both are the same answer.
+  try {
+    return decodeURIComponent(expected) === forValue;
+  } catch {
+    return false;
+  }
 }
