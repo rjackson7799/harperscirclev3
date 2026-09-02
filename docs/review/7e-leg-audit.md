@@ -38,10 +38,29 @@ Legs are cited **by title** (traps §5). Every assertion below was read at
 - **Cell:** PPL-04, `review`, "Re-greens at 7D/7E".
 - **After 7E:** seven denials are seeded through `hc.log_denied` — the one
   denial writer, so the collapse window and the hash chain are real — and the
-  leg asserts the collapsed count (`/7 times/`) on the denial sentence, that
-  the sentence names no domain, and that the entry survives the print sheet.
-  The print check gained its **control**: the nav is asserted visible on
+  leg asserts the whole sentence, anchored:
+
+  ```
+  /^People Founder tried to open something in Nell.s finances · 7 times · .+$/
+  ```
+
+  Actor, the UNNAMED phrase, subject, domain, the collapsed count, the date —
+  and nothing else, so an object name inserted anywhere in the sentence fails
+  it. The print check gained its **control**: the nav is asserted visible on
   screen *before* print is emulated.
+
+- **CORRECTION to this record (2026-09-01, same increment).** The paragraph
+  above first read *"the leg asserts … that the sentence names no domain"*.
+  That described an assertion this increment **removed**, and it was wrong in
+  the same way the leg was: `not.toContainText(/finances/i)` contradicted
+  AC-PPL-5, whose sentence is *who did what, to whom, on which subject, **in
+  which domain**, when*. The domain belongs there; the OBJECT is what must
+  never appear. The browser leg failed on exactly that in run 1 and the
+  assertion was replaced before the leg commit (`c6b8d4c`) — but this record
+  was written before the run and kept the stale wording through its own
+  commit (`36c3858`). A record naming an assertion the code does not make is
+  the very defect R6/F-6 is about, so it is corrected here rather than left
+  to be found again.
 - **FINDING (recorded, does not move a verdict).** `hc.log_denied` passes a
   null object, so a denial row **cannot** carry an object name. The e2e clause
   is therefore about *rendering*, and the discriminating "would not print one
@@ -70,8 +89,11 @@ Legs are cited **by title** (traps §5). Every assertion below was read at
 - **Cell:** DOC-01, `review`, "Re-greens at 7D/7E".
 - **After 7E:** a second document is fixtured **outside** the filtered
   category, so `all > filtered` and the post-filter claim is read where it can
-  fail; the caption is asserted on `p.meta` with an **anchored** regex
-  (`^N documents?$`), closing the `"12 documents"` ⊃ `"2 documents"` hole; and
+  fail; the caption is read as the `p.meta` whose WHOLE text is a bare count
+  (`/^\d+ documents?$/`) and asserted with an **anchored** `^N documents?$`,
+  closing the `"12 documents"` ⊃ `"2 documents"` hole. The narrowing of which
+  element is read was itself a run-1 red: a `/document/` filter resolved to
+  `<p class="meta">Add a document</p>`. And
   Dan reads the list **once** from his own context, which is the first
   discriminating case for *"at the member's own level"*.
 - **No finding.** Title and assertions agree.
@@ -119,7 +141,9 @@ Legs are cited **by title** (traps §5). Every assertion below was read at
   over `/[circle]/documents`, `/[circle]/people`,
   `/[circle]/people/subject/[subject]` and `/[circle]/people/log`, with a
   positive control that the audits ran over real rows and over the
-  `.action-link` class the round-27 44 px catch landed on.
+  `.action-link` class the round-27 44 px catch landed on. It names its own
+  `test.setTimeout(300_000)` rather than inheriting the file's 120 s default —
+  see F-a below, which is why.
 - **FINDING (recorded, for close-out).** The leg has **no coverage row of its
   own**; it strengthens A11Y-10, A11Y-11 and C6, and is named in the audit
   manifest for four routes. Whether C6 wants a row of its own is a close-out
