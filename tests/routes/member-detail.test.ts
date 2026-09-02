@@ -176,6 +176,44 @@ describe('the matrix — per subject per domain, words from the ONE module, lowe
     const levels = [...html.matchAll(/name="level"[^>]*value="([a-z_]+)"/g)].map((m) => m[1]);
     expect([...new Set(levels)].sort()).toEqual([...GRANT_LEVELS].sort());
   });
+  // ---------------------------------------------------------------------
+  // 7D · R3/F-4 + R4/F-5 — ONE defect, filed by two lenses from two sides.
+  //
+  // hc.circle_people's own contract is "null, not hidden, so 'not yours to
+  // know' and 'he has none' cannot be confused". Under a freeze the definer
+  // emits a NULL inner map for that subject. This page collapsed it with
+  // `?? 'hidden'`, so the matrix stated every level as *Nothing* — a false
+  // statement about access, on the surface whose entire job is stating
+  // access — and then classified the LOWER that is the remedy as a RAISE,
+  // demanding the password friction hc.set_grant deliberately refuses to
+  // impose on revocation.
+  //
+  // R4 adds the type: PersonRow.levels was
+  // Record<string, Record<string,string>> | null where the definer emits
+  // Record<string, Record<string,string> | null> | null — so the type gave
+  // a future caller no warning at all.
+  // ---------------------------------------------------------------------
+  it("a level that is not the caller's to know renders as its OWN sentence — never as *Nothing*, and never with radios that would post a guess", async () => {
+    peopleHc.circlePeople.mockResolvedValue(
+      PEOPLE.map((r) => (r.member_id === RUTH_M ? { ...r, levels: { [NELL]: null } } : { ...r })),
+    );
+    const html = await renderPage(RUTH_M);
+    // no offer at all for that subject: nothing to submit, so nothing to
+    // misclassify on the way back
+    expect(html).not.toContain('name="level"');
+    expect(html).not.toContain('>Nothing<');
+    // and it SAYS so, rather than rendering an empty matrix that reads as
+    // "he has none"
+    expect(html).toMatch(/can&#x27;t say|cannot say|isn&#x27;t shown here/i);
+  });
+
+  it('a null inner map does not throw — Object.keys over it was the crash R4/F-5 names', async () => {
+    peopleHc.circlePeople.mockResolvedValue(
+      PEOPLE.map((r) => (r.member_id === RUTH_M ? { ...r, levels: { [NELL]: null } } : { ...r })),
+    );
+    await expect(renderPage(RUTH_M)).resolves.toBeTypeOf('string');
+  });
+
 
 
   it('the care-circle ceiling: nothing above it is OFFERED, no other domain is offered, and the ceiling sentence renders', async () => {
@@ -292,6 +330,27 @@ describe('the grant write', () => {
       expect(peopleHc.setGrant).toHaveBeenCalledTimes(lower ? 1 : 0);
     }
   });
+  // 7D · R3/F-4. The write path's half: an unknowable level cannot be
+  // compared, so the route must not GUESS the direction. Guessing `hidden`
+  // made every change look like a raise and charged a lower a password.
+  it("a level the caller cannot read is not guessed at: the route posts through and lets hc.set_grant decide, rather than charging a LOWER the raise's password", async () => {
+    peopleHc.setGrant.mockResolvedValue({ changed: true });
+    peopleHc.circlePeople.mockResolvedValue(
+      PEOPLE.map((r) => (r.member_id === RUTH_M ? { ...r, levels: { [NELL]: null } } : { ...r })),
+    );
+    const POST = await grantRoute();
+    const res = await POST(
+      postTo(`/${CIRCLE}/people/${RUTH_M}/grant/submit`, {
+        subject_id: NELL,
+        domain: 'health',
+        level: 'log',
+      }),
+      ctx,
+    );
+    expect(res.headers.get('location')).not.toContain('e=step-up');
+    expect(peopleHc.setGrant).toHaveBeenCalledTimes(1);
+  });
+
 
   const ctx = { params: Promise.resolve({ circle: CIRCLE, member: RUTH_M }) };
   async function grantRoute() {
