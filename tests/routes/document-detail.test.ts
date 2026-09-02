@@ -39,6 +39,7 @@ const docsHc = {
   documentReferences: vi.fn(),
   documentShares: vi.fn(),
   documentAudience: vi.fn(),
+  documentAudienceDerived: vi.fn(),
   shareCandidates: vi.fn(),
   shareDocument: vi.fn(),
   unshareDocument: vi.fn(),
@@ -184,6 +185,7 @@ beforeEach(() => {
   docsHc.documentReferences.mockResolvedValue([]);
   docsHc.documentShares.mockResolvedValue([]);
   docsHc.documentAudience.mockResolvedValue([]);
+  docsHc.documentAudienceDerived.mockResolvedValue([]);
   docsHc.shareCandidates.mockResolvedValue([]);
   artifactsHc.readableRendition.mockResolvedValue(null);
   reviewHc.extractionsFor.mockResolvedValue([]);
@@ -489,6 +491,79 @@ describe('the detail at manage — shares, unshare in one action, share behind s
     );
   });
 
+
+  // ---------------------------------------------------------------------
+  // 7D · R2/F-2 — the preview names the DOCUMENT audience, and ADR-0034 D7
+  // ruled that "the preview and the entry NAME the derived objects whose
+  // holders change level", citing hc.document_audience_derived as the
+  // artifact. The entry does. The preview did not: re-verified, that
+  // function had ZERO callers in app, lib, components, tests and e2e.
+  //
+  // The sharp edge is the SENTENCE. "No one gains or loses access." is a
+  // positive assurance, rendered whenever the DOCUMENT audience is empty —
+  // including while a task holder is about to lose her task.
+  //
+  // The function exists, is granted to `authenticated`, and is gated by the
+  // IDENTICAL predicate as hc.document_audience, so it discloses nothing
+  // new: a wrapper, one Promise.all slot, one sentence.
+  // ---------------------------------------------------------------------
+  it("the derived objects are NAMED: a task holder about to lose her task is said, not covered by 'No one gains or loses access.'", async () => {
+    docsHc.documentAudience.mockResolvedValue([]);
+    docsHc.documentAudienceDerived.mockResolvedValue([
+      {
+        object_type: 'task',
+        object_id: TASK,
+        label: 'Call the pharmacy',
+        holder_member_id: MARISOL,
+        holder_name: 'Marisol',
+        before: 'view',
+        after: 'hidden',
+        change: 'lost',
+      },
+    ]);
+    const html = await renderPage({ move: 'financial' });
+    expect(docsHc.documentAudienceDerived).toHaveBeenCalledWith(
+      expect.anything(),
+      DOC,
+      'financial',
+    );
+    expect(html).toContain('Marisol');
+    expect(html).toContain('Call the pharmacy');
+    expect(html).not.toContain('No one gains or loses access.');
+  });
+
+  it("the assurance survives only when BOTH answers are empty — that is the whole of what it may claim", async () => {
+    docsHc.documentAudience.mockResolvedValue([]);
+    docsHc.documentAudienceDerived.mockResolvedValue([]);
+    const html = await renderPage({ move: 'financial' });
+    expect(html).toContain('No one gains or loses access.');
+  });
+
+  it('a derived row the caller may not name is counted, never named — the definer nulls the label and the page must not invent one', async () => {
+    docsHc.documentAudience.mockResolvedValue([]);
+    docsHc.documentAudienceDerived.mockResolvedValue([
+      {
+        object_type: 'task',
+        object_id: TASK,
+        label: null,
+        holder_member_id: MARISOL,
+        holder_name: 'Marisol',
+        before: null,
+        after: null,
+        change: 'lost',
+      },
+    ]);
+    const html = await renderPage({ move: 'financial' });
+    expect(html).not.toContain('No one gains or loses access.');
+    expect(html).toMatch(/Marisol/);
+  });
+
+  it('the derived read shares the audience read\'s catch: its refusal is the same ?e=refused, not a broken page', async () => {
+    docsHc.documentAudienceDerived.mockRejectedValue(new Error('audience_refused'));
+    await expect(renderPage({ move: 'financial' })).rejects.toThrow(
+      `NEXT_REDIRECT /${CIRCLE}/documents/${DOC}?e=refused`,
+    );
+  });
   it('a refusal on the shares or candidates read still fails the page — only the audience read is narrowed', async () => {
     docsHc.documentShares.mockRejectedValue(new Error('boom'));
     const html = await renderPage();
