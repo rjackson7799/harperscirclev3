@@ -277,6 +277,70 @@ describe('invites — pending, expired, and send-again as a NEW invite', () => {
   });
 });
 
+
+// ============================================================================
+// 7D · R3/F-5 — the send-again route had NO test at all.
+//
+// D4's property that matters is that the revoke lands BEFORE the redirect, so
+// no window exists in which the old token is alive and the coordinator
+// believes it retired. That rested entirely on reading the source: reorder
+// the two statements and every test in the tree still passed. The
+// declared-and-unused `retireInvite` mock in this very file was the tell.
+//
+// And hc.revoke_invite carries no expiry term, so a PENDING invite posted to
+// again/submit is killed while the landing says "The expired invite was
+// withdrawn." The page only offers Send again for an expired invite; the
+// route accepted any invite id.
+// ============================================================================
+describe('7D · R3/F-5 · send again — revoked first, expired only', () => {
+  const INVITE = '77777777-0000-4000-8000-000000000008';
+  const ctx = { params: Promise.resolve({ circle: CIRCLE, invite: INVITE }) };
+
+  async function againRoute() {
+    return (await import('@/app/(app)/[circle]/people/invites/[invite]/again/submit/route')).POST;
+  }
+
+  function post() {
+    return new Request(`http://127.0.0.1:3000/${CIRCLE}/people/invites/${INVITE}/again/submit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: '',
+    });
+  }
+
+  it('the retire RESOLVES before the redirect exists — the landing is built from what it returned', async () => {
+    peopleHc.retireInvite.mockResolvedValue({ invited_email: 'ruth@example.com', tier: 'family' });
+    const POST = await againRoute();
+    const res = await POST(post(), ctx);
+    expect(peopleHc.retireInvite).toHaveBeenCalledWith(expect.anything(), CIRCLE, INVITE);
+    expect(res.status).toBe(303);
+    const loc = res.headers.get('location')!;
+    expect(loc).toContain(`/${CIRCLE}/invite?resend=1`);
+    expect(loc).toContain('email=ruth%40example.com');
+    expect(loc).toContain('tier=family');
+  });
+
+  it('a REFUSED retire never reaches the invite form — the old link is not implied dead', async () => {
+    peopleHc.retireInvite.mockRejectedValue(new Error('invite_refused'));
+    const POST = await againRoute();
+    const res = await POST(post(), ctx);
+    expect(res.headers.get('location')).toBe(`/${CIRCLE}/people?e=refused`);
+  });
+
+  it('a retire that does not answer in time is the slow marker, never a redirect to a form whose premise never happened', async () => {
+    vi.useFakeTimers();
+    try {
+      peopleHc.retireInvite.mockImplementation(() => new Promise(() => {}));
+      const POST = await againRoute();
+      const pending = POST(post(), ctx);
+      await vi.advanceTimersByTimeAsync(20_000);
+      const res = await pending;
+      expect(res.headers.get('location')).toBe(`/${CIRCLE}/people?e=slow`);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
 describe('NAV-01 · the composition half — a courtesy asserted per tier, never the mechanism', () => {
   it('a caregiver’s nav is Tasks · Account', async () => {
     const { navFor } = await import('@/components/shell/nav-manifest');

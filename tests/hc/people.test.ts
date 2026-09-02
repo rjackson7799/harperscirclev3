@@ -330,6 +330,22 @@ describe('retireInvite — the old token dies; the fresh invite rides the ONE cr
     expect(old.rows[0].revoked_at).not.toBeNull();
   });
 
+
+  // 7D · R3/F-5: hc.revoke_invite carries NO expiry term, so a PENDING
+  // invite posted to again/submit was killed while the landing said "The
+  // expired invite was withdrawn." The page only offers Send again for an
+  // expired invite; the route accepted any invite id a coordinator could
+  // name. Gated where the row is read, so the refusal comes BEFORE the
+  // revoke rather than after it.
+  it('a COORDINATOR cannot retire a PENDING invite — the offer is for expired ones, and the copy that follows says so', async () => {
+    await expect(
+      peopleLib.retireInvite(claimsOf('sarah'), circleId, pendingInvite),
+    ).rejects.toThrow(/invite_refused/);
+    const still = await raw.query(`select revoked_at from public.invites where id = $1`, [
+      pendingInvite,
+    ]);
+    expect(still.rows[0].revoked_at).toBeNull();
+  });
   it("a non-coordinator sees no invite rows at all — 'not yours' and 'not there' are one shape, and nothing moves", async () => {
     await expect(
       peopleLib.retireInvite(claimsOf('ruth'), circleId, pendingInvite),
