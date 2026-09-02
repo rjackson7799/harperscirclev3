@@ -7,11 +7,13 @@ import {
   DOC_CATEGORIES,
   categoryDomain,
   documentAudience,
+  documentAudienceDerived,
   documentById,
   documentReferences,
   documentShares,
   isDocCategory,
   shareCandidates,
+  type AudienceDerivedRow,
   type AudienceRow,
   type DocumentDetail,
   type ReferenceRow,
@@ -211,6 +213,7 @@ export default async function DocumentPage({
       let shares: ShareRow[] = [];
       let candidates: ShareCandidate[] = [];
       let audience: AudienceRow[] = [];
+      let derived: AudienceDerivedRow[] = [];
       // 7D · R2/F-1: THE OFFER IS AUTHORIZED. Plan C2 is binding — a
       // re-categorise is "refused AND NOT OFFERED unless the member holds
       // manage on both domains" — and `can_manage` only answers for the
@@ -268,10 +271,16 @@ export default async function DocumentPage({
         // the PREVIEW, so it lands on the preview's own marker.
         if (move) {
           try {
-            audience = await budget.race(
-              documentAudience(claims, documentId, move),
-              'documentAudience',
-            );
+            // 7D · R2/F-2: BOTH halves of the audience, in one slot. D7's
+            // ruling names the derived objects too, and the assurance below
+            // is false while a task holder is about to lose her task.
+            [audience, derived] = await Promise.all([
+              budget.race(documentAudience(claims, documentId, move), 'documentAudience'),
+              budget.race(
+                documentAudienceDerived(claims, documentId, move),
+                'documentAudienceDerived',
+              ),
+            ]);
           } catch (err) {
             if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
             console.error(`document: audience read refused: ${(err as Error).message}`);
@@ -299,6 +308,18 @@ export default async function DocumentPage({
       const gainedNames = audience.filter((r) => r.change === 'gained').map((r) => r.display_name);
       const lostNames = audience.filter((r) => r.change === 'lost').map((r) => r.display_name);
       const changedNames = audience.filter((r) => r.change === 'changed').map((r) => r.display_name);
+      // 7D · R2/F-2: the DERIVED half, said in the same voice. `label` is
+      // null where the object is not the caller's to name — counted, never
+      // named, the documentReferences discipline — so the sentence names the
+      // HOLDER, who this preview is allowed to name, and the object only
+      // where the definer handed one over.
+      const derivedLine = (r: AudienceDerivedRow) =>
+        r.label
+          ? `${r.holder_name} (${r.label})`
+          : `${r.holder_name} (something in the record you can't see)`;
+      const derivedLost = derived.filter((r) => r.change === 'lost').map(derivedLine);
+      const derivedGained = derived.filter((r) => r.change === 'gained').map(derivedLine);
+      const derivedChanged = derived.filter((r) => r.change === 'changed').map(derivedLine);
 
       return (
         <>
@@ -469,8 +490,28 @@ export default async function DocumentPage({
                     {gainedNames.length > 0 ? ` ${gainedNames.join(' and ')} will be able to see it.` : ''}
                     {lostNames.length > 0 ? ` ${lostNames.join(' and ')} will no longer be able to see it.` : ''}
                     {changedNames.length > 0 ? ` What ${changedNames.join(' and ')} can see changes.` : ''}
-                    {audience.length === 0 ? ' No one gains or loses access.' : ''}
+                    {/* 7D · R2/F-2: the assurance is only true when BOTH
+                        answers are empty. It used to render over an empty
+                        DOCUMENT audience while a task holder was losing her
+                        task. */}
+                    {audience.length === 0 && derived.length === 0
+                      ? ' No one gains or loses access.'
+                      : ''}
                   </p>
+                  {derived.length > 0 ? (
+                    <p>
+                      Things in the record that came from it move too.
+                      {derivedLost.length > 0
+                        ? ` ${derivedLost.join(' and ')} will no longer be able to see what they hold.`
+                        : ''}
+                      {derivedGained.length > 0
+                        ? ` ${derivedGained.join(' and ')} will be able to see what they hold.`
+                        : ''}
+                      {derivedChanged.length > 0
+                        ? ` What ${derivedChanged.join(' and ')} can see of it changes.`
+                        : ''}
+                    </p>
+                  ) : null}
                   <form method="post" action={`${next}/recategorize/submit`}>
                     <input type="hidden" name="category" value={move} />
                     <input type="hidden" name="expected_category" value={doc.category} />

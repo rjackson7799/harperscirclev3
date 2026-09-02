@@ -315,6 +315,50 @@ export async function documentAudience(
   });
 }
 
+/**
+ * One DERIVED object whose holder's level changes if the document moves —
+ * the descendants of the taint walk, projected onto the open, held tasks
+ * (ADR-0034 D7). `label` is null where the caller may not name the object:
+ * counted, never named, exactly as documentReferences does it. `before` and
+ * `after` are null below coordinator (D19.10's undisclosed).
+ */
+export type AudienceDerivedRow = {
+  object_type: string;
+  object_id: string;
+  label: string | null;
+  holder_member_id: string;
+  holder_name: string;
+  before: string | null;
+  after: string | null;
+  change: string;
+};
+
+/**
+ * hc.document_audience_derived — 7D · R2/F-2. D7 ruled that "the preview and
+ * the entry NAME the derived objects whose holders change level" and cited
+ * this function; the entry did, the preview did not, and the function had no
+ * caller in the tree at all. Its gate is hc.document_audience's, verbatim
+ * (20260829120005:1591-1597), so calling it here discloses nothing the
+ * preview did not already have the right to say.
+ */
+export async function documentAudienceDerived(
+  claims: RequestClaims,
+  documentId: string,
+  toCategory: DocCategory,
+): Promise<AudienceDerivedRow[]> {
+  if (!UUID_RE.test(documentId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<AudienceDerivedRow>(
+      `select object_type::text as object_type, object_id, label,
+              holder_member_id, holder_name,
+              before::text as before, after::text as after, change
+         from hc.document_audience_derived($1, $2::hc.doc_category)`,
+      [documentId, toCategory],
+    );
+    return r.rows;
+  });
+}
+
 export type RecategorizeResult = {
   document_id: string;
   category: string;
