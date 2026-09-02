@@ -37,6 +37,14 @@ vi.mock('@/lib/hc/documents', async () => {
   return { ...actual, ...docsHc };
 });
 
+// 7D · R2/F-5: the subject list must come from somewhere the subject filter
+// has NOT already narrowed. hc.circle_people is the circle's own answer.
+const peopleHc = { circlePeople: vi.fn() };
+vi.mock('@/lib/hc/people', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/hc/people')>('@/lib/hc/people');
+  return { ...actual, ...peopleHc };
+});
+
 vi.mock('next/navigation', () => ({
   redirect: (path: string) => {
     throw new Error(`NEXT_REDIRECT ${path}`);
@@ -91,6 +99,10 @@ beforeEach(() => {
   session.readLiveSession.mockResolvedValue({ kind: 'signed-in', claims: CLAIMS });
   docsHc.documentsFor.mockResolvedValue([...ROWS]);
   docsHc.uploadArrivalsInFlight.mockResolvedValue([]);
+  peopleHc.circlePeople.mockResolvedValue([
+    { kind: 'subject', subject_id: NELL, display_name: 'Nell', member_id: null, levels: null },
+    { kind: 'subject', subject_id: MARCUS, display_name: 'Marcus', member_id: null, levels: null },
+  ]);
 });
 
 describe('the list — rows at the member own level, one fetch, counts post-filter', () => {
@@ -156,6 +168,58 @@ describe('adding, arriving, empty', () => {
   });
 });
 
+
+// ============================================================================
+// 7D · R2/F-5 — "Nothing filed yet." over a circle of four filed documents.
+//
+// The sentence is guarded only by `rows.length === 0`, and the subject
+// filter empties `rows` SERVER-SIDE. So a circle with four filed documents
+// reads "Nothing filed yet." the moment a subject with none is selected —
+// and the subject nav is HIDDEN while it says so, because the nav is derived
+// from the already-narrowed rows. Nothing on the page contradicts it and
+// nothing offers a way back. A malformed ?subject= empties it before the
+// database is touched at all.
+//
+// The neighbouring discipline is OW-20's own ruling — read `error` and
+// render an error state, never an empty one — and this page already carries
+// the honest sentence for the CLIENT-side filter ("Nothing in this view.").
+// ============================================================================
+describe('7D · R2/F-5 · the subject filter cannot make the page lie', () => {
+  it('a subject with nothing filed does NOT say "Nothing filed yet." — that sentence is about the circle', async () => {
+    docsHc.documentsFor.mockResolvedValue([]);
+    const html = await renderPage({ subject: MARCUS });
+    expect(html).not.toContain('Nothing filed yet.');
+    expect(html).toMatch(/Nothing filed for Marcus/i);
+  });
+
+  it('the subject nav is still there when the filter empties the rows, and it offers the way back', async () => {
+    docsHc.documentsFor.mockResolvedValue([]);
+    const html = await renderPage({ subject: MARCUS });
+    expect(html).toContain('Nell');
+    expect(html).toContain('Marcus');
+    // "All" drops `subject` — the whole point of the way back
+    expect(html).toMatch(/href="\/[^"]*\/documents"[^>]*>All/);
+  });
+
+  it('a malformed ?subject= is the same honest answer, not the false one', async () => {
+    docsHc.documentsFor.mockResolvedValue([]);
+    const html = await renderPage({ subject: 'not-a-uuid' });
+    expect(html).not.toContain('Nothing filed yet.');
+    expect(html).toMatch(/href="\/[^"]*\/documents"[^>]*>All/);
+  });
+
+  it('the subject nav is NOT derived from the narrowed rows — a subject with no rows is still offered', async () => {
+    docsHc.documentsFor.mockResolvedValue([ROWS[0]]);
+    const html = await renderPage({ subject: NELL });
+    expect(html).toContain('Marcus');
+  });
+
+  it('with nothing filed anywhere and NO filter, the sentence is the true one', async () => {
+    docsHc.documentsFor.mockResolvedValue([]);
+    const html = await renderPage();
+    expect(html).toContain('Nothing filed yet.');
+  });
+});
 describe('the nav', () => {
   it('documents joins NAV_MANIFEST under THE RECORD', async () => {
     const { NAV_MANIFEST } = await import('@/components/shell/nav-manifest');
