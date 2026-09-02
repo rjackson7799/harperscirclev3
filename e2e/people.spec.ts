@@ -450,7 +450,15 @@ test.describe('the 7C people legs', () => {
     // clause about counted-never-named had nothing to be true of. Seven
     // denials through the one writer collapse into ONE row counted seven.
     await fixtureDenials(f.circleId, f.accountId, f.nell, 7);
-    await f.page.goto(`/${f.circleId}/people/log`);
+    // 7D · R4/F-4: ARRIVED AT BY CLICKING, not by goto. Exactly one rendered
+    // href to this page existed in the whole app, on the subject page, whose
+    // only path in was a receipt for an approved profile fact — so a leg
+    // that gotos proves the page renders and never that a person can reach
+    // the printable record §4.6.5 promises. People & roles carries the door
+    // now, and this leg walks through it.
+    await f.page.goto(`/${f.circleId}/people`);
+    await f.page.getByRole('link', { name: 'Everything done with the record' }).click();
+    await f.page.waitForURL(`**/${f.circleId}/people/log`);
     // entries exist from circle creation onward; each is a sentence
     const entries = f.page.locator('.log-entries li');
     expect(await entries.count()).toBeGreaterThan(0);
@@ -499,7 +507,12 @@ test.describe('the 7C people legs', () => {
        on conflict do nothing`,
       [f.circleId, f.nell, f.accountId],
     );
-    await f.page.goto(`/${f.circleId}/people/subject/${f.nell}`);
+    // 7D · R4/F-4: clicked, not goto'd — the subject card on People & roles
+    // is the door, and this asserts a person can arrive rather than that the
+    // URL renders.
+    await f.page.goto(`/${f.circleId}/people`);
+    await f.page.locator(`a[href="/${f.circleId}/people/subject/${f.nell}"]`).first().click();
+    await f.page.waitForURL(`**/people/subject/${f.nell}`);
     await expect(f.page.locator('main')).toContainText("Nell's record, held on their behalf");
     await expect(f.page.locator('main')).toContainText('custodian');
     await expect(f.page.locator('main')).toContainText('Custodianship declared');

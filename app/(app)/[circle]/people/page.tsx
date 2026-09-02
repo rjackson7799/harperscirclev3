@@ -139,13 +139,34 @@ export default async function PeoplePage({
             here promises it.
           </p>
 
+          {/* 7D · R4/F-4: §4.6.5's printable record had exactly one rendered
+              link in the whole app, on the subject page, whose only path in
+              was a receipt for an approved profile fact. The surface that is
+              ABOUT access is where a person looks for what was done with it. */}
+          <p className="meta">
+            <a className="action-link" href={`/${circle}/people/log`}>
+              Everything done with the record
+            </a>
+          </p>
+
           <section className="record-section" aria-labelledby="the-people">
             <h2 id="the-people">Everyone in the circle</h2>
             {subjects.map((s) => (
               <Card key={s.member_id ?? s.display_name}>
                 <p>
-                  <strong>{s.display_name}</strong> — holds the highest access to their own
-                  record, with no account attached · custodian: {s.custodian_name ?? 'named at setup'}
+                  {/* 7D · R4/F-4: the subject's own page — where the §7.5
+                      custodianship declaration is shown — was reachable only
+                      through a receipt for an approved profile fact. The
+                      person it is about is the obvious door. */}
+                  {s.subject_id ? (
+                    <a className="action-link" href={`/${circle}/people/subject/${s.subject_id}`}>
+                      <strong>{s.display_name}</strong>
+                    </a>
+                  ) : (
+                    <strong>{s.display_name}</strong>
+                  )}{' '}
+                  — holds the highest access to their own record, with no account attached ·
+                  custodian: {s.custodian_name ?? 'named at setup'}
                 </p>
                 {subjectLines(s, subjectName).map((line) => (
                   <p key={line} className="meta">
