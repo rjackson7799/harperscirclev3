@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { stepUpFor } from '@/lib/auth/step-up-cookie';
 
 // ============================================================================
 // 7C C2 · /[circle]/documents/[document] and the three writes (PRD §4.3.2–
@@ -54,6 +55,20 @@ vi.mock('@/lib/hc/artifacts', async () => {
   return { ...actual, ...artifactsHc };
 });
 
+// 7D · R2/F-1: the page's authorization input for the category OFFER —
+// hc.circle_people already hands the caller her own levels.
+const peopleHc = { circlePeople: vi.fn() };
+vi.mock('@/lib/hc/people', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/hc/people')>('@/lib/hc/people');
+  return { ...actual, ...peopleHc };
+});
+
+const tasksHc = { myMembership: vi.fn() };
+vi.mock('@/lib/hc/tasks', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/hc/tasks')>('@/lib/hc/tasks');
+  return { ...actual, ...tasksHc };
+});
+
 const reviewHc = { extractionsFor: vi.fn() };
 vi.mock('@/lib/hc/review', async () => {
   const actual = await vi.importActual<typeof import('@/lib/hc/review')>('@/lib/hc/review');
@@ -92,6 +107,16 @@ const EVENT = 'bbbbbbbb-0000-4000-8000-0000000000b1';
 const MARISOL = '44444444-0000-4000-8000-000000000005';
 const SHARE = 'cccccccc-0000-4000-8000-0000000000c1';
 const CLAIMS = { sub: '33333333-0000-4000-8000-000000000003', role: 'authenticated' };
+const ME_M = '44444444-0000-4000-8000-000000000004';
+const ALL_MANAGE = {
+  memories: 'manage',
+  health: 'manage',
+  schedule: 'manage',
+  documents: 'manage',
+  finances: 'manage',
+};
+/** 7D · R2/F-3: what a token minted for THIS document's share is for. */
+const SHARE_FOR = stepUpFor('share_object', `document:${DOC}`);
 
 const DETAIL = {
   id: DOC,
@@ -162,6 +187,28 @@ beforeEach(() => {
   docsHc.shareCandidates.mockResolvedValue([]);
   artifactsHc.readableRendition.mockResolvedValue(null);
   reviewHc.extractionsFor.mockResolvedValue([]);
+  // A coordinator by default: manage on all five, so the pre-existing
+  // manage cases read exactly as they did.
+  tasksHc.myMembership.mockResolvedValue({ id: ME_M, tier: 'coordinator' });
+  peopleHc.circlePeople.mockResolvedValue([
+    {
+      kind: 'member',
+      member_id: ME_M,
+      account_id: CLAIMS.sub,
+      display_name: 'Sarah',
+      tier: 'coordinator',
+      slice: null,
+      is_subject: false,
+      subject_id: null,
+      custodian_member_id: null,
+      custodian_name: null,
+      joined_at: '2026-08-01T10:00:00Z',
+      invite_id: null,
+      invite_expires_at: null,
+      invite_status: null,
+      levels: { [NELL]: ALL_MANAGE },
+    },
+  ]);
 });
 
 describe('the detail at summary — a list of sentences, not a viewer (settled item 2)', () => {
@@ -297,6 +344,7 @@ describe('the detail at manage — shares, unshare in one action, share behind s
 
   it('share, phase 2: the token is live — the confirmation states §4.3.5 rules and posts the share', async () => {
     stepUpCookie = 'tok';
+    stepUpForCookie = SHARE_FOR;
     const html = await renderPage({ share: MARISOL });
     expect(html).toContain(`action="/${CIRCLE}/documents/${DOC}/share/submit"`);
     expect(html).toContain(`value="${MARISOL}"`);
@@ -319,10 +367,7 @@ describe('the detail at manage — shares, unshare in one action, share behind s
   // ---------------------------------------------------------------------
   it("a token minted for another operation is not confirmation here — the page offers the PASSWORD, not the share it cannot complete", async () => {
     stepUpCookie = 'tok';
-    stepUpForCookie = new URLSearchParams({
-      op: 'raise_grant',
-      ref: `${MARISOL}:${NELL}:health`,
-    }).toString();
+    stepUpForCookie = stepUpFor('raise_grant', `${MARISOL}:${NELL}:health`);
     const html = await renderPage({ share: MARISOL });
     expect(html).toContain('action="/account/step-up/submit"');
     expect(html).not.toContain(`action="/${CIRCLE}/documents/${DOC}/share/submit"`);
@@ -330,10 +375,7 @@ describe('the detail at manage — shares, unshare in one action, share behind s
 
   it('a token minted for ANOTHER DOCUMENT is not confirmation either — the target_ref is half the binding', async () => {
     stepUpCookie = 'tok';
-    stepUpForCookie = new URLSearchParams({
-      op: 'share_object',
-      ref: 'document:99999999-0000-4000-8000-000000000099',
-    }).toString();
+    stepUpForCookie = stepUpFor('share_object', 'document:99999999-0000-4000-8000-000000000099');
     const html = await renderPage({ share: MARISOL });
     expect(html).toContain('action="/account/step-up/submit"');
     expect(html).not.toContain(`action="/${CIRCLE}/documents/${DOC}/share/submit"`);
@@ -366,6 +408,93 @@ describe('the detail at manage — shares, unshare in one action, share behind s
     expect(html).toContain('name="category" value="financial"');
     expect(html).toContain('name="expected_category" value="medical"');
   });
+  // ---------------------------------------------------------------------
+  // 7D · R2/F-1 — the round's most serious product row.
+  //
+  // Plan C2 is BINDING: a re-categorise is "refused (AND NOT OFFERED) unless
+  // the member holds manage on both domains". This page's only authorization
+  // input was `can_manage` over the document's CURRENT taint, so every other
+  // category was offered unconditionally — and the database's named
+  // `audience_refused` landed in the manage block's catch-all, which returns
+  // loadFailed: the whole detail page, the shares list and the share control
+  // gone, replaced by "We couldn't load this document just now."
+  //
+  // This is the r3 defect's mechanism at a second call site. D2's "THE ROW
+  // DECIDES FIRST now" was applied to the references read, not to the class.
+  //
+  // The remedy needs no DDL: hc.circle_people already returns the caller's
+  // own `levels`, and lib/hc/people#circlePeople is already wired.
+  // ---------------------------------------------------------------------
+  const HEALTH_ONLY = {
+    memories: 'hidden',
+    health: 'manage',
+    schedule: 'hidden',
+    documents: 'view',
+    finances: 'view',
+  };
+
+  function callerHolds(levels: Record<string, string> | null) {
+    tasksHc.myMembership.mockResolvedValue({ id: ME_M, tier: 'family' });
+    peopleHc.circlePeople.mockResolvedValue([
+      {
+        kind: 'member',
+        member_id: ME_M,
+        account_id: CLAIMS.sub,
+        display_name: 'Sarah',
+        tier: 'family',
+        slice: null,
+        is_subject: false,
+        subject_id: null,
+        custodian_member_id: null,
+        custodian_name: null,
+        joined_at: '2026-08-01T10:00:00Z',
+        invite_id: null,
+        invite_expires_at: null,
+        invite_status: null,
+        levels: { [NELL]: levels },
+      },
+    ]);
+  }
+
+  it('the category offer is AUTHORIZED: only categories whose domain the caller manages are offered — never the whole enum', async () => {
+    callerHolds(HEALTH_ONLY);
+    const html = await renderPage();
+    // health: medications and labs (medical is the current category)
+    expect(html).toContain('value="medications"');
+    expect(html).toContain('value="labs"');
+    // finances and documents are held at `view`, so nothing there is offered
+    expect(html).not.toContain('value="financial"');
+    expect(html).not.toContain('value="insurance"');
+    expect(html).not.toContain('value="legal"');
+    expect(html).not.toContain('value="other"');
+  });
+
+  it('a hand-built ?move= into a domain the caller does not manage previews NOTHING — not offered means not previewed', async () => {
+    callerHolds(HEALTH_ONLY);
+    const html = await renderPage({ move: 'financial' });
+    expect(docsHc.documentAudience).not.toHaveBeenCalled();
+    expect(html).not.toMatch(/Move it to Financial/);
+  });
+
+  it('a caller whose levels are not knowable is offered nothing at all — fail closed, never the whole enum', async () => {
+    callerHolds(null);
+    const html = await renderPage();
+    expect(html).not.toContain('name="move"');
+  });
+
+  it("the audience read has its own catch: the DB's named refusal lands on ?e=refused, NOT on loadFailed swallowing the whole page", async () => {
+    docsHc.documentAudience.mockRejectedValue(new Error('audience_refused'));
+    await expect(renderPage({ move: 'financial' })).rejects.toThrow(
+      `NEXT_REDIRECT /${CIRCLE}/documents/${DOC}?e=refused`,
+    );
+  });
+
+  it('a refusal on the shares or candidates read still fails the page — only the audience read is narrowed', async () => {
+    docsHc.documentShares.mockRejectedValue(new Error('boom'));
+    const html = await renderPage();
+    expect(html).toMatch(/couldn&#x27;t load this document/i);
+  });
+
 });
 
 describe('the three writes', () => {
@@ -390,10 +519,7 @@ describe('the three writes', () => {
   });
   it("R3/F-8: a token for another operation is not sent to the definer and is NOT BURNED — her unrelated step-up survives, and she is asked for the password instead", async () => {
     stepUpCookie = 'tok';
-    stepUpForCookie = new URLSearchParams({
-      op: 'raise_grant',
-      ref: `${MARISOL}:${NELL}:health`,
-    }).toString();
+    stepUpForCookie = stepUpFor('raise_grant', `${MARISOL}:${NELL}:health`);
     const POST = await shareRoute();
     const res = await POST(
       postTo(`/${CIRCLE}/documents/${DOC}/share/submit`, { member_id: MARISOL }),
@@ -409,6 +535,7 @@ describe('the three writes', () => {
 
   it('share with the token: the wrapper gets it, the cookie is cleared, the page re-opens shared', async () => {
     stepUpCookie = 'tok';
+    stepUpForCookie = SHARE_FOR;
     docsHc.shareDocument.mockResolvedValue({ object_type: 'document', object_id: DOC, member_id: MARISOL });
     const POST = await shareRoute();
     const res = await POST(postTo(`/${CIRCLE}/documents/${DOC}/share/submit`, { member_id: MARISOL }), ctx);
@@ -420,6 +547,7 @@ describe('the three writes', () => {
 
   it('a refused share clears the token and says so without leaking the reason', async () => {
     stepUpCookie = 'tok';
+    stepUpForCookie = SHARE_FOR;
     docsHc.shareDocument.mockRejectedValue(new Error('share_refused'));
     const POST = await shareRoute();
     const res = await POST(postTo(`/${CIRCLE}/documents/${DOC}/share/submit`, { member_id: MARISOL }), ctx);
