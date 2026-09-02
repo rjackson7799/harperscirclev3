@@ -349,14 +349,21 @@ export async function retireInvite(
 ): Promise<{ invited_email: string; tier: string }> {
   if (!UUID_RE.test(circleId) || !UUID_RE.test(inviteId)) throw new Error('invite_refused');
   return withRequestRole('authenticated', claims, async (q) => {
-    const r = await q.query<{ invited_email: string; tier: string }>(
-      `select display_name as invited_email, tier::text as tier
+    const r = await q.query<{ invited_email: string; tier: string; invite_status: string | null }>(
+      `select display_name as invited_email, tier::text as tier, invite_status
          from hc.circle_people($1)
         where kind = 'invite' and invite_id = $2`,
       [circleId, inviteId],
     );
     if (r.rows.length !== 1) throw new Error('invite_refused');
+    // 7D · R3/F-5: EXPIRED ONLY, and refused BEFORE the revoke. hc.revoke_invite
+    // carries no expiry term, so a PENDING invite posted here was killed while
+    // the landing said the expired one had been withdrawn — a live link
+    // destroyed by a surface that only ever offers this for a dead one. The
+    // gate is the same shape as every other refusal here, so "not yours",
+    // "not there" and "not expired" stay one answer.
+    if (r.rows[0].invite_status !== 'expired') throw new Error('invite_refused');
     await q.query('select hc.revoke_invite($1)', [inviteId]);
-    return r.rows[0];
+    return { invited_email: r.rows[0].invited_email, tier: r.rows[0].tier };
   });
 }

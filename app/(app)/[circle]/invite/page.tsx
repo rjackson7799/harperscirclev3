@@ -63,10 +63,16 @@ export default async function InvitePage({
             subjects have to be complete.
           </p>
         )}
+        {/* 7D · R3/F-5 (R3's observation 4): `resend` is UNAUTHENTICATED
+            STATE — anyone can put it in a link — so this must not assert
+            that an invite WAS withdrawn. It says what this form will do,
+            which is true however the page was reached. The withdrawal is
+            recorded where a withdrawal belongs: the family's log. */}
         {query.resend === '1' && (
           <p className="notice">
-            The expired invite was withdrawn. This sends a fresh link — the address and role
-            are filled in; choose the records it covers.
+            This sends a fresh link — it works once, for seven days, and any earlier link for
+            this address stops working. The address and role are filled in; choose the records
+            it covers.
           </p>
         )}
 
