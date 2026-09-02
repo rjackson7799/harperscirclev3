@@ -25,6 +25,9 @@ export default async function ResetConfirmPage({
         </p>
       )}
       {e === 'retry' && <p className="notice">That didn&apos;t save. Try once more.</p>}
+      {e === 'slow' && (
+        <p className="notice">That took too long to save. Nothing is lost — try once more.</p>
+      )}
 
       <form method="post" action="/reset/confirm/submit">
         <Field label="New password" help="At least 10 characters.">

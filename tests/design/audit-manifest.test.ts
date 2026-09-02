@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { AUDIT_MANIFEST } from '../../e2e/audit-manifest';
@@ -37,6 +37,24 @@ function pageRoutes(root: string): string[] {
   return out.sort();
 }
 
+// ── 7E · R6/F-6 (ADR-0038, ACCEPTED · TAKEN(7E)) ────────────────────────────
+//
+// The manifest's VALUES were prose nobody checked. Two of the five citations
+// R6 read were substantively wrong: the documents-list entry still described
+// the PRE-BUILD leg and promised "Nothing filed yet.", which D12.2 moved to
+// vitest, and the A11Y-11 citation named a claim no leg makes.
+//
+// `npx playwright test -g "<manifest title>"` returns ZERO legs for such a
+// citation — which reads identically to "the leg was deleted", defeating the
+// exact method (title against assertion) that found round 18's class and
+// this round's five. ADR-0026: if it can be an exact-set assertion, it must
+// be. Every quoted fragment must appear VERBATIM in some e2e/*.spec.ts.
+const SPEC_DIR = join(process.cwd(), 'e2e');
+const SPEC_SOURCES = readdirSync(SPEC_DIR)
+  .filter((f) => f.endsWith('.spec.ts'))
+  .map((f) => readFileSync(join(SPEC_DIR, f), 'utf8'))
+  .join('\n');
+
 describe('6B B9 · the audit list is PINNED to the filesystem (R5/F-6)', () => {
   const routes = pageRoutes(join(process.cwd(), 'app'));
   const listed = Object.keys(AUDIT_MANIFEST).sort();
@@ -54,6 +72,29 @@ describe('6B B9 · the audit list is PINNED to the filesystem (R5/F-6)', () => {
     expect(
       stale,
       `audit-manifest entries with no page.tsx behind them: ${stale.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('every leg title the manifest QUOTES exists verbatim in a spec (R6/F-6)', () => {
+    const quoted: { route: string; title: string }[] = [];
+    for (const [route, claim] of Object.entries(AUDIT_MANIFEST)) {
+      // Only claims that cite a spec; redirect-only and OWED claims are
+      // prose a reviewer weighs, and name no leg to look for.
+      if (!/\.spec\s+—/.test(claim.leg)) continue;
+      for (const m of claim.leg.matchAll(/"([^"]+)"/g)) {
+        quoted.push({ route, title: m[1] });
+      }
+    }
+    // A positive control: if the extraction ever stops finding titles this
+    // assertion would pass over an empty list, which is the failure mode it
+    // exists to prevent.
+    expect(quoted.length).toBeGreaterThan(5);
+    const missing = quoted
+      .filter((q) => !SPEC_SOURCES.includes(q.title))
+      .map((q) => `${q.route} cites a leg no spec declares: "${q.title}"`);
+    expect(
+      missing,
+      `audit-manifest citations matching no e2e leg title:\n  ${missing.join('\n  ')}`,
     ).toEqual([]);
   });
 

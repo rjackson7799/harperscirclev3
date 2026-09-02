@@ -1105,7 +1105,11 @@ a:focus-visible {
 /* WCAG 2.2 target-size/offset (the record-surfaces audit found both): a
    bare navigation link keeps the 44px floor, and a submit button never
    sits flush against the 44px choice targets above it. */
-.back-link {
+.back-link,
+.action-link {
+  /* 7C C6 (A11Y-10, gate r4): a bare inline <a> that ACTS is a 16px touch
+     target — every action link carries this 44px floor, same as the back
+     link. Pinned in tests/design/touch-targets.test.ts. */
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -1125,4 +1129,26 @@ a:focus-visible {
 }
 .record-thread-day {
   margin-top: 16px;
+}
+
+/* 7C C5 (PPL-04, A11Y-10): the printed log is the SAME filtered read - the
+   print sheet hides the chrome and the controls and adds nothing. */
+@media print {
+  .left-nav,
+  .topbar,
+  .back-link,
+  button,
+  .record-controls {
+    display: none !important;
+  }
+  .log-entries li {
+    break-inside: avoid;
+  }
+}
+
+.log-entries {
+  padding-left: 18px;
+}
+.log-entries li {
+  margin-bottom: 6px;
 }

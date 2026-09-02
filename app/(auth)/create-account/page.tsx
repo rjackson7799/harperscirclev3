@@ -42,6 +42,9 @@ export default async function CreateAccountPage({
         </p>
       )}
       {e === 'name' && <p className="notice">Tell us your name — it&apos;s how the family sees you.</p>}
+      {e === 'slow' && (
+        <p className="notice">That took too long to answer. Nothing is lost — try again.</p>
+      )}
       {e === 'email' && <p className="notice">That email address doesn&apos;t look complete.</p>}
       {e === 'retry' && (
         <p className="notice">

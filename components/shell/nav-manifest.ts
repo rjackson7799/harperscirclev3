@@ -34,5 +34,33 @@ export const NAV_MANIFEST: NavEntry[] = [
   { key: 'tasks', label: 'Tasks', group: 'primary', href: (c) => `/${c}/tasks` },
   { key: 'invite', label: 'Invite', group: 'primary', href: (c) => `/${c}/invite` },
   { key: 'timeline', label: 'Timeline', group: 'record', href: (c) => `/${c}/timeline` },
+  { key: 'documents', label: 'Documents', group: 'record', href: (c) => `/${c}/documents` },
+  { key: 'people', label: 'People & roles', group: 'connection', href: (c) => `/${c}/people` },
   { key: 'account', label: 'Account', group: 'utility', href: () => '/account' },
 ];
+
+/**
+ * 7C C3 · NAV-01's composition half: the nav follows access per tier — a
+ * COURTESY, asserted, never the mechanism (§4.0, §7.7): the gate and RLS
+ * refuse a hand-constructed URL regardless of what is listed here.
+ *
+ *   · care_circle: Tasks · Account — only the work handed to them;
+ *   · family: Timeline · Documents · People · Account;
+ *   · coordinator: everything.
+ *
+ * An unknown tier (the read failed, or no membership resolved) falls back
+ * to the FULL manifest: hiding is a courtesy, and a failed read must never
+ * hide a surface someone is entitled to — the surfaces refuse for
+ * themselves.
+ */
+export function navFor(tier: string | null): NavEntry[] {
+  if (tier === 'care_circle') {
+    return NAV_MANIFEST.filter((e) => ['tasks', 'account'].includes(e.key));
+  }
+  if (tier === 'family') {
+    return NAV_MANIFEST.filter((e) =>
+      ['timeline', 'documents', 'people', 'account'].includes(e.key),
+    );
+  }
+  return NAV_MANIFEST;
+}

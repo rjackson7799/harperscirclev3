@@ -72,6 +72,7 @@ const ARRIVAL = '55555555-0000-4000-8000-000000000005';
 const TASK = 'aaaaaaaa-0000-4000-8000-0000000000a1';
 const MEMBER = '44444444-0000-4000-8000-000000000005';
 const EVENT = 'eeeeeeee-0000-4000-8000-0000000000e1';
+const DOCUMENT = '66666666-0000-4000-8000-000000000006';
 const UNAVAILABLE = { kind: 'unavailable', why: 'AuthRetryableFetchError: fetch failed' } as const;
 const SIGNED_OUT = { kind: 'signed-out' } as const;
 
@@ -150,6 +151,45 @@ const GATED: Record<string, Entry> = {
     next: `/${CIRCLE}/tasks/${TASK}/assign?member=${MEMBER}`,
     load: () => import('@/app/(app)/[circle]/tasks/[task]/assign/page'),
     props: { params: params({ circle: CIRCLE, task: TASK }), searchParams: sp({ member: MEMBER }) },
+  },
+  // ---- 7C C1/C2: the pin demanded these the moment they existed -----------
+  '/[circle]/documents': {
+    kind: 'page',
+    next: `/${CIRCLE}/documents`,
+    load: () => import('@/app/(app)/[circle]/documents/page'),
+    props: { params: params({ circle: CIRCLE }), searchParams: sp() },
+  },
+  '/[circle]/documents/[document]': {
+    kind: 'page',
+    next: `/${CIRCLE}/documents/${DOCUMENT}`,
+    load: () => import('@/app/(app)/[circle]/documents/[document]/page'),
+    props: { params: params({ circle: CIRCLE, document: DOCUMENT }), searchParams: sp() },
+  },
+  '/[circle]/people': {
+    kind: 'page',
+    next: `/${CIRCLE}/people`,
+    load: () => import('@/app/(app)/[circle]/people/page'),
+    props: { params: params({ circle: CIRCLE }), searchParams: sp() },
+  },
+  '/[circle]/people/[member]': {
+    kind: 'page',
+    next: `/${CIRCLE}/people/${MEMBER}`,
+    load: () => import('@/app/(app)/[circle]/people/[member]/page'),
+    props: { params: params({ circle: CIRCLE, member: MEMBER }), searchParams: sp() },
+  },
+  '/[circle]/people/log': {
+    kind: 'page',
+    next: `/${CIRCLE}/people/log`,
+    load: () => import('@/app/(app)/[circle]/people/log/page'),
+    props: { params: params({ circle: CIRCLE }) },
+  },
+  '/[circle]/people/subject/[subject]': {
+    kind: 'page',
+    next: `/${CIRCLE}/people/subject/22222222-0000-4000-8000-000000000002`,
+    load: () => import('@/app/(app)/[circle]/people/subject/[subject]/page'),
+    props: {
+      params: params({ circle: CIRCLE, subject: '22222222-0000-4000-8000-000000000002' }),
+    },
   },
   // ---- 7B B3 --------------------------------------------------------------
   '/[circle]/timeline/[event]': {
@@ -252,6 +292,37 @@ const GATED: Record<string, Entry> = {
     load: () => import('@/app/(app)/[circle]/timeline/add/submit/route'),
     params: { circle: CIRCLE },
   },
+  // ---- 7C C2: the three document writes -----------------------------------
+  '/[circle]/documents/[document]/share/submit': {
+    kind: 'route',
+    next: `/${CIRCLE}/documents/${DOCUMENT}`,
+    load: () => import('@/app/(app)/[circle]/documents/[document]/share/submit/route'),
+    params: { circle: CIRCLE, document: DOCUMENT },
+  },
+  '/[circle]/documents/[document]/unshare/submit': {
+    kind: 'route',
+    next: `/${CIRCLE}/documents/${DOCUMENT}`,
+    load: () => import('@/app/(app)/[circle]/documents/[document]/unshare/submit/route'),
+    params: { circle: CIRCLE, document: DOCUMENT },
+  },
+  '/[circle]/documents/[document]/recategorize/submit': {
+    kind: 'route',
+    next: `/${CIRCLE}/documents/${DOCUMENT}`,
+    load: () => import('@/app/(app)/[circle]/documents/[document]/recategorize/submit/route'),
+    params: { circle: CIRCLE, document: DOCUMENT },
+  },
+  '/[circle]/people/[member]/grant/submit': {
+    kind: 'route',
+    next: `/${CIRCLE}/people/${MEMBER}`,
+    load: () => import('@/app/(app)/[circle]/people/[member]/grant/submit/route'),
+    params: { circle: CIRCLE, member: MEMBER },
+  },
+  '/[circle]/people/invites/[invite]/again/submit': {
+    kind: 'route',
+    next: `/${CIRCLE}/people`,
+    load: () => import('@/app/(app)/[circle]/people/invites/[invite]/again/submit/route'),
+    params: { circle: CIRCLE, invite: '77777777-0000-4000-8000-000000000007' },
+  },
   // ---- the three that already answer a status, and the two special routes --
   '/api/artifact/[id]': { kind: 'elsewhere', where: 'tests/routes/artifact.test.ts — 503 session_unavailable, never 404' },
   '/api/upload/token': { kind: 'elsewhere', where: 'tests/routes/upload.test.ts — 503, never 401' },
@@ -306,10 +377,10 @@ describe('GTE-01 · the gated set is PINNED to the filesystem both ways', () => 
     expect(stale, `entries with no gated file behind them: ${stale.join(', ')}`).toEqual([]);
   });
 
-  it('the D15 enumeration holds on disk, plus what 7B added: ten + three pages, five + one + five form routes, one layout', () => {
+  it('the D15 enumeration holds on disk, plus 7B and 7C C2: ten + three + one pages, five + one + five + three form routes, one layout', () => {
     const kinds = Object.values(GATED).map((e) => e.kind);
-    expect(kinds.filter((k) => k === 'page').length).toBe(13);
-    expect(kinds.filter((k) => k === 'route').length).toBe(11);
+    expect(kinds.filter((k) => k === 'page').length).toBe(19);
+    expect(kinds.filter((k) => k === 'route').length).toBe(16);
     expect(kinds.filter((k) => k === 'layout').length).toBe(1);
   });
 });

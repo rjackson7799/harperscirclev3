@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   GROUP_LABELS,
-  NAV_MANIFEST,
+  navFor,
   type NavEntry,
   type NavGroup,
 } from './nav-manifest';
@@ -15,14 +15,24 @@ import {
  * pinned to the bottom. Driven by the nav manifest — live routes only.
  * Client component solely for usePathname (the active state); the
  * aria-current attribute is both the a11y truth and the styling hook.
+ *
+ * 7C C3 (NAV-01's composition half): the LAYOUT hands this component the
+ * caller's TIER — a string, because `NavEntry.href` is a function and a
+ * function cannot cross the RSC boundary as a prop (the first gate run
+ * proved it at every circle page) — and the composition is computed HERE,
+ * from the same navFor the vitest pins drive. `entries` stays for tests
+ * and previews; when both are given, entries wins.
  */
 export function LeftNav({
   circle,
-  entries = NAV_MANIFEST,
+  tier = null,
+  entries,
 }: {
   circle: string;
+  tier?: string | null;
   entries?: NavEntry[];
 }) {
+  const resolved = entries ?? navFor(tier);
   const pathname = usePathname();
 
   const isActive = (href: string) =>
@@ -47,7 +57,7 @@ export function LeftNav({
 
   // Manifest order within each group; groups appear only when they have a
   // live entry.
-  const grouped = (group: NavGroup) => entries.filter((e) => e.group === group);
+  const grouped = (group: NavGroup) => resolved.filter((e) => e.group === group);
   const labeled: NavGroup[] = ['record', 'connection'];
 
   return (

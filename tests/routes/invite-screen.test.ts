@@ -135,3 +135,37 @@ describe('A5 · issuance', () => {
     expect(html.toLowerCase()).toContain('once');
   });
 });
+
+// ============================================================================
+// 7D · R3/F-5 (R3's observation 4) — `?resend=1` is UNAUTHENTICATED STATE.
+//
+// "The expired invite was withdrawn." asserts a past event out of a query
+// parameter anyone can put in a link. Nothing widens — the form still posts
+// to the one create path and hc.create_invite decides — but a false
+// assertion about what happened to a family's invite is the same class of
+// harm this slice exists to remove. The sentence now describes what THIS
+// FORM will do, which is true however the page was reached; the withdrawal
+// is recorded where a withdrawal belongs, in the family's log.
+// ============================================================================
+describe('7D · R3/F-5 · the resend notice asserts nothing it cannot know', () => {
+  async function renderInvite(query: Record<string, string>) {
+    const { default: Page } = await import('@/app/(app)/[circle]/invite/page');
+    return renderToStaticMarkup(
+      await Page({
+        params: Promise.resolve({ circle: CIRCLE }),
+        searchParams: Promise.resolve(query),
+      }),
+    );
+  }
+
+  it('a crafted ?resend=1 does not claim an invite was withdrawn', async () => {
+    const html = await renderInvite({ resend: '1', email: 'x@example.com', tier: 'family' });
+    expect(html).not.toMatch(/was withdrawn/i);
+  });
+
+  it('it still explains the form a person has landed on, and still prefills', async () => {
+    const html = await renderInvite({ resend: '1', email: 'x@example.com', tier: 'family' });
+    expect(html).toMatch(/fresh link/i);
+    expect(html).toContain('value="x@example.com"');
+  });
+});

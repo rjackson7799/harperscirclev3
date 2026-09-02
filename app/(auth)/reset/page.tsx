@@ -27,6 +27,9 @@ export default async function ResetPage({
         </p>
       )}
       {e === 'missing' && <p className="notice">Enter the email address you use here.</p>}
+      {e === 'slow' && (
+        <p className="notice">That took too long to answer. Nothing is lost — try again.</p>
+      )}
       {e === 'session' && (
         <p className="notice">
           That reset link has done its 30 minutes. Request a fresh one below.

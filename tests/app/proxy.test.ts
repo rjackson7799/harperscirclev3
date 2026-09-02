@@ -65,6 +65,16 @@ describe('GTE-01 · the proxy answers the 503 a page cannot', () => {
     expect(res.headers.get('retry-after')).toBeNull();
   });
 
+  it('every pass-through is `private, no-store` — §4.6.3\'s cached-responses channel (7C C4, PPL-03): a revoked member\'s cached page must not outlive the revocation', async () => {
+    getClaims.mockResolvedValueOnce({ data: { claims: { sub: 'u1' } }, error: null });
+    const res = await run('/c-1/documents');
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+    // the signed-out pass-through carries it too — auth pages are user-scoped
+    getClaims.mockResolvedValueOnce({ data: null, error: null });
+    const anon = await run('/sign-in');
+    expect(anon.headers.get('cache-control')).toBe('private, no-store');
+  });
+
   it('NO session passes through — the page owns the sign-in redirect, exactly as before', async () => {
     getClaims.mockResolvedValueOnce({ data: null, error: null });
     expect((await run('/c-1/tasks')).status).toBe(200);
@@ -107,5 +117,10 @@ describe('GTE-01 · the proxy answers the 503 a page cannot', () => {
     const res = await run('/c-1/tasks');
     expect(res.status).toBe(200);
     expect(getClaims).not.toHaveBeenCalled();
+    // 7D R5/F-2 (Q-D RATIFIED): staying out of the way is about the SESSION
+    // read, never about the stamp. PPL-03's claim is 'every pass-through',
+    // and this early return is a pass-through — the one this test already
+    // stood over while asserting only the status and the absent call.
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
   });
 });

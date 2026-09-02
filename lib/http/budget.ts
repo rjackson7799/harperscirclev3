@@ -49,6 +49,10 @@
  *     render every page @2576 + encode   work=576ms  timer ticks during: 1
  *     2576² raster + encode x10          work=3428ms timer ticks during: 0
  *
+ * ── ROUND-20 QUALIFIER (OW-16, ADR-0028 D15 item 2; applied at 7C C2): the
+ *    localisation below is UNCONFIRMED IN THE RUNNING APP — the numbers are a
+ *    bench repro, and the round overturned the sentence as an app-level fact.
+ *    Marked, never rewritten. ──────────────────────────────────────────────
  * 99-100% of that duration, NOTHING ELSE IN THE PROCESS RUNS. Not a pg
  * callback, not a fetch callback — AND NOT THIS BUDGET'S OWN setTimeout. That
  * is why r2's leg-38 504 took 19.5 s against a 15 s budget: the guarantee is

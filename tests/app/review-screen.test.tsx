@@ -196,17 +196,39 @@ describe('6B B9 · A11Y-08: machine-read text, labelled and offered per page', (
     );
   });
 
-  it('poor confidence is SAID: an empty transcript renders the honest sentence, never blank', async () => {
+  // -------------------------------------------------------------------
+  // 7D · R1/F-4 — every arm says only what THIS CLIENT OBSERVED.
+  //
+  // A 404 on the sibling path is produced by an absence, by an
+  // authorization refusal, and by a revocation, and the client cannot tell
+  // which. "No machine-read text is stored for this page." asserted a
+  // STORAGE fact out of all three — on the same route whose image half
+  // splits rendition_page_missing from storage_timeout at length because
+  // "this route does not guess". The statuses split only where the fact is
+  // a storage fact (the route's own half of R1/F-4); the WORDS change on
+  // every arm, because no arm can attribute what it saw.
+  // -------------------------------------------------------------------
+  it('an empty transcript is SAID as what came back, never blank and never as a claim about the reading', async () => {
     fetchMock.mockResolvedValueOnce(new Response('', { status: 200 }));
     await open(0);
-    expect(container.textContent).toMatch(/couldn(’|')t produce reliable text/i);
+    expect(container.textContent).toMatch(/returned nothing readable/i);
+    expect(container.textContent).not.toMatch(/couldn(’|')t produce reliable text/i);
   });
 
-  it('a source with no machine-read text says exactly that', async () => {
+  it('a 404 is said as UNAVAILABILITY, not as a fact about what is stored — the client cannot know which of three answers it got', async () => {
     fetchMock.mockResolvedValueOnce(new Response('not found', { status: 404 }));
     await open(1);
     expect(fetchMock).toHaveBeenCalledWith('/api/artifact/a-1?page=2&text=1');
-    expect(container.textContent).toMatch(/no machine-read text is stored/i);
+    expect(container.textContent).toMatch(/no machine-read text is available/i);
+    expect(container.textContent).not.toMatch(/is stored/i);
+  });
+
+  it('a reported storage answer (503) is its own arm and still says so — the three answers stay three', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'machine_text_unreadable' }), { status: 503 }),
+    );
+    await open(0);
+    expect(container.textContent).toMatch(/couldn(’|')t be loaded right now/i);
   });
 });
 

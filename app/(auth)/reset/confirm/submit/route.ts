@@ -1,6 +1,7 @@
 import { asUser } from '@/lib/db/user';
 import { recordSuccess } from '@/lib/hc/throttle';
 import { formFields, redirect303 } from '@/lib/auth/http';
+import { withRouteBudget } from '@/lib/http/page-budget';
 
 /**
  * POST /reset/confirm/submit — completes recovery (TSD §5.5 row 3;
@@ -13,22 +14,31 @@ export async function POST(req: Request): Promise<Response> {
   const fields = await formFields(req);
   const password = fields.password ?? '';
 
-  const supabase = await asUser();
-  const { data, error } = await supabase.auth.getClaims();
-  const claims = data?.claims;
-  if (error || !claims?.sub) {
-    return redirect303(req, '/reset?e=session');
-  }
+  // 7C C2 (OW-23): a person's wait answers inside the route budget.
+  return withRouteBudget(
+    async (budget) => {
+      const supabase = await asUser();
+      const { data, error } = await budget.race(supabase.auth.getClaims(), 'getClaims');
+      const claims = data?.claims;
+      if (error || !claims?.sub) {
+        return redirect303(req, '/reset?e=session');
+      }
 
-  if (password.length < 10) {
-    return redirect303(req, '/reset/confirm?e=password-length');
-  }
+      if (password.length < 10) {
+        return redirect303(req, '/reset/confirm?e=password-length');
+      }
 
-  const { error: updateError } = await supabase.auth.updateUser({ password });
-  if (updateError) {
-    return redirect303(req, '/reset/confirm?e=retry');
-  }
+      const { error: updateError } = await budget.race(
+        supabase.auth.updateUser({ password }),
+        'updateUser',
+      );
+      if (updateError) {
+        return redirect303(req, '/reset/confirm?e=retry');
+      }
 
-  await recordSuccess('reset_completed', { ...claims });
-  return redirect303(req, '/setup?reset=done');
+      await budget.race(recordSuccess('reset_completed', { ...claims }), 'recordSuccess');
+      return redirect303(req, '/setup?reset=done');
+    },
+    () => redirect303(req, '/reset/confirm?e=slow'),
+  );
 }

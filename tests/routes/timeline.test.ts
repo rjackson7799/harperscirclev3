@@ -258,6 +258,14 @@ describe('B3 · every row: its source, its date by its own kind, and the episode
     expect(eventLinks(html)).toContain('e-1');
     expect(eventLinks(html)).toContain('e-2');
   });
+
+  // 7D · R4/F-2: a receipt links an episode to its SUBJECT's thread and to
+  // the wrapper's own anchor. The wrapper has to carry one for the link to
+  // land on it rather than at the top of the thread.
+  it('the episode wrapper is ADDRESSABLE — id="episode-<id>", which is what the receipt fragment lands on', async () => {
+    const html = await render();
+    expect(html).toContain('id="episode-ep-1"');
+  });
 });
 
 describe('B3 · add by hand — the one control, only for a member who may complete the one action (TLN-02)', () => {

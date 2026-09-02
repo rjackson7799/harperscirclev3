@@ -78,6 +78,9 @@ export default async function AcceptPage({
           you&apos;re signed in as that address, and that the invite is still current.
         </p>
       )}
+      {query.e === 'slow' && (
+        <p className="notice">That took too long to answer. Nothing is lost — try again.</p>
+      )}
 
       {isInvitedIdentity ? (
         <form method="post" action={`/accept/${token}/submit`}>

@@ -119,8 +119,15 @@ describe('B3 · the event detail resolves its source (AC-TL-2)', () => {
     expect(html).toMatch(/Entered by Sarah on July 20/);
     expect(html).not.toMatch(/Read by AI/);
     expect(html).toContain('Discharge summary');
-    expect(html).not.toContain(`href="/${CIRCLE}/documents`);
-    expect(html).toMatch(/upcoming update/);
+    // 7D · R4/F-1: D8 and RCP-02's GREEN cell both asserted that "its page
+    // opens in an upcoming update" was GONE from the tree, and it rendered
+    // HERE, on a file 7C never touched — while the arrival page's comment
+    // asserted its absence and the three pins named as the evidence read
+    // only the ARRIVAL page's markup, which could never have observed this
+    // route's HTML. The document's page exists; `d.id` was in hand at the
+    // exact line that said it did not.
+    expect(html).toContain(`href="/${CIRCLE}/documents/${DOC}"`);
+    expect(html).not.toMatch(/upcoming update/);
   });
 
   it('a source the caller cannot open is named, never linked; the read behind it is not claimed', async () => {

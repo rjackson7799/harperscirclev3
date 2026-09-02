@@ -36,6 +36,20 @@ import {
  * shares the circle of the original target, and the signature never expires.
  */
 
+/** The P5 per-file cap (PRD §13.3), enforced here at CREATION off the
+ *  declared Upload-Length — the pre-read bound (7C C2, OW-19): an
+ *  over-cap file is refused before a byte lands, and a client that does
+ *  not declare a length is refused fail-closed (tus-js-client always
+ *  declares it for a File). Completion's measured-bytes check remains
+ *  the backstop for a declaration that lied. */
+const FILE_BYTES_MAX = 52428800;
+
+/** 7C C2 (OW-07 sites 3–4): the per-hop time bound on the upstream
+ *  fetch. A hop carries at most one chunk (upload-form's CHUNK_SIZE);
+ *  120 s clears that at well under dial-up throughput, and a storage
+ *  plane slower than that is an outage, not a wait. */
+const UPLOAD_HOP_TIMEOUT_MS = 120_000;
+
 const FORWARD_REQUEST_HEADERS = [
   'tus-resumable',
   'upload-length',
@@ -117,11 +131,19 @@ export async function POST(req: Request): Promise<Response> {
   const key = metadataObjectName(req);
   if (!grant || !key || !verifyUploadGrant(key, grant)) return grantRefused();
 
+  // The pre-read bound: the declared length gates the file BEFORE a byte
+  // lands; absent or unparseable declarations are refused fail-closed.
+  const declared = Number(req.headers.get('upload-length') ?? NaN);
+  if (!Number.isFinite(declared) || declared < 1 || declared > FILE_BYTES_MAX) {
+    return new Response('too large', { status: 413 });
+  }
+
   const init: RequestInit & { duplex?: 'half' } = {
     method: 'POST',
     headers: forwardHeaders(req),
     body: req.body,
     duplex: 'half', // undici requires it for streamed bodies
+    signal: AbortSignal.timeout(UPLOAD_HOP_TIMEOUT_MS),
   };
   const upstream = await fetch(upstreamBase(), init);
   return proxyResponse(upstream, key);
@@ -155,6 +177,7 @@ async function forwardToUpload(
   const init: RequestInit & { duplex?: 'half' } = {
     method,
     headers: forwardHeaders(req),
+    signal: AbortSignal.timeout(UPLOAD_HOP_TIMEOUT_MS),
   };
   if (method === 'PATCH') {
     init.body = req.body;

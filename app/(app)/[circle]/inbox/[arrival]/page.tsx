@@ -198,10 +198,20 @@ export default async function ArrivalPage({
       />
 
       {receipt.length > 0 ? (
-        // §4.2.4: what went where. Links RESOLVE for tasks and timeline
-        // (both surfaces are live); documents and profile facts are NAMED
-        // and say plainly their surface opens later — never a dead link,
-        // never a silent omission (RCP-02 stays pending; SIG-01 precedent).
+        // §4.2.4: what went where. EVERY destination resolves — tasks and
+        // timeline events to themselves, a document to its page, a profile
+        // fact to the subject's page, an episode to its subject's thread and
+        // its own wrapper. Never a dead link, never a silent omission, and
+        // nothing said to open later.
+        //
+        // 7D · R4/F-7: this comment used to say documents and profile facts
+        // "say plainly their surface opens later" and that "RCP-02 stays
+        // pending", sixty lines above the 7C comment that says the opposite
+        // and beside a GREEN RCP-02. In a tree where ADR-0026 makes comments
+        // first-class and every scanner carves them out, a comment that
+        // contradicts a coverage cell is what a later reader will believe —
+        // the named failure being a slice-8 session "restoring" the honest-
+        // limit sentence this slice removed.
         <section className="review-receipt" aria-label="What went where">
           <h2>What went where</h2>
           {receipt.every((r) => r.status === 'rejected') ? (
@@ -211,7 +221,7 @@ export default async function ArrivalPage({
           ) : null}
           <ul>
             {receipt.map((r) => (
-              <li key={r.proposal_id}>{receiptLine(r, circle)}</li>
+              <li key={r.proposal_id}>{receiptLine(r, circle, row.subject_id)}</li>
             ))}
           </ul>
         </section>
@@ -245,7 +255,7 @@ const REASON_LABELS: Record<string, string> = {
  * survives (hc.receipt_for returns it), the name, the id and any handle do
  * not — "you may not see this" must never read as "there is nothing here".
  */
-function receiptLine(r: ReceiptRow, circle: string): React.ReactNode {
+function receiptLine(r: ReceiptRow, circle: string, subjectId: string): React.ReactNode {
   if (r.status === 'rejected') {
     const reason = r.reject_reason ? ` — ${REASON_LABELS[r.reject_reason] ?? r.reject_reason}` : '';
     return <>Not filed{reason}.</>;
@@ -277,15 +287,51 @@ function receiptLine(r: ReceiptRow, circle: string): React.ReactNode {
       </>
     );
   }
-  const destination =
-    r.object_type === 'profile_fact'
-      ? 'filed to the profile'
-      : r.object_type === 'episode'
-        ? 'filed as an episode'
-        : 'filed as a document';
+  // 7C C5 (RCP-02): the remaining destinations resolve too — a document to
+  // ITS page, a profile fact to the subject's page (Q4(b): the Phase-1
+  // home for "filed to the profile"), an episode to its subject's thread
+  // where its wrapper renders. Never a dead link, never a silent omission.
+  //
+  // 7D · R4/F-7: this comment used to end "and nothing 'opens in an upcoming
+  // update' any more" — a claim about the TREE, asserted from inside one
+  // route, and false: the phrase rendered on the timeline event page
+  // (R4/F-1). A tree-wide claim belongs in a tree-wide check, and there is
+  // one now: tests/lint/source-text.test.ts, "no rendered surface says a
+  // destination opens later".
+  if (r.object_type === 'document' && r.object_id) {
+    return (
+      <>
+        <a href={`/${circle}/documents/${r.object_id}`}>{r.label}</a> — filed to Documents.
+        {corrected}
+      </>
+    );
+  }
+  if (r.object_type === 'profile_fact') {
+    return (
+      <>
+        <a href={`/${circle}/people/subject/${subjectId}`}>{r.label}</a> — filed to the profile.
+        {corrected}
+      </>
+    );
+  }
+  if (r.object_type === 'episode') {
+    // 7D · R4/F-2 (Q-B): the SUBJECT, and the wrapper's own anchor. Without
+    // the subject the Timeline defaults to subjects[0] — the founding
+    // subject — so with two subjects the receipt said the object was created
+    // and pointed at someone else's thread. `subjectId` was widened into
+    // this function in the same diff that shipped the link; it just was not
+    // used here.
+    const fragment = r.object_id ? `#episode-${r.object_id}` : '';
+    return (
+      <>
+        <a href={`/${circle}/timeline?subject=${subjectId}${fragment}`}>{r.label}</a> — filed as
+        an episode; it wraps its events on the Timeline.{corrected}
+      </>
+    );
+  }
   return (
     <>
-      <strong>{r.label}</strong> — {destination}; its page opens in an upcoming update.{corrected}
+      <strong>{r.label}</strong> — filed to the record.{corrected}
     </>
   );
 }

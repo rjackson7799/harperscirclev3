@@ -11,6 +11,28 @@ export function safeNext(value: unknown, fallback: string): string {
 }
 
 /**
+ * 7D · R3/F-2. Add markers to a `next` WITHOUT colliding with the query it
+ * already carries.
+ *
+ * `${next}?e=nomatch` is wrong for every caller whose next has its own
+ * params — the member page's `?rs&rd&rl`, the document-share form's
+ * `?share=<member>`, the assign page's `&path=share&document=<id>`. String
+ * concatenation puts the marker INSIDE the last value: `rl` becomes
+ * `view?e=nomatch`, the page's own set-validation drops it, and the marker
+ * the page was supposed to READ never arrives as a param at all.
+ *
+ * `next` is a safeNext result — same-origin, path-only, no scheme and no
+ * authority — so the dummy base is never reachable and never emitted: the
+ * return is path + query only, which is what redirect303 wants (a relative
+ * Location, deliberately).
+ */
+export function nextWithMarkers(next: string, markers: Record<string, string>): string {
+  const url = new URL(next, 'http://relative.invalid');
+  for (const [k, v] of Object.entries(markers)) url.searchParams.set(k, v);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/**
  * The emailed-link destination rule (the reset flow's, hoisted at the
  * B9 fix so the signup path shares it verbatim): the link's landing
  * comes from CONFIGURATION, never the request — a forged Host must not

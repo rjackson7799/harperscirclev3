@@ -132,9 +132,16 @@ export default async function EventPage({
                 <>
                   <dt>Linked to</dt>
                   <dd>
+                    {/* 7D · R4/F-1: the document's page EXISTS (7C C2), and
+                        `d.id` was in hand at the exact line that said it did
+                        not. A surface that defers a destination the tree
+                        already ships is the sentence tests/lint's scanner
+                        now refuses tree-wide. */}
                     {event.linked_documents.map((d) => (
                       <span key={d.id}>
-                        <strong>{d.title}</strong> — its page opens in an upcoming update.{' '}
+                        <a className="action-link" href={`/${circle}/documents/${d.id}`}>
+                          {d.title}
+                        </a>{' '}
                       </span>
                     ))}
                   </dd>

@@ -3,6 +3,8 @@ import { after } from 'next/server';
 import { asUser } from '@/lib/db/user';
 import { readLiveSession } from '@/lib/auth/session';
 import { sessionUnavailable } from '@/lib/http/session-unavailable';
+import { withRouteBudget } from '@/lib/http/page-budget';
+import { boundedJsonText } from '@/lib/http/bounded-json';
 import { canIngestForSubject, createUploadArrival } from '@/lib/hc/upload';
 import { enqueuePipeline } from '@/lib/hc/ingest';
 import {
@@ -45,72 +47,98 @@ export async function POST(req: Request): Promise<Response> {
   if (read.kind !== 'signed-in') return new Response('sign in first', { status: 401 });
   const claims = read.claims;
 
-  let subjectId: string;
-  let token: string;
-  try {
-    const body = (await req.json()) as { subject_id?: unknown; token?: unknown };
-    if (
-      typeof body.subject_id !== 'string' ||
-      !body.subject_id ||
-      typeof body.token !== 'string' ||
-      !body.token
-    ) {
-      return new Response('malformed', { status: 400 });
-    }
-    subjectId = body.subject_id;
-    token = body.token;
-  } catch {
-    return new Response('malformed', { status: 400 });
-  }
+  // 7C C2 (OW-19): completion is a person's wait; it answers inside the
+  // route budget like every other one.
+  //
+  // 7D · OW-24 (ADR-0038 R5/F-1): the ingress read is inside the budget now,
+  // for the same reason as the mint route — the size cap held, the time bound
+  // did not exist, and a body that never ends parked completion outside every
+  // guarantee this route makes. See app/api/upload/token/route.ts.
+  return withRouteBudget(
+    async (budget) => {
+      // 7C C2 (OW-19): the ingress cap, BEFORE any parse or probe.
+      const text = await budget.race(boundedJsonText(req), 'boundedJsonText');
+      if (text === null) return new Response('too large', { status: 413 });
 
-  const right = await canIngestForSubject(claims, subjectId);
-  if (!right) return new Response('not found', { status: 404 });
+      let subjectId: string;
+      let token: string;
+      try {
+        const body = JSON.parse(text) as { subject_id?: unknown; token?: unknown };
+        if (
+          typeof body.subject_id !== 'string' ||
+          !body.subject_id ||
+          typeof body.token !== 'string' ||
+          !body.token
+        ) {
+          return new Response('malformed', { status: 400 });
+        }
+        subjectId = body.subject_id;
+        token = body.token;
+      } catch {
+        return new Response('malformed', { status: 400 });
+      }
 
-  const target = verifyUploadTarget(token);
-  if (!target) return new Response('malformed', { status: 400 });
-  const scope = uploadKeyScope(target.key);
-  if (!scope || scope.circleId !== right.circle_id || scope.subjectId !== subjectId) {
-    return new Response('not found', { status: 404 });
-  }
-  const stagingKey = target.key;
+      const right = await budget.race(canIngestForSubject(claims, subjectId), 'canIngestForSubject');
+      if (!right) return new Response('not found', { status: 404 });
 
-  const staged = await downloadObject(stagingKey);
-  if (!staged) {
-    return Response.json({ refused: 'upload_missing' }, { status: 400 });
-  }
-  if (staged.bytes.byteLength < 1 || staged.bytes.byteLength > FILE_BYTES_MAX) {
-    return Response.json({ refused: 'over_file_size' }, { status: 400 });
-  }
+      const target = verifyUploadTarget(token);
+      if (!target) return new Response('malformed', { status: 400 });
+      const scope = uploadKeyScope(target.key);
+      if (!scope || scope.circleId !== right.circle_id || scope.subjectId !== subjectId) {
+        return new Response('not found', { status: 404 });
+      }
+      const stagingKey = target.key;
 
-  const sha256 = createHash('sha256').update(staged.bytes).digest('hex');
-  const { arrivalId } = await createUploadArrival({
-    circleId: right.circle_id,
-    subjectId,
-    byteSize: staged.bytes.byteLength,
-    mimeDeclared: staged.contentType || null,
-    uploadId: scope.uploadId,
-  });
+      const staged = await budget.race(downloadObject(stagingKey), 'downloadObject');
+      if (!staged) {
+        return Response.json({ refused: 'upload_missing' }, { status: 400 });
+      }
+      if (staged.bytes.byteLength < 1 || staged.bytes.byteLength > FILE_BYTES_MAX) {
+        return Response.json({ refused: 'over_file_size' }, { status: 400 });
+      }
 
-  // The store worker's staging contract; idempotent on completion retry.
-  await stageIntakeObject(right.circle_id, arrivalId, staged.bytes, staged.contentType);
-  await removeObject(stagingKey);
-  await enqueuePipeline(right.circle_id, [arrivalId], 'upload');
+      const sha256 = createHash('sha256').update(staged.bytes).digest('hex');
+      const { arrivalId } = await budget.race(
+        createUploadArrival({
+          circleId: right.circle_id,
+          subjectId,
+          byteSize: staged.bytes.byteLength,
+          mimeDeclared: staged.contentType || null,
+          uploadId: scope.uploadId,
+        }),
+        'createUploadArrival',
+      );
 
-  const origin = new URL(req.url).origin;
-  after(async () => {
-    const key = process.env.HC_WORKER_KEY;
-    if (!key) return; // the sweeper is the recovery story
-    await fetch(`${origin}/api/worker/store`, {
-      method: 'POST',
-      headers: { 'x-worker-key': key },
-    }).catch(() => {
-      // A dropped eager fire is a delay, never a loss (§1.4).
-    });
-  });
+      // The store worker's staging contract; idempotent on completion retry.
+      await budget.race(
+        stageIntakeObject(right.circle_id, arrivalId, staged.bytes, staged.contentType),
+        'stageIntakeObject',
+      );
+      await budget.race(removeObject(stagingKey), 'removeObject');
+      await budget.race(enqueuePipeline(right.circle_id, [arrivalId], 'upload'), 'enqueuePipeline');
 
-  return Response.json({
-    arrival_id: arrivalId,
-    sha256,
-    byte_size: staged.bytes.byteLength,
-  });
+      const origin = new URL(req.url).origin;
+      after(async () => {
+        const key = process.env.HC_WORKER_KEY;
+        if (!key) return; // the sweeper is the recovery story
+        // 7C C2 (OW-07 site 5): the eager fire is time-bounded — a hung
+        // worker socket must not pin this handle open; the sweeper is
+        // still the recovery story.
+        await fetch(`${origin}/api/worker/store`, {
+          method: 'POST',
+          headers: { 'x-worker-key': key },
+          signal: AbortSignal.timeout(10_000),
+        }).catch(() => {
+          // A dropped eager fire is a delay, never a loss (§1.4).
+        });
+      });
+
+      return Response.json({
+        arrival_id: arrivalId,
+        sha256,
+        byte_size: staged.bytes.byteLength,
+      });
+    },
+    () => Response.json({ refused: 'slow' }, { status: 504 }),
+  );
 }

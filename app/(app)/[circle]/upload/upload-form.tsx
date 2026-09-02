@@ -58,6 +58,9 @@ export function UploadForm({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ subject_id: subjectId }),
+        // 7C C2 (OW-07 site 1): a person waits on this — bounded, and the
+        // abort lands in the catch below as "interrupted", which is true.
+        signal: AbortSignal.timeout(15_000),
       });
       if (!minted.ok) {
         // ROUND-19 F-2: an OUTAGE is not a REFUSAL, and the two sentences say
@@ -71,7 +74,9 @@ export function UploadForm({
           message:
             minted.status === 503
               ? 'We couldn’t reach your account just now. Try again in a moment.'
-              : 'Uploading is not available for this person.',
+              : minted.status === 504
+                ? 'That took too long to start. Try again in a moment.'
+                : 'Uploading is not available for this person.',
         });
         return;
       }
@@ -129,6 +134,9 @@ export function UploadForm({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ subject_id: subjectId, token: signedTarget }),
+        // 7C C2 (OW-07 site 2): completion re-stages the bytes server-side,
+        // so its bound is looser than the mint's; an abort still resumes.
+        signal: AbortSignal.timeout(60_000),
       });
       if (!completed.ok) {
         // F-2, and here the distinction is load-bearing: the BYTES ARE ALREADY
@@ -139,7 +147,9 @@ export function UploadForm({
           message:
             completed.status === 503
               ? 'We couldn’t reach your account just now. Choose the same file to finish it.'
-              : 'The upload could not be finished. Try again.',
+              : completed.status === 504
+                ? 'Finishing took too long. Choose the same file to finish it — nothing is lost.'
+                : 'The upload could not be finished. Try again.',
         });
         return;
       }
