@@ -458,6 +458,72 @@ describe('the detail at manage — shares, unshare in one action, share behind s
     ]);
   }
 
+
+  // ---------------------------------------------------------------------
+  // 7D · R2/F-4 — "revocable in one action", displayed as true where it is
+  // false.
+  //
+  // hc.revoke_share REFUSES a live assignment-created share (ADR-0033 D19.2
+  // ruling; unassign is the door, PRD §4.5.6). The page rendered Unshare for
+  // every row hc.shares_for returned — and it already READ the
+  // discriminating column, using "· came with a task" as a LABEL and
+  // nothing more. So §4.3.5's promise was displayed as true for a row where
+  // the button cannot work, and nothing on screen named the way out.
+  // ---------------------------------------------------------------------
+  it('a share that came with a task offers NO Unshare — the button that cannot work is not rendered', async () => {
+    docsHc.documentShares.mockResolvedValue([
+      {
+        share_id: SHARE,
+        member_id: MARISOL,
+        display_name: 'Marisol',
+        tier: 'care_circle',
+        granted_by: CLAIMS.sub,
+        granter_name: 'Sarah',
+        granted_at: '2026-08-30T10:00:00Z',
+        created_by_assignment_of: TASK,
+      },
+    ]);
+    const html = await renderPage();
+    expect(html).not.toContain('Unshare');
+    expect(html).not.toContain(`value="${SHARE}"`);
+  });
+
+  it('and it says in WORDS what withdraws it, with the task linked — the door named, not just the wall', async () => {
+    docsHc.documentShares.mockResolvedValue([
+      {
+        share_id: SHARE,
+        member_id: MARISOL,
+        display_name: 'Marisol',
+        tier: 'care_circle',
+        granted_by: CLAIMS.sub,
+        granter_name: 'Sarah',
+        granted_at: '2026-08-30T10:00:00Z',
+        created_by_assignment_of: TASK,
+      },
+    ]);
+    const html = await renderPage();
+    expect(html).toContain(`href="/${CIRCLE}/tasks/${TASK}"`);
+    expect(html).toMatch(/came with a task/i);
+    expect(html).toMatch(/taking the task back|unassign/i);
+  });
+
+  it('an ordinary share still unshares in ONE action — the promise holds where it is true', async () => {
+    docsHc.documentShares.mockResolvedValue([
+      {
+        share_id: SHARE,
+        member_id: MARISOL,
+        display_name: 'Marisol',
+        tier: 'care_circle',
+        granted_by: CLAIMS.sub,
+        granter_name: 'Sarah',
+        granted_at: '2026-08-30T10:00:00Z',
+        created_by_assignment_of: null,
+      },
+    ]);
+    const html = await renderPage();
+    expect(html).toContain('Unshare');
+    expect(html).toContain(`value="${SHARE}"`);
+  });
   it('the category offer is AUTHORIZED: only categories whose domain the caller manages are offered — never the whole enum', async () => {
     callerHolds(HEALTH_ONLY);
     const html = await renderPage();
