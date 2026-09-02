@@ -221,6 +221,105 @@ describe('A7/B8 · sign out everywhere (AC-AUTH-10 — BOTH halves)', () => {
 });
 
 describe('A8 · step-up re-auth — the third F1 password path', () => {
+  // ---------------------------------------------------------------------
+  // 7D · R3/F-2 — the marker COLLIDES with the next's own query.
+  //
+  // Every consumer of this route posts a `next` that already carries a
+  // query: the member page's `?rs=…&rd=…&rl=…`, 7C's document-share form's
+  // `?share=<member>`, 7B's assign page's `…&path=share&document=<id>`. All
+  // three failure arms here append `?e=…` by STRING CONCATENATION, so the
+  // LAST param of the next absorbs the marker — `rl` parses as
+  // `view?e=nomatch`, the member page's own set-validation drops it, the
+  // entire Raise access section disappears and `sp.e` is undefined. A
+  // mistyped password returns the coordinator to a page indistinguishable
+  // from one she navigated to herself. Five of those and hc.auth_throttle
+  // locks her out with `wait=N` discarded by the same mechanism, so the
+  // lockout is invisible too.
+  //
+  // This violates D3's standing rule — every `e=slow` marker READ by its
+  // page — in its general form. Composed rather than concatenated, at the
+  // SHARED site: one fix, three consumers.
+  // ---------------------------------------------------------------------
+  const NEXT_WITH_QUERY =
+    '/c-1/people/m-1?rs=22222222-0000-4000-8000-000000000002&rd=health&rl=view';
+
+  function paramsOf(location: string): URLSearchParams {
+    return new URL(location, 'http://127.0.0.1:3000').searchParams;
+  }
+
+  it("a mistyped password keeps the next's OWN params intact and adds e=nomatch as a param — not as a suffix on the last value", async () => {
+    signInWithPassword.mockResolvedValue({
+      data: { session: null },
+      error: { message: 'Invalid login credentials', status: 400 },
+    });
+    const { POST } = await import('@/app/account/step-up/submit/route');
+    const res = await POST(
+      post('/account/step-up/submit', {
+        password: 'wrong-wrong-1',
+        operation: 'raise_grant',
+        target_ref: 'm-1:s-1:health',
+        next: NEXT_WITH_QUERY,
+      }),
+    );
+    const q = paramsOf(res.headers.get('location')!);
+    expect(q.get('e')).toBe('nomatch');
+    expect(q.get('rl')).toBe('view');
+    expect(q.get('rd')).toBe('health');
+    expect(q.get('rs')).toBe('22222222-0000-4000-8000-000000000002');
+  });
+
+  it('the throttle lockout survives the same way — wait=N is readable, so the page can say how long', async () => {
+    throttleMock.consultThrottle.mockResolvedValue({ failures: 6, wait_seconds: 30 });
+    const { POST } = await import('@/app/account/step-up/submit/route');
+    const res = await POST(
+      post('/account/step-up/submit', {
+        password: 'x'.repeat(12),
+        operation: 'raise_grant',
+        target_ref: 'm-1:s-1:health',
+        next: NEXT_WITH_QUERY,
+      }),
+    );
+    const q = paramsOf(res.headers.get('location')!);
+    expect(q.get('e')).toBe('throttled');
+    expect(q.get('wait')).toBe('30');
+    expect(q.get('rl')).toBe('view');
+  });
+
+  it('a missing field is composed the same way — all three arms, not two', async () => {
+    const { POST } = await import('@/app/account/step-up/submit/route');
+    const res = await POST(
+      post('/account/step-up/submit', { password: '', operation: '', next: NEXT_WITH_QUERY }),
+    );
+    const q = paramsOf(res.headers.get('location')!);
+    expect(q.get('e')).toBe('missing');
+    expect(q.get('rl')).toBe('view');
+  });
+
+  it("7C's document-share next and 7B's assign next survive it too — the same collision, two more consumers", async () => {
+    signInWithPassword.mockResolvedValue({
+      data: { session: null },
+      error: { message: 'Invalid login credentials', status: 400 },
+    });
+    const { POST } = await import('@/app/account/step-up/submit/route');
+    for (const next of [
+      '/c-1/documents/d-1?share=44444444-0000-4000-8000-000000000005',
+      '/c-1/tasks/t-1/assign?member=44444444-0000-4000-8000-000000000005&path=share&document=d-1',
+    ]) {
+      const res = await POST(
+        post('/account/step-up/submit', {
+          password: 'wrong-wrong-1',
+          operation: 'share_object',
+          target_ref: 'document:d-1',
+          next,
+        }),
+      );
+      const q = paramsOf(res.headers.get('location')!);
+      expect(q.get('e')).toBe('nomatch');
+      const original = new URL(next, 'http://127.0.0.1:3000').searchParams;
+      for (const [k, v] of original) expect(q.get(k)).toBe(v);
+    }
+  });
+
   it('consults the throttle BEFORE GoTrue; a positive wait short-circuits', async () => {
     throttleMock.consultThrottle.mockResolvedValue({ failures: 6, wait_seconds: 30 });
     const { POST } = await import('@/app/account/step-up/submit/route');

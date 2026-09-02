@@ -226,6 +226,36 @@ describe('the matrix — per subject per domain, words from the ONE module, lowe
     expect(html).not.toMatch(/health &amp; care[\s\S]*value="summary"/);
   });
 
+
+  // ---------------------------------------------------------------------
+  // 7D · R3/F-3 — `rs` is the one raise param with neither set- nor
+  // shape-validation, and it is concatenated RAW into the posted `next`. A
+  // crafted same-origin link therefore makes this page render the green
+  // "Changed. It's written in the family's log" immediately after the
+  // coordinator proves her identity, with nothing changed and nothing
+  // logged. Nothing WIDENS — the route's own UUID_RE and consume_step_up's
+  // exact match both refuse — so this is honesty, not authorization. But a
+  // false assertion on the access-control surface at the moment of
+  // re-authentication is exactly the harm C4/C5 exist to prevent.
+  // ---------------------------------------------------------------------
+  it('a crafted rs cannot smuggle a marker into the posted next — the whole Raise section refuses a subject id that is not one', async () => {
+    const html = await renderPage(RUTH_M, {
+      rs: `${NELL}&changed=1`,
+      rd: 'health',
+      rl: 'view',
+    });
+    expect(html).not.toContain('changed=1');
+    expect(html).not.toContain('Raise access');
+  });
+
+  it('a well-formed rs still renders the section, and the next it posts carries exactly the three raise params', async () => {
+    const html = await renderPage(RUTH_M, { rs: NELL, rd: 'health', rl: 'view' });
+    expect(html).toContain('Raise access');
+    const next = /name="next" value="([^"]+)"/.exec(html)![1].replace(/&amp;/g, '&');
+    const q = new URL(next, 'http://127.0.0.1:3000').searchParams;
+    expect([...q.keys()].sort()).toEqual(['rd', 'rl', 'rs']);
+    expect(q.get('rs')).toBe(NELL);
+  });
   it('a non-coordinator constructing the URL by hand gets the one 404', async () => {
     tasksHc.myMembership.mockResolvedValue({ id: RUTH_M, tier: 'family' });
     await expect(renderPage(MARISOL_M)).rejects.toThrow('NEXT_NOT_FOUND');
