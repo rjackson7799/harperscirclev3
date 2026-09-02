@@ -418,19 +418,37 @@ export default async function DocumentPage({
             <section className="record-section" aria-labelledby="shared-with">
               <h2 id="shared-with">Shared with</h2>
               {shares.length === 0 ? <p className="meta">No one beyond its audience.</p> : null}
-              {shares.map((s) => (
-                <form key={s.share_id} method="post" action={`${next}/unshare/submit`}>
-                  <p className="meta">
+              {/* 7D · R2/F-4: §4.3.5's "revocable in one action" is true for
+                  a share made HERE and false for one a task brought with it —
+                  hc.revoke_share refuses those (ADR-0033 D19.2), and unassign
+                  is the door. The page already read the column; it used it
+                  as a label. Now it decides the control, and the door is
+                  NAMED and linked rather than left to be discovered by a
+                  button that answers "That couldn't be done just now." */}
+              {shares.map((s) =>
+                s.created_by_assignment_of ? (
+                  <p key={s.share_id} className="meta">
                     {s.display_name} — shared by {s.granter_name} ·{' '}
-                    {formatShortDate(s.granted_at.slice(0, 10))}
-                    {s.created_by_assignment_of ? ' · came with a task' : ''}
+                    {formatShortDate(s.granted_at.slice(0, 10))} · came with a task. Taking the
+                    task back is what withdraws it —{' '}
+                    <a className="action-link" href={`/${circle}/tasks/${s.created_by_assignment_of}`}>
+                      open the task
+                    </a>
+                    .
                   </p>
-                  <input type="hidden" name="share_id" value={s.share_id} />
-                  <Button type="submit" variant="quiet">
-                    Unshare
-                  </Button>
-                </form>
-              ))}
+                ) : (
+                  <form key={s.share_id} method="post" action={`${next}/unshare/submit`}>
+                    <p className="meta">
+                      {s.display_name} — shared by {s.granter_name} ·{' '}
+                      {formatShortDate(s.granted_at.slice(0, 10))}
+                    </p>
+                    <input type="hidden" name="share_id" value={s.share_id} />
+                    <Button type="submit" variant="quiet">
+                      Unshare
+                    </Button>
+                  </form>
+                ),
+              )}
 
               <h2 id="share-it">Share this document</h2>
               {shareTarget ? (
