@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';import { ROUTE_ANSWER_BUDGET_MS } from '@/lib/http/budget';
+
 
 // ============================================================================
 // B3 · The upload path (TSD §2.12, §1.8; PRD §13.4; UPL-01 app half):
@@ -218,6 +219,61 @@ describe('7C C2 · OW-19/OW-07 — the ingress and hop bounds, named at their si
     expect(upload.canIngestForSubject).not.toHaveBeenCalled();
     expect(storageIO.downloadObject).not.toHaveBeenCalled();
   });
+  // ---------------------------------------------------------------------
+  // 7D · OW-24 (ADR-0038 R5/F-1). The SIZE guarantee above is real: the
+  // post-read length check catches a body that lied about content-length or
+  // never declared one. The TIME guarantee was not — `req.text()` carries no
+  // timeout, no signal and no race, and it resolves only when the STREAM
+  // ENDS. A chunked body with no Content-Length, dribbled a byte at a time,
+  // neither 413s nor 504s: a SIXTH hop, running BEFORE the budget that was
+  // supposed to bound it opened.
+  //
+  // The body here never ends. Both routes must still answer, in the shape
+  // their own overrun already has.
+  // ---------------------------------------------------------------------
+
+  /** No content-length, and a body that never finishes arriving. */
+  function neverEndingBody(path: string): Request {
+    return {
+      url: `http://local.test${path}`,
+      method: 'POST',
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: () => new Promise<string>(() => {}),
+    } as unknown as Request;
+  }
+
+  /** The answer, or the marker that the route out-waited its own budget. */
+  async function answerWithin(work: Promise<Response>): Promise<Response | 'HUNG'> {
+    const OVER = ROUTE_ANSWER_BUDGET_MS * 4;
+    const raced = Promise.race([
+      work,
+      new Promise<'HUNG'>((r) => setTimeout(() => r('HUNG'), OVER)),
+    ]);
+    await vi.advanceTimersByTimeAsync(OVER);
+    return raced;
+  }
+
+  describe('the ingress read is raced too — a body that never ends (OW-24)', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it("token: refused in BOUNDED time, in the route's own overrun shape — never a hang", async () => {
+      const res = await answerWithin(tokenRoute.POST(neverEndingBody('/api/upload/token')));
+      expect(res).not.toBe('HUNG');
+      expect((res as Response).status).toBe(504);
+      expect(await (res as Response).json()).toEqual({ refused: 'slow' });
+      expect(upload.canIngestForSubject).not.toHaveBeenCalled();
+    });
+
+    it('complete: the same bound, and nothing is downloaded on the way out', async () => {
+      const res = await answerWithin(completeRoute.POST(neverEndingBody('/api/upload/complete')));
+      expect(res).not.toBe('HUNG');
+      expect((res as Response).status).toBe(504);
+      expect(await (res as Response).json()).toEqual({ refused: 'slow' });
+      expect(storageIO.downloadObject).not.toHaveBeenCalled();
+    });
+  });
+
 
   it('tus creation: Upload-Length over the P5 cap answers 413 and the upstream is never contacted — the pre-read bound (OW-19)', async () => {
     const tusRoute = (await import('@/app/api/upload/tus/[[...id]]/route')) as {

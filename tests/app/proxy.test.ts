@@ -117,5 +117,10 @@ describe('GTE-01 · the proxy answers the 503 a page cannot', () => {
     const res = await run('/c-1/tasks');
     expect(res.status).toBe(200);
     expect(getClaims).not.toHaveBeenCalled();
+    // 7D R5/F-2 (Q-D RATIFIED): staying out of the way is about the SESSION
+    // read, never about the stamp. PPL-03's claim is 'every pass-through',
+    // and this early return is a pass-through — the one this test already
+    // stood over while asserting only the status and the absent call.
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
   });
 });
