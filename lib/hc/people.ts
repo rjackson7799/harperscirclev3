@@ -208,6 +208,22 @@ export async function profileFactsFor(
  * care-circle cap is structural in-function. Every change is logged with
  * both levels by the definer.
  */
+/**
+ * What hc.set_grant hands back. `changed` is the load-bearing field and 7D ·
+ * R3/F-1 is that nothing read it: the definer's no-op arm returns
+ * `changed: false` and writes NOTHING — no grant row, no log entry, no token
+ * demanded — while the route reported a change and the page said it was
+ * written in the family's log. Typed here so a caller has to look at it.
+ */
+export type SetGrantResult = {
+  member_id: string;
+  subject_id: string;
+  domain: string;
+  before: string;
+  after: string;
+  changed: boolean;
+};
+
 export async function setGrant(
   claims: RequestClaims,
   memberId: string,
@@ -215,9 +231,9 @@ export async function setGrant(
   domain: string,
   level: string,
   stepUpToken: string | null,
-): Promise<unknown> {
+): Promise<SetGrantResult> {
   return withRequestRole('authenticated', claims, async (q) => {
-    const r = await q.query<{ r: unknown }>(
+    const r = await q.query<{ r: SetGrantResult }>(
       `select hc.set_grant($1, $2, $3::hc.domain, $4::hc.access_level, $5) as r`,
       [memberId, subjectId, domain, level, stepUpToken],
     );

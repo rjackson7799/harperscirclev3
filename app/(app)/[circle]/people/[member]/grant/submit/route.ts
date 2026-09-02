@@ -2,7 +2,7 @@ import { asUser } from '@/lib/db/user';
 import { gateRoute } from '@/lib/auth/gate';
 import { formFields, redirect303 } from '@/lib/auth/http';
 import { withRouteBudget } from '@/lib/http/page-budget';
-import { circlePeople, setGrant } from '@/lib/hc/people';
+import { circlePeople, setGrant, type SetGrantResult } from '@/lib/hc/people';
 import {
   LEVEL_RANK,
   isDomain,
@@ -94,14 +94,25 @@ export async function POST(
         return redirect303(req, `${back}?rs=${subjectId}&rd=${domain}&rl=${level}&e=step-up`);
       }
 
+      // 7D · R3/F-1: the definer's answer is READ. Its no-op arm returns
+      // `changed: false` and writes nothing at all — no grant row, no log
+      // entry — so reporting `changed=1` over it made the page assert two
+      // things that had not happened, on the two surfaces this slice exists
+      // to make honest. Reachable with no misclick at all: a peer
+      // coordinator raising the level between the e=step-up bounce and the
+      // click leaves the pre-checked form posting the level already held.
+      let result: SetGrantResult;
       try {
-        await budget.race(setGrant(claims, memberId, subjectId, domain, level, token), 'setGrant');
+        result = await budget.race(
+          setGrant(claims, memberId, subjectId, domain, level, token),
+          'setGrant',
+        );
       } catch (err) {
         if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
         const res = redirect303(req, `${back}?e=refused`);
         return token ? clearStepUp(res) : res;
       }
-      const res = redirect303(req, `${back}?changed=1`);
+      const res = redirect303(req, `${back}?${result.changed ? 'changed=1' : 'unchanged=1'}`);
       return token ? clearStepUp(res) : res;
     },
     () => redirect303(req, `${back}?e=slow`),

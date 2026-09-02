@@ -88,6 +88,15 @@ function noticeFor(sp: Record<string, string | string[] | undefined>) {
   if (e === 'refused') return { kind: 'alert' as const, text: "That change couldn't be made just now." };
   if (e === 'step-up') return { kind: 'alert' as const, text: 'Raising access needs a fresh confirmation that it is you. Confirm below.' };
   if (sp.changed === '1') return { kind: 'status' as const, text: "Changed. It's written in the family's log, with both levels." };
+  // 7D · R3/F-1: the no-op has its own marker and its own words. It is not a
+  // failure and not a change — hc.set_grant wrote nothing, so nothing is
+  // claimed about the log.
+  if (sp.unchanged === '1') {
+    return {
+      kind: 'status' as const,
+      text: 'No change — that was already the level. Nothing was written.',
+    };
+  }
   return null;
 }
 
