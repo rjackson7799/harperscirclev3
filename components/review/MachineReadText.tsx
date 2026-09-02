@@ -28,6 +28,17 @@ type MachineTextResult =
  * gated, evidence-logged route the page image rides — the first time a
  * person opens it. Poor confidence arrives as an EMPTY transcript and is
  * SAID; a source with no sibling (born-digital, email) says that instead.
+ *
+ * 7D · R1/F-4: EVERY ARM SAYS ONLY WHAT THIS CLIENT OBSERVED. The absent arm
+ * used to read "No machine-read text is stored for this page." — a claim
+ * about STORAGE, made out of a 404 that is also produced by an authorization
+ * refusal and by a revocation, neither of which this component can tell
+ * apart from an absence. It must not tell them apart: 404 ≡ 403 is §1.3's
+ * no-oracle rule and the route deliberately keeps it. So the words change
+ * instead. "Available" is what a client can honestly report; "stored" is
+ * not. The empty arm moves for the same reason — it observed what came
+ * back, not why. The route's own half of this finding splits the STATUS
+ * where the fact is a storage fact, and only there.
  */
 export function MachineReadText({ arrivalId, page }: { arrivalId: string; page: number }) {
   const [expanded, setExpanded] = useState(false);
@@ -66,11 +77,9 @@ export function MachineReadText({ arrivalId, page }: { arrivalId: string; page: 
         ) : result.kind === 'text' ? (
           <pre className="review-machine-text">{result.text}</pre>
         ) : result.kind === 'empty' ? (
-          <p className="micro-meta">
-            Machine reading couldn&apos;t produce reliable text for this page.
-          </p>
+          <p className="micro-meta">Machine reading returned nothing readable for this page.</p>
         ) : result.kind === 'absent' ? (
-          <p className="micro-meta">No machine-read text is stored for this page.</p>
+          <p className="micro-meta">No machine-read text is available for this page.</p>
         ) : (
           <p className="micro-meta">The machine-read text couldn&apos;t be loaded right now.</p>
         )

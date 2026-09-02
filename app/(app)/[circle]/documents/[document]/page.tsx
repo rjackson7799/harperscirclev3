@@ -362,6 +362,23 @@ export default async function DocumentPage({
             </dl>
           </Card>
 
+          {/* 7D · R2/F-6: D10's "absent / empty / failed EACH SAID" applies
+              to this surface too. The sibling surface built from the same
+              component in this same slice says its silences out loud; this
+              one used to render nothing at all, which reads as "there is
+              nothing" rather than "there is nothing to show you". Said only
+              past `can_view`, because below it an absence must not imply the
+              artifact exists in a form this person could be shown (settled
+              item 2). */}
+          {doc.can_view && !rendition ? (
+            <section className="record-section" aria-labelledby="the-document">
+              <h2 id="the-document">The document</h2>
+              <p className="field-help">
+                The rendering isn&apos;t ready yet — the original is still the source of truth.
+              </p>
+            </section>
+          ) : null}
+
           {doc.can_view && rendition ? (
             <section className="record-section" aria-labelledby="the-document">
               <h2 id="the-document">The document</h2>
@@ -388,6 +405,15 @@ export default async function DocumentPage({
                   </li>
                 ))}
               </ol>
+            </section>
+          ) : null}
+
+          {doc.can_view && facts.length === 0 ? (
+            <section className="record-section" aria-labelledby="what-we-read">
+              <h2 id="what-we-read">What we read out of it</h2>
+              {/* The ReviewScreen sentence, verbatim: one component, one
+                  slice, ONE answer to the same fact (R2/F-6). */}
+              <p className="meta">No fields were read from this document.</p>
             </section>
           ) : null}
 

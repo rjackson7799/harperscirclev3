@@ -105,6 +105,36 @@ function readTimeout(): Response {
   );
 }
 
+/**
+ * 7D · R1/F-4. The SIBLING's half of D18's split. The sibling is not
+ * manifest-promised, so its ABSENCE is rightly the ONE 404 — and it must
+ * stay the one 404, because an authorization refusal and a revocation are
+ * also 404 here and §1.3 forbids telling them apart. But "storage answered
+ * something that is not object-not-found" is neither an absence nor an
+ * authorization answer: it is a storage fact, decided by storage's health
+ * and never by the row, so it can no more be an oracle than a timeout can.
+ * Reported, exactly as the image half reports rendition_page_missing.
+ */
+function machineTextUnreadable(page: number): Response {
+  return Response.json(
+    { error: 'machine_text_unreadable', page },
+    { status: 503, headers: { 'cache-control': 'private, no-store' } },
+  );
+}
+
+/**
+ * Did storage say THE OBJECT IS NOT THERE, or did it say something else?
+ * The only signal available is the message and the status, and that is
+ * stated rather than hidden: the fallback is the 404, so a shape this does
+ * not recognise keeps the pre-existing behaviour rather than inventing a
+ * report.
+ */
+function storageSaysAbsent(message: string | null | undefined, status?: number): boolean {
+  if (typeof status === 'number') return status === 404 || status === 400;
+  const m = (message ?? '').toLowerCase();
+  return m.includes('not found') || m.includes('does not exist') || m.includes('no such');
+}
+
 /** The overrun, distinguished from a real error and from an empty answer. */
 const OVERRAN = Symbol('answer budget overrun');
 
@@ -334,7 +364,16 @@ async function servePage(
   }
   const { data, error } = signed;
   if (error || !data?.signedUrl) {
-    if (wantText) return notFound();
+    // 7D · R1/F-4: object-not-found is an ABSENCE and keeps the one 404 —
+    // that shape has to stay shared with the authorization refusals. Any
+    // other answer from storage is a storage fact and is reported.
+    if (wantText) {
+      if (storageSaysAbsent(error?.message)) return notFound();
+      console.error(
+        `artifact: machine-read sibling of page ${pageNo} of ${arrivalId} refused by storage: ${error?.message ?? 'no url'}`,
+      );
+      return machineTextUnreadable(pageNo);
+    }
     console.error(
       `artifact: promoted page ${pageNo} of ${arrivalId} refused by storage: ${error?.message ?? 'no url'}`,
     );
@@ -355,7 +394,14 @@ async function servePage(
     return storageTimeout(pageNo);
   }
   if (!upstream.ok) {
-    if (wantText) return notFound();
+    // 7D · R1/F-4, the same split one hop later.
+    if (wantText) {
+      if (storageSaysAbsent(null, upstream.status)) return notFound();
+      console.error(
+        `artifact: machine-read sibling of page ${pageNo} of ${arrivalId} answered ${upstream.status}`,
+      );
+      return machineTextUnreadable(pageNo);
+    }
     console.error(`artifact: promoted page ${pageNo} of ${arrivalId} answered ${upstream.status}`);
     return renditionPageMissing(pageNo);
   }
