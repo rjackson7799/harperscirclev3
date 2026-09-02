@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { DOMAINS, GRANT_LEVELS, LEVEL_RANK } from '@/lib/permissions/phrases';
 
 // ============================================================================
 // 7C C4 · /[circle]/people/[member] — adjust, revoke, and the honest limit
@@ -164,6 +165,18 @@ describe('the matrix — per subject per domain, words from the ONE module, lowe
     // before `value`)
     expect(html).toMatch(/checked[^>]*value="summary"/);
   });
+  // 7D · R3/F-7 + R4/F-6. The page re-declared DOMAINS and LEVELS — a third
+  // and a fourth copy of a list whose ONE source is the pinned module. These
+  // read the module and assert the RENDERED offer against it, so a surface
+  // and the ladder it offers from cannot drift without a red here.
+  it('the offer IS the module: exactly DOMAINS gets a field and exactly GRANT_LEVELS a radio — nothing re-typed, nothing extra offered', async () => {
+    const html = await renderPage(RUTH_M);
+    const domains = [...html.matchAll(/name="domain" value="([a-z_]+)"/g)].map((m) => m[1]);
+    expect([...new Set(domains)].sort()).toEqual([...DOMAINS].sort());
+    const levels = [...html.matchAll(/name="level"[^>]*value="([a-z_]+)"/g)].map((m) => m[1]);
+    expect([...new Set(levels)].sort()).toEqual([...GRANT_LEVELS].sort());
+  });
+
 
   it('the care-circle ceiling: nothing above it is OFFERED, no other domain is offered, and the ceiling sentence renders', async () => {
     const html = await renderPage(MARISOL_M);
@@ -238,6 +251,48 @@ describe('contribution — plain counts, no chart, no bar, no percentage (AC-PPL
 });
 
 describe('the grant write', () => {
+  // 7D · R3/F-7. The route held a FOURTH copy of both lists. Derived from
+  // the module now, and driven here across the module's own values so a
+  // divergence is a red rather than a silently narrower surface.
+  it('every domain the module names reaches the definer, and every level it names is accepted (the sets are DERIVED)', async () => {
+    peopleHc.setGrant.mockResolvedValue({ changed: true });
+    const POST = await grantRoute();
+    for (const domain of DOMAINS) {
+      peopleHc.setGrant.mockClear();
+      const res = await POST(
+        postTo(`/${CIRCLE}/people/${RUTH_M}/grant/submit`, {
+          subject_id: NELL,
+          domain,
+          level: 'hidden',
+        }),
+        ctx,
+      );
+      expect(res.headers.get('location')).toContain('changed=1');
+      expect(peopleHc.setGrant).toHaveBeenCalledWith(CLAIMS, RUTH_M, NELL, domain, 'hidden', null);
+    }
+  });
+
+  it('a LOWER to any level the module names posts straight through; only a RAISE is bounced', async () => {
+    // Ruth is `summary` on health, so hidden and log are lowers and view and
+    // manage are raises — the ladder's own arithmetic, read from the module.
+    peopleHc.setGrant.mockResolvedValue({ changed: true });
+    const POST = await grantRoute();
+    for (const level of GRANT_LEVELS) {
+      peopleHc.setGrant.mockClear();
+      const res = await POST(
+        postTo(`/${CIRCLE}/people/${RUTH_M}/grant/submit`, {
+          subject_id: NELL,
+          domain: 'health',
+          level,
+        }),
+        ctx,
+      );
+      const lower = LEVEL_RANK[level] <= LEVEL_RANK.summary;
+      expect(res.headers.get('location')).toContain(lower ? 'changed=1' : 'e=step-up');
+      expect(peopleHc.setGrant).toHaveBeenCalledTimes(lower ? 1 : 0);
+    }
+  });
+
   const ctx = { params: Promise.resolve({ circle: CIRCLE, member: RUTH_M }) };
   async function grantRoute() {
     return (await import('@/app/(app)/[circle]/people/[member]/grant/submit/route')).POST;

@@ -63,6 +63,34 @@ describe('the vocabulary is the enum, plus hidden as absence', () => {
   });
 });
 
+describe('the ladder itself (7D · R3/F-7 + R4/F-6)', () => {
+  it("LEVEL_RANK's keys are EXACTLY hc.access_level's five — an absent key is a silent `undefined` at the type level, and `n > undefined` is false, which misclassifies a raise as a lower", async () => {
+    const r = await raw.query(`select enum_range(null::hc.access_level)::text[] as levels`);
+    const enumLevels = (r.rows[0].levels as string[]).slice().sort();
+    expect(Object.keys(phrases.LEVEL_RANK).sort()).toEqual(enumLevels);
+  });
+
+  it("the ranks increase STRICTLY along the enum's OWN order — the ladder the care ceiling offers by and the step-up route demands by is the ladder the DB compares by, and nothing else pinned that", async () => {
+    const r = await raw.query(`select enum_range(null::hc.access_level)::text[] as levels`);
+    const inEnumOrder = r.rows[0].levels as string[];
+    const ranks = inEnumOrder.map((l) => phrases.LEVEL_RANK[l as keyof typeof phrases.LEVEL_RANK]);
+    expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+    expect(new Set(ranks).size).toBe(ranks.length);
+    // and hidden is the FLOOR: D6's "the ceiling offers NOTHING above itself"
+    // reads the same map, so the floor being the floor is load-bearing too.
+    expect(inEnumOrder[0]).toBe('hidden');
+  });
+
+  it('GRANT_LEVELS is that enum, in that order — the ONE list the surfaces offer from', async () => {
+    const r = await raw.query(`select enum_range(null::hc.access_level)::text[] as levels`);
+    expect([...phrases.GRANT_LEVELS]).toEqual(r.rows[0].levels as string[]);
+  });
+
+  it('DOMAINS is hc.domain, so no surface re-types it', async () => {
+    const r = await raw.query(`select enum_range(null::hc.domain)::text[] as domains`);
+    expect([...phrases.DOMAINS].sort()).toEqual((r.rows[0].domains as string[]).sort());
+  });
+});
 describe("the plain line over hc.tier_defaults' own rows", () => {
   it("family: the line says what the tier's grants enforce and never names the hidden domain", async () => {
     const line = phrases.plainLine(await tierLevels('family'));
