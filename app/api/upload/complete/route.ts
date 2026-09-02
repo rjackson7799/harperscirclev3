@@ -47,32 +47,37 @@ export async function POST(req: Request): Promise<Response> {
   if (read.kind !== 'signed-in') return new Response('sign in first', { status: 401 });
   const claims = read.claims;
 
-  // 7C C2 (OW-19): the ingress cap, BEFORE any parse or probe.
-  const text = await boundedJsonText(req);
-  if (text === null) return new Response('too large', { status: 413 });
-
-  let subjectId: string;
-  let token: string;
-  try {
-    const body = JSON.parse(text) as { subject_id?: unknown; token?: unknown };
-    if (
-      typeof body.subject_id !== 'string' ||
-      !body.subject_id ||
-      typeof body.token !== 'string' ||
-      !body.token
-    ) {
-      return new Response('malformed', { status: 400 });
-    }
-    subjectId = body.subject_id;
-    token = body.token;
-  } catch {
-    return new Response('malformed', { status: 400 });
-  }
-
   // 7C C2 (OW-19): completion is a person's wait; it answers inside the
   // route budget like every other one.
+  //
+  // 7D · OW-24 (ADR-0038 R5/F-1): the ingress read is inside the budget now,
+  // for the same reason as the mint route — the size cap held, the time bound
+  // did not exist, and a body that never ends parked completion outside every
+  // guarantee this route makes. See app/api/upload/token/route.ts.
   return withRouteBudget(
     async (budget) => {
+      // 7C C2 (OW-19): the ingress cap, BEFORE any parse or probe.
+      const text = await budget.race(boundedJsonText(req), 'boundedJsonText');
+      if (text === null) return new Response('too large', { status: 413 });
+
+      let subjectId: string;
+      let token: string;
+      try {
+        const body = JSON.parse(text) as { subject_id?: unknown; token?: unknown };
+        if (
+          typeof body.subject_id !== 'string' ||
+          !body.subject_id ||
+          typeof body.token !== 'string' ||
+          !body.token
+        ) {
+          return new Response('malformed', { status: 400 });
+        }
+        subjectId = body.subject_id;
+        token = body.token;
+      } catch {
+        return new Response('malformed', { status: 400 });
+      }
+
       const right = await budget.race(canIngestForSubject(claims, subjectId), 'canIngestForSubject');
       if (!right) return new Response('not found', { status: 404 });
 

@@ -4,6 +4,22 @@ import { faultText, isAuthenticationAnswer } from '@/lib/auth/session-outcome';
 import { sessionUnavailablePage } from '@/lib/http/session-unavailable';
 
 /**
+ * 7C C4 (PPL-03; §4.6.3's cached-responses channel): every user-scoped answer
+ * this proxy passes through is `private, no-store` — nothing personal is
+ * cacheable at a shared layer, and a revoked member's cached page must not
+ * outlive the revocation. Static assets never match this proxy (the matcher
+ * below); the 503 branch and the artifact route each say the same thing for
+ * themselves.
+ *
+ * 7D R5/F-2: ONE function, so "every pass-through" is a property of the code
+ * rather than of remembering. The early return below used to skip the stamp.
+ */
+function noStore(response: NextResponse): NextResponse {
+  response.headers.set('cache-control', 'private, no-store');
+  return response;
+}
+
+/**
  * The §1.7 session-refresh pass (Next 16: proxy.ts). Its ONE job is token
  * rotation: Server Components cannot write cookies, so the refresh that
  * @supabase/ssr performs when an access token has expired must happen here,
@@ -27,7 +43,11 @@ export async function proxy(request: NextRequest) {
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return response;
+  // 7D R5/F-2: with no auth config there is no session to read, so this
+  // returns before the read — but it is still a PASS-THROUGH, and PPL-03's
+  // claim is EVERY pass-through. Stamped here as well as at the end, so the
+  // sentence is true of the branch and not only of the happy path.
+  if (!url || !key) return noStore(response);
 
   const supabase = createServerClient(url, key, {
     cookies: {
@@ -58,14 +78,7 @@ export async function proxy(request: NextRequest) {
     return sessionUnavailablePage(here);
   }
 
-  // 7C C4 (PPL-03; §4.6.3's cached-responses channel): every user-scoped
-  // answer this proxy passes through is `private, no-store` — nothing
-  // personal is cacheable at a shared layer, and a revoked member's cached
-  // page must not outlive the revocation. Static assets never match this
-  // proxy (the matcher below); the 503 branch and the artifact route each
-  // say the same thing for themselves.
-  response.headers.set('cache-control', 'private, no-store');
-  return response;
+  return noStore(response);
 }
 
 export const proxyConfig = {

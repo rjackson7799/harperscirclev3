@@ -36,25 +36,34 @@ export async function POST(req: Request): Promise<Response> {
   if (read.kind !== 'signed-in') return new Response('sign in first', { status: 401 });
   const claims = read.claims;
 
-  // 7C C2 (OW-19): the ingress cap, BEFORE any parse or probe.
-  const text = await boundedJsonText(req);
-  if (text === null) return new Response('too large', { status: 413 });
-
-  let subjectId: string;
-  try {
-    const body = JSON.parse(text) as { subject_id?: unknown };
-    if (typeof body.subject_id !== 'string' || !body.subject_id) {
-      return new Response('malformed', { status: 400 });
-    }
-    subjectId = body.subject_id;
-  } catch {
-    return new Response('malformed', { status: 400 });
-  }
-
   // 7C C2 (OW-19): a person waits on this mint; it answers inside the
   // route budget like every other wait.
+  //
+  // 7D · OW-24 (ADR-0038 R5/F-1): THE INGRESS READ IS INSIDE THE BUDGET NOW.
+  // OW-19's cap is a SIZE guarantee and it holds — the declared
+  // content-length first, then the actual text as the backstop for a body
+  // that lied or never declared. What it never gave was a TIME guarantee:
+  // `req.text()` resolves only when the stream ENDS, so a chunked body with
+  // no Content-Length, dribbled a byte at a time, sat here forever — outside
+  // the budget it was supposed to be bounded by, because the read ran before
+  // `withRouteBudget` opened. Raced here, it takes the route's own overrun.
   return withRouteBudget(
     async (budget) => {
+      // 7C C2 (OW-19): the ingress cap, BEFORE any parse or probe.
+      const text = await budget.race(boundedJsonText(req), 'boundedJsonText');
+      if (text === null) return new Response('too large', { status: 413 });
+
+      let subjectId: string;
+      try {
+        const body = JSON.parse(text) as { subject_id?: unknown };
+        if (typeof body.subject_id !== 'string' || !body.subject_id) {
+          return new Response('malformed', { status: 400 });
+        }
+        subjectId = body.subject_id;
+      } catch {
+        return new Response('malformed', { status: 400 });
+      }
+
       const right = await budget.race(canIngestForSubject(claims, subjectId), 'canIngestForSubject');
       if (!right) return new Response('not found', { status: 404 });
 
