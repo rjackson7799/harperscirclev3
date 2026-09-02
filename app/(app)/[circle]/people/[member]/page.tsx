@@ -59,6 +59,7 @@ import { formatShortDate } from '@/lib/format/dates';
 // third copy of them here. The offer, the ceiling arithmetic and the write
 // path all read one list, pinned live against hc.domain and hc.access_level.
 const STEP_UP_COOKIE = 'hc-step-up';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function header(name?: string) {
   return <PageHeader title={name ?? 'A member'} />;
@@ -145,12 +146,26 @@ export default async function MemberPage({
       // THREE params, never a colon-joined triple: safeNext refuses any ':'
       // in a next as scheme-shaped, so the step-up round-trip dropped the
       // raise entirely (gate r3: the founder landed on /account).
-      const raiseSubject = typeof sp.rs === 'string' ? sp.rs : null;
+      //
+      // 7D · R3/F-3: `rs` was the one raise param with neither set- nor
+      // shape-validation, and it was concatenated RAW into the posted next.
+      // A crafted same-origin link could therefore append `&changed=1` and
+      // make this page render "Changed. It's written in the family's log"
+      // the instant the coordinator proved her identity — nothing changed,
+      // nothing logged. It never widened anything (the route's UUID_RE and
+      // consume_step_up's exact match both refuse); it lied, on the surface
+      // that exists to tell the truth about access. Shape-checked here, and
+      // COMPOSED below so no value can carry a separator at all.
+      const raiseSubject = typeof sp.rs === 'string' && UUID_RE.test(sp.rs) ? sp.rs : null;
       const raiseDomain = typeof sp.rd === 'string' && isDomain(sp.rd) ? sp.rd : null;
       const raiseLevel = typeof sp.rl === 'string' && isGrantLevel(sp.rl) ? sp.rl : null;
       const raise =
         raiseSubject && raiseDomain && raiseLevel
-          ? `rs=${raiseSubject}&rd=${raiseDomain}&rl=${raiseLevel}`
+          ? new URLSearchParams({
+              rs: raiseSubject,
+              rd: raiseDomain,
+              rl: raiseLevel,
+            }).toString()
           : null;
 
       // The care-circle ceiling, from the ONE tiers module: only its
