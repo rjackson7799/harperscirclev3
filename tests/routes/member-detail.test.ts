@@ -248,6 +248,12 @@ describe('the matrix — per subject per domain, words from the ONE module, lowe
     expect(html).not.toContain('Raise access');
   });
 
+
+  it('the no-op marker is READ by the page, and it does not claim the log (R3/F-1, D3’s standing rule)', async () => {
+    const html = await renderPage(RUTH_M, { unchanged: '1' });
+    expect(html).toMatch(/already/i);
+    expect(html).not.toContain("written in the family&#x27;s log");
+  });
   it('a well-formed rs still renders the section, and the next it posts carries exactly the three raise params', async () => {
     const html = await renderPage(RUTH_M, { rs: NELL, rd: 'health', rl: 'view' });
     expect(html).toContain('Raise access');
@@ -386,6 +392,62 @@ describe('the grant write', () => {
   async function grantRoute() {
     return (await import('@/app/(app)/[circle]/people/[member]/grant/submit/route')).POST;
   }
+  // ---------------------------------------------------------------------
+  // 7D · R3/F-1 — the page says a thing happened that did not.
+  //
+  // hc.set_grant's no-op arm returns `'changed', false` and WRITES NOTHING:
+  // no grant row, no log entry, no token demanded. This route discarded the
+  // return and redirected `?changed=1`, and the page rendered "Changed.
+  // It's written in the family's log, with both levels." as a role="status".
+  // Two false statements on the two surfaces the slice exists to make
+  // honest, reachable by the single interaction the pre-checked form
+  // invites - and reachable with NO misclick at all when a peer coordinator
+  // raises the level between the e=step-up bounce and the click.
+  // ---------------------------------------------------------------------
+  it('a no-op is not reported as a change: the definer says changed:false and the route carries that, not a cheerful default', async () => {
+    peopleHc.setGrant.mockResolvedValue({
+      member_id: RUTH_M,
+      subject_id: NELL,
+      domain: 'health',
+      before: 'summary',
+      after: 'summary',
+      changed: false,
+    });
+    const POST = await grantRoute();
+    const res = await POST(
+      postTo(`/${CIRCLE}/people/${RUTH_M}/grant/submit`, {
+        subject_id: NELL,
+        domain: 'health',
+        level: 'summary',
+      }),
+      ctx,
+    );
+    const q = new URL(res.headers.get('location')!, 'http://127.0.0.1:3000').searchParams;
+    expect(q.get('changed')).toBeNull();
+    expect(q.get('unchanged')).toBe('1');
+  });
+
+  it('a real change still says so', async () => {
+    peopleHc.setGrant.mockResolvedValue({
+      member_id: RUTH_M,
+      subject_id: NELL,
+      domain: 'health',
+      before: 'summary',
+      after: 'log',
+      changed: true,
+    });
+    const POST = await grantRoute();
+    const res = await POST(
+      postTo(`/${CIRCLE}/people/${RUTH_M}/grant/submit`, {
+        subject_id: NELL,
+        domain: 'health',
+        level: 'log',
+      }),
+      ctx,
+    );
+    expect(res.headers.get('location')).toContain('changed=1');
+  });
+
 
   it('a LOWER posts straight through — no token demanded', async () => {
     peopleHc.setGrant.mockResolvedValue({});
