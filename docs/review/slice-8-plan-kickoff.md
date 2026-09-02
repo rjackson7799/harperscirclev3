@@ -25,9 +25,10 @@ bounds). Invoke the `slice` skill — leg: **plan gate**. Only what is below is 
 - `docs/owed.md`: **OPEN 7 / 25** — OW-08/09/10/12/13/14 (owner-track and
   pipeline homes; not this slice unless ruled) and **OW-26** (the access log's
   cursor, home slice 8). Burn-down: slice 7 opened 3, closed 13.
-- Next ADR **0039** · slice 8's review is **round 28** · `PROMPT_VERSION`
-  hc-6b-3, nothing under `lib/ai/` moves. NOT activated: G4/G7 block · G9 OPEN
-  · G3 open · band allowlist EMPTY · SIG-01 NOT absorbed.
+- Next ADR **0040** — 0039 is CLAIMED by open PR #35 (the PRD's voice); open
+  PR #36 edits `docs/process/slice.md` — re-read the ritual if either merges
+  first. Review **round 28** · `PROMPT_VERSION` hc-6b-3, `lib/ai/` untouched.
+  NOT activated: G4/G7 block · G9 OPEN · G3 open · allowlist EMPTY · SIG-01 no.
 
 ## THE TASK
 
