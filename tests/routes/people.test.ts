@@ -237,6 +237,34 @@ describe('the list — the plain line before any matrix, and NO matrix here at a
   });
 });
 
+
+// ============================================================================
+// 7D · R4/F-4 — the printable record §4.6.5 promises, and the way to it.
+//
+// Re-verified: exactly ONE rendered href to /[circle]/people/log existed in
+// the whole app, on the SUBJECT page — and the only path to the subject page
+// is a receipt for an approved profile fact. So the reachable route to the
+// family's printable log was: have an arrival whose approved proposals
+// include a profile fact → open its receipt → two clicks.
+//
+// Both e2e legs `goto` the URL directly, so they prove the pages render and
+// never that a person can arrive. The leg change rides this increment too.
+//
+// The lens flags this as Tier-3 in cost while stranding a Tier-1
+// accountability artifact; the charter settles it — the tier is per
+// increment, never lowered mid-slice, and 7C is Tier 1.
+// ============================================================================
+describe('7D · R4/F-4 · the record is reachable by clicking', () => {
+  it('People & roles links the family log — the printable record has a door on the surface that is about access', async () => {
+    const html = await renderPage();
+    expect(html).toContain(`href="/${CIRCLE}/people/log"`);
+  });
+
+  it("each subject card links to that subject's own page, which is where the declaration is shown", async () => {
+    const html = await renderPage();
+    expect(html).toContain(`href="/${CIRCLE}/people/subject/${NELL}"`);
+  });
+});
 describe('invites — pending, expired, and send-again as a NEW invite', () => {
   it('pending renders `Invited · expires …`; expired renders `Invite expired` with ONE send-again form', async () => {
     const html = await renderPage();
