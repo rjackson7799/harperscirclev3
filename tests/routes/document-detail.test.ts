@@ -61,10 +61,17 @@ vi.mock('@/lib/hc/review', async () => {
 });
 
 let stepUpCookie: string | null = null;
+// 7D · R2/F-3: the companion that says what the token is FOR. Defaults to
+// this document's own share so the pre-existing cases read unchanged.
+let stepUpForCookie: string | null = null;
 vi.mock('next/headers', () => ({
   cookies: async () => ({
-    get: (name: string) =>
-      name === 'hc-step-up' && stepUpCookie ? { name, value: stepUpCookie } : undefined,
+    get: (name: string) => {
+      if (name === 'hc-step-up') return stepUpCookie ? { name, value: stepUpCookie } : undefined;
+      if (name === 'hc-step-up-for')
+        return stepUpForCookie ? { name, value: stepUpForCookie } : undefined;
+      return undefined;
+    },
   }),
 }));
 vi.mock('next/navigation', () => ({
@@ -129,7 +136,14 @@ function postTo(path: string, body: Record<string, string>) {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
-      ...(stepUpCookie ? { cookie: `hc-step-up=${stepUpCookie}` } : {}),
+      ...(stepUpCookie
+        ? {
+            cookie: [
+              `hc-step-up=${stepUpCookie}`,
+              ...(stepUpForCookie ? [`hc-step-up-for=${stepUpForCookie}`] : []),
+            ].join('; '),
+          }
+        : {}),
     },
     body: form.toString(),
   });
@@ -139,6 +153,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   stepUpCookie = null;
+  stepUpForCookie = null;
   session.readLiveSession.mockResolvedValue({ kind: 'signed-in', claims: CLAIMS });
   docsHc.documentById.mockResolvedValue({ ...DETAIL });
   docsHc.documentReferences.mockResolvedValue([]);
@@ -289,6 +304,48 @@ describe('the detail at manage — shares, unshare in one action, share behind s
     expect(html).toMatch(/never the domain/i);
     expect(html).toMatch(/nothing derived|never .*derived/i);
   });
+  // ---------------------------------------------------------------------
+  // 7D · R2/F-3 (+ R3/F-8, which closes with it).
+  //
+  // The §5.7 binding is real and server-side: hc.consume_step_up matches
+  // BOTH operation and target_ref, so a token cannot cross. What crossed was
+  // the APP'S BELIEF — one cookie name, `hc-step-up`, holding whatever was
+  // minted last, and three surfaces reading its mere presence as proof. A
+  // coordinator holding a live `raise_grant` token opened a document and was
+  // shown "Share it with Marisol" with no password, and the click dead-ended
+  // at "That couldn't be done just now." while the honest e=step-up copy sat
+  // unreachable. The route then CLEARED the cookie, burning an unrelated
+  // step-up over a refusal the database had consumed nothing for.
+  // ---------------------------------------------------------------------
+  it("a token minted for another operation is not confirmation here — the page offers the PASSWORD, not the share it cannot complete", async () => {
+    stepUpCookie = 'tok';
+    stepUpForCookie = new URLSearchParams({
+      op: 'raise_grant',
+      ref: `${MARISOL}:${NELL}:health`,
+    }).toString();
+    const html = await renderPage({ share: MARISOL });
+    expect(html).toContain('action="/account/step-up/submit"');
+    expect(html).not.toContain(`action="/${CIRCLE}/documents/${DOC}/share/submit"`);
+  });
+
+  it('a token minted for ANOTHER DOCUMENT is not confirmation either — the target_ref is half the binding', async () => {
+    stepUpCookie = 'tok';
+    stepUpForCookie = new URLSearchParams({
+      op: 'share_object',
+      ref: 'document:99999999-0000-4000-8000-000000000099',
+    }).toString();
+    const html = await renderPage({ share: MARISOL });
+    expect(html).toContain('action="/account/step-up/submit"');
+    expect(html).not.toContain(`action="/${CIRCLE}/documents/${DOC}/share/submit"`);
+  });
+
+  it('a token with NO companion at all is not confirmation — fail closed', async () => {
+    stepUpCookie = 'tok';
+    stepUpForCookie = null;
+    const html = await renderPage({ share: MARISOL });
+    expect(html).toContain('action="/account/step-up/submit"');
+  });
+
 
   it('re-categorise: the preview names the exact before-and-after audience BEFORE the move and binds it', async () => {
     docsHc.documentAudience.mockResolvedValue([
@@ -331,6 +388,24 @@ describe('the three writes', () => {
     expect(res.headers.get('location')).toContain('e=step-up');
     expect(docsHc.shareDocument).not.toHaveBeenCalled();
   });
+  it("R3/F-8: a token for another operation is not sent to the definer and is NOT BURNED — her unrelated step-up survives, and she is asked for the password instead", async () => {
+    stepUpCookie = 'tok';
+    stepUpForCookie = new URLSearchParams({
+      op: 'raise_grant',
+      ref: `${MARISOL}:${NELL}:health`,
+    }).toString();
+    const POST = await shareRoute();
+    const res = await POST(
+      postTo(`/${CIRCLE}/documents/${DOC}/share/submit`, { member_id: MARISOL }),
+      ctx,
+    );
+    expect(docsHc.shareDocument).not.toHaveBeenCalled();
+    const q = new URL(res.headers.get('location')!, 'http://127.0.0.1:3000').searchParams;
+    expect(q.get('e')).toBe('step-up');
+    expect(q.get('share')).toBe(MARISOL);
+    expect(res.headers.get('set-cookie')).toBeNull();
+  });
+
 
   it('share with the token: the wrapper gets it, the cookie is cleared, the page re-opens shared', async () => {
     stepUpCookie = 'tok';

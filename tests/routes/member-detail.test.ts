@@ -51,10 +51,16 @@ vi.mock('@/lib/hc/tasks', async () => {
 });
 
 let stepUpCookie: string | null = null;
+/** 7D · R2/F-3: the companion that says what the token is FOR. */
+let stepUpForCookie: string | null = null;
 vi.mock('next/headers', () => ({
   cookies: async () => ({
-    get: (name: string) =>
-      name === 'hc-step-up' && stepUpCookie ? { name, value: stepUpCookie } : undefined,
+    get: (name: string) => {
+      if (name === 'hc-step-up') return stepUpCookie ? { name, value: stepUpCookie } : undefined;
+      if (name === 'hc-step-up-for')
+        return stepUpForCookie ? { name, value: stepUpForCookie } : undefined;
+      return undefined;
+    },
   }),
 }));
 vi.mock('next/navigation', () => ({
@@ -132,7 +138,14 @@ function postTo(path: string, body: Record<string, string>) {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
-      ...(stepUpCookie ? { cookie: `hc-step-up=${stepUpCookie}` } : {}),
+      ...(stepUpCookie
+        ? {
+            cookie: [
+              `hc-step-up=${stepUpCookie}`,
+              ...(stepUpForCookie ? [`hc-step-up-for=${stepUpForCookie}`] : []),
+            ].join('; '),
+          }
+        : {}),
     },
     body: new URLSearchParams(body).toString(),
   });
@@ -142,6 +155,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   stepUpCookie = null;
+  stepUpForCookie = null;
   session.readLiveSession.mockResolvedValue({ kind: 'signed-in', claims: CLAIMS });
   tasksHc.myMembership.mockResolvedValue({ id: ME, tier: 'coordinator' });
   peopleHc.circlePeople.mockResolvedValue(PEOPLE.map((r) => ({ ...r })));
@@ -261,6 +275,30 @@ describe('the matrix — per subject per domain, words from the ONE module, lowe
     const q = new URL(next, 'http://127.0.0.1:3000').searchParams;
     expect([...q.keys()].sort()).toEqual(['rd', 'rl', 'rs']);
     expect(q.get('rs')).toBe(NELL);
+  });
+
+  // 7D · R2/F-3, the same defect on this surface: one cookie name held
+  // whatever was minted last, and this page read its presence as proof.
+  it("a token minted for a SHARE is not confirmation of a raise — the page asks for the password rather than offering Raise it", async () => {
+    stepUpCookie = 'tok';
+    stepUpForCookie = new URLSearchParams({
+      op: 'share_object',
+      ref: 'document:66666666-0000-4000-8000-000000000006',
+    }).toString();
+    const html = await renderPage(RUTH_M, { rs: NELL, rd: 'health', rl: 'view' });
+    expect(html).toContain('action="/account/step-up/submit"');
+    expect(html).not.toContain('Raise it');
+  });
+
+  it('a raise token for a DIFFERENT subject or domain is not confirmation of this one', async () => {
+    stepUpCookie = 'tok';
+    stepUpForCookie = new URLSearchParams({
+      op: 'raise_grant',
+      ref: `${RUTH_M}:${NELL}:finances`,
+    }).toString();
+    const html = await renderPage(RUTH_M, { rs: NELL, rd: 'health', rl: 'view' });
+    expect(html).toContain('action="/account/step-up/submit"');
+    expect(html).not.toContain('Raise it');
   });
   it('a non-coordinator constructing the URL by hand gets the one 404', async () => {
     tasksHc.myMembership.mockResolvedValue({ id: RUTH_M, tier: 'family' });
