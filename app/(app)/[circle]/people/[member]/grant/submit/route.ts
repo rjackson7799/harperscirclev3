@@ -3,7 +3,12 @@ import { gateRoute } from '@/lib/auth/gate';
 import { formFields, redirect303 } from '@/lib/auth/http';
 import { withRouteBudget } from '@/lib/http/page-budget';
 import { circlePeople, setGrant } from '@/lib/hc/people';
-import { LEVEL_RANK } from '@/lib/permissions/phrases';
+import {
+  LEVEL_RANK,
+  isDomain,
+  isGrantLevel,
+  type GrantLevel,
+} from '@/lib/permissions/phrases';
 
 /**
  * POST /[circle]/people/[member]/grant/submit — adjust one level (7C C4;
@@ -17,8 +22,6 @@ import { LEVEL_RANK } from '@/lib/permissions/phrases';
  */
 const STEP_UP_COOKIE = 'hc-step-up';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DOMAINS = new Set(['memories', 'health', 'schedule', 'documents', 'finances']);
-const LEVELS = new Set(['hidden', 'log', 'summary', 'view', 'manage']);
 
 function cookieValue(req: Request, name: string): string | null {
   const header = req.headers.get('cookie') ?? '';
@@ -45,22 +48,31 @@ export async function POST(
   if (gate.kind === 'refused') return gate.response;
   const claims = gate.claims;
 
+  // 7D · R3/F-7: the vocabularies are the phrase module's, not a fourth
+  // hand-typed copy — and the guards NARROW, so `level` can index the ladder
+  // (R4/F-6: under `Record<string, number>` an unknown key was `undefined`
+  // and `n > undefined` is `false`, which classified a raise as a lower).
   const fields = await formFields(req);
   const subjectId = fields.subject_id ?? '';
   const domain = fields.domain ?? '';
   const level = fields.level ?? '';
-  if (!UUID_RE.test(subjectId) || !DOMAINS.has(domain) || !LEVELS.has(level)) {
+  if (!UUID_RE.test(subjectId) || !isDomain(domain) || !isGrantLevel(level)) {
     return redirect303(req, `${back}?e=refused`);
   }
 
   return withRouteBudget(
     async (budget) => {
-      let current = 'hidden';
+      let current: GrantLevel = 'hidden';
       try {
         const rows = await budget.race(circlePeople(claims, circle), 'circlePeople');
         const person = rows.find((r) => r.kind === 'member' && r.member_id === memberId);
         if (!person) return redirect303(req, `${back}?e=refused`);
-        current = person.levels?.[subjectId]?.[domain] ?? 'hidden';
+        // Fail CLOSED on a level this app does not know: `hidden` is the
+        // floor, so anything else reads as a raise and the token is demanded.
+        // (The DISPLAY may not do this — null is "not yours to know" there,
+        // R3/F-4 — but on the write path the floor is the safe default.)
+        const held = person.levels?.[subjectId]?.[domain];
+        current = typeof held === 'string' && isGrantLevel(held) ? held : 'hidden';
       } catch (err) {
         if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
         return redirect303(req, `${back}?e=refused`);

@@ -12,7 +12,16 @@ import {
   type PersonRow,
 } from '@/lib/hc/people';
 import { myMembership } from '@/lib/hc/tasks';
-import { DOMAIN_LABEL, LEVEL_RANK, LEVEL_WORD } from '@/lib/permissions/phrases';
+import {
+  DOMAINS,
+  DOMAIN_LABEL,
+  GRANT_LEVELS,
+  LEVEL_RANK,
+  LEVEL_WORD,
+  isDomain,
+  isGrantLevel,
+  type GrantLevel,
+} from '@/lib/permissions/phrases';
 import { TIERS, type Domain } from '@/lib/permissions/tiers';
 import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 import { PageHeader } from '@/components/shell/PageHeader';
@@ -46,8 +55,9 @@ import { formatShortDate } from '@/lib/format/dates';
  * 404 (the nav's hiding is a courtesy; this refusal is the page's own).
  */
 
-const DOMAINS: readonly Domain[] = ['memories', 'health', 'schedule', 'documents', 'finances'];
-const LEVELS = ['hidden', 'log', 'summary', 'view', 'manage'] as const;
+// 7D · R3/F-7: DOMAINS and the level ladder are the phrase module's, not a
+// third copy of them here. The offer, the ceiling arithmetic and the write
+// path all read one list, pinned live against hc.domain and hc.access_level.
 const STEP_UP_COOKIE = 'hc-step-up';
 
 function header(name?: string) {
@@ -136,10 +146,8 @@ export default async function MemberPage({
       // in a next as scheme-shaped, so the step-up round-trip dropped the
       // raise entirely (gate r3: the founder landed on /account).
       const raiseSubject = typeof sp.rs === 'string' ? sp.rs : null;
-      const raiseDomain =
-        typeof sp.rd === 'string' && DOMAINS.includes(sp.rd as Domain) ? sp.rd : null;
-      const raiseLevel =
-        typeof sp.rl === 'string' && (LEVELS as readonly string[]).includes(sp.rl) ? sp.rl : null;
+      const raiseDomain = typeof sp.rd === 'string' && isDomain(sp.rd) ? sp.rd : null;
+      const raiseLevel = typeof sp.rl === 'string' && isGrantLevel(sp.rl) ? sp.rl : null;
       const raise =
         raiseSubject && raiseDomain && raiseLevel
           ? `rs=${raiseSubject}&rd=${raiseDomain}&rl=${raiseLevel}`
@@ -152,8 +160,10 @@ export default async function MemberPage({
           ? new Map(TIERS.care_circle.defaultGrants.map((g) => [g.domain, g.level]))
           : null;
       const offeredDomains = ceiling ? DOMAINS.filter((d) => ceiling.has(d)) : DOMAINS;
-      const optionsFor = (d: Domain) =>
-        LEVELS.filter((l) => (ceiling ? LEVEL_RANK[l] <= LEVEL_RANK[ceiling.get(d) ?? 'hidden'] : true));
+      const optionsFor = (d: Domain): readonly GrantLevel[] =>
+        GRANT_LEVELS.filter((l) =>
+          ceiling ? LEVEL_RANK[l] <= LEVEL_RANK[ceiling.get(d) ?? 'hidden'] : true,
+        );
 
       return (
         <>

@@ -44,10 +44,54 @@ export const DOMAIN_LABEL: Record<Domain, string> = {
   finances: 'finances',
 };
 
-/** The ladder's arithmetic, hidden at the floor — the same ranking
- *  hc.visible_at's ladder implies, used by the adjust surface to tell a
- *  raise from a lower (the definer re-decides regardless). */
-export const LEVEL_RANK: Record<string, number> = {
+/**
+ * hc.access_level, ALL FIVE. `hidden` is a real value of that enum even
+ * though a grant is STORED as row absence (tiers.ts:29), so this is the
+ * vocabulary the adjust surface offers from and the write path validates
+ * against — the ONE list, pinned against `enum_range` in
+ * tests/permissions/phrases.test.ts.
+ *
+ * 7D · R3/F-7: it used to be re-typed in the member page and again in
+ * grant/submit — a third and a fourth copy of a list with a security
+ * consequence.
+ */
+export const GRANT_LEVELS = ['hidden', 'log', 'summary', 'view', 'manage'] as const;
+export type GrantLevel = (typeof GRANT_LEVELS)[number];
+
+export function isGrantLevel(value: string): value is GrantLevel {
+  return (GRANT_LEVELS as readonly string[]).includes(value);
+}
+
+/** hc.domain, the five — same discipline, same pin. */
+export const DOMAINS: readonly Domain[] = [
+  'memories',
+  'health',
+  'schedule',
+  'documents',
+  'finances',
+];
+
+export function isDomain(value: string): value is Domain {
+  return (DOMAINS as readonly string[]).includes(value);
+}
+
+/**
+ * The ladder's arithmetic, hidden at the floor — the same ranking
+ * hc.visible_at's ladder implies, used by the adjust surface to tell a raise
+ * from a lower (the definer re-decides regardless).
+ *
+ * 7D · R4/F-6: the key type is GrantLevel, not `string`. Under `string` an
+ * absent key was a silent `undefined`, `n > undefined` is `false`, and a
+ * RAISE was therefore classified as a lower and posted with
+ * `stepUpToken: null`. Under GrantLevel an omission is a compile error, and
+ * a caller holding a DB string has to narrow it (isGrantLevel) before it can
+ * index this map at all.
+ *
+ * 7D · R3/F-7: the ORDER is pinned live against `enum_range`'s own order —
+ * the enum pin covered key sets and never ordering, and D6's "the ceiling
+ * offers NOTHING above itself" rides on this being the DB's ladder.
+ */
+export const LEVEL_RANK: Record<GrantLevel, number> = {
   hidden: 0,
   log: 1,
   summary: 2,
@@ -56,7 +100,7 @@ export const LEVEL_RANK: Record<string, number> = {
 };
 
 const LEVEL_ORDER: readonly AccessLevel[] = ['manage', 'view', 'summary', 'log'];
-const ALL_DOMAINS: readonly Domain[] = ['memories', 'health', 'schedule', 'documents', 'finances'];
+const ALL_DOMAINS = DOMAINS;
 
 /**
  * The plain-language line for ONE subject's levels map, §4.6.1's truth the
