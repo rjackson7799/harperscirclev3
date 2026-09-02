@@ -4,6 +4,15 @@
 AS PUT** (the owner, on the D8 ballot: *"ok to proceed"*, confirmed against the
 three readings offered).
 
+**MERGED — PR #34 → `main` @ `6025cfa`, 2026-09-02, by the owner: a merge commit,
+parents `18c362d` + `c859d55`, the merged tree identical to the branch head by tree
+hash, 74 commits. The evidence head moved past this ADR's `ccd854b` to **`bb40021`**
+when 7E and 7D landed (D5): ONE complete gate run, GREEN **58/58**, JSON-borne, 58
+traces (`docs/review/7d-close-out.md`); the coverage and ledger moves of the
+close-out are `833fede`; the PR body as ruled on is
+`docs/review/round-27-pr-body.md` @ `c859d55`. Stamped at ritual step 15; nothing
+above or below is rewritten.**
+
 **The verdicts have moved in the commit that stamps this line** — and only in
 the records a docs-only verdict may touch: `docs/coverage.md` (13 cells; **green
 249 → 241 · review 9 → 17 · pending 9 · 267 rows**, re-derived by command),
