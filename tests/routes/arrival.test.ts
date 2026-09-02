@@ -394,7 +394,17 @@ describe('6B B8 · the receipt: what went where (§4.2.4)', () => {
     ]);
     const html = await renderArrival();
     expect(html).toContain('The hospital week');
-    expect(html).toContain(`href="/${CIRCLE}/timeline"`);
+    // 7D · R4/F-2 (Q-B: FIX FIRST, then accept the narrowed claim). The
+    // policy half is ratified — no episode page exists and RCP-02 does not
+    // owe one — but the link dropped the `subjectId` that receiptLine was
+    // WIDENED IN THIS DIFF to carry, and /timeline defaults to subjects[0],
+    // the founding subject. Two subjects and one episode is all it takes:
+    // the receipt says the object was created and points at someone else's
+    // thread. The pin's title carried the two-part claim; its body asserted
+    // the href alone.
+    expect(html).toContain(
+      `href="/${CIRCLE}/timeline?subject=22222222-0000-4000-8000-000000000002#episode-dddddddd-0000-4000-8000-0000000000e1"`,
+    );
     expect(html).not.toMatch(/opens in an upcoming update/i);
   });
 
