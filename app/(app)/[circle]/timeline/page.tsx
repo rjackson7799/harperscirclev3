@@ -129,7 +129,15 @@ function Thread({ events, circle }: { events: EventRow[]; circle: string }) {
       i += 1;
     }
     out.push(
-      <section key={`episode-${episode.id}-${members[0].id}`} className="record-episode" aria-label={`Episode: ${episode.title}`}>
+      // 7D · R4/F-2: `id` as well as `key` — a receipt's `#episode-<id>`
+      // fragment has to have something to land on, or it lands at the top
+      // of the thread and the person is left to find the episode.
+      <section
+        key={`episode-${episode.id}-${members[0].id}`}
+        id={`episode-${episode.id}`}
+        className="record-episode"
+        aria-label={`Episode: ${episode.title}`}
+      >
         <p className="section-label">Episode · {episode.title}</p>
         <div className="choice-list">
           {members.map((e) => (
