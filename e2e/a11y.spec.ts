@@ -206,6 +206,33 @@ async function ensureCircle(browser: Browser): Promise<string> {
 test.use({ viewport: PHONE }); // §8.8: phone is the primary review device
 
 test.describe('the D7 browser a11y leg', () => {
+  // 7D · F-a (docs/review/7e-leg-audit.md), ruled at this increment's plan
+  // gate — docs/review/7d-build-kickoff.md.
+  //
+  // This file is MARGINAL at the config's 120 s default on this host. Every
+  // leg provisions through the memoized ensureAccount / ensureCircle, and a
+  // FAILURE restarts the worker, which discards the memo and re-provisions:
+  // traps §4's documented cascade, measured directly across three runs of
+  // legs 7E never touched —
+  //
+  //   the (app) shell routes and account      116 s ·  25 s ·  25 s
+  //   the record surfaces: tasks and timeline  48 s · TIMEOUT · 26 s
+  //   A11Y-09: the filters and the assign flow 37 s · TIMEOUT ·  51 s
+  //   keyboard: sign-in is fully operable      25 s · TIMEOUT ·  10 s
+  //
+  // Run 2 failed four legs and burned five workers; run 3 ran the same file
+  // 10/10 green on ONE worker in about four minutes. The spread is not in
+  // the assertions — every run-2 failure was inside PROVISIONING.
+  //
+  // 300 s, per file, not `workers: 1`: workers:1 is ALREADY the config's
+  // global setting, so it is not an available lever — and it would not help
+  // if it were, because the memo is discarded by the worker restart a
+  // failure causes, which workers:1 does not prevent. 300 s is the number
+  // 7E's own new leg in this same file already declares; the file gets ONE
+  // budget rather than two. documents.spec's 420 s is the precedent for the
+  // MECHANISM, not for the number.
+  test.describe.configure({ timeout: 300_000 });
+
   test('public routes: sign-in, create-account, reset, wasnt-me', async ({
     page,
   }) => {
@@ -479,6 +506,11 @@ test.describe('the D7 browser a11y leg', () => {
     // and then 25 s, and four legs timed out at ~123 s. An audit leg must not
     // be decided by which end of that spread it lands on, so this one names
     // its own budget rather than inheriting the default.
+    //
+    // 7D · F-a: the whole FILE carries 300 s now (the describe above), so
+    // this line is redundant. Kept deliberately: it is 7E's own record of
+    // why the number is 300, and deleting it would leave the file's budget
+    // looking arbitrary.
     test.setTimeout(300_000);
     const circle = await ensureCircle(browser);
     const { subjectId } = await ensureDocumentRow(browser);
