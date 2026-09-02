@@ -14,13 +14,29 @@ import type { Domain, AccessLevel } from '@/lib/permissions/tiers';
  * halves).
  *
  * Every entry: who did what, to whom, on which subject, in which domain,
- * when. The surface adds nothing and subtracts nothing — the filtering is
- * access_log_select's own (LOG-01: the reader's access is the filter),
- * and a denial renders its collapsed count and NEVER an object's name
- * (LOG-02: the entry cannot carry one, and this page must not invent
- * one). Printing renders the SAME filtered rows — the print stylesheet
+ * when. The FILTERING is access_log_select's own (LOG-01: the reader's
+ * access is the filter), and a denial renders its collapsed count and NEVER
+ * an object's name (LOG-02: the entry cannot carry one, and this page must
+ * not invent one). Printing renders the SAME rows — the print stylesheet
  * hides the chrome and adds nothing (app/globals.css @media print).
+ *
+ * 7D · R4/F-3: THE SURFACE DOES SUBTRACT, AND IT SAYS SO. It shows a WINDOW
+ * of the most recent LOG_WINDOW entries; this page used to promise
+ * "Everything done with the record" and "it prints exactly the entries
+ * below" over `order by seq desc limit 300` with no cursor, no count and no
+ * disclosure — with `seq` 1, §7.5's custodianship declaration, the first row
+ * dropped and invisible from the very surface that shows it. The promise now
+ * stands only inside the window; past it the page names what is missing, in
+ * the lead paragraph, which printing does not hide. Reaching every entry
+ * needs a cursor: OW-26, home slice 8.
  */
+
+/**
+ * How many entries this page shows. 7D · R4/F-3: it is a WINDOW, not the
+ * whole log, and the page says so when it is one. Reaching every entry the
+ * reader may see needs a cursor — OW-26, home slice 8.
+ */
+const LOG_WINDOW = 300;
 
 function header() {
   return <PageHeader title="The family's log" />;
@@ -105,22 +121,42 @@ export default async function AccessLogPage({
 
   return withPageBudget(
     async (budget) => {
-      let entries: LogEntry[];
+      let read: LogEntry[];
       try {
-        entries = await budget.race(accessLog(claims, circle, 300), 'accessLog');
+        // 7D · R4/F-3: ONE MORE than we mean to show, so the page can know
+        // whether it is showing everything rather than assuming it is.
+        read = await budget.race(accessLog(claims, circle, LOG_WINDOW + 1), 'accessLog');
       } catch (err) {
         if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
         console.error(`log: read failed: ${(err as Error).message}`);
         return loadFailed(next, false);
       }
+      const truncated = read.length > LOG_WINDOW;
+      const entries = truncated ? read.slice(0, LOG_WINDOW) : read;
 
       return (
         <>
           {header()}
-          <p className="meta">
-            Everything done with the record, filtered to what you can see. Print this page for
-            a copy the family can hold — it prints exactly the entries below.
-          </p>
+          {/* R4/F-3: the promise stands where it is TRUE and is withdrawn
+              where it is not. Inside the window this page really does print
+              exactly the entries below. Past it, the oldest entries are cut
+              first — and `seq` 1 is the custodianship declaration the
+              subject page rests on, so the surface that shows that row is
+              the surface that drops it. Said in the lead paragraph, which
+              is not chrome and is not hidden by the print stylesheet, so a
+              printed copy carries the same caveat. */}
+          {truncated ? (
+            <p className="meta">
+              The most recent {LOG_WINDOW} entries, filtered to what you can see. Older entries —
+              including the day this record was set up, and who was named its custodian — are
+              not shown here yet, and a printed copy carries the same {LOG_WINDOW}.
+            </p>
+          ) : (
+            <p className="meta">
+              Everything done with the record, filtered to what you can see. Print this page for
+              a copy the family can hold — it prints exactly the entries below.
+            </p>
+          )}
           {entries.length === 0 ? <p className="meta">Nothing here yet.</p> : null}
           <ol className="log-entries">
             {entries.map((e) => (

@@ -118,12 +118,20 @@ function toLogEntry(row: LogSql): LogEntry {
 }
 
 /**
- * The reader's projection of the log (LOG-01/02; AC-PPL-5/7). The surface
- * adds nothing and subtracts nothing: access_log_select is the filter —
- * circle-level entries to every live member, subject entries at >= log on
- * the entry's domain, no-domain entries failing closed — and this read
- * simply orders what the policy already decided. Printing renders the
- * same rows.
+ * The reader's projection of the log (LOG-01/02; AC-PPL-5/7).
+ *
+ * access_log_select is the FILTER — circle-level entries to every live
+ * member, subject entries at >= log on the entry's domain, no-domain
+ * entries failing closed — and this read adds nothing to it.
+ *
+ * 7D · R4/F-3: IT DOES SUBTRACT, AND THAT IS SAID HERE NOW. This docstring
+ * claimed the read "simply orders what the policy already decided"; it
+ * orders and then TRUNCATES at `limit`, newest first, so `seq` 1 — the §7.5
+ * custodianship declaration the subject page rests on — is the first row to
+ * go. The caller is expected to ask for one more than it means to show and
+ * to DISCLOSE the window (app/(app)/[circle]/people/log/page.tsx does).
+ * Reaching the whole log needs a cursor, which this function does not have:
+ * OW-26, home slice 8.
  */
 export async function accessLog(
   claims: RequestClaims,
