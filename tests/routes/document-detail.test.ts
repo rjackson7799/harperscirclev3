@@ -293,6 +293,45 @@ describe('the detail at view — the pages through the ONE byte path, the siblin
   });
 });
 
+
+  // ---------------------------------------------------------------------
+  // 7D · R2/F-6 — one component, one slice, two different answers.
+  //
+  // D10's discipline for this slice is "absent / empty / failed EACH SAID".
+  // The sibling surface built from the same component in this same slice
+  // says "No fields were read from this document." — this one argues
+  // NOTHING: the facts section simply does not render, and neither does
+  // the viewer when the rendition is absent. The neighbouring subject page
+  // argues its silence explicitly.
+  //
+  // Marked CONTINGENT by the lens on a design spec it had not read; the
+  // spec is not needed to settle it. Two surfaces, one component, two
+  // answers to the same fact IS the defect, whichever answer a spec
+  // prefers.
+  // ---------------------------------------------------------------------
+  it('at view with NO facts, the page says so — the ReviewScreen sentence, verbatim, because it is the same component and the same slice', async () => {
+    docsHc.documentById.mockResolvedValue({ ...DETAIL, can_view: true });
+    artifactsHc.readableRendition.mockResolvedValue({ page_count: 1, page_exts: ['png'] });
+    reviewHc.extractionsFor.mockResolvedValue([]);
+    const html = await renderPage();
+    expect(html).toContain('No fields were read from this document.');
+  });
+
+  it('at view with NO rendition, the page says THAT too — a different fact, its own sentence', async () => {
+    docsHc.documentById.mockResolvedValue({ ...DETAIL, can_view: true });
+    artifactsHc.readableRendition.mockResolvedValue(null);
+    reviewHc.extractionsFor.mockResolvedValue([]);
+    const html = await renderPage();
+    expect(html).toMatch(/isn&#x27;t ready yet|not ready/i);
+    // and it is not confused with the facts sentence
+    expect(html).toContain('No fields were read from this document.');
+  });
+
+  it('below view neither sentence appears — an absence is only said where the person could have seen the thing (settled item 2)', async () => {
+    const html = await renderPage();
+    expect(html).not.toContain('No fields were read from this document.');
+    expect(html).not.toMatch(/isn&#x27;t ready yet/i);
+  });
 describe('references — linked when visible, counted never named', () => {
   it('a visible task links to its page; a visible event to its page; an invisible referent is a count with no name and no link', async () => {
     docsHc.documentReferences.mockResolvedValue([

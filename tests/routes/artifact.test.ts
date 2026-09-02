@@ -378,6 +378,45 @@ describe('6B B9 · ?page=N&text=1 — the machine-read sibling through the fence
     expect(await res.text()).toBe(ghost);
   });
 
+
+  // ---------------------------------------------------------------------
+  // 7D · R1/F-4 — the 404 arm asserts a STORAGE fact out of answers that
+  // are not about storage.
+  //
+  // "No machine-read text is stored for this page." is rendered for every
+  // 404 the sibling path can produce: an authorization refusal, a
+  // revocation, and a storage answer that is not object-not-found. The
+  // image half of this SAME route splits rendition_page_missing from
+  // storage_timeout at length, precisely because "this route does not
+  // guess" — the sibling half guessed.
+  //
+  // ACCEPTED IN PART. What is NOT done, and must not be: differentiating
+  // the status on the AUTHORIZATION branches. That is the oracle §1.3
+  // forbids, and R1 says so itself. The status splits only where the fact
+  // is a storage fact; the SENTENCE is reworded for every arm, because the
+  // client cannot know which of the three a 404 was.
+  // ---------------------------------------------------------------------
+  it('a storage answer that is NOT object-not-found is reported, not rendered as an absence', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    fetchMock.mockResolvedValueOnce(new Response('nope', { status: 500 }));
+    const res = await route.GET(getText('1'), ctx);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'machine_text_unreadable', page: 1 });
+  });
+
+  it('a signed-URL refusal that is not object-not-found is reported the same way', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    createSignedUrl.mockResolvedValueOnce({ data: null, error: { message: 'internal error' } });
+    const res = await route.GET(getText('1'), ctx);
+    expect(res.status).toBe(503);
+  });
+
+  it('object-not-found KEEPS the one 404 — absence is absence, and the authorization branches must stay indistinguishable from it', async () => {
+    artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
+    fetchMock.mockResolvedValueOnce(new Response('missing', { status: 404 }));
+    const res = await route.GET(getText('1'), ctx);
+    expect(res.status).toBe(404);
+  });
   it('the manifest still gates: a page outside it answers 404 before any key is built', async () => {
     artifacts.readableRendition.mockResolvedValueOnce(RENDITION);
     const res = await route.GET(getText('3'), ctx);
