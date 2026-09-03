@@ -356,3 +356,111 @@ describe('retireInvite — the old token dies; the fresh invite rides the ONE cr
     expect(still.rows[0].revoked_at).toBeNull();
   });
 });
+
+// ============================================================================
+// 8C U2 · OW-26 — THE CURSOR, against a circle PAST THE WINDOW (LOG-04;
+// slice-8 plan "### 8C" unit 2; ADR-0038 D3 = R4/F-3 remedy (a)).
+//
+// The defect this closes is not "the log is paginated badly". It is that
+// `seq` 1 — the §7.5 custodianship declaration, the row the subject page
+// rests on and the one entry that says who was named custodian on the day
+// the record was set up — WAS UNREACHABLE from the log, because `accessLog`
+// truncated newest-first at 300 and had no cursor. The surface that shows
+// that row was the surface that dropped it.
+//
+// So the assertion that matters is not "page 2 exists". It is that WALKING
+// THE CURSOR REACHES EVERY ENTRY THE READER MAY SEE, seq 1 included, and
+// that the walk adds and subtracts nothing against the same policy read in
+// one go. That is asserted as SET EQUALITY over a circle driven past 300.
+// ============================================================================
+describe('8C U2 · the access log reaches EVERY entry the reader may see (LOG-04, OW-26)', () => {
+  const EXTRA = 320;
+
+  beforeAll(async () => {
+    // Circle-level entries (no subject, no domain), so access_log_select
+    // shows them to every live member and the walk is about the CURSOR and
+    // not about the filter. Written through hc.log itself, one statement
+    // each, so the per-circle seq and the hash chain stay exactly as the
+    // product writes them — a direct insert would have to forge both.
+    const client = new pg.Client({ connectionString: process.env.HC_DB_URL });
+    await client.connect();
+    try {
+      await client.query('begin');
+      for (let i = 0; i < EXTRA; i++) {
+        await client.query(`select hc.log($1::uuid, 'member_joined', $2)`, [
+          circleId,
+          `Filler ${i}`,
+        ]);
+      }
+      await client.query('commit');
+    } finally {
+      await client.end();
+    }
+  }, 120_000);
+
+  it('the circle really is past the window — otherwise everything below is vacuous', async () => {
+    const page = await peopleLib.accessLog(claimsOf('sarah'), circleId, 301);
+    expect(page.length).toBe(301);
+  });
+
+  it('the cursor reads STRICTLY BACK from a seq, newest-first, and never repeats the row it started at', async () => {
+    const first = await peopleLib.accessLog(claimsOf('sarah'), circleId, 10);
+    const pivot = first[first.length - 1].seq;
+    const next = await peopleLib.accessLog(claimsOf('sarah'), circleId, 10, pivot);
+    expect(next.every((r) => r.seq < pivot)).toBe(true);
+    expect(next[0].seq).toBe(pivot - 1);
+    const seqs = next.map((r) => r.seq);
+    expect([...seqs].sort((a, b) => b - a)).toEqual(seqs);
+  });
+
+  it('SEQ 1 IS REACHABLE — the custodianship declaration, from the log, on a circle past 300 rows', async () => {
+    let before: number | undefined;
+    let guard = 0;
+    let reachedOne = false;
+    for (;;) {
+      const page = await peopleLib.accessLog(claimsOf('sarah'), circleId, 300, before);
+      if (page.length === 0) break;
+      if (page.some((r) => r.seq === 1)) reachedOne = true;
+      before = page[page.length - 1].seq;
+      if (++guard > 20) throw new Error('the walk did not terminate');
+    }
+    expect(reachedOne).toBe(true);
+    // …and it is the row the subject page rests on, not merely a row.
+    const walkedTo = await peopleLib.accessLog(claimsOf('sarah'), circleId, 1, 2);
+    expect(walkedTo[0].seq).toBe(1);
+    expect(walkedTo[0].event_type).toBe('custodianship_declared');
+  });
+
+  it('the WALK and the policy agree exactly: paging adds nothing and subtracts nothing (LOG-01 held at the app layer)', async () => {
+    const walk = async (who: 'sarah' | 'marisol') => {
+      const out: number[] = [];
+      let before: number | undefined;
+      for (let guard = 0; guard < 40; guard++) {
+        const page = await peopleLib.accessLog(claimsOf(who), circleId, 100, before);
+        if (page.length === 0) return out;
+        out.push(...page.map((r) => r.seq));
+        before = page[page.length - 1].seq;
+      }
+      throw new Error('the walk did not terminate');
+    };
+    // 500 is the ceiling accessLog clamps to, and the circle is inside it,
+    // so ONE read is the whole readable set to compare the walk against.
+    const whole = (await peopleLib.accessLog(claimsOf('sarah'), circleId, 500)).map((r) => r.seq);
+    const walked = await walk('sarah');
+    expect(new Set(walked).size).toBe(walked.length);
+    expect(walked).toEqual(whole);
+
+    // And the READER is still the filter: Marisol's walk is her own smaller
+    // set, never Sarah's — a cursor must not widen what a policy narrowed.
+    const hers = await walk('marisol');
+    expect(new Set(hers).size).toBe(hers.length);
+    expect(hers.length).toBeLessThan(walked.length);
+    expect(hers.every((s) => walked.includes(s))).toBe(true);
+    const health = await peopleLib.accessLog(claimsOf('marisol'), circleId, 500);
+    expect(health.some((r) => r.event_type === 'grant_changed' && r.domain === 'health')).toBe(false);
+  });
+
+  it('a cursor past the end is an empty page, never an error and never a wrap-around', async () => {
+    expect(await peopleLib.accessLog(claimsOf('sarah'), circleId, 50, 1)).toEqual([]);
+  });
+});

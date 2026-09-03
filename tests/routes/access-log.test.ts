@@ -119,12 +119,12 @@ function printBlock(css: string): string {
   throw new Error('unbalanced @media print block');
 }
 
-async function renderLog() {
+async function renderLog(searchParams: Record<string, string> = {}) {
   const { default: Page } = await import('@/app/(app)/[circle]/people/log/page');
   return renderToStaticMarkup(
     await Page({
       params: Promise.resolve({ circle: CIRCLE }),
-      searchParams: Promise.resolve({}),
+      searchParams: Promise.resolve(searchParams),
     }),
   );
 }
@@ -257,59 +257,129 @@ describe('the access log — who did what, to whom, on which subject, in which d
 
 
   // ---------------------------------------------------------------------
-  // 7D · R4/F-3 — "Everything done with the record … it prints exactly the
-  // entries below", over `order by seq desc limit 300` with no cursor, no
-  // count and no disclosure. PPL-04's green cell says the surface
-  // "subtracts nothing" and accessLog's docstring says it "simply orders
-  // what the policy already decided."
+  // 8C U2 · OW-26 — THE CURSOR (LOG-04; slice-8 plan "### 8C" unit 2;
+  // ADR-0038 D3, R4/F-3 remedy (a)).
   //
-  // The failure is specific and load-bearing: `seq` 1 is the CUSTODIANSHIP
-  // DECLARATION, the §7.5 row the whole subject page rests on, and it is
-  // the FIRST row dropped — invisible from the surface that shows it,
-  // because the subject page reads it with a separate `order by seq asc
-  // limit 1`.
+  // 7D could only CONFESS. `accessLog` was `order by seq desc limit 300`
+  // with no cursor, and `seq` 1 — the §7.5 custodianship declaration the
+  // whole subject page rests on — was the first row dropped, invisible from
+  // the very surface that shows it. The remedy that landed then was the
+  // disclosure: the page said what it was not showing. The remedy owed was
+  // the cursor, and it is here.
   //
-  // Only the DISCLOSURE lands here. The cursor is the honest fix for an
-  // accountability surface and is not producible in this increment: it is
-  // OWED as OW-26, home slice 8.
+  // So the assertions below are DELIBERATELY DIFFERENT from the ones they
+  // replace, and the difference is the fix. "Older entries … are not shown
+  // here yet" was true and is now false: they are shown, one page back.
+  // "The unqualified promise is withdrawn where it is false" no longer
+  // applies to `prints exactly the entries below`, because with a cursor
+  // that promise is true on EVERY page — each page prints its own set, and
+  // the pages reach the whole log. What R4/F-3 actually forbade is intact
+  // and is asserted harder here: the surface never claims to show more than
+  // it shows, and the disclosure still survives printing.
+  //
+  // §7.4 holds throughout: NO count and NO total. Not "page 2 of 5", not
+  // "the most recent 300", not "1,240 entries". The window size stops being
+  // spoken aloud the moment it stops being a limit on what is reachable.
   // ---------------------------------------------------------------------
-  it('the page reads one MORE than it shows, so it can know whether it is showing everything', async () => {
+  it('the page reads one MORE than it shows, so it can know whether there is a page behind this one', async () => {
     await renderLog();
-    expect(peopleHc.accessLog).toHaveBeenCalledWith(expect.anything(), CIRCLE, 301);
+    expect(peopleHc.accessLog).toHaveBeenCalledWith(expect.anything(), CIRCLE, 301, undefined);
   });
 
-  it('inside the window, the promise is kept and unqualified — "exactly the entries below" is true here', async () => {
+  it('a `before` cursor is passed straight through as the seq to read back from', async () => {
+    await renderLog({ before: '4096' });
+    expect(peopleHc.accessLog).toHaveBeenCalledWith(expect.anything(), CIRCLE, 301, 4096);
+  });
+
+  it.each([['nonsense'], ['-1'], ['0'], ['1e9999'], ['12; drop table'], ['']])(
+    'a malformed cursor (%s) is IGNORED and the page answers as the first page — never an error, never a 500',
+    async (before) => {
+      const html = await renderLog({ before });
+      expect(peopleHc.accessLog).toHaveBeenCalledWith(expect.anything(), CIRCLE, 301, undefined);
+      expect(html).toContain('log-entries');
+    },
+  );
+
+  it('ONE page: the promise is kept and unqualified, and there is no pager to press', async () => {
     peopleHc.accessLog.mockResolvedValue([ENTRY, DENIAL]);
     const html = await renderLog();
     expect(html).toMatch(/prints exactly the entries below/);
-    expect(html).not.toMatch(/most recent 300/i);
+    expect(html).toMatch(/Everything done with the record/);
+    expect(html).not.toContain('log-pager');
   });
 
-  it('past the window it SAYS SO, names what is missing, and shows exactly 300 — not 301', async () => {
+  it('past the window: it does NOT claim to be everything, and it OFFERS THE WAY BACK carrying the last seq', async () => {
     const many = Array.from({ length: 301 }, (_, i) => ({ ...ENTRY, seq: 400 - i }));
     peopleHc.accessLog.mockResolvedValue(many);
     const html = await renderLog();
-    expect(html).toMatch(/most recent 300/i);
-    expect(html).toMatch(/older entries/i);
-    // the custodianship declaration is the first row dropped, and the
-    // surface that shows it must not imply it was never there
-    expect(html).toMatch(/set up|earliest|custodian/i);
+    // exactly 300 rendered, not 301 — the extra row is how it knows, not
+    // something it shows
     expect((html.match(/<li>/g) ?? []).length).toBe(300);
-    // and the unqualified promise is withdrawn where it is false
-    expect(html).not.toMatch(/prints exactly the entries below/);
+    expect(html).not.toMatch(/Everything done with the record/);
+    // the way back, keyed on the LAST rendered entry's seq (400 - 299 = 101)
+    expect(html).toContain(`href="/${CIRCLE}/people/log?before=101"`);
+    expect(html).toMatch(/Older entries/);
+    // and each page still prints itself, which is now true rather than a
+    // promise that had to be withdrawn
+    expect(html).toMatch(/prints exactly the entries below/);
   });
 
-  it('the disclosure survives PRINTING — it is not chrome, and the print block does not hide it', async () => {
+  it('a page reached by cursor offers the way FURTHER back and the way to the most recent', async () => {
+    const many = Array.from({ length: 301 }, (_, i) => ({ ...ENTRY, seq: 100 - i }));
+    peopleHc.accessLog.mockResolvedValue(many);
+    const html = await renderLog({ before: '101' });
+    expect(html).toContain(`href="/${CIRCLE}/people/log?before=-199"`.replace('-199', String(100 - 299)));
+    expect(html).toContain(`href="/${CIRCLE}/people/log"`);
+    expect(html).toMatch(/most recent/i);
+  });
+
+  it('THE END OF THE WALK: the last page says it is the beginning, and names what is finally in reach (seq 1, §7.5)', async () => {
+    const last = Array.from({ length: 12 }, (_, i) => ({ ...ENTRY, seq: 12 - i }));
+    last[last.length - 1] = {
+      ...ENTRY,
+      seq: 1,
+      event_type: 'custodianship_declared',
+      detail: { subject_name: 'Nell' },
+    };
+    peopleHc.accessLog.mockResolvedValue(last);
+    const html = await renderLog({ before: '13' });
+    // no further-back link: there is nothing further back
+    expect(html).not.toMatch(/Older entries/);
+    expect(html).toMatch(/set up|custodian/i);
+    expect(html).toMatch(/prints exactly the entries below/);
+  });
+
+  it('§7.4: NO COUNT AND NO TOTAL anywhere in what the page says about itself', async () => {
+    const many = Array.from({ length: 301 }, (_, i) => ({ ...ENTRY, seq: 400 - i }));
+    peopleHc.accessLog.mockResolvedValue(many);
+    const html = await renderLog({ before: '500' });
+    const said = [...html.matchAll(/<p class="meta log-disclosure">([\s\S]*?)<\/p>/g)]
+      .map((m) => m[1])
+      .join(' ');
+    expect(said, 'the page must say something about itself').not.toBe('');
+    // The window size, the number of pages, the number of entries and the
+    // number withheld are all counts, and none of them may be spoken.
+    expect(said).not.toMatch(/\d/);
+    expect(html).not.toMatch(/most recent 300|\bof \d|page \d|\d+ entries/i);
+  });
+
+  it('the disclosure survives PRINTING — it is not chrome; the PAGER does not, because a printed link is dead', async () => {
     const many = Array.from({ length: 301 }, (_, i) => ({ ...ENTRY, seq: 400 - i }));
     peopleHc.accessLog.mockResolvedValue(many);
     const html = await renderLog();
-    const disclosure = /<p class="meta"[^>]*>[^<]*most recent 300/i.exec(html);
-    expect(disclosure).not.toBeNull();
-    const css = readFileSync('app/globals.css', 'utf8');
-    const printBlock = css.slice(css.indexOf('@media print'));
-    const body = printBlock.slice(printBlock.indexOf('{'), printBlock.indexOf('}', printBlock.indexOf('display: none')));
-    expect(body).not.toMatch(/\.meta\b/);
+    expect(/<p class="meta log-disclosure">/.exec(html)).not.toBeNull();
+    const block = printBlock(readFileSync(join(process.cwd(), 'app/globals.css'), 'utf8'));
+    const hiddenRules = block
+      .split('}')
+      .filter((rule) => /display:\s*none/.test(rule))
+      .join(' ');
+    expect(hiddenRules).not.toMatch(/\.meta\b/);
+    expect(hiddenRules).not.toMatch(/\.log-disclosure\b/);
+    // …and the pager IS hidden: a printed copy carries the entries and the
+    // sentence about them, never a link nobody can press.
+    expect(hiddenRules).toMatch(/\.log-pager\b/);
   });
+
   it('the page is printable: the print block hides the chrome INSIDE its own braces, and never the entries (R4/F-8)', () => {
     const css = readFileSync(join(process.cwd(), 'app/globals.css'), 'utf8');
     const block = printBlock(css);

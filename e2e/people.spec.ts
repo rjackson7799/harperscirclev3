@@ -608,4 +608,92 @@ test.describe('the 7C people legs', () => {
       await context.close();
     }
   });
+  // 8C U2 · LOG-04's e2e half (OW-26; ADR-0038 D3 = R4/F-3 remedy (a)).
+  //
+  // R4/F-3 was not "the log paginates badly". It was that `seq` 1 — the
+  // §7.5 custodianship declaration, the row that records who was named
+  // custodian on the day the record was set up — could not be reached from
+  // the log at all: 300 newest-first, no cursor, and that row is the first
+  // to go. The subject page shows it; the log, which is the printable
+  // record §4.6.5 promises the family, could not.
+  //
+  // This leg walks there IN A BROWSER, by pressing the control a person
+  // would press, and asserts the printed projection of the page it lands on
+  // is that page. It is DECLARED LAST and seeds inside itself: the filler
+  // entries would otherwise push every other leg's log assertions around.
+  test('the access log reaches every entry: the cursor walks past 300 rows to the custodianship declaration, and each page prints itself (LOG-04, AC-PPL-5)', async ({
+    browser,
+  }) => {
+    const f = await theFounder(browser);
+    // Circle-level entries through hc.log itself — the per-circle seq and
+    // the hash chain stay as the product writes them (a direct insert would
+    // have to forge both). One statement each: hc.log re-reads max(seq),
+    // and a single set-returning statement would not see its own inserts.
+    const client = new pg.Client({ connectionString: DB_URL });
+    await client.connect();
+    try {
+      await client.query('begin');
+      for (let i = 0; i < 320; i++) {
+        await client.query(`select hc.log($1::uuid, 'member_joined', $2)`, [f.circleId, `Filler ${i}`]);
+      }
+      await client.query('commit');
+    } finally {
+      await client.end();
+    }
+
+    await f.page.goto(`/${f.circleId}/people`);
+    await f.page.getByRole('link', { name: 'Everything done with the record' }).click();
+    await f.page.waitForURL(`**/${f.circleId}/people/log`);
+
+    // Past the window, the page does not claim to be everything…
+    await expect(f.page.locator('main')).not.toContainText('Everything done with the record,');
+    // …and §7.4 holds: what the page says ABOUT ITSELF carries no number.
+    const saidAbout = async () =>
+      (await f.page.locator('.log-disclosure').allTextContents()).join(' ');
+    expect(await saidAbout()).not.toMatch(/\d/);
+
+    // WALK. Press the control a person would press until there is no more
+    // "older" to press, and assert we actually moved each time.
+    const older = () => f.page.getByRole('link', { name: 'Older entries' });
+    const seen = new Set<string>();
+    for (let hop = 0; hop < 20 && (await older().count()) > 0; hop++) {
+      const here = f.page.url();
+      expect(seen.has(here), 'the walk revisited a page it had already seen').toBe(false);
+      seen.add(here);
+      await older().click();
+      await f.page.waitForURL(/before=\d+/);
+      // every page carries entries; an empty page would mean the cursor
+      // stepped past the end while still offering to go further
+      expect(await f.page.locator('.log-entries li').count()).toBeGreaterThan(0);
+    }
+    expect(await older().count(), 'the walk did not terminate within 20 pages').toBe(0);
+    expect(seen.size, 'the walk never left the first page — the fixture is not past the window').toBeGreaterThan(0);
+
+    // SEQ 1, IN REACH. The last page is the beginning of the record, and
+    // the declaration the subject page rests on is on it.
+    await expect(f.page.locator('.log-entries li').last()).toContainText(/custodian/i);
+    await expect(f.page.locator('.log-disclosure')).toContainText(/set up|custodian/i);
+
+    // THE PRINTED PROJECTION IS THIS PAGE. The entries and the sentence
+    // about them survive; the pager does not, because a printed link is a
+    // dead link — and the CONTROL first, since isVisible() answers false
+    // for an element that does not exist as readily as for a hidden one.
+    const pager = f.page.locator('.log-pager');
+    await expect(f.page.locator('.log-disclosure')).toBeVisible();
+    const onScreen = await f.page.locator('.log-entries li').count();
+    await f.page.emulateMedia({ media: 'print' });
+    try {
+      expect(await f.page.locator('.log-entries li').count()).toBe(onScreen);
+      expect(await f.page.locator('.log-entries li').first().isVisible()).toBe(true);
+      expect(await f.page.locator('.log-disclosure').first().isVisible()).toBe(true);
+      if ((await pager.count()) > 0) expect(await pager.first().isVisible()).toBe(false);
+    } finally {
+      await f.page.emulateMedia({ media: 'screen' });
+    }
+
+    // …and back to the most recent, by the link that says so.
+    await f.page.getByRole('link', { name: /most recent/i }).click();
+    await f.page.waitForURL(`**/${f.circleId}/people/log`);
+    expect(f.page.url()).not.toContain('before=');
+  });
 });
