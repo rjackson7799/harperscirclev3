@@ -1736,7 +1736,7 @@ async function case29(admin) {
       `update public.access_grants set level = 'summary'
        where member_id = $1 and domain = 'health'`, [fx.m2]);
 
-    const target = `${fx.m2}:${fx.s}:health`;
+    const target = `${fx.m2}:${fx.s}:health:view`;
     const token = await mintStepUp(admin, fx.u1, 'raise_grant', target);
 
     await asUser(s1, fx.u1);
@@ -1844,7 +1844,7 @@ async function case31(admin) {
     await admin.query(
       `update public.access_grants set level = 'summary'
        where member_id = $1 and domain = 'health'`, [fx.m2]);
-    const token = await mintStepUp(admin, fx.u1, 'raise_grant', `${fx.m2}:${fx.s}:health`);
+    const token = await mintStepUp(admin, fx.u1, 'raise_grant', `${fx.m2}:${fx.s}:health:view`);
 
     await withClaims(s1, fx.u1);
     await s1.query('begin');

@@ -127,7 +127,7 @@ do $$
 declare tok text;
 begin
   tok := pg_temp.mint_raise(current_setting('t.u1')::uuid,
-    current_setting('t.m2') || ':' || current_setting('t.s1') || ':health');
+    current_setting('t.m2') || ':' || current_setting('t.s1') || ':health:view');
   perform set_config('t.tok', tok, true);
 end $$;
 select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
