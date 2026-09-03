@@ -580,3 +580,43 @@ widened by exactly the instruction's shape — a second INSERT policy and one
 branch in `hc.assert_claimed`, re-created WITH the SECURITY DEFINER that
 `20260815230010` had ALTERed onto it after 002 caught its absence. No
 shipped migration was edited.
+
+## 8 — search, and the ruled intake (8A: the database increment, Tier 1, round 28 · 8B: Search, Tier 2, round 29 · 8C: claim's surface + the log's cursor, Tier 2, round 30 — slice-8 plan Q1–Q7 SETTLED 2026-09-02; PRD §4.5.1, §4.7; TSD §7.2, §7.7; ADR-0036 Q-D; ADR-0038 D3, D6)
+
+**Written by the 8A build's FIRST commit, docs-only, quoting the plan's
+*Owner decisions*** — consequence 2: *"Thirteen coverage rows are ruled open
+and NONE is written by this PR … The 8A build writes them in its FIRST commit,
+docs-only, quoting this section (M1 stays the first unit): TSK-05, STP-03,
+SRCH-03/04/05/06 and LOG-04 `pending` tagged to their increments; A11Y-12
+`pending` tagged 8; GRP-01 `pending` tagged 6C; DEP-01, EXE-01, EXE-02 and
+BND-01 `pending` at `gate` — all under a new `## 8 — search, and the ruled
+intake` section."* **Every row below opens `pending`; nothing turns green
+here.** TSK-05 and STP-03 flip at the pgTAP layer at the 8A head, never early;
+the four `gate` rows are `docs/owed.md`'s Q6 `PROMOTED` exits and are never
+green in this slice (Q6: *"Each becomes a `pending` row with Slice cell
+`gate` (the G12-01 shape), never green in this slice"*). GRP-01 is Q3(c)'s
+*"the row that did not exist at the gate"*. Nothing here activates anything
+(consequence 5).
+
+| ID | Assertion | Source | Layer | Slice | Status | Test |
+|---|---|---|---|---|---|---|
+| TSK-05 | `hc.claim_task`: a `view`-level member takes an **unassigned, open** task for herself and no other; `summary`, an owned task, a non-reader and a frozen circle refused in ONE shape; the claim creates no share and no written instruction; `task_claimed` names the claimant as actor (AC-TASK-1 claim half, AC-TASK-2) | AC-TASK-1, AC-TASK-2; PRD §4.5.1; ADR-0036 Q-D; plan Q2 | pgTAP + app + e2e | 8A/8C | **pending** | 8A M1 `task_claim` → pgTAP `070_task_claim.sql` (the ordered-pair discipline; shares and instruction rows as SET EQUALITY before/after) + a concurrency case (two members claim one task — one owner, one `task_claimed`); the app and e2e halves are 8C's |
+| STP-03 | *(Q3(a) SETTLED 2026-09-02: D6 item 2 TAKEN — the row exists)* Step-up binds the **level** as well as `member:subject:domain`: a token minted for `summary` does not consume against a post of `manage` for the same triple | ADR-0038 D6 item 2; round-27 R3 dissent 1; plan Q3(a) | pgTAP + app | 8A | **pending** | 8A M2 `step_up_level_binding` → pgTAP `071_step_up_level.sql` (minted for `summary`, posted for `manage`, refused; STP-01/02 and GRT-01 re-pinned in the same commit); the mint site passes the level it is about to confirm |
+| SRCH-03 | The surface's leakproofness: ONE RLS-true read per relation, no second code path; a `summary` member's **body-only** term returns the same rendered shape as a term present nowhere, driven from a LIVE context; a share widens the one named object through search and never an object derived from it; the care-circle ceiling holds in search (AC-DOC-4, AC-PERM-6, AC-TASK-5) | AC-DOC-4, AC-PERM-6, AC-TASK-5; TSD §7.7; PRD §4.7 | app + e2e | 8B | **pending** | 8B: the module and the leak leg FIRST (the plan's cadence) |
+| SRCH-04 | The results' shape and copy: grouped by kind, **labelled by subject**, each link resolves to the object; §4.7.3's four strings verbatim; **no total, no count of withheld results, no autocomplete, no spelling correction, no prose answer and no composition across results** — asserted as ABSENCES over the rendered tree (AC-HOME-4, AC-DOC-1's search half, AC-TL-1's *"through search"*) | AC-HOME-4, AC-DOC-1, AC-TL-1; PRD §4.7.3 | app + e2e | 8B | **pending** | 8B |
+| SRCH-05 | The snippet is cut from the matched text and reaches the DOM as **structure, never markup**: explicit `ts_headline` sentinels, split in the module, `<mark>` built by React; **no `dangerouslySetInnerHTML` anywhere on the surface**, fence-tested; `ocr_text` findable at weight D and never outranking a title | TSD §7.2 (the Q4(1) NAMED DEPARTURE; erratum at round-29 sign-off); plan Q4 | app + e2e | 8B | **pending** | 8B; the fence test is the surface's first commit |
+| SRCH-06 | Latency and bounds: `q` capped at ingress and refused with the empty-result copy; the three reads inside ONE `AnswerBudget` with the overrun rendering the honest slow answer; a **measured** page p95 recorded at the 8B head against PRD §13.2, and the `prf06.mjs` scan legs re-run against the 8B fixture (§7.7) | PRD §13.2; TSD §7.7; plan Q4(4); PRF-06's breach clause (M4 NAMED) | app + bench | 8B | **pending** | 8B; the measurement is what decides M4 |
+| A11Y-12 | The search surface audited: the field labelled and reachable, results as headed groups, emphasis not conveyed by colour alone, 390 px and keyboard | §11.2 G12; plan Q5 | e2e | 8 | **pending** (written by the 8A docs commit, Q5 SETTLED) → green in 8B | 8B: built INTO the surface, a leg in `e2e/a11y.spec.ts` + `AUDIT_MANIFEST` |
+| LOG-04 | The access log reaches **every** entry the reader may see: a `seq` cursor, the printed projection reaching the same set, `seq` 1 reachable on a circle past 300 rows (OW-26; LOG-01's app half amended to point here, never rewritten) | OW-26 (`TAKEN(8C/unit 2)`); ADR-0038 D3 (R4/F-3 remedy (a)); plan Q3(b) | app + e2e | 8C | **pending** | 8C unit 2; OW-26 goes `CLOSED(sha)` at the 8C head |
+| GRP-01 | *(Q3(c) SETTLED 2026-09-02: opened `pending` — the row that did not exist at the gate)* Multi-attachment group review: N children reviewed as one flow with one receipt; partial states presented honestly and blocking on none (AC-INBOX-5, AC-INBOX-13) | AC-INBOX-5, AC-INBOX-13; plan Q3(c) | app + e2e | **6C** | **pending** — never green on the arrival shape alone | DEFERRED with a named home: a Care Inbox increment (6C); a third slip is visible here |
+| DEP-01 | Before G4 passes — invite sending is the first production act — a hosted runtime has been observed under an auth-server fault and the observation recorded: date, runtime, what the page gate did | OW-09 (`PROMOTED(DEP-01)`, plan Q6); ADR-0027 D17 item 8 (F-2) | deploy | gate | **pending** | G4's entry set, ADDED by the Q6 ruling: *"its only instrument is a deployment; an `OPEN` row cannot hold a fact no slice can produce"* |
+| EXE-01 | Before G7 passes — no real forwarding address activates — the harness ADR-0028 D13 names exists (a concurrent in-process render + OCR overlapping an authenticated artifact read) and the `HopCost` ledger's first live report is recorded | OW-14 (`PROMOTED(EXE-01)`, plan Q6); ADR-0028 D8 item 5a, D13 | harness | gate | **pending** | G7's entry set, the instrument — OW-10's stated prerequisite, so it is its own row |
+| EXE-02 | Before G7 passes: §6.3 render and §6.9 OCR run off the request process; a heartbeat across the whole request window reports stalls that do not overlap the deadline; leg 38 passes under D13's named load condition, its duration and outcome recorded per gate run from `.gate/e2e-run.json`, never re-run to green | OW-10, OW-12, OW-13 (`PROMOTED(EXE-02)`, plan Q6); ADR-0028 D8 items 1, 3, 5 | app + e2e | gate | **pending** | G7's entry set, the fix and its proof — one row because OW-12 *"lands with OW-10"* and OW-13 *"closes when OW-10 lands"*; leg 38's duration and outcome ride every slice-8 gate run's `.gate/e2e-run.json` at no cost |
+| BND-01 | Before G7 passes: the four remaining unbounded outbound hops — `lib/mail/outbound.ts`, `postmark/route.ts`, `worker/relay/route.ts`, `worker/[stage]/route.ts` — each carry a time bound with a named test (the mail hop is slice 11's; the three fires ride EXE-02's increment), and `lib/storage/fetch.ts`'s comment states the measured 5/4 split | OW-08 (`PROMOTED(BND-01)`, plan Q6); ADR-0027 D17 item 7, D22 item 4 | routes + tests | gate | **pending** | G7's entry set; green only when all four hops are bounded — the first thing slice 11's plan gate reads |
+
+**Rows that do NOT move at this commit** (the plan, *"Coverage rows to open"*):
+RLS-11b, FRZ-16b, DEL-01, ADM-01, SIG-01 (still NOT absorbed, fifth slice
+running), G12-01 (`gate`), UXA-03, LOG-03 (never green by ruling). SRCH-01,
+SRCH-02, DSC-01, RLS-11a, PRF-04 and PRF-06 stay green at their own layers
+and are NOT re-earned by this slice. **No row flips outside a ruling; pending
+never counts as green.**
