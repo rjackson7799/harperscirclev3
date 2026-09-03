@@ -124,28 +124,51 @@ function toLogEntry(row: LogSql): LogEntry {
  * member, subject entries at >= log on the entry's domain, no-domain
  * entries failing closed — and this read adds nothing to it.
  *
- * 7D · R4/F-3: IT DOES SUBTRACT, AND THAT IS SAID HERE NOW. This docstring
+ * 7D · R4/F-3: IT DOES SUBTRACT, AND THAT IS SAID HERE. This docstring once
  * claimed the read "simply orders what the policy already decided"; it
  * orders and then TRUNCATES at `limit`, newest first, so `seq` 1 — the §7.5
  * custodianship declaration the subject page rests on — is the first row to
  * go. The caller is expected to ask for one more than it means to show and
  * to DISCLOSE the window (app/(app)/[circle]/people/log/page.tsx does).
- * Reaching the whole log needs a cursor, which this function does not have:
- * OW-26, home slice 8.
+ *
+ * 8C U2 · OW-26 (LOG-04) — AND NOW IT IS REACHABLE PAST. `before` is a
+ * `seq` to read STRICTLY BACK from, so a caller walks the whole log one
+ * window at a time and arrives at `seq` 1. Three properties make the walk
+ * trustworthy rather than merely present:
+ *
+ *   · `seq` is per-circle, gapless and UNIQUE (`unique (circle_id, seq)`,
+ *     20260815200006), so `seq < before` under `order by seq desc` is a
+ *     total order with no tie to break and no row visited twice or skipped;
+ *   · the cursor is applied INSIDE the same policy-filtered read, never
+ *     over it, so paging cannot widen what `access_log_select` narrowed —
+ *     the reader's access is still the filter, page by page (LOG-01);
+ *   · a `before` past the end returns the EMPTY page, which is how a walk
+ *     terminates rather than wrapping.
+ *
+ * The truncation is therefore still real and still per-call — this function
+ * hands back at most `limit` rows and says nothing about what follows — but
+ * it is no longer a CEILING on what the reader can reach, which is the
+ * whole of what OW-26 owed.
  */
 export async function accessLog(
   claims: RequestClaims,
   circleId: string,
   limit = 200,
+  before?: number,
 ): Promise<LogEntry[]> {
   if (!UUID_RE.test(circleId)) return [];
+  // A cursor is a seq, and seq starts at 1. Anything else — a NaN from a
+  // hand-typed query string, a negative, a float — is not a smaller window,
+  // it is no cursor at all, and the caller gets the first page.
+  const cursor = Number.isSafeInteger(before) && (before as number) > 0 ? (before as number) : null;
   return withRequestRole('authenticated', claims, async (q) => {
     const r = await q.query<LogSql>(
       `${LOG_SELECT}
         where l.circle_id = $1
+          and ($3::bigint is null or l.seq < $3)
         order by l.seq desc
         limit $2`,
-      [circleId, Math.min(Math.max(limit, 1), 500)],
+      [circleId, Math.min(Math.max(limit, 1), 500), cursor],
     );
     return r.rows.map(toLogEntry);
   });
