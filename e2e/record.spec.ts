@@ -418,6 +418,82 @@ test.describe('the 7B record legs', () => {
     expect(after.rows[0].n).toBe(0);
   });
 
+  // 8C U1 · TSK-05's e2e half (AC-TASK-1's claim half, AC-TASK-2). 8A put
+  // the claim at `view` and ruled every refusal into ONE string, so the
+  // browser truth this leg is for is not "the definer works" — 070 pins
+  // that — but that A PERSON AT VIEW CAN TAKE WORK FROM HER OWN SCREEN, and
+  // that the screen offers the control nowhere the definer would refuse.
+  //
+  // Dan is raised to VIEW on Nell's schedule by fixture. That is the file's
+  // standing concession (provisionMember already rewrites his grants the
+  // same way) and it is what makes him the claimant: the family default is
+  // summary, which is a title and not the task.
+  test('claim: a view-level member takes an unassigned task from her own screen, and no control is offered where the function would refuse (TSK-05, AC-TASK-1/2)', async ({
+    browser,
+  }) => {
+    const f = await theFounder(browser);
+    const dan = await theMember(browser, 'dan');
+    const marisol = await theMember(browser, 'marisol');
+    await query(
+      `update public.access_grants set level = 'view'
+        where member_id = $1 and subject_id = $2 and domain = 'schedule'`,
+      [dan.memberId, f.nell],
+    );
+    const mine = await fixtureTask(f, `Collect the dressings ${stamp}`, ['schedule']);
+    const held = await fixtureTask(f, `Sit with Nell on Thursday ${stamp}`, ['schedule']);
+    await query('update public.tasks set owner_member_id = $1, assigned_by = $2, assigned_at = now() where id = $3', [
+      dan.memberId,
+      f.accountId,
+      held,
+    ]);
+
+    // FROM DAN'S OWN CONTEXT. The Unassigned filter carries the control;
+    // the task he already holds does not — "hers already" refuses at the
+    // database (ADR-0040 D4/Q-B), so the surface must not offer it either.
+    await dan.page.goto(`/${f.circleId}/tasks?filter=unassigned&subject=${f.nell}`);
+    const claimForm = dan.page.locator(`form[action="/${f.circleId}/tasks/${mine}/claim/submit"]`);
+    await expect(claimForm).toBeVisible();
+    expect(await dan.page.locator(`form[action="/${f.circleId}/tasks/${held}/claim/submit"]`).count()).toBe(0);
+
+    // The claim itself, through the real route.
+    await dan.page.goto(`/${f.circleId}/tasks/${mine}`);
+    await dan.page.click('button:has-text("Take this on")');
+    await dan.page.waitForURL('**?claimed=1');
+    await expect(dan.page.locator('main')).toContainText("It's yours now.");
+    // IT BECAME HERS: the holder is Dan, and the control is gone from the
+    // very page that offered it a moment ago.
+    await expect(dan.page.locator('.record-facts')).toContainText('Dan');
+    expect(await dan.page.locator('button:has-text("Take this on")').count()).toBe(0);
+    await dan.page.goto(`/${f.circleId}/tasks?filter=mine&subject=${f.nell}`);
+    await expect(openRows(dan.page).filter({ hasText: `Collect the dressings ${stamp}` })).toHaveCount(1);
+
+    // NO SHARE AND NO INSTRUCTION — the app half of ADR-0040 D3, read from
+    // the database rather than inferred from the screen.
+    const spill = await query(
+      `select (select count(*) from public.object_shares where object_id = $1) as shares,
+              (select count(*) from public.tasks where written_from_task_id = $1) as instructions`,
+      [mine],
+    );
+    expect(Number(spill.rows[0].shares)).toBe(0);
+    expect(Number(spill.rows[0].instructions)).toBe(0);
+
+    // THE CAREGIVER IS OFFERED NOTHING. Marisol's ceiling (rung 4) hides an
+    // unassigned task from her entirely, so there is no control to press and
+    // the hand-built URL is refused by the definer, not by the screen.
+    await marisol.page.goto(`/${f.circleId}/tasks?filter=unassigned&subject=${f.nell}`);
+    expect(await marisol.page.locator('form[action*="/claim/submit"]').count()).toBe(0);
+    const forced = await marisol.page.request.post(`/${f.circleId}/tasks/${held}/claim/submit`);
+    expect(forced.url()).toContain('e=claim');
+    const owner = await query('select owner_member_id from public.tasks where id = $1', [held]);
+    expect(owner.rows[0].owner_member_id).toBe(dan.memberId);
+
+    // THE LOG SAYS WHICH IT WAS. task_claimed exists so the record can tell
+    // "handed to you" from "you took it" (ADR-0040 D4); the family's log is
+    // where that distinction has to be legible (Q-G).
+    await f.page.goto(`/${f.circleId}/people/log`);
+    await expect(f.page.locator('.log-entries li', { hasText: 'took an unassigned task' }).first()).toContainText('Dan');
+  });
+
   test('timeline: two subjects, the switch, the combined view labelled, a manual event with its provenance, the creation entry first (TLN-01/02/03, AC-TL-2/4)', async ({
     browser,
   }) => {

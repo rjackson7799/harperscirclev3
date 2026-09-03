@@ -207,6 +207,54 @@ describe('the access log — who did what, to whom, on which subject, in which d
     expect(html).toMatch(/tried to open something/i);
   });
 
+  // ---------------------------------------------------------------------
+  // 8C U1 · ADR-0040 D9.1 / Q-G: `task_claimed` "renders generically until
+  // 8C words it". Generically means `humanize()` — "task claimed" — with
+  // the actor appended AND the target appended, and on a claim those are
+  // the SAME PERSON, so the log read "Marisol · task claimed · Marisol".
+  // The entry exists precisely so the log can tell HANDED TO YOU from YOU
+  // TOOK IT (ADR-0040 D4), and a sentence that names the claimant twice
+  // tells the reader neither. It gets its own arm here.
+  // ---------------------------------------------------------------------
+  const CLAIMED = {
+    seq: 42,
+    event_type: 'task_claimed',
+    actor_display_name: 'Marisol',
+    target_name: 'Marisol',
+    subject_id: NELL,
+    subject_name: 'Nell',
+    domain: null,
+    level_before: null,
+    level_after: null,
+    object_type: 'task',
+    detail: {},
+    collapsed_count: 1,
+    occurred_at: '2026-09-03T10:00:00Z',
+  };
+
+  it('a claim reads as a claim — the claimant named ONCE, and never as a hand-over (ADR-0040 D4, Q-G)', async () => {
+    peopleHc.accessLog.mockResolvedValue([CLAIMED]);
+    const html = await renderLog();
+    const entry = /<li>(.*?)<\/li>/s.exec(html)?.[1] ?? '';
+    expect(entry).toContain('took an unassigned task');
+    expect(entry).toContain('Nell');
+    // The generic renderer's shape is gone: no `humanize()` output, and the
+    // claimant is not printed a second time as the target of her own act.
+    expect(entry).not.toContain('task claimed');
+    expect((entry.match(/Marisol/g) ?? []).length).toBe(1);
+  });
+
+  it('a hand-over and a claim do not read the same — the distinction the event type exists for', async () => {
+    peopleHc.accessLog.mockResolvedValue([
+      CLAIMED,
+      { ...CLAIMED, seq: 41, event_type: 'task_assigned', actor_display_name: 'Sarah', target_name: 'Marisol' },
+    ]);
+    const html = await renderLog();
+    const [claimed, assigned] = [...html.matchAll(/<li>(.*?)<\/li>/gs)].map((m) => m[1]);
+    expect(claimed).toContain('took an unassigned task');
+    expect(assigned).not.toContain('took an unassigned task');
+  });
+
 
   // ---------------------------------------------------------------------
   // 7D · R4/F-3 — "Everything done with the record … it prints exactly the
