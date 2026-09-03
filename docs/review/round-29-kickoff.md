@@ -10,7 +10,7 @@ are auto-loaded; the ritual is `docs/process/slice.md`; `slice` skill, leg
 
 ## What you are reviewing
 
-- Branch `slice/8b-search-app`, **PR #PR_NUMBER**, from `origin/main` @
+- Branch `slice/8b-search-app`, **PR #41**, from `origin/main` @
   `189e06c` (PR #40, 8A — merged on its packet; round 28 did not run and
   none of ADR-0040's Q-A…Q-G touches search). Evidence head
   **`3bd8f52`**; every commit past it is docs-only — verify with
