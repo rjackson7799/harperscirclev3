@@ -92,6 +92,16 @@ export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
       'people.spec — "adjust: a raise through step-up, a lower without; the care ceiling never offered above (PPL-02, AC-PERM-5)" and "revoke: the pre-revocation URL leg with the honest limit in the PRD’s words (PPL-03, AC-PPL-4)"; A11Y-10 covers the matrix keyboard pass',
   },
   '/[circle]/timeline/[event]': { leg: RECORD_LEG },
+  // 8B (slice-8 plan Q5, A11Y-12): the search surface's own leg, over live
+  // rows from the founder's phone-sized context — the field labelled and
+  // keyboard-reachable, results as headed groups, the emphasis a <mark>
+  // never colour alone, axe + the 44 px floor + no horizontal scroll at
+  // 390 px; and the leak leg drives the same page from three members' own
+  // contexts.
+  '/[circle]/search': {
+    leg:
+      'search.spec — "A11Y-12: the search field labelled and keyboard-reachable, results as headed groups, emphasis as <mark> not colour alone, at 390px"; the leak leg "search leak: at summary a body-only term renders the SAME shape as a term present nowhere; a title term finds the document with a snippet cut from title + summary (SRCH-03, AC-DOC-4)" drives it from three members’ live contexts',
+  },
   '/[circle]/tasks/[task]/assign': {
     leg: 'record.spec — "cross-taint: not offered where she cannot see the subject; the sentence and exactly two paths where she can; path 1 readable and the original invisible FROM HER LIVE CONTEXT (TSK-01, AC-TASK-6)" drives it over a live crossing; axe runs inside that leg',
   },

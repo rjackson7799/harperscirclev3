@@ -138,6 +138,7 @@ input[type='email'],
 input[type='password'],
 input[type='file'],
 input[type='date'],
+input[type='search'],
 select,
 textarea {
   width: 100%;
@@ -310,6 +311,37 @@ a:focus-visible {
   flex-direction: column;
   align-items: flex-end;
 }
+/* 8B: the ask-the-record search field (design_spec §4's second top-bar
+   item; PRD §4.7.3). A plain GET form; the first-open hint sits under the
+   input as its description. The input rides the shared element rule above
+   (`input[type='search']` joined it), so the 44px floor holds here too. */
+.search-field {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 240px;
+  max-width: 420px;
+  gap: 2px;
+}
+.search-field input[type='search'] {
+  appearance: none;
+  -webkit-appearance: none;
+}
+.search-hint {
+  padding-left: 2px;
+}
+/* The bound label the top bar has no room to show: the standard clip
+   pattern — present for assistive technology, absent from the paint. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .shell-body {
   display: flex;
   flex: 1;
@@ -391,6 +423,17 @@ a:focus-visible {
   }
 }
 @container (max-width: 899px) {
+  /* 8B: under the boundary the search field takes its own full row below
+     the wordmark and the user chip — DOM order (and so focus order) is
+     unchanged; only the paint wraps. */
+  .topbar {
+    flex-wrap: wrap;
+  }
+  .search-field {
+    flex-basis: 100%;
+    max-width: none;
+    order: 10;
+  }
   .shell-body {
     flex-direction: column;
   }
@@ -1151,4 +1194,27 @@ a:focus-visible {
 }
 .log-entries li {
   margin-bottom: 6px;
+}
+
+/* --------------------------------------------------------------------------
+   8B · Search results (PRD §4.7.3; SRCH-04/05; A11Y-12). Groups are headed
+   sections in the record-section shape; a row is the object's title as the
+   link, its subject label and category, then the snippet. The emphasis is
+   a <mark> BUILT BY REACT from the module's parts — structure, never
+   markup — and it is never colour alone (§8.7): weight and an underline
+   carry it, the wash is the decoration.
+   -------------------------------------------------------------------------- */
+.search-snippet {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  margin: 4px 0 0;
+}
+.search-snippet mark {
+  background: var(--wash);
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: 3px;
+  padding: 0 1px;
 }

@@ -3,7 +3,9 @@ import { TopBar } from '@/components/shell/TopBar';
 import { LeftNav } from '@/components/shell/LeftNav';
 import { asUser } from '@/lib/db/user';
 import { readLiveSession } from '@/lib/auth/session';
+import { SearchField } from '@/components/shell/SearchField';
 import { myMembership } from '@/lib/hc/tasks';
+import { placeholderFor } from '@/lib/hc/search';
 
 /**
  * The (app) shell (D3, §8.3): every circle-scoped screen renders inside
@@ -32,17 +34,28 @@ export default async function CircleLayout({
   // manifest: the surfaces refuse for themselves. The TIER crosses to the
   // client nav, never the entries — NavEntry.href is a function and cannot
   // cross the RSC boundary (the first 7C gate run proved it at every page).
+  //
+  // 8B (slice-8 plan, settled item 2): the SAME read carries the circle's
+  // subject names, so the search field's §4.7.3 placeholder costs no second
+  // round trip per screen. A failed read says `Search the record` — true
+  // for every circle, promising nothing — and never hides the field.
   let tier: string | null = null;
+  let placeholder = placeholderFor(null);
   if (read.kind === 'signed-in') {
     try {
-      tier = (await myMembership(read.claims, circle))?.tier ?? null;
+      const me = await myMembership(read.claims, circle);
+      tier = me?.tier ?? null;
+      placeholder = placeholderFor(me?.subjects);
     } catch (err) {
       console.error(`layout: membership read failed: ${(err as Error).message}`);
     }
   }
 
   return (
-    <Shell topBar={<TopBar user={user} />} nav={<LeftNav circle={circle} tier={tier} />}>
+    <Shell
+      topBar={<TopBar search={<SearchField circle={circle} placeholder={placeholder} />} user={user} />}
+      nav={<LeftNav circle={circle} tier={tier} />}
+    >
       {children}
     </Shell>
   );

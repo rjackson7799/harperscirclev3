@@ -251,23 +251,44 @@ export async function taskById(
   });
 }
 
-export type Membership = { id: string; tier: 'coordinator' | 'family' | 'care_circle' };
+export type MembershipSubject = { id: string; first_name: string; seq: number };
+export type Membership = {
+  id: string;
+  tier: 'coordinator' | 'family' | 'care_circle';
+  /** 8B (slice-8 plan Q4(2)): the circle's subjects in founding order,
+   *  riding the ONE existing query so the shell's §4.7.3 placeholder costs
+   *  no second round trip per screen. */
+  subjects: MembershipSubject[];
+};
 
 /** The caller's own live membership in this circle — the `Mine` filter's
  *  key and the tier that picks the empty sentence (§4.5.5) — or null for
- *  an outsider. `circle_members_select` is the gate. */
+ *  an outsider. `circle_members_select` is the gate. WIDENED at 8B to
+ *  carry the circle's subject names (Q4(2)): the layout already makes this
+ *  one call for the nav's tier courtesy, and the search field's
+ *  placeholder needs the subject's name on every screen; a second
+ *  `withRequestRole` per screen was the cost the plan refused. */
 export async function myMembership(claims: RequestClaims, circleId: string): Promise<Membership | null> {
   if (!UUID_RE.test(circleId)) return null;
   return withRequestRole('authenticated', claims, async (q) => {
-    const r = await q.query<{ id: string; tier: string }>(
-      `select m.id, m.tier::text as tier from public.circle_members m
+    const r = await q.query<{ id: string; tier: string; subjects: MembershipSubject[] | null }>(
+      `select m.id, m.tier::text as tier,
+              (select coalesce(json_agg(json_build_object('id', s.id, 'first_name', s.first_name, 'seq', sq.seq)
+                                        order by sq.seq), '[]'::json)
+                 from public.subjects s join (${SUBJECT_SEQ}) sq on sq.id = s.id) as subjects
+         from public.circle_members m
         where m.circle_id = $1 and m.account_id = (select auth.uid())
           and m.removed_at is null and m.subject_id is null
         limit 1`,
       [circleId],
     );
     const row = r.rows[0];
-    return row ? { id: row.id, tier: row.tier as Membership['tier'] } : null;
+    if (!row) return null;
+    return {
+      id: row.id,
+      tier: row.tier as Membership['tier'],
+      subjects: (row.subjects ?? []).map((s) => ({ ...s, seq: Number(s.seq) })),
+    };
   });
 }
 
