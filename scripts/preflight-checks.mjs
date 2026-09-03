@@ -82,3 +82,48 @@ export function devLockVerdict(info, isAlive) {
       'Next 16 refuses a second next dev in this directory on ANY port; stop it (`Get-Process -Id` names it) or wait',
   };
 }
+
+/**
+ * The floor that free physical memory is measured against on the e2e leg:
+ * 1.2 GiB.
+ *
+ * Source: round 27, the 7D close-out gate (docs/review/slice-8-plan.md,
+ * §"The two round-27 host traps", trap 2). The 58-leg gate finished only with
+ * ~1.2 GB free — the owner closing VS Code, Chrome and ChatGPT first, with
+ * NODE_OPTIONS=--max-old-space-size=1536 keeping `next dev` alive and
+ * hc_clamd idle — and four runs below that died on a spawn UNKNOWN, a
+ * WorkerError, a dev-server death and an auth 504, with ZERO product
+ * assertions failing. The number is what was observed on this 7.7 GiB host,
+ * not a derived budget; move it when a gate run moves it.
+ *
+ * What is measured: `os.freemem()`, passed in by the script. On win32 libuv
+ * takes it from GlobalMemoryStatusEx as `ullAvailPhys` — physical memory
+ * AVAILABLE for reuse, which is Task Manager's "Available" (free pages plus
+ * the standby cache), not its smaller "Free". So the figure printed here is
+ * the generous one, and a WARN against it is not a rounding artefact.
+ *
+ * A WARN and never a BLOCK, because the host's condition is the owner's call:
+ * a hard floor would refuse a legitimate run the owner has already made room
+ * for, and the round-27 evidence is about this host, not every host.
+ */
+export const GATE_FREE_MEMORY_FLOOR = Math.round(1.2 * 2 ** 30);
+
+const gib = (bytes) => (bytes / 2 ** 30).toFixed(2);
+
+/**
+ * @param {number} freeBytes  `os.freemem()` — measured by the script, never here
+ * @param {number} floor      GATE_FREE_MEMORY_FLOOR, or a test's own
+ * @returns {{ level: 'OK' | 'WARN', check: 'memory', detail: string }}
+ */
+export function memoryVerdict(freeBytes, floor) {
+  if (freeBytes < floor) {
+    return {
+      level: 'WARN',
+      check: 'memory',
+      detail:
+        `${gib(freeBytes)} GiB free — BELOW the ${gib(floor)} GiB floor the 58-leg gate finished with (round 27); ` +
+        'close VS Code / Chrome / ChatGPT first, or expect legs to die on spawn rather than on assertions',
+    };
+  }
+  return { level: 'OK', check: 'memory', detail: `${gib(freeBytes)} GiB free (floor ${gib(floor)} GiB)` };
+}

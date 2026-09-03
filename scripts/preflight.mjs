@@ -46,9 +46,9 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
-import { tmpdir } from 'node:os';
+import { freemem, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { devLockVerdict, parseDevLock } from './preflight-checks.mjs';
+import { GATE_FREE_MEMORY_FLOOR, devLockVerdict, memoryVerdict, parseDevLock } from './preflight-checks.mjs';
 
 // The stack's ports are 5434x, not the 5432x defaults (supabase/config.toml).
 const PORT = { api: 54341, db: 54342, mailpit: 54344, dev: 3000, fixture: 8787, clamd: 3310 };
@@ -69,12 +69,13 @@ const DEV_LOCK = '.next/dev/lock';
 // Mailpit, a FREE 3000 and 8787 (reuseExistingServer:false on both webServers,
 // so an occupied port fails the gate at startup), clamd — and `.next/dev/lock`
 // unheld, because Next 16 refuses a second `next dev` in this directory on ANY
-// port, which no port table can see (round 27; slice 8 Q7).
+// port, which no port table can see — and a look at free memory, because this
+// host finishes a 58-leg gate only above a floor (round 27; slice 8 Q7).
 const NEEDS = {
-  db: { open: [PORT.db], free: [], clamd: false, devlock: false },
-  concurrency: { open: [PORT.db], free: [], clamd: false, devlock: false },
-  e2e: { open: [PORT.api, PORT.db, PORT.mailpit], free: [PORT.dev, PORT.fixture], clamd: true, devlock: true },
-  any: { open: [], free: [], clamd: false, devlock: false },
+  db: { open: [PORT.db], free: [], clamd: false, devlock: false, memory: false },
+  concurrency: { open: [PORT.db], free: [], clamd: false, devlock: false, memory: false },
+  e2e: { open: [PORT.api, PORT.db, PORT.mailpit], free: [PORT.dev, PORT.fixture], clamd: true, devlock: true, memory: true },
+  any: { open: [], free: [], clamd: false, devlock: false, memory: false },
 };
 
 const argv = process.argv.slice(2);
@@ -232,6 +233,15 @@ async function main() {
       /* absent — nothing to argue with */
     }
     const v = devLockVerdict(parseDevLock(lockText), alive);
+    add(v.level, v.check, v.detail);
+  }
+
+  // --- 4c. free memory (round 27; slice 8 Q7) — a WARN, never a BLOCK -----
+  // This 7.7 GiB host finished the 58-leg gate only with ~1.2 GiB free; four
+  // runs below that died with ZERO product assertions failing. The floor, its
+  // source and what os.freemem() measures on win32 are at the constant.
+  if (needs.memory) {
+    const v = memoryVerdict(freemem(), GATE_FREE_MEMORY_FLOOR);
     add(v.level, v.check, v.detail);
   }
 
