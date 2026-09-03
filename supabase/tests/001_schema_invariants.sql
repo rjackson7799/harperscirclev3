@@ -255,8 +255,8 @@ select is((select array_agg(code order by code) from hc.log_event_types),
         'invite_issued','invite_revoked','member_joined','member_removed',
         'object_approved','object_share_revoked','object_shared','proposal_rejected',
         'sender_accepted','sender_revoked','signed_out','task_assigned',
-        'task_completed','task_reassigned','task_snoozed','task_unassigned']::text[],
-  'the event-type enumeration is seeded — pinned as the EXACT SET, the 002 pattern (R3/F-8: a count let a renamed code pass) — (1A''s seven + 1B–1D''s three + 2A''s eight + 4A''s three + 5A''s one: conflict_resolved + 6A M3''s one: proposal_rejected + 7A M1''s two: task_assigned, task_reassigned + 7A M2''s two: task_completed, task_snoozed)');
+        'task_claimed','task_completed','task_reassigned','task_snoozed','task_unassigned']::text[],
+  'the event-type enumeration is seeded — pinned as the EXACT SET, the 002 pattern (R3/F-8: a count let a renamed code pass) — (1A''s seven + 1B–1D''s three + 2A''s eight + 4A''s three + 5A''s one: conflict_resolved + 6A M3''s one: proposal_rejected + 7A M1''s two: task_assigned, task_reassigned + 7A M2''s two: task_completed, task_snoozed + 8A M1''s one: task_claimed)');
 
 -- Round-5 F1: the declaration precedes the subject row it binds, so the
 -- (circle_id, subject_id) FK must be deferrable — checked at commit, when
