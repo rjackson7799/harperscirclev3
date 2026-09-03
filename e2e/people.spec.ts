@@ -652,6 +652,28 @@ test.describe('the 7C people legs', () => {
       (await f.page.locator('.log-disclosure').allTextContents()).join(' ');
     expect(await saidAbout()).not.toMatch(/\d/);
 
+    // EACH page prints itself, so the check runs on the FIRST page as well
+    // as the last — the title says "each page", and a print assertion made
+    // only at the end of the walk would not be that claim. (Found by 8C's
+    // OW-05 leg-integrity pass against this very title, before the gate.)
+    const printsItself = async () => {
+      const pager = f.page.locator('.log-pager');
+      await expect(f.page.locator('.log-disclosure')).toBeVisible();
+      const onScreen = await f.page.locator('.log-entries li').count();
+      expect(onScreen).toBeGreaterThan(0);
+      await f.page.emulateMedia({ media: 'print' });
+      try {
+        expect(await f.page.locator('.log-entries li').count()).toBe(onScreen);
+        expect(await f.page.locator('.log-entries li').first().isVisible()).toBe(true);
+        expect(await f.page.locator('.log-disclosure').first().isVisible()).toBe(true);
+        // the pager is chrome: a printed link is a dead link
+        if ((await pager.count()) > 0) expect(await pager.first().isVisible()).toBe(false);
+      } finally {
+        await f.page.emulateMedia({ media: 'screen' });
+      }
+    };
+    await printsItself();
+
     // WALK. Press the control a person would press until there is no more
     // "older" to press, and assert we actually moved each time.
     const older = () => f.page.getByRole('link', { name: 'Older entries' });
@@ -674,22 +696,12 @@ test.describe('the 7C people legs', () => {
     await expect(f.page.locator('.log-entries li').last()).toContainText(/custodian/i);
     await expect(f.page.locator('.log-disclosure')).toContainText(/set up|custodian/i);
 
-    // THE PRINTED PROJECTION IS THIS PAGE. The entries and the sentence
-    // about them survive; the pager does not, because a printed link is a
-    // dead link — and the CONTROL first, since isVisible() answers false
-    // for an element that does not exist as readily as for a hidden one.
-    const pager = f.page.locator('.log-pager');
-    await expect(f.page.locator('.log-disclosure')).toBeVisible();
-    const onScreen = await f.page.locator('.log-entries li').count();
-    await f.page.emulateMedia({ media: 'print' });
-    try {
-      expect(await f.page.locator('.log-entries li').count()).toBe(onScreen);
-      expect(await f.page.locator('.log-entries li').first().isVisible()).toBe(true);
-      expect(await f.page.locator('.log-disclosure').first().isVisible()).toBe(true);
-      if ((await pager.count()) > 0) expect(await pager.first().isVisible()).toBe(false);
-    } finally {
-      await f.page.emulateMedia({ media: 'screen' });
-    }
+    // THE PRINTED PROJECTION IS THIS PAGE, at the end of the walk as at the
+    // start. The entries and the sentence about them survive; the pager does
+    // not. The CONTROL comes first inside the helper, because isVisible()
+    // answers false for an element that does not exist as readily as for a
+    // hidden one (R6/F-10).
+    await printsItself();
 
     // …and back to the most recent, by the link that says so.
     await f.page.getByRole('link', { name: /most recent/i }).click();
