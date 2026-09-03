@@ -1,6 +1,16 @@
 # ADR-0041 — Slice 8B: Search, the surface — deltas as built, and the round-29 packet
 
-**Status:** proposed — the 8B build record, put to round 29 (**Tier 2**, ruled at
+**Status:** **`accepted` — 2026-09-03.** Stamped at slice 8's close-out
+(ADR-0043 D1), which ruled Q-A…Q-G in `docs/review/slice-8-dispositions.md` —
+**all seven as recommended**, Q-E and Q-F with a note. Consequence 4, the
+**TSD §7.2 erratum, is DISCHARGED** there (ADR-0043 D3): one line naming both
+departures — `ts_headline`'s `StartSel=U+0002, StopSel=U+0003` and the row's
+own title in the select list (Q-A). **`accepted` records that the questions
+were RULED, not that round 29 was held — it was NOT** (ADR-0043 D6). Ruled by
+the close-out session on the owner's standing instruction in
+`docs/review/slice-8-closeout-kickoff.md`; ratified by the owner at the
+close-out merge. *Originally, and unchanged beneath this stamp:* the 8B build
+record, put to round 29 (**Tier 2**, ruled at
 the plan gate, Q1: this one document plus one dispositions table, one reviewer
 session attacking the three places named below).
 **Branch:** `slice/8b-search-app`, from `origin/main` @ `189e06c` (PR #40, 8A,
