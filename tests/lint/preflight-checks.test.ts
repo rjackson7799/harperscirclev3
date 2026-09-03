@@ -115,8 +115,14 @@ describe('the wiring — the script reads the dev lock through the module, and o
     expect(script).toMatch(/from '\.\/preflight-checks\.mjs'/);
   });
 
-  it("it reads `.next/dev/lock` (next dev) and leaves `.next/lock` (next build) alone", () => {
-    expect(script).toMatch(/\.next\/dev\/lock/);
-    expect(script).not.toMatch(/['"`]\.next\/lock['"`]/);
+  it('it reads `.next/dev/lock` (next dev) and leaves `.next/lock` (next build) alone', () => {
+    expect(script).toMatch(/const DEV_LOCK = '\.next\/dev\/lock'/);
+    // A SCANNER MATCHES ITS OWN COMMENTS (traps §9): the script may SAY that
+    // `.next/lock` is not its business; it may not name it in code.
+    const code = script
+      .split(/\r?\n/)
+      .filter((l) => !/^\s*(\/\/|\/?\*)/.test(l))
+      .join('\n');
+    expect(code).not.toMatch(/['"`]\.next\/lock['"`]/);
   });
 });

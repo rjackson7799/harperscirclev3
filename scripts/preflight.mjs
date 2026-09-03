@@ -33,7 +33,7 @@
  *
  *   0  SAFE (report only), or the wrapped command's own exit code
  *   1  internal error
- *   3  BLOCKED — a peer session holds the stack lease
+ *   3  BLOCKED — a peer session holds the stack lease, or a peer next dev holds .next/dev/lock
  *   4  BLOCKED — environment wrong (ports hot, stack down, stale fixture server)
  *   5  BLOCKED — HEAD moved, or peer-dirty files. Re-run to acknowledge.
  *
@@ -48,6 +48,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { devLockVerdict, parseDevLock } from './preflight-checks.mjs';
 
 // The stack's ports are 5434x, not the 5432x defaults (supabase/config.toml).
 const PORT = { api: 54341, db: 54342, mailpit: 54344, dev: 3000, fixture: 8787, clamd: 3310 };
@@ -55,6 +56,10 @@ const PORT = { api: 54341, db: 54342, mailpit: 54344, dev: 3000, fixture: 8787, 
 const STATE_DIR = '.gate';
 const HEAD_FILE = `${STATE_DIR}/last-head`;
 const LOCK_FILE = join(tmpdir(), `hc-stack-${PORT.db}.lock`);
+// Next 16's dev lock (server/lib/router-utils/setup-dev-bundler.js): held per
+// DIRECTORY, on any port, for as long as a `next dev` lives. `next build`
+// locks `.next/lock` instead, and that one is not this script's business.
+const DEV_LOCK = '.next/dev/lock';
 
 // What each leg actually needs — measured, not assumed. `test:db` and
 // `test:concurrency` talk to Postgres alone (scripts/concurrency/run.mjs dials
@@ -62,12 +67,14 @@ const LOCK_FILE = join(tmpdir(), `hc-stack-${PORT.db}.lock`);
 // demanding Kong and Mailpit for a pgTAP run — the round-19 shape — would have
 // turned CI red on the branch's first push. The browser gate needs the API,
 // Mailpit, a FREE 3000 and 8787 (reuseExistingServer:false on both webServers,
-// so an occupied port fails the gate at startup) and clamd.
+// so an occupied port fails the gate at startup), clamd — and `.next/dev/lock`
+// unheld, because Next 16 refuses a second `next dev` in this directory on ANY
+// port, which no port table can see (round 27; slice 8 Q7).
 const NEEDS = {
-  db: { open: [PORT.db], free: [], clamd: false },
-  concurrency: { open: [PORT.db], free: [], clamd: false },
-  e2e: { open: [PORT.api, PORT.db, PORT.mailpit], free: [PORT.dev, PORT.fixture], clamd: true },
-  any: { open: [], free: [], clamd: false },
+  db: { open: [PORT.db], free: [], clamd: false, devlock: false },
+  concurrency: { open: [PORT.db], free: [], clamd: false, devlock: false },
+  e2e: { open: [PORT.api, PORT.db, PORT.mailpit], free: [PORT.dev, PORT.fixture], clamd: true, devlock: true },
+  any: { open: [], free: [], clamd: false, devlock: false },
 };
 
 const argv = process.argv.slice(2);
@@ -208,6 +215,24 @@ async function main() {
     } else {
       add('OK', 'stack', `${needs.open.join('/')} open`);
     }
+  }
+
+  // --- 4b. the Next 16 dev lock (round 27; slice 8 Q7) ---------------------
+  // The ports check knows 3000. Next 16.3.1 refuses a second `next dev` in
+  // this DIRECTORY on any port, so a peer on 3100 killed the 7D gate at startup
+  // while this script said SAFE. The lock is JSON that names the peer — pid
+  // and appUrl — so the refusal names it too. Absent, unreadable, corrupt, or
+  // naming a dead pid: stale, and OK. preflight-checks.mjs carries the verdict
+  // and says why a live-but-reused pid still blocks.
+  if (needs.devlock) {
+    let lockText;
+    try {
+      lockText = readFileSync(DEV_LOCK, 'utf8');
+    } catch {
+      /* absent — nothing to argue with */
+    }
+    const v = devLockVerdict(parseDevLock(lockText), alive);
+    add(v.level, v.check, v.detail);
   }
 
   // --- 5. stale fixture server -------------------------------------------
