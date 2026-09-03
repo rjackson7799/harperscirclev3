@@ -34,7 +34,8 @@
  *   0  SAFE (report only), or the wrapped command's own exit code
  *   1  internal error
  *   3  BLOCKED — a peer session holds the stack lease, or a peer next dev holds .next/dev/lock
- *   4  BLOCKED — environment wrong (ports hot, stack down, stale fixture server)
+ *   4  BLOCKED — environment wrong (ports hot, stack down, stale fixture server,
+ *      or the previous gate record could not be moved aside)
  *   5  BLOCKED — HEAD moved, or peer-dirty files. Re-run to acknowledge.
  *
  * PROCESS TOOLS: always execFileSync, never through a shell. `tasklist /FI`
