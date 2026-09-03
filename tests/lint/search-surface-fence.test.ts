@@ -128,19 +128,19 @@ describe('8B · (3) a search writes nothing to the access log', () => {
 });
 
 describe('8B · (4)/(5) the module: one channel, three bounded reads, no total', () => {
-  const module = () => stripComments(read(SEARCH_SURFACE.module));
+  const moduleSource = () => stripComments(read(SEARCH_SURFACE.module));
 
   it('opens withRequestRole EXACTLY once — the three reads share one transaction and one set of claims', () => {
-    expect(module().match(/\bwithRequestRole\s*\(/g)?.length ?? 0).toBe(1);
+    expect(moduleSource().match(/\bwithRequestRole\s*\(/g)?.length ?? 0).toBe(1);
   });
 
   it('every read is bounded to 20 rows and to one explicit circle — three of each', () => {
-    expect(module().match(/\blimit 20\b/g)?.length ?? 0).toBe(3);
-    expect(module().match(/\bcircle_id = \$1\b/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(moduleSource().match(/\blimit 20\b/g)?.length ?? 0).toBe(3);
+    expect(moduleSource().match(/\bcircle_id = \$1\b/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
   });
 
   it('issues no count(): there is no total, and no parameter that could produce one', () => {
-    expect(HAS_COUNT.test(module())).toBe(false);
+    expect(HAS_COUNT.test(moduleSource())).toBe(false);
     expect(HAS_COUNT.test('select count(*) from x')).toBe(true); // control
   });
 
