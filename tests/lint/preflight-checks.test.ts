@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   GATE_FREE_MEMORY_FLOOR,
+  archivedRecordName,
   devLockVerdict,
   memoryVerdict,
   parseDevLock,
@@ -142,9 +143,43 @@ describe('memoryVerdict — free physical memory against a NAMED floor: a WARN, 
   });
 });
 
+describe('archivedRecordName — the previous gate record moves aside before a run can clobber it', () => {
+  // Playwright's JSON reporter writes .gate/e2e-run.json at the END of a run,
+  // so a run that dies still overwrites the last GOOD record (round 27 lost
+  // one that way). The runner rotates it aside first; the name is pure.
+  it('names the archive by the record’s own mtime, colon-free for Windows, beside the record', () => {
+    const name = archivedRecordName('.gate/e2e-run.json', Date.UTC(2026, 8, 1, 23, 42, 10, 123));
+    expect(name).toBe('.gate/e2e-run.2026-09-01T23-42-10Z.json');
+    expect(name).not.toContain(':');
+  });
+
+  it('negative control: different mtimes never share a name — the archive is never itself clobbered', () => {
+    const a = archivedRecordName('.gate/e2e-run.json', 1_000_000_000_000);
+    const b = archivedRecordName('.gate/e2e-run.json', 1_000_000_001_000);
+    expect(a).not.toBe(b);
+  });
+
+  it('negative control: the archive is never the record — the reporter’s next write cannot reach it', () => {
+    expect(archivedRecordName('.gate/e2e-run.json', 0)).not.toBe('.gate/e2e-run.json');
+  });
+});
+
 describe('the wiring — the script reads the dev lock through the module, and only the dev lock', () => {
   const checks = readFileSync('scripts/preflight-checks.mjs', 'utf8');
   const script = readFileSync('scripts/preflight.mjs', 'utf8');
+  const gateDoc = readFileSync('docs/ops/e2e-local-gate.md', 'utf8');
+
+  it('the RUNNER rotates .gate/e2e-run.json aside (renameSync) on the e2e leg before the command starts', () => {
+    expect(script).toMatch(/const RECORD_FILE = `\$\{STATE_DIR\}\/e2e-run\.json`/);
+    expect(script).toMatch(/renameSync\(RECORD_FILE, archivedRecordName\(RECORD_FILE, /);
+    expect(script).toMatch(/needs\.record/);
+  });
+
+  it('docs/ops/e2e-local-gate.md carries the two lines: the NODE_OPTIONS heap and PRESERVE the record', () => {
+    expect(gateDoc).toMatch(/NODE_OPTIONS=--max-old-space-size=1536/);
+    expect(gateDoc).toMatch(/PRESERVE `\.gate\/e2e-run\.json` before ANY re-run/);
+    expect(gateDoc).toMatch(/rotates the previous record aside/);
+  });
 
   it('the checks module measures nothing itself: no node:os import — the script passes os.freemem() in', () => {
     expect(checks).not.toMatch(/from 'node:os'|from 'os'/);
