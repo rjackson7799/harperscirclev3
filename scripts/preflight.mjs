@@ -33,8 +33,9 @@
  *
  *   0  SAFE (report only), or the wrapped command's own exit code
  *   1  internal error
- *   3  BLOCKED — a peer session holds the stack lease
- *   4  BLOCKED — environment wrong (ports hot, stack down, stale fixture server)
+ *   3  BLOCKED — a peer session holds the stack lease, or a peer next dev holds .next/dev/lock
+ *   4  BLOCKED — environment wrong (ports hot, stack down, stale fixture server,
+ *      or the previous gate record could not be moved aside)
  *   5  BLOCKED — HEAD moved, or peer-dirty files. Re-run to acknowledge.
  *
  * PROCESS TOOLS: always execFileSync, never through a shell. `tasklist /FI`
@@ -44,17 +45,31 @@
  * same shell before this script existed.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
-import { tmpdir } from 'node:os';
+import { freemem, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  GATE_FREE_MEMORY_FLOOR,
+  archivedRecordName,
+  devLockVerdict,
+  memoryVerdict,
+  parseDevLock,
+} from './preflight-checks.mjs';
 
 // The stack's ports are 5434x, not the 5432x defaults (supabase/config.toml).
 const PORT = { api: 54341, db: 54342, mailpit: 54344, dev: 3000, fixture: 8787, clamd: 3310 };
 
 const STATE_DIR = '.gate';
 const HEAD_FILE = `${STATE_DIR}/last-head`;
+// playwright.config.ts's JSON reporter output (tests/lint/gate-record.test.ts
+// pins the path). Written at the END of a run — see run().
+const RECORD_FILE = `${STATE_DIR}/e2e-run.json`;
 const LOCK_FILE = join(tmpdir(), `hc-stack-${PORT.db}.lock`);
+// Next 16's dev lock (server/lib/router-utils/setup-dev-bundler.js): held per
+// DIRECTORY, on any port, for as long as a `next dev` lives. `next build`
+// locks `.next/lock` instead, and that one is not this script's business.
+const DEV_LOCK = '.next/dev/lock';
 
 // What each leg actually needs — measured, not assumed. `test:db` and
 // `test:concurrency` talk to Postgres alone (scripts/concurrency/run.mjs dials
@@ -62,12 +77,22 @@ const LOCK_FILE = join(tmpdir(), `hc-stack-${PORT.db}.lock`);
 // demanding Kong and Mailpit for a pgTAP run — the round-19 shape — would have
 // turned CI red on the branch's first push. The browser gate needs the API,
 // Mailpit, a FREE 3000 and 8787 (reuseExistingServer:false on both webServers,
-// so an occupied port fails the gate at startup) and clamd.
+// so an occupied port fails the gate at startup), clamd — and `.next/dev/lock`
+// unheld, because Next 16 refuses a second `next dev` in this directory on ANY
+// port, which no port table can see — and a look at free memory, because this
+// host finishes a 58-leg gate only above a floor (round 27; slice 8 Q7).
 const NEEDS = {
-  db: { open: [PORT.db], free: [], clamd: false },
-  concurrency: { open: [PORT.db], free: [], clamd: false },
-  e2e: { open: [PORT.api, PORT.db, PORT.mailpit], free: [PORT.dev, PORT.fixture], clamd: true },
-  any: { open: [], free: [], clamd: false },
+  db: { open: [PORT.db], free: [], clamd: false, devlock: false, memory: false, record: false },
+  concurrency: { open: [PORT.db], free: [], clamd: false, devlock: false, memory: false, record: false },
+  e2e: {
+    open: [PORT.api, PORT.db, PORT.mailpit],
+    free: [PORT.dev, PORT.fixture],
+    clamd: true,
+    devlock: true,
+    memory: true,
+    record: true,
+  },
+  any: { open: [], free: [], clamd: false, devlock: false, memory: false, record: false },
 };
 
 const argv = process.argv.slice(2);
@@ -210,6 +235,33 @@ async function main() {
     }
   }
 
+  // --- 4b. the Next 16 dev lock (round 27; slice 8 Q7) ---------------------
+  // The ports check knows 3000. Next 16.3.1 refuses a second `next dev` in
+  // this DIRECTORY on any port, so a peer on 3100 killed the 7D gate at startup
+  // while this script said SAFE. The lock is JSON that names the peer — pid
+  // and appUrl — so the refusal names it too. Absent, unreadable, corrupt, or
+  // naming a dead pid: stale, and OK. preflight-checks.mjs carries the verdict
+  // and says why a live-but-reused pid still blocks.
+  if (needs.devlock) {
+    let lockText;
+    try {
+      lockText = readFileSync(DEV_LOCK, 'utf8');
+    } catch {
+      /* absent — nothing to argue with */
+    }
+    const v = devLockVerdict(parseDevLock(lockText), alive);
+    add(v.level, v.check, v.detail);
+  }
+
+  // --- 4c. free memory (round 27; slice 8 Q7) — a WARN, never a BLOCK -----
+  // This 7.7 GiB host finished the 58-leg gate only with ~1.2 GiB free; four
+  // runs below that died with ZERO product assertions failing. The floor, its
+  // source and what os.freemem() measures on win32 are at the constant.
+  if (needs.memory) {
+    const v = memoryVerdict(freemem(), GATE_FREE_MEMORY_FLOOR);
+    add(v.level, v.check, v.detail);
+  }
+
   // --- 5. stale fixture server -------------------------------------------
   // An open 8787 that ANSWERS is a live orphan, not a coincidence. For the e2e
   // leg it is already a BLOCK above; elsewhere it is worth a look.
@@ -253,6 +305,25 @@ async function main() {
  * preflight reads as stale.
  */
 function run(head) {
+  const needs = NEEDS[leg];
+
+  // --- the previous gate record moves aside FIRST (round 27; slice 8 Q7) --
+  // Playwright's JSON reporter writes `.gate/e2e-run.json` at the END of a
+  // run, so a run that dies still overwrites the last GOOD record. Rotate it
+  // aside before the command can start (the archive is named by the record's
+  // mtime — preflight-checks.mjs). If that cannot be done, nothing has been
+  // lost yet: refuse, and the operator preserves it by hand (traps §6).
+  if (needs.record && existsSync(RECORD_FILE)) {
+    try {
+      const archive = archivedRecordName(RECORD_FILE, statSync(RECORD_FILE).mtimeMs);
+      renameSync(RECORD_FILE, archive);
+      console.log(`KEEP     ${RECORD_FILE} -> ${archive}`);
+    } catch (e) {
+      console.error(`preflight: could not preserve ${RECORD_FILE} — ${e?.message ?? e}. Move it aside by hand, then re-run.`);
+      return 4;
+    }
+  }
+
   const lease = {
     pid: process.pid,
     leg,

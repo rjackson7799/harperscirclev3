@@ -212,6 +212,9 @@ docker run -d --name hc_clamd -p 3310:3310 clamav/clamav:stable
   signature is successful responses arriving after ~90 s with zero
   DB lock involvement — classify against available RAM before
   blaming a leg.
+- **`NODE_OPTIONS=--max-old-space-size=1536` keeps `next dev` alive on this
+  host** for a 58-leg run (round 27); `npm run preflight -- --for e2e` prints
+  free memory against the 1.2 GiB floor the gate finished with, as a WARN.
 
 ## The gate run
 
@@ -226,6 +229,10 @@ npx playwright test --trace on
   record — vault-side, since the repo ignores them.
 - **Record:** SHA, date, runner, pass count, and the artifact location —
   one line in the review packet or vault status.
+- **PRESERVE `.gate/e2e-run.json` before ANY re-run** — the JSON reporter
+  writes at the END, so a dying run clobbers the last good record. Through
+  `npm run test:e2e` preflight rotates the previous record aside itself
+  (`.gate/e2e-run.<mtime>.json`); the bare command above does not.
 
 ## Flake policy
 
