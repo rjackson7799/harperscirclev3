@@ -1,11 +1,19 @@
 # Slice 9 — Home: the slice plan
 
-**Status: PLANNED — AWAITING RULINGS.** Nine questions are put below with a
-recommended answer each. **An unanswered question defaults to NOT PLANNED and
-the build does not start** (ADR-0006). Nothing here is a finding: slice 8's
-close-out ruled twenty-one questions and stamped ADR-0040/0041/0042
-`accepted`, and where this plan disagrees with a settled ruling it files a
-**dissent** and says so.
+**Status: PLANNED — RULED. Q1–Q9 SETTLED 2026-09-03 at the plan gate, every
+recommendation accepted as put** — the owner's words: *"go with your best
+recommendation for each open item"* — recorded under *Owner decisions* below,
+each with its consequence. **Nine ruled AS PUT, zero departures; nothing in
+slice 9 is NOT PLANNED.** ADR-0006's default — *an unanswered question is NOT
+PLANNED and the build does not start* — did not have to be exercised: the
+rulings brief arrived with its owner block blank, this session put the nine
+back rather than read a blank either way, and the words above are the answer.
+The rulings were recorded on `docs/slice-9-rulings`, branched from
+`origin/main` @ **`ad9d058`** (PR #44, a true merge commit, parents `7cf16ec`
++ `37ff3fe`; CI on `main` at that SHA confirmed SUCCESS). Nothing here is a
+finding: slice 8's close-out ruled twenty-one questions and stamped
+ADR-0040/0041/0042 `accepted`, and where this plan disagrees with a settled
+ruling it files a **dissent** and says so.
 
 Written at `docs/slice-9-plan` @ `500ee9e`, branched from `origin/main` @
 **`7cf16ec`** (PR #43, a true merge commit, parents `7ef2a69` + `56e8b36`).
@@ -177,7 +185,7 @@ not asserted.
 
 ---
 
-## Migration bound (Q2): **≤ 4** — M1 planned; M2, M3, M4 reserved and NAMED
+## Migration bound (Q2 — SETTLED 2026-09-03): **≤ 4** — M1 planned; M2, M3, M4 reserved and NAMED
 
 **Bounds are FRESH.** Slice 8 closed at **2 of ≤ 4** with M3 and M4
 UNCONSUMED; that bound is spent and closed and does not carry. **The migration
@@ -230,7 +238,7 @@ manifest, with the command's output pasted into the red commit that adds it**
 
 ---
 
-## The increments, the split, and the tiers (Q1)
+## The increments, the split, and the tiers (Q1 — SETTLED 2026-09-03)
 
 ### The split rule, applied
 
@@ -375,7 +383,7 @@ nothing here is quietly absorbed later.
 
 ---
 
-## The owed ledger, and the arithmetic (Q7)
+## The owed ledger, and the arithmetic (Q7 — SETTLED 2026-09-03)
 
 Re-derived this session with `tests/lint/process.test.ts`'s own parser at
 `7cf16ec`: **27 rows · OPEN 1 / 25 · TAKEN 1 · RISK 1 · PROMOTED 6 · CLOSED
@@ -430,7 +438,7 @@ close-out rather than restated.
 
 ---
 
-## The commissioned adversarial pass (Q4)
+## The commissioned adversarial pass (Q4 — SETTLED 2026-09-03)
 
 **ADR-0043 D6 files a dissent, not a block:** *"Three merged increments were
 attacked by nobody… ruling a Tier-1 increment from its own author's
@@ -476,7 +484,7 @@ exposure is bounded; the cost is one session either way.
 
 ---
 
-## G12 and the accessibility floor (Q9)
+## G12 and the accessibility floor (Q9 — SETTLED 2026-09-03)
 
 **`G12-01` stays `pending` at Slice `gate`.** Its instrument is a WCAG 2.2 AA
 audit of the **built** surface against `design-conformance.md` §4, including
@@ -498,7 +506,7 @@ can produce their evidence.
 
 ---
 
-## The CI actions bump (Q8)
+## The CI actions bump (Q8 — SETTLED 2026-09-03)
 
 `.github/workflows/ci.yml` pins `actions/checkout@v4`,
 `actions/setup-node@v4` and `actions/upload-artifact@v4`. GitHub is forcing
@@ -595,6 +603,234 @@ Every state claim in the kickoff was re-derived, not copied:
   at the start of this session (`.github/SECURITY.md`,
   `docs/review/slice-5b-queue-kickoff.md`). Neither is this session's and
   neither was staged — explicit paths only, never `git add -A`.
+
+---
+
+## Owner decisions — SETTLED 2026-09-03 (the plan-gate rulings)
+
+The owner ruled on the nine questions at the plan gate, 2026-09-03, in
+session. **Every recommendation was accepted as put: nine ruled AS PUT, zero
+departures.** The owner's words, quoted exactly and applying to all nine:
+*"go with your best recommendation for each open item"* — the slice-8 short
+form, recorded in `docs/owed.md` as *"the planner's best recommendation
+ratified by the owner's words"* and used there for Q6's per-row verdicts.
+
+**The rulings brief arrived with its `OWNER — ANSWER HERE` block blank, and
+this session did not fill it.** The brief's own rule — *"a question left blank
+is NOT PLANNED by ADR-0006 — say so deliberately if that is the intent"* —
+forbids reading a blank in either direction, so the session put the nine back
+to the owner and wrote no ruling until the words above came back. That is the
+slice-8 precedent exercised a second time: a first slice-8 rulings session on
+2026-09-02 *"found every ruling line blank, stopped without editing, and put
+the seven back."* **ADR-0006's default was therefore never exercised, and
+nothing in slice 9 is NOT PLANNED.**
+
+**Who chose what, so it is not inferred later.** The owner chose the *form* —
+delegation to the planner's best recommendation — and by those words ratified
+the nine recommended answers as the ruling. The *content* of each is the
+planning session's, argued in the body above and preserved UNCHANGED below,
+with the alternatives it rejected still visible. Where a ruling departed from
+its recommendation it would sit beneath the recommendation it replaces, which
+stays visible (ADR-0025 D6; ADR-0043's *amended with markers, never
+rewritten*). **There are none, so no marker of that kind appears anywhere in
+this file.**
+
+### The tally
+
+| Q | Subject | Ruled | As put? |
+|---|---|---|---|
+| **Q1** | Increments, the split, the tiers | Two increments — **9A Tier 1**, **9B Tier 2** (ruled DOWN); day one first | **AS PUT** |
+| **Q2** | The migration bound | **≤ 4** — M1 planned, M2/M3/M4 reserved; expected close **1 of ≤ 4** | **AS PUT** |
+| **Q3** | FRZ-17 / OW-27 | **IN, as M1**, with the two-case pgTAP pair; `OW-27 → TAKEN(9A/M1)` | **AS PUT** |
+| **Q4** | The commissioned adversarial pass | **IN, as round 31**, before 9A's build; DDL exit = M2 | **AS PUT** |
+| **Q5** | Home's composition rule | Empty read renders **nothing**, never a zero; day-one card on a succeeding zero read | **AS PUT** |
+| **Q6** | AC-HOME-2, AC-HOME-1's provability | **HOME-06 `pending` at `gate`**, never green this slice; HOME-01 green-able | **AS PUT** |
+| **Q7** | The burn-down quota | A **ceiling on growth, not a floor on work**; satisfied by exhaustion | **AS PUT** |
+| **Q8** | The CI actions bump | **Its own chore PR, Tier 3**, not slice 9's | **AS PUT** |
+| **Q9** | G12-01 and the four `gate` rows | **None of them moves**; Home's a11y built in as `A11Y-13` | **AS PUT** |
+
+**Nine ruled as put. Zero departed.** The prose below and the table above say
+the same thing, and neither claims a departure the other does not: because
+there are none, the bound, the tiers, the round numbers and the coverage list
+in the body above **stand exactly as written** and no downstream tracing was
+required. Had any ruling departed, the trace through those four would have
+ridden this same commit.
+
+### The rulings, with their consequences
+
+- **Q1 — SETTLED:** *"go with your best recommendation"* → **two increments.
+  9A = the freeze guard, Tier 1. 9B = Home, Tier 2, ruled DOWN from the
+  fail-closed Tier-1 default** on the argument recorded above. **Day one and
+  the router in ONE increment, day one built FIRST**, its *"and nothing else"*
+  assertion going green against a tree where the router does not yet exist and
+  surviving the router's arrival. **9B may hold Tier-3 units** (copy, styling)
+  — the split rule forbids T1+T3, not T2+T3. *Consequence:* the split rule is
+  satisfied by construction — M1 is Tier 1 and rides alone. Review is **3–8
+  lenses for 9A, at least one from a different model family than the author**,
+  and **one session for 9B**, attacking the three places the build names
+  against itself; the browser gate runs at both heads and is **unconditional
+  for 9A** (ADR-0033 D19.14 — a kickoff may not narrow it). **A tier is never
+  lowered mid-slice**; the owner may raise one on the record before a line is
+  written. 9A's branch is `slice/9-freeze-guard`; 9B's is named at its own
+  kickoff. The one-increment and Tier-3 alternatives are rejected.
+- **Q2 — SETTLED:** → **the migration bound is ≤ 4.** M1 `claim_task_freeze_guard`
+  planned · M2 reserved and NAMED for a DDL fix arising from round 31 · M3
+  reserved for round-31/32/33 dispositions · M4 reserved and NAMED for one
+  composed Home read definer, consumed **ONLY on a MEASURED page-p95 breach at
+  the 9B head** with the numbers pasted into the red commit. **Expected close:
+  1 of ≤ 4.** *Consequence:* **the bound now exists** — it did not until this
+  gate set it, and slice 8's closed bound of 2 of ≤ 4 does not carry. The tree
+  moves **76 → 77** migrations with **pgTAP files unchanged at 71** (M1's cases
+  append to `070_task_claim.sql`, whose `plan(40)` is re-pinned in the same
+  commit); `072` and beyond only on a consumed reserve. **A reserve not
+  consumed closes UNCONSUMED and the bound closes at what was spent.**
+  Anything past ≤ 4 is a recorded owner amendment **made before a line is
+  written**. The zero-DDL alternative, priced above, is rejected.
+- **Q3 — SETTLED:** → **FRZ-17 / OW-27 is IN, as M1**, with the two-case pgTAP
+  pair: the refusal under an **`unresolved`** freeze **and** the control
+  proving her carve-out READ still resolves. **`OW-27 → TAKEN(9A/M1)`.**
+  *Consequence:* the ledger status change rides **9A's FIRST docs-only
+  commit** under the OW-04 precedent — a plan-gate ruling is sufficient
+  authority for a ledger *status* change and **no verdict moves** (ADR-0025
+  D6) — quoting this ruling. **`FRZ-17` gets no new coverage row:** it exists,
+  `pending`, Slice cell `8 → 9`, and flips green at 9A when M1 and its pair
+  land, its Slice cell moving to `9A` at the flip; `OW-27` closes
+  `CLOSED(<sha>)` with the same SHA. Until both land the row is **`pending`,
+  and `pending` never counts as green**. Carrying was not a third option.
+- **Q4 — SETTLED:** → **the commissioned adversarial pass is IN, as round
+  31** — ADR-0043 D6's dissent, discharged rather than carried. It reviews
+  **8A's M1 and M2 as merged** at `main` @ `7cf16ec`, in **its own session, a
+  different leg, and a different model family from 8A's author**, findings
+  landed **VERBATIM** as `docs/review/round-31-findings.md` before anything is
+  argued, dispositions a full ADR (**0044**), **DDL exit = M2**. It runs
+  **BEFORE 9A's build**, and 9A does not start until its findings are landed.
+  *Consequence:* the round numbering is fixed — **31** (the commissioned pass)
+  → **32** (9A) → **33** (9B), which is what `docs/coverage.md`'s new § 9
+  heading will say. **The pass may be run from `main` @ `ad9d058` without
+  re-basing its claim:** `git diff --name-only 7cf16ec ad9d058` returns
+  exactly `docs/review/slice-9-plan-kickoff.md` and
+  `docs/review/slice-9-plan.md`, so `20260903120001_task_claim.sql`,
+  `20260903120002_step_up_level_binding.sql`, `070_task_claim.sql`,
+  `071_step_up_level.sql` and `0040-8a-claim-db-deltas.md` are **byte-identical
+  at both SHAs** — verified this session, not assumed. Ruling it OUT would
+  have left a Tier-1 increment reviewed by nobody; that alternative is
+  rejected.
+- **Q5 — SETTLED:** → **every block renders from its destination surface's own
+  RLS-true read, and a block whose read returns nothing renders NOTHING —
+  never a zero, never a heading.** The **day-one card is shown only to a caller
+  whose arrivals read succeeds and returns zero**; every other caller — the
+  one who cannot enumerate arrivals included — gets the router, and a router
+  with five empty blocks renders **one honest line of its own**. **Recent
+  activity is a descending, small-limit read**, proven against a fixture larger
+  than the cap. *Consequence:* this is the assertion text of **HOME-02** and
+  **HOME-04**, both opening at 9B; the forbidden shape is named — the tail of
+  an ascending `limit 300`, the OW-26 class. A `0` on Home would be a claim
+  about invisible rows, which is why the rule is *nothing*, not *zero*.
+- **Q6 — SETTLED:** → **`HOME-06` opens at Slice `gate`, `pending`, and is
+  never green in this slice.** AC-HOME-2 — *"a member can tell in five seconds
+  what needs them"* — is verified by the moderated protocol of PRD Appendix B
+  (a seeded synthetic circle, five participants) and **no instrument in this
+  repo can prove it**; the row exists so the gap is visible rather than silent.
+  **`HOME-01` does open green-able**, over the rendered tree, with the reason
+  recorded against TSD §11.4 so it does not read as an overclaim. *Consequence:*
+  `docs/coverage.md` gains **§ 9** with **seven rows — HOME-01…HOME-06 and
+  A11Y-13** — taking it from **281 to 288** before any round moves a row.
+  Re-derived this session with `tests/lint/process.test.ts`'s own parser at
+  `ad9d058`: **281 rows · green 258 · review 9 · pending 14 · 0 unparsed**, the
+  fourteen being FRZ-16b, RLS-11b, SIG-01, DEL-01, ADM-01, G12-01, UXA-03,
+  LOG-03, GRP-01, DEP-01, EXE-01, EXE-02, BND-01, FRZ-17, and **no row's ID
+  begins `HOME-`**. **All seven rows are written by 9A's FIRST docs-only
+  commit, quoting these rulings — not by this PR.**
+- **Q7 — SETTLED:** → **the burn-down quota is a ceiling on growth, not a
+  floor on work.** It is **MET when the OPEN count does not rise and no row is
+  carried**, and where the closable population is smaller than *opens + 5* it
+  is **satisfied by exhaustion**, recorded as such at the close. Slice 9 opens
+  **0** and closes **1**, ending at **OPEN 0 / 25** if no round opens a row.
+  **`OW-05 → TAKEN(9/Tier-3 pass)`** — the quota is recurring, the leg backlog
+  is not clear, and slice 9's pass audits the next **8** legs at the 9B
+  close-out, **running whether or not slice 9 has a Tier-3 increment**.
+  *Consequence, and the placement confirmed this session:* the quota is the
+  **second bullet of `docs/owed.md` §Rules** (`docs/owed.md:43-45`, read at
+  `ad9d058`) — it is **neither a coverage assertion nor a ledger status**, so
+  no coverage row and no status-vocabulary change carries it, and **the plan's
+  homing of the edit in 9A's FIRST docs-only commit holds unchanged.** The
+  amendment is a **reading added beneath the rule, not a rewrite of it**: the
+  sentence *"each slice closes at least as many items as it opens, plus five"*
+  survives verbatim and this ruling sits under it. **Nothing enforces the quota
+  mechanically** — the scanner checks the cap (≤ 25), the acceptance condition
+  and the status vocabulary, and not the quota — so this ruling is the only
+  thing that makes slice 9's arithmetic legible instead of a silent violation.
+  The two observations ride the same commit **as facts, not verdicts**: the
+  slice-8 close-out note's *"TAKEN 2 · CLOSED 17"* against the parser's
+  **TAKEN 1 · CLOSED 18** (re-derived here: **27 rows · OPEN 1 · TAKEN 1 ·
+  RISK 1 · PROMOTED 6 · CLOSED 18** — both versions total 27 and the OPEN
+  count, the only one the cap enforces, is right), and OW-05's acceptance
+  condition reading *"24 of the 31"* against a stale denominator of 38 legs
+  where the gate is now **66 legs in 9 files**, to be re-derived at the 9B
+  close-out rather than restated.
+- **Q8 — SETTLED:** → **the CI actions bump gets its own chore PR, Tier 3, and
+  it is not slice 9's.** *Consequence, naming the session and the timing the
+  brief asks for:* it is **not this session's, not 9A's and not 9B's**. It is
+  **its own fresh session on its own `chore/` branch, in the PR #39
+  (`chore/preflight-dev-lock`) shape** — small, independently revertable,
+  evidence one green CI run on the PR itself, merged `--no-ff` by the owner,
+  who is sole merge authority. **It blocks nothing in slice 9 and slice 9
+  blocks nothing in it:** CI on `main` @ `ad9d058` is **SUCCESS** (confirmed
+  this session, not assumed) and the bump is non-blocking until GitHub retires
+  Node 20 on the runners. The precedent landed PR #39 **before** the 8A
+  kickoff and the same order is the natural one here — before 9A, alongside or
+  after round 31 — but **the owner schedules it, and nothing in slice 9 waits
+  on it.** What it may **not** do is ride 9A (the split rule forbids a T3 unit
+  in a T1 increment outright) or 9B (a Tier-2 review cannot assess a workflow
+  change), and folding it into this PR would cost the docs-only property that
+  makes this PR **fully verified by one test file**.
+- **Q9 — SETTLED:** → **none of the five `gate` rows moves.** **`G12-01` stays
+  `pending` at Slice `gate`** — slices 10 (Admin) and 11 (Notifications) still
+  add surface, so an audit run now would audit an incomplete product and
+  flipping the row would claim a review nobody held; **its audit becomes
+  schedulable at slice 11's plan gate**, recorded here so it is not lost.
+  **DEP-01, EXE-01, EXE-02 and BND-01 stay `pending`** — each is a promoted
+  ledger row whose instrument is a deployment, a harness or another slice's
+  increment, and no instrument in slice 9 produces their evidence.
+  *Consequence:* slice 9 builds the legs in instead, as **`A11Y-13`**, at the
+  increment that writes the surface — *"G12 is the final gate, not the first
+  check"*, and a structural accessibility failure found at G12 is a redesign,
+  not a fix. The silent-extension alternative is rejected.
+
+### What this ruling puts in force, and what it does not
+
+**In force from this merge:** the migration bound **≤ 4** · the tiers **9A
+Tier 1, 9B Tier 2** · the round numbers **31 → 32 → 33** · the increment order
+**round 31 before 9A, day one before the router** · `OW-27`'s and `OW-05`'s
+takes · the seven § 9 coverage rows and the Q7 reading, **both as instructions
+to 9A's first docs-only commit, not as writes made here**.
+
+**Deliberately NOT written by this session,** per the brief and the slice-8
+precedent: **no coverage row, no ledger row, no ADR-0044, no code, no gate,
+no `db:reset`.** `docs/coverage.md` and `docs/owed.md` are untouched at
+**281 · 258 · 9 · 14** and **OPEN 1 / 25**; 8A/8B/8C's merged evidence is not
+re-earned. Two untracked files sat in the shared working tree throughout
+(`.github/SECURITY.md`, `docs/review/slice-5b-queue-kickoff.md`); neither is
+this session's and neither was staged — explicit paths only, never
+`git add -A`.
+
+**Still not activated, unchanged by these rulings:** G4 and G7 block · G9 is
+OPEN · G3 is open · `SIG-01` is NOT absorbed and slice 9 does not absorb it ·
+`G12-01` is `pending` at `gate` · `LOG-03` is never green by ruling. **Nothing
+in this plan authorises a line of code**; the build begins at 9A's own kickoff,
+after round 31.
+
+**Markers applied to the body, and nothing else.** The six section headings
+that carry a Q number are stamped `— SETTLED 2026-09-03`, in the slice-8
+plan's shape, so a later reader cannot mistake a ruled section for an open
+one. **No word of the body was changed** — the stamps are additive and a diff
+shows it. The whole diff removes exactly **twelve** lines, counted with
+`git diff -U0 | grep '^-'` and not by eye: the status paragraph's **three**,
+which this leg is instructed to move; the **three** more that the surviving
+sentence *"Nothing here is a finding…"* occupied, re-flowed because the new
+status text joined it mid-line — its words unchanged, only its line breaks
+moved; and the **six** headings the stamps replace. Everything else in this
+file is an insertion.
 
 ---
 
