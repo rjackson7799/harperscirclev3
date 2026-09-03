@@ -1,6 +1,22 @@
 # ADR-0042 — Slice 8C: Claim's surface, and the access log's cursor — deltas as built, and the round-30 packet
 
-**Status:** proposed — the 8C build record, put to round 30 (**Tier 2**, ruled
+**Status:** **`accepted` — 2026-09-03.** Stamped at slice 8's close-out
+(ADR-0043 D1), which ruled Q-A…Q-G in `docs/review/slice-8-dispositions.md`.
+**Q-F ⚠ DEPARTS into a row**: the FRZ-13 carve-out is ruled **read-only by
+intent**, so a claim through it is a defect and not an allowance — carried by
+**FRZ-17** (`pending`, never green) and **OW-27** (`OPEN`), with a NAMED
+M-slot for slice 9's bound; the close-out also narrows Q-F's own adjacent
+worry — `complete_task`, `snooze_task` and `assign_task` are **not** exposed,
+because each raises `freeze_active` before it reaches its level test, so
+`hc.claim_task` is the only task-family write definer the carve-out reaches
+(ADR-0043 D2). **Q-G ⚠ DEPARTS in method**: leg-audit F3's narrowing is ruled
+into SRCH-04's cell and the leg title is left standing, a code change being
+out of a docs-only session's reach (ADR-0043 D4). **`accepted` records that
+the questions were RULED, not that round 30 was held — it was NOT** (ADR-0043
+D6). Ruled by the close-out session on the owner's standing instruction in
+`docs/review/slice-8-closeout-kickoff.md`; ratified by the owner at the
+close-out merge. *Originally, and unchanged beneath this stamp:* the 8C build
+record, put to round 30 (**Tier 2**, ruled
 at the plan gate, Q1: this one document plus one dispositions table, one
 reviewer session attacking the three places named below).
 **Branch:** `slice/8c-claim-log-app`, from `origin/main` @ `d9b96ef` (PR #41,

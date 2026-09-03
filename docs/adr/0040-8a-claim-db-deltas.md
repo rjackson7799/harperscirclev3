@@ -1,6 +1,17 @@
 # ADR-0040 — Slice 8A: claim + the level-bound step-up, the database increment — design decisions and deltas as built
 
-**Status:** proposed — the 8A build record, put to round 28 (**Tier 1**, ruled
+**Status:** **`accepted` — 2026-09-03.** Stamped at slice 8's close-out
+(ADR-0043 D1), which ruled Q-A…Q-G in `docs/review/slice-8-dispositions.md`.
+**Q-A ⚠ DEPARTS from its recommended answer**: the one-shape refusal *string*
+is accepted and stands, the *mechanism* — the freeze through `hc.visible_at`
+rung 2 alone — is not, and the gap it leaves is carried by **FRZ-17** and
+**OW-27** (ADR-0043 D2). **`accepted` records that the questions were RULED,
+not that round 28 was held — it was NOT** (ADR-0043 D6, which recommends a
+commissioned adversarial pass over M1 and M2 at slice 9's plan gate). Ruled by
+the close-out session on the owner's standing instruction in
+`docs/review/slice-8-closeout-kickoff.md`; ratified by the owner at the
+close-out merge. *Originally, and unchanged beneath this stamp:* the 8A build
+record, put to round 28 (**Tier 1**, ruled
 at the plan gate, Q1; the browser gate unconditional, ADR-0033 D19.14).
 **Branch:** `slice/8-claim-db`, from `origin/main` @ `ccb4804` (PR #39,
 `chore/preflight-dev-lock`, the Q7 precondition — one Tier-3 merge past the
