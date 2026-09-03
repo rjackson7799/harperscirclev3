@@ -127,3 +127,24 @@ export function memoryVerdict(freeBytes, floor) {
   }
   return { level: 'OK', check: 'memory', detail: `${gib(freeBytes)} GiB free (floor ${gib(floor)} GiB)` };
 }
+
+/**
+ * Where the previous gate record goes before a run can overwrite it.
+ * Playwright's JSON reporter writes `.gate/e2e-run.json` at the END of a run,
+ * so a run that dies still replaces the last GOOD record — round 27 lost one
+ * that way, and traps §6 says preserve evidence before any re-run. The runner
+ * does the preserving: the archive sits beside the record, named by the
+ * record's own mtime (the moment its run finished), colon-free because
+ * Windows forbids colons in file names. `.gate/` is git-ignored and nothing
+ * wipes it.
+ * @param {string} recordPath  `.gate/e2e-run.json`
+ * @param {number} mtimeMs     the record's mtime
+ * @returns {string}
+ */
+export function archivedRecordName(recordPath, mtimeMs) {
+  const stamp = new Date(mtimeMs)
+    .toISOString()
+    .replace(/\.\d{3}Z$/, 'Z')
+    .replace(/:/g, '-');
+  return recordPath.replace(/\.json$/, `.${stamp}.json`);
+}

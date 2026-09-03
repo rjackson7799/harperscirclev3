@@ -44,17 +44,26 @@
  * same shell before this script existed.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { freemem, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GATE_FREE_MEMORY_FLOOR, devLockVerdict, memoryVerdict, parseDevLock } from './preflight-checks.mjs';
+import {
+  GATE_FREE_MEMORY_FLOOR,
+  archivedRecordName,
+  devLockVerdict,
+  memoryVerdict,
+  parseDevLock,
+} from './preflight-checks.mjs';
 
 // The stack's ports are 5434x, not the 5432x defaults (supabase/config.toml).
 const PORT = { api: 54341, db: 54342, mailpit: 54344, dev: 3000, fixture: 8787, clamd: 3310 };
 
 const STATE_DIR = '.gate';
 const HEAD_FILE = `${STATE_DIR}/last-head`;
+// playwright.config.ts's JSON reporter output (tests/lint/gate-record.test.ts
+// pins the path). Written at the END of a run — see run().
+const RECORD_FILE = `${STATE_DIR}/e2e-run.json`;
 const LOCK_FILE = join(tmpdir(), `hc-stack-${PORT.db}.lock`);
 // Next 16's dev lock (server/lib/router-utils/setup-dev-bundler.js): held per
 // DIRECTORY, on any port, for as long as a `next dev` lives. `next build`
@@ -72,10 +81,17 @@ const DEV_LOCK = '.next/dev/lock';
 // port, which no port table can see — and a look at free memory, because this
 // host finishes a 58-leg gate only above a floor (round 27; slice 8 Q7).
 const NEEDS = {
-  db: { open: [PORT.db], free: [], clamd: false, devlock: false, memory: false },
-  concurrency: { open: [PORT.db], free: [], clamd: false, devlock: false, memory: false },
-  e2e: { open: [PORT.api, PORT.db, PORT.mailpit], free: [PORT.dev, PORT.fixture], clamd: true, devlock: true, memory: true },
-  any: { open: [], free: [], clamd: false, devlock: false, memory: false },
+  db: { open: [PORT.db], free: [], clamd: false, devlock: false, memory: false, record: false },
+  concurrency: { open: [PORT.db], free: [], clamd: false, devlock: false, memory: false, record: false },
+  e2e: {
+    open: [PORT.api, PORT.db, PORT.mailpit],
+    free: [PORT.dev, PORT.fixture],
+    clamd: true,
+    devlock: true,
+    memory: true,
+    record: true,
+  },
+  any: { open: [], free: [], clamd: false, devlock: false, memory: false, record: false },
 };
 
 const argv = process.argv.slice(2);
@@ -288,6 +304,25 @@ async function main() {
  * preflight reads as stale.
  */
 function run(head) {
+  const needs = NEEDS[leg];
+
+  // --- the previous gate record moves aside FIRST (round 27; slice 8 Q7) --
+  // Playwright's JSON reporter writes `.gate/e2e-run.json` at the END of a
+  // run, so a run that dies still overwrites the last GOOD record. Rotate it
+  // aside before the command can start (the archive is named by the record's
+  // mtime — preflight-checks.mjs). If that cannot be done, nothing has been
+  // lost yet: refuse, and the operator preserves it by hand (traps §6).
+  if (needs.record && existsSync(RECORD_FILE)) {
+    try {
+      const archive = archivedRecordName(RECORD_FILE, statSync(RECORD_FILE).mtimeMs);
+      renameSync(RECORD_FILE, archive);
+      console.log(`KEEP     ${RECORD_FILE} -> ${archive}`);
+    } catch (e) {
+      console.error(`preflight: could not preserve ${RECORD_FILE} — ${e?.message ?? e}. Move it aside by hand, then re-run.`);
+      return 4;
+    }
+  }
+
   const lease = {
     pid: process.pid,
     leg,

@@ -171,7 +171,8 @@ describe('the wiring — the script reads the dev lock through the module, and o
 
   it('the RUNNER rotates .gate/e2e-run.json aside (renameSync) on the e2e leg before the command starts', () => {
     expect(script).toMatch(/const RECORD_FILE = `\$\{STATE_DIR\}\/e2e-run\.json`/);
-    expect(script).toMatch(/renameSync\(RECORD_FILE, archivedRecordName\(RECORD_FILE, /);
+    expect(script).toMatch(/archivedRecordName\(RECORD_FILE, statSync\(RECORD_FILE\)\.mtimeMs\)/);
+    expect(script).toMatch(/renameSync\(RECORD_FILE, archive\)/);
     expect(script).toMatch(/needs\.record/);
   });
 
