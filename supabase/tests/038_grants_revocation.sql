@@ -6,7 +6,8 @@
 --   · hc.set_grant(member, subject, domain, level[, step_up_token]) —
 --     coordinator-only, per-subject per-domain (PRD §4.6.3). RAISING
 --     requires a live §5.7 token bound to 'raise_grant' +
---     'member:subject:domain'; LOWERING never does (revocation is never
+--     'member:subject:domain:level' (the level since 8A M2, pinned by 071);
+--     LOWERING never does (revocation is never
 --     gated on re-auth friction). Level 'hidden' DELETES the row —
 --     hidden is the absence of a grant, exactly as tier defaults write
 --     it. The care-circle ceiling binds structurally: a care member's
@@ -77,7 +78,8 @@ begin
   return v;
 end $$;
 
--- Mint a raise_grant token on a fresh session, bound to member:subject:domain.
+-- Mint a raise_grant token on a fresh session, bound to
+-- member:subject:domain:level (8A M2: the level is the fourth part).
 create function pg_temp.mint_raise(p_user uuid, p_target text, p_slot text)
 returns void language plpgsql as $$
 declare v text;
@@ -235,12 +237,12 @@ select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
   'raising without a step-up token refuses — a 30-day session is not authority to widen access (§5.7)');
 
 select pg_temp.mint_raise(current_setting('t.u1')::uuid,
-  current_setting('t.m3') || ':' || current_setting('t.s1') || ':health', 'tok_r1');
+  current_setting('t.m3') || ':' || current_setting('t.s1') || ':health:manage', 'tok_r1');
 select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
   $$ select (hc.set_grant(%L, %L, 'health', 'manage', %L)) ->> 'after' $$,
   current_setting('t.m3'), current_setting('t.s1'), current_setting('t.tok_r1'))),
   'manage',
-  'raising with a live token bound to member:subject:domain succeeds');
+  'raising with a live token bound to member:subject:domain:level succeeds (the level is the fourth part since 8A M2; 071 pins the mismatch)');
 select is(pg_temp.scalar(format(
   $$ select level::text from public.access_grants
      where member_id = %L and domain = 'health' $$,
@@ -248,12 +250,12 @@ select is(pg_temp.scalar(format(
   'the row carries the raised level');
 
 select pg_temp.mint_raise(current_setting('t.u1')::uuid,
-  current_setting('t.m3') || ':' || current_setting('t.s1') || ':finances', 'tok_r2');
+  current_setting('t.m3') || ':' || current_setting('t.s1') || ':finances:view', 'tok_r2');
 select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
   $$ select hc.set_grant(%L, %L, 'documents', 'view', %L)::text $$,
   current_setting('t.m3'), current_setting('t.s1'), current_setting('t.tok_r2'))),
   'ERROR:P0001:grant_refused',
-  'a token bound to ANOTHER domain cannot raise this one — target binding is member:subject:domain');
+  'a token bound to ANOTHER domain cannot raise this one — target binding is member:subject:domain:level');
 
 -- ----------------------------------------------------------------------------
 -- 11–14 · Refusals: one shape; the subject-member row is untouchable
@@ -286,7 +288,7 @@ select is(pg_temp.scalar(format(
 -- 15–17 · The care-circle ceiling binds structurally (§7.4: does not rise)
 -- ----------------------------------------------------------------------------
 select pg_temp.mint_raise(current_setting('t.u1')::uuid,
-  current_setting('t.m4') || ':' || current_setting('t.s1') || ':schedule', 'tok_c1');
+  current_setting('t.m4') || ':' || current_setting('t.s1') || ':schedule:view', 'tok_c1');
 select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
   $$ select hc.set_grant(%L, %L, 'schedule', 'view', %L)::text $$,
   current_setting('t.m4'), current_setting('t.s1'), current_setting('t.tok_c1'))),
@@ -294,7 +296,7 @@ select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
   'care ceiling: schedule cannot rise past summary even WITH a valid token — the ceiling is not a starting point');
 
 select pg_temp.mint_raise(current_setting('t.u1')::uuid,
-  current_setting('t.m4') || ':' || current_setting('t.s1') || ':documents', 'tok_c2');
+  current_setting('t.m4') || ':' || current_setting('t.s1') || ':documents:log', 'tok_c2');
 select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
   $$ select hc.set_grant(%L, %L, 'documents', 'log', %L)::text $$,
   current_setting('t.m4'), current_setting('t.s1'), current_setting('t.tok_c2'))),
@@ -329,7 +331,7 @@ begin
   insert into public.freezes (circle_id) values (current_setting('t.c1')::uuid);
 end $$;
 select pg_temp.mint_raise(current_setting('t.u1')::uuid,
-  current_setting('t.m3') || ':' || current_setting('t.s1') || ':schedule', 'tok_f1');
+  current_setting('t.m3') || ':' || current_setting('t.s1') || ':schedule:summary', 'tok_f1');
 select is(pg_temp.call_as(current_setting('t.u1')::uuid, format(
   $$ select hc.set_grant(%L, %L, 'schedule', 'summary', %L)::text $$,
   current_setting('t.m3'), current_setting('t.s1'), current_setting('t.tok_f1'))),

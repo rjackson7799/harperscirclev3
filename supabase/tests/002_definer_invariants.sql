@@ -63,6 +63,10 @@ select is((
     'circle_people(p_circle uuid)',
     'claim_security_actions(p_limit integer)',
     'claim_stage(p_arrival uuid, p_stage text, p_model_id text, p_prompt_version text, OUT result hc.advance_result, OUT lease_id uuid, OUT attempt_no integer, OUT deadline timestamp with time zone)',
+    -- 8A M1: the caller takes an unassigned open task for HERSELF — one
+    -- argument, so no one else can be named; view on the task from her own
+    -- vectors; no share, no instruction, no path
+    'claim_task(p_task uuid)',
     'close_extraction_run()',
     'complete_security_action(p_action_id uuid)',
     -- 7A M2: the holder (at the level she sees the task as its holder) or
@@ -228,7 +232,7 @@ select is((
         'arrival_auth_detail','assert_claimed',
         'assert_manual_flag','assign_task','auth_throttle','cancel_arrival','check_quota',
         'circle_people',
-        'claim_security_actions','claim_stage','close_extraction_run',
+        'claim_security_actions','claim_stage','claim_task','close_extraction_run',
         'complete_security_action','complete_task','consume_step_up','create_account',
         'create_arrival',
         'create_circle','create_invite','create_manual_proposal',
@@ -257,7 +261,7 @@ select is((
         'sweeper_pass',
         -- 7A M1: the second assignment writer
         'unassign_task']::name[],
-  'SECURITY DEFINER is exactly the eighty-four boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
+  'SECURITY DEFINER is exactly the eighty-five boundary functions, nothing else (draft/write halves run AS the calling definer — not definers themselves)');
 
 -- 4 · search_path pinned to '' on every definer, and on hc.log (invoker,
 --     but it writes the chain — pinned as defence in depth).
@@ -421,6 +425,10 @@ with actual as (
   -- and appears in no grant row by design
   union all select 'complete_task', 'authenticated'
   union all select 'snooze_task', 'authenticated'
+  -- 8A M1: the claim — a member act at view on the task, authorized
+  -- in-function from her OWN vectors; hc_pipeline is deliberately absent
+  -- (PRD §6.5: the AI has no path into a claim either)
+  union all select 'claim_task', 'authenticated'
   -- 7A M3: the audience preview and the move (manage on BOTH domains,
   -- in-function) and unshare (the granter or a coordinator, in-function);
   -- document_audience_rows and document_taint_under are owner-only and

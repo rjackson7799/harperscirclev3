@@ -20,8 +20,10 @@ import {
  * POST /[circle]/people/[member]/grant/submit — adjust one level (7C C4;
  * PRD §4.6.3; PPL-02's app half; AC-PERM-5). LOWERING posts straight
  * through; a RAISE demands the §5.7 token from the `hc-step-up` cookie,
- * bound to `member:subject:domain` and consumed by hc.set_grant in its
- * own transaction — this route only tells raise from lower (the same
+ * bound to `member:subject:domain:level` (the LEVEL since 8A M2 — STP-03:
+ * hc.set_grant composes the same four parts, so what she confirmed and
+ * what the database honours are one sentence) and consumed by hc.set_grant
+ * in its own transaction — this route only tells raise from lower (the same
  * arithmetic the definer re-runs) and clears the cookie either way. The
  * ceiling, the coordinator gate and the log entry with both levels are
  * all the definer's.
@@ -96,10 +98,12 @@ export async function POST(
       // minted for another operation, or another subject/domain, buys a
       // refusal the definer consumes nothing for — and the clear below then
       // burned it. Not bound, not sent, not burned.
+      // 8A M2 · STP-03: the LEVEL is the fourth part of the binding, so a
+      // token minted for another level is not bound to THIS raise either.
       const bound = stepUpConfirms(
         cookieValue(req, STEP_UP_FOR_COOKIE),
         'raise_grant',
-        `${memberId}:${subjectId}:${domain}`,
+        `${memberId}:${subjectId}:${domain}:${level}`,
       );
       const token =
         (current !== null && !raising) || !bound ? null : cookieValue(req, STEP_UP_COOKIE);

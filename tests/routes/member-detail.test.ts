@@ -81,8 +81,14 @@ const MARISOL_M = '44444444-0000-4000-8000-000000000005';
 const SHARE = 'cccccccc-0000-4000-8000-0000000000c1';
 const TASK = 'aaaaaaaa-0000-4000-8000-0000000000a1';
 const CLAIMS = { sub: '33333333-0000-4000-8000-000000000003', role: 'authenticated' };
-/** 7D · R2/F-3: what a token minted for THIS raise is for. */
-const RAISE_FOR = stepUpFor('raise_grant', `${RUTH_M}:${NELL}:health`);
+/**
+ * 7D · R2/F-3: what a token minted for THIS raise is for. 8A M2 (STP-03,
+ * plan Q3(a)): the LEVEL is the fourth part — hc.set_grant composes
+ * member:subject:domain:level, so the page offers the password FOR the level
+ * it is about to confirm and the route confirms the cookie against the same
+ * four parts before it hands the token over.
+ */
+const RAISE_FOR = stepUpFor('raise_grant', `${RUTH_M}:${NELL}:health:view`);
 
 const base = {
   account_id: null,
@@ -292,10 +298,30 @@ describe('the matrix — per subject per domain, words from the ONE module, lowe
 
   it('a raise token for a DIFFERENT subject or domain is not confirmation of this one', async () => {
     stepUpCookie = 'tok';
-    stepUpForCookie = stepUpFor('raise_grant', `${RUTH_M}:${NELL}:finances`);
+    stepUpForCookie = stepUpFor('raise_grant', `${RUTH_M}:${NELL}:finances:view`);
     const html = await renderPage(RUTH_M, { rs: NELL, rd: 'health', rl: 'view' });
     expect(html).toContain('action="/account/step-up/submit"');
     expect(html).not.toContain('Raise it');
+  });
+
+  // 8A M2 · STP-03: the level is in the binding. A token minted to raise
+  // health to SUMMARY is not confirmation of a raise to VIEW — the definer
+  // would refuse it (071:4), so the page must not offer "Raise it" on it.
+  // R3's dissent 1 (round 27): `rl` is only set-validated, so a crafted
+  // link that raises the level she THINKS she confirmed is exactly the
+  // shape a three-part binding does not cover.
+  it('8A M2: a raise token for a DIFFERENT LEVEL on the same member:subject:domain is not confirmation of this one', async () => {
+    stepUpCookie = 'tok';
+    stepUpForCookie = stepUpFor('raise_grant', `${RUTH_M}:${NELL}:health:summary`);
+    const html = await renderPage(RUTH_M, { rs: NELL, rd: 'health', rl: 'view' });
+    expect(html).toContain('action="/account/step-up/submit"');
+    expect(html).not.toContain('Raise it');
+  });
+
+  it('8A M2: the password form asks for confirmation OF THE LEVEL — the hidden target_ref carries member:subject:domain:level', async () => {
+    const html = await renderPage(RUTH_M, { rs: NELL, rd: 'health', rl: 'view' });
+    expect(html).toContain(`name="target_ref" value="${RUTH_M}:${NELL}:health:view"`);
+    expect(html).not.toContain(`name="target_ref" value="${RUTH_M}:${NELL}:health"`);
   });
   it('a non-coordinator constructing the URL by hand gets the one 404', async () => {
     tasksHc.myMembership.mockResolvedValue({ id: RUTH_M, tier: 'family' });
@@ -517,6 +543,29 @@ describe('the grant write', () => {
     expect(res.headers.get('location')).toContain('rd=health');
     expect(res.headers.get('location')).toContain('rl=view');
     expect(peopleHc.setGrant).not.toHaveBeenCalled();
+  });
+
+  // 8A M2 · STP-03 at the route: a token FOR another level is not bound to
+  // this raise. Not bound, not sent, not burned — the route bounces to the
+  // step-up phase and leaves the cookie alone, as it does for another
+  // operation (7D · R3/F-8).
+  it('8A M2: a RAISE whose token is FOR a different level bounces to the step-up phase without sending or clearing it', async () => {
+    stepUpCookie = 'tok';
+    stepUpForCookie = stepUpFor('raise_grant', `${RUTH_M}:${NELL}:health:summary`);
+    const POST = await grantRoute();
+    const res = await POST(
+      postTo(`/${CIRCLE}/people/${RUTH_M}/grant/submit`, {
+        subject_id: NELL,
+        domain: 'health',
+        level: 'view',
+      }),
+      ctx,
+    );
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toContain('e=step-up');
+    expect(res.headers.get('location')).toContain('rl=view');
+    expect(peopleHc.setGrant).not.toHaveBeenCalled();
+    expect(res.headers.get('set-cookie')).toBeNull();
   });
 
   it('a RAISE with the token hands it to the definer and clears the cookie either way', async () => {

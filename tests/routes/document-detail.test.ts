@@ -408,7 +408,7 @@ describe('the detail at manage — shares, unshare in one action, share behind s
   // ---------------------------------------------------------------------
   it("a token minted for another operation is not confirmation here — the page offers the PASSWORD, not the share it cannot complete", async () => {
     stepUpCookie = 'tok';
-    stepUpForCookie = stepUpFor('raise_grant', `${MARISOL}:${NELL}:health`);
+    stepUpForCookie = stepUpFor('raise_grant', `${MARISOL}:${NELL}:health:view`);
     const html = await renderPage({ share: MARISOL });
     expect(html).toContain('action="/account/step-up/submit"');
     expect(html).not.toContain(`action="/${CIRCLE}/documents/${DOC}/share/submit"`);
@@ -699,7 +699,7 @@ describe('the three writes', () => {
   });
   it("R3/F-8: a token for another operation is not sent to the definer and is NOT BURNED — her unrelated step-up survives, and she is asked for the password instead", async () => {
     stepUpCookie = 'tok';
-    stepUpForCookie = stepUpFor('raise_grant', `${MARISOL}:${NELL}:health`);
+    stepUpForCookie = stepUpFor('raise_grant', `${MARISOL}:${NELL}:health:view`);
     const POST = await shareRoute();
     const res = await POST(
       postTo(`/${CIRCLE}/documents/${DOC}/share/submit`, { member_id: MARISOL }),

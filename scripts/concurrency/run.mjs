@@ -190,6 +190,10 @@
 //   Case 53 7A M1 (R-rule): a freeze committing while an assignment waits
 //           defeats it with the named freeze_active; a path-1 instruction
 //           under that freeze writes nothing.
+//   Case 55 8A M1: two members claim ONE task at once — the second waits on
+//           the circle lock, re-reads the row the first now holds, and
+//           refuses in the one shape; one owner, one task_claimed, no
+//           share, no instruction.
 //
 // Mechanics (session-plan pinned): two pg Clients per case; barriers are
 // awaited statement completions; intended blocking is CONFIRMED from
@@ -1732,7 +1736,7 @@ async function case29(admin) {
       `update public.access_grants set level = 'summary'
        where member_id = $1 and domain = 'health'`, [fx.m2]);
 
-    const target = `${fx.m2}:${fx.s}:health`;
+    const target = `${fx.m2}:${fx.s}:health:view`;
     const token = await mintStepUp(admin, fx.u1, 'raise_grant', target);
 
     await asUser(s1, fx.u1);
@@ -1840,7 +1844,7 @@ async function case31(admin) {
     await admin.query(
       `update public.access_grants set level = 'summary'
        where member_id = $1 and domain = 'health'`, [fx.m2]);
-    const token = await mintStepUp(admin, fx.u1, 'raise_grant', `${fx.m2}:${fx.s}:health`);
+    const token = await mintStepUp(admin, fx.u1, 'raise_grant', `${fx.m2}:${fx.s}:health:view`);
 
     await withClaims(s1, fx.u1);
     await s1.query('begin');
@@ -3397,6 +3401,58 @@ async function case54(admin) {
   }
 }
 
+// --- case 55: 8A M1 — two members claim ONE task at once ---------------------
+
+async function case55(admin) {
+  const fx = await mkCircle(admin, 'c55');
+  const s1 = await connect();
+  const s2 = await connect();
+  try {
+    // Lena and Kim both hold schedule VIEW on Nell: either may claim the
+    // {schedule} baseline task, and both try at once. hc.claim_task takes the
+    // per-circle advisory lock and re-reads the row FOR UPDATE under it, so
+    // the second claimant re-reads an OWNED row when the first commits.
+    const lena = await mkMember(admin, fx, 'Lena', 'family', { schedule: 'view' });
+    const kim = await mkMember(admin, fx, 'Kim', 'family', { schedule: 'view' });
+
+    await asUser(s1, lena.u);
+    await s1.query('begin');
+    const r1 = (await s1.query(`select (hc.claim_task($1)) ->> 'member_id' as m`, [fx.task]))
+      .rows[0].m;
+
+    await asUser(s2, kim.u);
+    const p2 = s2.query(`select hc.claim_task($1)`, [fx.task]).then(() => null).catch(e => e);
+    const pid2 = await findActivePid(admin, 'select hc.claim_task%', 'claim_task backend');
+    await waitForLockWait(admin, pid2, 's2 claim blocked on the circle lock behind s1');
+    await s1.query('commit');
+    const e2 = await withTimeout(p2, 'case55 second claim after the first commits');
+
+    const st = (await admin.query(
+      `select (select t.owner_member_id from public.tasks t where t.id = $1) as owner,
+              (select t.assigned_by from public.tasks t where t.id = $1) as assigned_by,
+              (select count(*)::int from public.access_log l
+                where l.circle_id = $2 and l.event_type = 'task_claimed') as claimed,
+              (select count(*)::int from public.access_log l
+                where l.circle_id = $2
+                  and l.event_type in ('task_assigned', 'task_reassigned', 'object_shared')) as other,
+              (select count(*)::int from public.object_shares sh where sh.circle_id = $2) as shares,
+              (select count(*)::int from public.tasks t
+                where t.circle_id = $2 and t.written_from_task_id is not null) as instructions`,
+      [fx.task, fx.c])).rows[0];
+    check('case55 (8A M1): two members claim ONE task at once — the second waits on the circle lock, re-reads the row the first now holds, and refuses in the ONE shape (claim_refused); exactly one owner (the first, assigned_by her own account), exactly one task_claimed, no task_assigned, no share, no instruction',
+      r1 === lena.m
+        && e2 !== null && e2.code === 'P0001' && e2.message === 'claim_refused'
+        && st.owner === lena.m && st.assigned_by === lena.u
+        && st.claimed === 1 && st.other === 0 && st.shares === 0 && st.instructions === 0,
+      `first=${r1 === lena.m ? 'lena' : r1} second=${e2 ? e2.code + ':' + e2.message : 'none'} owner=${st.owner === lena.m ? 'lena' : st.owner} claimed=${st.claimed} other=${st.other} shares=${st.shares} instructions=${st.instructions}`);
+  } finally {
+    await s1.query('rollback').catch(() => {});
+    await s1.end();
+    await s2.end();
+    await cleanupCircle(admin, fx.c);
+  }
+}
+
 // --- main --------------------------------------------------------------------
 
 const admin = await connect();
@@ -3456,6 +3512,7 @@ try {
   await case52(admin);
   await case53(admin);
   await case54(admin);
+  await case55(admin);
 } catch (err) {
   console.error(`RUNNER ERROR: ${err.message}`);
   failures += 1;

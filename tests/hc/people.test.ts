@@ -230,14 +230,14 @@ describe('setGrant — lower without a token, raise only through the §5.7 step-
     expect(logged.rows[0]).toEqual({ b: 'summary', a: 'log' });
   });
 
-  it('a RAISE without a token is refused; with a fresh token bound to member:subject:domain it lands', async () => {
+  it('a RAISE without a token is refused; with a fresh token bound to member:subject:domain:level it lands (8A M2: the level is the fourth part)', async () => {
     await expect(
       peopleLib.setGrant(claimsOf('sarah'), member.ruth, nell, 'health', 'summary', null),
     ).rejects.toThrow(/grant_refused/);
     const minted = await stepUp.mintStepUp(
       freshClaimsOf('sarah'),
       'raise_grant',
-      `${member.ruth}:${nell}:health`,
+      `${member.ruth}:${nell}:health:summary`,
     );
     await peopleLib.setGrant(claimsOf('sarah'), member.ruth, nell, 'health', 'summary', minted.token);
     const rows = await peopleLib.circlePeople(claimsOf('sarah'), circleId);
@@ -256,7 +256,7 @@ describe('setGrant — lower without a token, raise only through the §5.7 step-
     const minted = await stepUp.mintStepUp(
       freshClaimsOf('sarah'),
       'raise_grant',
-      `${member.marisol}:${nell}:schedule`,
+      `${member.marisol}:${nell}:schedule:view`,
     );
     await expect(
       peopleLib.setGrant(claimsOf('sarah'), member.marisol, nell, 'schedule', 'view', minted.token),

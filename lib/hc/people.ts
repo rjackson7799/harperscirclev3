@@ -212,7 +212,9 @@ export async function profileFactsFor(
 /**
  * hc.set_grant — per subject, per domain (GRT-01, AC-PERM-5). LOWER never
  * needs a token; RAISE demands a fresh §5.7 token bound to
- * `member:subject:domain`, consumed in the definer's own transaction; the
+ * `member:subject:domain:level` (the LEVEL since 8A M2 — STP-03; the
+ * definer composes the four parts itself, this wrapper passes the level it
+ * is asked to set), consumed in the definer's own transaction; the
  * care-circle cap is structural in-function. Every change is logged with
  * both levels by the definer.
  */
