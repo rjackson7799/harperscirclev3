@@ -45,6 +45,15 @@ const RECORD_LEG =
 const DOCS_DETAIL_LEG =
   'documents.spec — "documents detail: sentences at summary with no viewer and no control; at view the pages through the artifact route with the machine-read sibling (DOC-02)"; keyboard: "A11Y-11: the viewer at 390px — axe clean, alt text on every page, the machine-read sibling reachable by keyboard as native text is"';
 
+// 8C U1 (slice-8 plan Q5): NO NEW a11y ROW FOR 8C. The claim control and
+// its route are a CITATION inside the record surfaces' existing entries —
+// the control is a submit button on the two pages RECORD_LEG already
+// audits at 390 px, and `…/claim/submit` is a form route with no rendered
+// surface of its own, so it never enters this list at all (the pin derives
+// from page.tsx). The leg is named where the control lives, and nowhere
+// else: the timeline routes share RECORD_LEG and have no claim to make.
+const CLAIM_LEG =
+  'record.spec — "claim: a view-level member takes an unassigned task from her own screen, and no control is offered where the function would refuse (TSK-05, AC-TASK-1/2)"';
 export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/': {
     leg: 'redirect-only: routes by session to /setup or /sign-in; no rendered surface of its own — both destinations are audited',
@@ -68,8 +77,8 @@ export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
     leg: 'a11y.spec — "styleguide: contrast-on axe over every composition; reduced motion stills the pulse"',
   },
   '/[circle]/timeline': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}` },
-  '/[circle]/tasks': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}` },
-  '/[circle]/tasks/[task]': { leg: RECORD_LEG },
+  '/[circle]/tasks': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}; ${CLAIM_LEG}` },
+  '/[circle]/tasks/[task]': { leg: `${RECORD_LEG}; ${CLAIM_LEG}` },
   '/[circle]/documents': {
     leg:
       'documents.spec — "documents list: rows at the member’s own level, counts post-filter over the rendered tree; Add a document is an ingestion (DOC-01, AC-DOC-2)"; a11y.spec — "the 7C surfaces: the documents list, the people list, the subject page and the access log, audited at 390px"',

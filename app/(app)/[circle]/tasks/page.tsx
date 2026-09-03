@@ -6,6 +6,7 @@ import {
   circleCoordinators,
   circleSubjects,
   listTasks,
+  mayClaim,
   myMembership,
   taskFilters,
   type FilterKey,
@@ -13,6 +14,7 @@ import {
 } from '@/lib/hc/tasks';
 import { SessionUnavailable } from '@/components/ui/SessionUnavailable';
 import { PageHeader } from '@/components/shell/PageHeader';
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Legend } from '@/components/ui/Legend';
@@ -199,6 +201,19 @@ export default async function TasksPage({
                     {task.title}
                   </a>
                   <TaskRowFacts task={task} circle={circle} />
+                  {/* 8C U1 · the claim, where the list is FOR claiming.
+                      `Unassigned` is the shelf of work nobody has taken, so
+                      it is the one filter where taking a task is the point;
+                      on Mine, Overdue and All the row's own page carries the
+                      control. `mayClaim` still decides per row — the filter
+                      says "unassigned", the predicate says whether SHE may. */}
+                  {filter === 'unassigned' && mayClaim(task, me) ? (
+                    <form method="post" action={`/${circle}/tasks/${task.id}/claim/submit`}>
+                      <Button type="submit" variant="secondary">
+                        Take this on
+                      </Button>
+                    </form>
+                  ) : null}
                 </Card>
               ))}
             </div>

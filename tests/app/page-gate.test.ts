@@ -287,6 +287,13 @@ const GATED: Record<string, Entry> = {
     load: () => import('@/app/(app)/[circle]/tasks/[task]/complete/submit/route'),
     params: { circle: CIRCLE, task: TASK },
   },
+  // ---- 8C U1: the fifth task write — the claim ----------------------------
+  '/[circle]/tasks/[task]/claim/submit': {
+    kind: 'route',
+    next: `/${CIRCLE}/tasks/${TASK}`,
+    load: () => import('@/app/(app)/[circle]/tasks/[task]/claim/submit/route'),
+    params: { circle: CIRCLE, task: TASK },
+  },
   '/[circle]/tasks/[task]/snooze/submit': {
     kind: 'route',
     next: `/${CIRCLE}/tasks/${TASK}`,
@@ -384,10 +391,11 @@ describe('GTE-01 · the gated set is PINNED to the filesystem both ways', () => 
     expect(stale, `entries with no gated file behind them: ${stale.join(', ')}`).toEqual([]);
   });
 
-  it('the D15 enumeration holds on disk, plus 7B, 7C C2 and 8B: ten + three + one + one pages, five + one + five + three form routes, one layout', () => {
+  it('the D15 enumeration holds on disk, plus 7B, 7C C2, 8B and 8C: ten + three + one + one pages, five + one + five + three + one form routes, one layout', () => {
     const kinds = Object.values(GATED).map((e) => e.kind);
     expect(kinds.filter((k) => k === 'page').length).toBe(20);
-    expect(kinds.filter((k) => k === 'route').length).toBe(16);
+    // 8C U1 adds the claim: the fifth task write, the seventeenth form route.
+    expect(kinds.filter((k) => k === 'route').length).toBe(17);
     expect(kinds.filter((k) => k === 'layout').length).toBe(1);
   });
 });

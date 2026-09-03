@@ -1181,12 +1181,26 @@ a:focus-visible {
   .topbar,
   .back-link,
   button,
-  .record-controls {
+  .record-controls,
+  /* 8C U2 (LOG-04): the log's pager is chrome — a printed link is a dead
+     link. The DISCLOSURE above it is not chrome and stays, so a printed
+     copy of any page carries the sentence saying which page it is. */
+  .log-pager {
     display: none !important;
   }
   .log-entries li {
     break-inside: avoid;
   }
+}
+
+/* 8C U2 · the log's walk back (OW-26). Two plain links, no page number and
+   no total (§7.4) — pressing "Older entries" enough times reaches `seq` 1,
+   the custodianship declaration the subject page rests on. */
+.log-pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 20px 0 4px;
 }
 
 .log-entries {

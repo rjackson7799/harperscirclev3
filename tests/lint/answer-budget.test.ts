@@ -61,6 +61,10 @@ const RECORD_SURFACES = [
   'app/(app)/[circle]/search/page.tsx',
   'app/(app)/[circle]/tasks/[task]/assign/page.tsx',
   'app/(app)/[circle]/tasks/[task]/assign/submit/route.ts',
+  // 8C U1 (slice-8 plan "### 8C" unit 1): the claim. A person's wait like
+  // every other record write, so it opens a budget and is pinned here as a
+  // DECISION rather than inheriting the omission R3/F-6 found.
+  'app/(app)/[circle]/tasks/[task]/claim/submit/route.ts',
   'app/(app)/[circle]/tasks/[task]/complete/submit/route.ts',
   'app/(app)/[circle]/tasks/[task]/page.tsx',
   'app/(app)/[circle]/tasks/[task]/snooze/submit/route.ts',

@@ -47,6 +47,10 @@ const people = {
   ruth: { id: randomUUID(), name: 'Ruth', tier: 'family' },
   lena: { id: randomUUID(), name: 'Lena', tier: 'family' },
   omar: { id: randomUUID(), name: 'Omar', tier: 'family' },
+  // 8C U1: the CLAIMANT. hc.claim_task's floor is `view`, and every person
+  // above was fixtured at summary or below on the schedule domain, so no
+  // existing member could take a task at all. Nadia is the one who can.
+  nadia: { id: randomUUID(), name: 'Nadia', tier: 'family' },
 } as const;
 type Person = keyof typeof people;
 const claimsOf = (p: Person) => ({
@@ -61,7 +65,7 @@ const freshClaimsOf = (p: Person) => ({
   amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }],
 });
 
-const member: Record<Person, string> = { sarah: '', marisol: '', ruth: '', lena: '', omar: '' };
+const member: Record<Person, string> = { sarah: '', marisol: '', ruth: '', lena: '', omar: '', nadia: '' };
 let circleId: string;
 let nell: string;
 let marcus: string;
@@ -70,6 +74,11 @@ let dSrc: string;
 let tPlain: string;
 let tTainted: string;
 let tMarcus: string;
+/** 8C U1 · the claim's own rows, so the claim legs never inherit the
+ *  assignment legs' mutations of tPlain / tTainted. */
+let tClaim: string;
+let tShared: string;
+let tInstruction: string;
 
 beforeAll(async () => {
   tasksLib = await import('@/lib/hc/tasks');
@@ -124,7 +133,7 @@ beforeAll(async () => {
   ).rows[0].id;
 
   await raw.query('set session_replication_role = replica');
-  for (const p of ['marisol', 'ruth', 'lena', 'omar'] as Person[]) {
+  for (const p of ['marisol', 'ruth', 'lena', 'omar', 'nadia'] as Person[]) {
     member[p] = (
       await raw.query(
         `insert into public.circle_members (circle_id, account_id, tier, display_name_at_join)
@@ -149,6 +158,9 @@ beforeAll(async () => {
   // Omar: grants on MARCUS only — no context on Nell at all.
   await grant('omar', marcus, 'schedule', 'summary');
   await grant('omar', marcus, 'health', 'summary');
+  // 8C U1: Nadia reads Nell's schedule at VIEW — the floor hc.claim_task
+  // sets, and the only person here who meets it on a {schedule} task.
+  await grant('nadia', nell, 'schedule', 'view');
 
   arrival = randomUUID();
   await raw.query(
@@ -425,5 +437,179 @@ describe('B2 · snooze counts; the filters are pure over the rows', () => {
     // A cancelled instruction (D19.4) is never open work; done is never deleted
     // but lives outside the open filters.
     expect(f.closed.map((r) => r.id)).toEqual(['d']);
+  });
+});
+// ============================================================================
+// 8C U1 · THE CLAIM, against the LIVE definer (TSK-05's app half; AC-TASK-1's
+// claim half; AC-TASK-2; ADR-0040 D1–D4).
+//
+// 8A pinned hc.claim_task at pgTAP (070, forty assertions). What is NOT
+// pinned there is the thing 8C adds: A SURFACE THAT DECIDES WHETHER TO OFFER
+// THE CONTROL. The definer answers one string for eleven refusals, so the
+// surface cannot learn the reason from a failure — it must already know. It
+// knows through `can_view`, the SAME `hc.visible_at(…) >= 'view'` expression
+// the definer evaluates, computed in the SAME RLS-true query that already
+// carries `can_manage`.
+//
+// So these legs do not re-prove the definer. They prove AGREEMENT: over live
+// rows, from each person's own context, `mayClaim(row, me)` and the definer's
+// own verdict are the same answer. A disagreement in either direction is the
+// defect — a control offered that refuses is a lie to the person pressing it,
+// and a control withheld where the claim would land is work she cannot take.
+// ============================================================================
+describe('8C U1 · the claim: the surface’s answer and the database’s are the same answer', () => {
+  // The claim's rows are fixtured HERE, not in the file's beforeAll. Ruth
+  // clears {schedule} at summary, so three more schedule tasks in the
+  // circle from the start silently changed what "Ruth sees the two Nell
+  // tasks she clears" was asserting — a fixture quietly rewriting an older
+  // leg's meaning. Created when this suite starts, they are invisible to
+  // every suite above and the older assertions keep the tree they had.
+  beforeAll(async () => {
+    tClaim = randomUUID();
+    tShared = randomUUID();
+    tInstruction = randomUUID();
+    await raw.query('set session_replication_role = replica');
+    await raw.query(
+      `insert into public.tasks (id, circle_id, subject_id, title, due_on, due_zone, status,
+         source_arrival_id, approved_by, approved_at, approver_display_name, taint,
+         written_from_task_id, written_for_member_id)
+       values
+         ($1, $4, $5, 'Collect the dressings from the pharmacy', null, null, 'open',
+          null, $6, now(), 'Sarah', '{schedule}', null, null),
+         ($2, $4, $5, 'Sit with Nell on Thursday afternoon', null, null, 'open',
+          null, $6, now(), 'Sarah', '{schedule}', null, null),
+         ($3, $4, $5, 'Bring the dressings on Thursday', null, null, 'open',
+          null, $6, now(), 'Sarah', '{schedule}', $1, $7)`,
+      [tClaim, tShared, tInstruction, circleId, nell, people.sarah.id, member.nadia],
+    );
+    await raw.query('set session_replication_role = default');
+  });
+
+  /** Every live share and every instruction row in the circle — the app-half
+   *  echo of ADR-0040 D3's SET EQUALITY, so a claim that quietly minted one
+   *  would be caught here and not only at pgTAP. */
+  async function writes() {
+    const shares = await raw.query(
+      'select id from public.object_shares where circle_id = $1 order by id',
+      [circleId],
+    );
+    const instructions = await raw.query(
+      'select id from public.tasks where circle_id = $1 and written_from_task_id is not null order by id',
+      [circleId],
+    );
+    return {
+      shares: shares.rows.map((r) => r.id as string),
+      instructions: instructions.rows.map((r) => r.id as string),
+    };
+  }
+
+  async function logFor(taskId: string) {
+    const r = await raw.query(
+      `select l.event_type, l.actor_display_name, l.actor_account_id, l.target_member_id
+         from public.access_log l
+        where l.circle_id = $1 and l.object_id = $2
+        order by l.seq`,
+      [circleId, taskId],
+    );
+    return r.rows;
+  }
+
+  it('can_view carries the definer’s OWN floor onto the row, and it is not can_manage', async () => {
+    const forNadia = (await tasksLib.taskById(claimsOf('nadia'), circleId, tClaim))!;
+    expect(forNadia.can_view).toBe(true);
+    // view, not manage: the whole point of the claim sitting where it sits.
+    expect(forNadia.can_manage).toBe(false);
+    expect(tasksLib.mayClaim(forNadia, { id: member.nadia })).toBe(true);
+
+    const forRuth = (await tasksLib.taskById(claimsOf('ruth'), circleId, tClaim))!;
+    expect(forRuth.can_view).toBe(false);
+    expect(tasksLib.mayClaim(forRuth, { id: member.ruth })).toBe(false);
+  });
+
+  it('a summary member is refused, and the surface offered her nothing — they AGREE', async () => {
+    const row = (await tasksLib.taskById(claimsOf('ruth'), circleId, tClaim))!;
+    expect(tasksLib.mayClaim(row, { id: member.ruth })).toBe(false);
+    await expect(tasksLib.claimTask(claimsOf('ruth'), tClaim)).rejects.toThrow(/claim_refused/);
+    const still = await raw.query('select owner_member_id from public.tasks where id = $1', [tClaim]);
+    expect(still.rows[0].owner_member_id).toBeNull();
+  });
+
+  it('an INSTRUCTION row is never claimable, at any level — surface and definer agree (ADR-0033 cluster C)', async () => {
+    const row = (await tasksLib.taskById(claimsOf('nadia'), circleId, tInstruction))!;
+    expect(row.written_from_task_id).toBe(tClaim);
+    expect(tasksLib.mayClaim(row, { id: member.nadia })).toBe(false);
+    await expect(tasksLib.claimTask(claimsOf('nadia'), tInstruction)).rejects.toThrow(/claim_refused/);
+  });
+
+  it('a VIEW-level member takes the task and it becomes HERS — and nothing else is written (D3, D4)', async () => {
+    const before = await writes();
+    const result = await tasksLib.claimTask(claimsOf('nadia'), tClaim);
+    expect(result).toMatchObject({ task_id: tClaim, member_id: member.nadia });
+    expect(result.claimed_at).toEqual(expect.any(String));
+
+    const row = await raw.query(
+      'select owner_member_id, assigned_by, assigned_at from public.tasks where id = $1',
+      [tClaim],
+    );
+    expect(row.rows[0].owner_member_id).toBe(member.nadia);
+    // The claimant is the assigner: the columns assign_task writes, from her.
+    expect(row.rows[0].assigned_by).toBe(people.nadia.id);
+    expect(row.rows[0].assigned_at).not.toBeNull();
+
+    // NO share and NO instruction, as SETS — not as "no new insert".
+    expect(await writes()).toEqual(before);
+
+    // task_claimed, the claimant as actor AND target, and no task_assigned.
+    const entries = await logFor(tClaim);
+    expect(entries.map((e) => e.event_type)).toEqual(['task_claimed']);
+    expect(entries[0]).toMatchObject({
+      actor_display_name: 'Nadia',
+      actor_account_id: people.nadia.id,
+      target_member_id: member.nadia,
+    });
+  });
+
+  it('…and from HER OWN context the task now reads as hers, with the control withdrawn (Q-B)', async () => {
+    const hers = (await tasksLib.taskById(claimsOf('nadia'), circleId, tClaim))!;
+    expect(hers.owner_member_id).toBe(member.nadia);
+    expect(hers.owner_name).toBe('Nadia');
+    // Hers already REFUSES rather than no-ops, so the surface must stop
+    // offering it — and does, from the same row.
+    expect(tasksLib.mayClaim(hers, { id: member.nadia })).toBe(false);
+    await expect(tasksLib.claimTask(claimsOf('nadia'), tClaim)).rejects.toThrow(/claim_refused/);
+  });
+
+  it('a caregiver claims a task shared to her BY NAME — the share already gives view (ADR-0040 D1/Q-C)', async () => {
+    // Before the share: the care-circle ceiling (rung 4) hides it outright,
+    // so there is nothing to offer and nothing to claim.
+    expect(await tasksLib.taskById(claimsOf('marisol'), circleId, tShared)).toBeNull();
+    await expect(tasksLib.claimTask(claimsOf('marisol'), tShared)).rejects.toThrow(/claim_refused/);
+
+    await raw.query('set session_replication_role = replica');
+    await raw.query(
+      `insert into public.object_shares (circle_id, subject_id, object_type, object_id, member_id, granted_by)
+       values ($1, $2, 'task', $3, $4, $5)`,
+      [circleId, nell, tShared, member.marisol, people.sarah.id],
+    );
+    await raw.query('set session_replication_role = default');
+
+    const row = (await tasksLib.taskById(claimsOf('marisol'), circleId, tShared))!;
+    expect(row.can_view).toBe(true);
+    expect(tasksLib.mayClaim(row, { id: member.marisol })).toBe(true);
+
+    const before = await writes();
+    const result = await tasksLib.claimTask(claimsOf('marisol'), tShared);
+    expect(result.member_id).toBe(member.marisol);
+    // The claim widens nothing: the share that was already there is the only
+    // share, and no instruction was written for her.
+    expect(await writes()).toEqual(before);
+    expect((await logFor(tShared)).map((e) => e.event_type)).toEqual(['task_claimed']);
+  });
+
+  it('an outsider’s claim is refused, and no row of the circle moves', async () => {
+    const outsider = { sub: randomUUID(), role: 'authenticated' };
+    const before = await writes();
+    await expect(tasksLib.claimTask(outsider, tClaim)).rejects.toThrow(/claim_refused/);
+    expect(await writes()).toEqual(before);
   });
 });
