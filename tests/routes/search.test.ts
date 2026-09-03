@@ -234,9 +234,10 @@ describe('SRCH-04/06 · the copy, the cap, the absences', () => {
 
 describe('the bounds — a named state, never a spinner, never a 500', () => {
   it('an AnswerBudgetExceeded from the read renders the honest slow answer with "try again" to this search', async () => {
-    const err = new Error('budget: searchRecord exceeded 15000 ms');
-    err.name = 'AnswerBudgetExceeded';
-    searchHc.searchRecord.mockRejectedValue(err);
+    // The REAL class: withPageBudget catches by instance, and a look-alike
+    // error is (correctly) rethrown — a page must not be fooled by a name.
+    const { AnswerBudgetExceeded } = await import('@/lib/http/budget');
+    searchHc.searchRecord.mockRejectedValue(new AnswerBudgetExceeded('searchRecord', 15_000));
     const html = await renderPage({ q: 'cardiology' });
     expect(html).toContain('role="alert"');
     expect(html).toContain('taking longer than usual');

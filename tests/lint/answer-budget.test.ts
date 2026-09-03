@@ -28,6 +28,9 @@ const RECORD_TREES = [
   // along and were held to nothing. Added with the exact-set pin above, so
   // the guarantee and the state can no longer drift apart silently.
   'app/(app)/[circle]/people',
+  // 8B (slice-8 plan Q4(4)): the search tree — one page, three reads inside
+  // ONE budget; listed here as a decision, not an omission.
+  'app/(app)/[circle]/search',
 ];
 
 // ── 7E · R3/F-6 (ADR-0038, ACCEPTED · TAKEN(7E)) ─────────────────────────
@@ -55,6 +58,7 @@ const RECORD_SURFACES = [
   'app/(app)/[circle]/people/log/page.tsx',
   'app/(app)/[circle]/people/page.tsx',
   'app/(app)/[circle]/people/subject/[subject]/page.tsx',
+  'app/(app)/[circle]/search/page.tsx',
   'app/(app)/[circle]/tasks/[task]/assign/page.tsx',
   'app/(app)/[circle]/tasks/[task]/assign/submit/route.ts',
   'app/(app)/[circle]/tasks/[task]/complete/submit/route.ts',

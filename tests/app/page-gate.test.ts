@@ -191,6 +191,13 @@ const GATED: Record<string, Entry> = {
       params: params({ circle: CIRCLE, subject: '22222222-0000-4000-8000-000000000002' }),
     },
   },
+  // ---- 8B U3: the pin demanded this one the moment it existed -------------
+  '/[circle]/search': {
+    kind: 'page',
+    next: `/${CIRCLE}/search`,
+    load: () => import('@/app/(app)/[circle]/search/page'),
+    props: { params: params({ circle: CIRCLE }), searchParams: sp() },
+  },
   // ---- 7B B3 --------------------------------------------------------------
   '/[circle]/timeline/[event]': {
     kind: 'page',
@@ -377,9 +384,9 @@ describe('GTE-01 · the gated set is PINNED to the filesystem both ways', () => 
     expect(stale, `entries with no gated file behind them: ${stale.join(', ')}`).toEqual([]);
   });
 
-  it('the D15 enumeration holds on disk, plus 7B and 7C C2: ten + three + one pages, five + one + five + three form routes, one layout', () => {
+  it('the D15 enumeration holds on disk, plus 7B, 7C C2 and 8B: ten + three + one + one pages, five + one + five + three form routes, one layout', () => {
     const kinds = Object.values(GATED).map((e) => e.kind);
-    expect(kinds.filter((k) => k === 'page').length).toBe(19);
+    expect(kinds.filter((k) => k === 'page').length).toBe(20);
     expect(kinds.filter((k) => k === 'route').length).toBe(16);
     expect(kinds.filter((k) => k === 'layout').length).toBe(1);
   });
