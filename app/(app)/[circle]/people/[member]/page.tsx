@@ -39,7 +39,11 @@ import { formatShortDate } from '@/lib/format/dates';
  * THE MATRIX LIVES HERE, behind the adjust action (the People list shows
  * the plain line first — AC-PPL-2). Per subject, per domain: lowering
  * posts straight through; RAISING goes through the §5.7 step-up bound to
- * `member:subject:domain`, consumed by hc.set_grant in its own
+ * `member:subject:domain:level` — the LEVEL since 8A M2 (STP-03, plan
+ * Q3(a)): the password is asked FOR the level she is about to confirm, and
+ * hc.set_grant composes the same four parts, so a token minted to raise to
+ * summary cannot be spent on manage (round-27 R3 dissent 1) — consumed by
+ * hc.set_grant in its own
  * transaction. The care-circle ceiling is shown AS a ceiling: nothing
  * above hc.tier_defaults('care_circle') is offered, no other domain is
  * offered at all, and the DB refuses regardless.
@@ -183,13 +187,17 @@ export default async function MemberPage({
       // here with no password — and the click dead-ended on a definer that
       // matches operation AND target_ref exactly. Same two questions, asked
       // before anything is offered.
+      // 8A M2 · STP-03: the LEVEL is the fourth part. A token minted to
+      // raise to summary is not confirmation of a raise to view, and the
+      // definer would refuse it (071:4) — so it is not offered as one.
       const stepUp =
         raiseSubject &&
         raiseDomain &&
+        raiseLevel &&
         stepUpConfirms(
           jar.get(STEP_UP_FOR_COOKIE)?.value,
           RAISE_OPERATION,
-          `${memberId}:${raiseSubject}:${raiseDomain}`,
+          `${memberId}:${raiseSubject}:${raiseDomain}:${raiseLevel}`,
         )
           ? (jar.get(STEP_UP_COOKIE)?.value ?? null)
           : null;
@@ -245,7 +253,7 @@ export default async function MemberPage({
                 <form method="post" action="/account/step-up/submit">
                   <p className="field-help">Raising access needs a fresh confirmation that it&apos;s you.</p>
                   <input type="hidden" name="operation" value={RAISE_OPERATION} />
-                  <input type="hidden" name="target_ref" value={`${memberId}:${raiseSubject}:${raiseDomain}`} />
+                  <input type="hidden" name="target_ref" value={`${memberId}:${raiseSubject}:${raiseDomain}:${raiseLevel}`} />
                   <input type="hidden" name="next" value={`${next}?${raise}`} />
                   <Field label="Your password">
                     <Input type="password" name="password" required />
