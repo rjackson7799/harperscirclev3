@@ -69,6 +69,17 @@ export type TaskRow = {
   /** The caller holds MANAGE on this task from their own context —
    *  hc.visible_at, the policies' own function, asked once per row. */
   can_manage: boolean;
+  /**
+   * 8C U1 · the caller holds VIEW — `hc.claim_task`'s floor, and the SAME
+   * `hc.visible_at(…)` call the definer makes, on the same arguments,
+   * including the owner AS THE ROW STANDS. It rides the one RLS-true join
+   * beside `can_manage`, so the surface never asks a second question to
+   * decide whether to offer a claim, and cannot answer differently from
+   * the function that will decide it. The freeze needs no field of its
+   * own: it is rung 2, so a frozen subject yields `hidden` here and the
+   * row does not survive `tasks_select` to be rendered at all.
+   */
+  can_view: boolean;
   /** The coordinator's view of an original names its live instruction
    *  (PRD §4.5.6 path 1); null on an instruction row and for everyone who
    *  cannot see the instruction. */
@@ -107,6 +118,7 @@ type TaskSql = {
   completed_at: Date | string | null;
   completed_by_name: string | null;
   can_manage: boolean;
+  can_view: boolean;
   instruction: { id: string; status: string; title: string; written_for: string | null } | null;
 };
 
@@ -144,6 +156,12 @@ const TASK_SELECT = `
          t.completed_at, cb.display_name_at_join as completed_by_name,
          hc.visible_at(hc.ctx(), t.subject_id, t.taint, t.taint_resolved,
                        'task', t.id, t.owner_member_id) >= 'manage' as can_manage,
+         -- 8C U1: hc.claim_task's own floor, asked here exactly as the
+         -- definer asks it in-function — same ctx, same taint, and the
+         -- owner AS THE ROW STANDS. One more expression in the query that
+         -- was already running: no second read, and no probe.
+         hc.visible_at(hc.ctx(), t.subject_id, t.taint, t.taint_resolved,
+                       'task', t.id, t.owner_member_id) >= 'view' as can_view,
          (select jsonb_build_object('id', i.id, 'status', i.status, 'title', i.title,
                                     'written_for', iw.display_name_at_join)
             from public.tasks i
@@ -217,6 +235,7 @@ function toRow(row: TaskSql): TaskRow {
     completed_at: isoTextOrNull(row.completed_at),
     completed_by_name: row.completed_by_name,
     can_manage: row.can_manage === true,
+    can_view: row.can_view === true,
     instruction: row.instruction ?? null,
   };
 }
@@ -497,6 +516,67 @@ export async function completeTask(claims: RequestClaims, taskId: string): Promi
     const r = await q.query<{ r: CompleteResult }>('select hc.complete_task($1) as r', [taskId]);
     return r.rows[0].r;
   });
+}
+
+export type ClaimResult = { task_id: string; member_id: string; claimed_at: string };
+
+/**
+ * hc.claim_task — a member at `view` takes an unassigned open task for
+ * HERSELF (8A M1; AC-TASK-1's claim half; AC-TASK-2). ONE argument, because
+ * the function cannot name anyone else: no member, no instruction, no
+ * document, no token. It writes the three assignment columns and one
+ * `task_claimed` entry, and ADR-0040 D3 pins by SET EQUALITY that it
+ * creates no share and no written instruction — so this wrapper must not
+ * grow a parameter that could ask for one.
+ */
+export async function claimTask(claims: RequestClaims, taskId: string): Promise<ClaimResult> {
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<{ r: ClaimResult }>('select hc.claim_task($1) as r', [taskId]);
+    return r.rows[0].r;
+  });
+}
+
+/**
+ * WHETHER TO OFFER THE CLAIM — the surface's half of TSK-05, and the whole
+ * of what 8C adds to a function 8A already pinned.
+ *
+ * `hc.claim_task` collapses ELEVEN refusals into one string, `claim_refused`
+ * (ADR-0040 D2), deliberately: the refusal must not become an oracle for the
+ * circle's state. A surface handed one string can either say "that couldn't
+ * be done" to everyone, or decide BEFORE it renders — from the row RLS has
+ * already returned, never by probing. This is that decision, and every arm
+ * of it is one of the definer's own gates, in the definer's own order:
+ *
+ *   · a live member row in the circle   → the definer looks one up too;
+ *   · `status = 'open'`                 → done and cancelled are terminal;
+ *   · `written_from_task_id is null`    → an instruction is what its holder
+ *                                          reads of the original, never work
+ *                                          to be taken (ADR-0033 cluster C);
+ *   · `owner_member_id is null`         → hers already refuses just as
+ *                                          someone else's does (D4/Q-B):
+ *                                          moving held work is unassign +
+ *                                          assign, and that stays manage's;
+ *   · `visible_at(...) >= view`         → `can_view`, the SAME expression the
+ *                                          definer evaluates — her level, the
+ *                                          care-circle ceiling, a named share
+ *                                          that widens this one task, and the
+ *                                          freeze at rung 2, all at once.
+ *
+ * What it deliberately does NOT do is add a gate of its own. A surface that
+ * refuses more than the function does hides work a person is entitled to
+ * take, and no test would ever see it.
+ */
+export function mayClaim(
+  task: Pick<TaskRow, 'status' | 'owner_member_id' | 'written_from_task_id' | 'can_view'>,
+  me: { id: string } | null,
+): boolean {
+  return (
+    me !== null &&
+    task.status === 'open' &&
+    task.written_from_task_id === null &&
+    task.owner_member_id === null &&
+    task.can_view
+  );
 }
 
 export type SnoozeResult = { task_id: string; due_on: string; due_zone: string; snooze_count: number };

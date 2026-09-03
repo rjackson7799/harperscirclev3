@@ -79,6 +79,23 @@ function entryLine(e: LogEntry): React.ReactNode {
       </>
     );
   }
+  // 8C U1 · ADR-0040 D9.1/Q-G: `task_claimed` "renders generically until 8C
+  // words it". Generically means the fallback below — `humanize()` plus the
+  // TARGET appended — and on a claim the actor and the target are the same
+  // person, so the log read "Marisol · task claimed · Marisol". The event
+  // type exists so the record can tell HANDED TO YOU from YOU TOOK IT (D4),
+  // and a sentence naming the claimant twice tells the reader neither. She
+  // is named once, as the person who acted; the object is never named (the
+  // entry carries no title and this page invents none).
+  if (e.event_type === 'task_claimed') {
+    return (
+      <>
+        <strong>{e.actor_display_name}</strong> took an unassigned task
+        {e.subject_name ? <> in {e.subject_name}&apos;s record</> : null}
+        {e.collapsed_count > 1 ? ` · ${e.collapsed_count} times` : ''} · {when}
+      </>
+    );
+  }
   if (e.event_type === 'grant_changed') {
     return (
       <>

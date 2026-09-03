@@ -235,7 +235,7 @@ describe('the access log — who did what, to whom, on which subject, in which d
   it('a claim reads as a claim — the claimant named ONCE, and never as a hand-over (ADR-0040 D4, Q-G)', async () => {
     peopleHc.accessLog.mockResolvedValue([CLAIMED]);
     const html = await renderLog();
-    const entry = /<li>(.*?)<\/li>/s.exec(html)?.[1] ?? '';
+    const entry = /<li>([\s\S]*?)<\/li>/.exec(html)?.[1] ?? '';
     expect(entry).toContain('took an unassigned task');
     expect(entry).toContain('Nell');
     // The generic renderer's shape is gone: no `humanize()` output, and the
@@ -250,7 +250,7 @@ describe('the access log — who did what, to whom, on which subject, in which d
       { ...CLAIMED, seq: 41, event_type: 'task_assigned', actor_display_name: 'Sarah', target_name: 'Marisol' },
     ]);
     const html = await renderLog();
-    const [claimed, assigned] = [...html.matchAll(/<li>(.*?)<\/li>/gs)].map((m) => m[1]);
+    const [claimed, assigned] = [...html.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => m[1]);
     expect(claimed).toContain('took an unassigned task');
     expect(assigned).not.toContain('took an unassigned task');
   });

@@ -84,7 +84,7 @@ const ROW = {
   detail: null,
   due_on: null,
   due_zone: null,
-  status: 'open',
+  status: 'open' as const,
   owner_member_id: null,
   owner_name: null,
   assigned_at: null,
@@ -297,7 +297,7 @@ describe('8C U1 Â· the refusal names the case the surface can name (ADR-0040 D2â
     tasksHc.taskById.mockResolvedValueOnce({ ...ROW, owner_member_id: RUTH, owner_name: 'Ruth' });
     const html = await renderDetail({ e: 'claim' });
     expect(html).toContain('Ruth took that on first.');
-    expect(html).not.toContain("That couldn't be taken on just now");
+    expect(html).not.toMatch(/That couldn(?:'|&#x27;)t be taken on just now/);
   });
 
   it('it is already hers â€” said plainly, not as a failure of the system', async () => {
@@ -319,13 +319,14 @@ describe('8C U1 Â· the refusal names the case the surface can name (ADR-0040 D2â
 
   it('and ONLY where it cannot know does it fall back to the generic sentence', async () => {
     const html = await renderDetail({ e: 'claim' });
-    expect(html).toContain("That couldn't be taken on just now.");
+    // Static markup escapes the apostrophe as &#x27; (the file-wide convention).
+    expect(html).toMatch(/That couldn(?:'|&#x27;)t be taken on just now./);
   });
 
   it('the success marker is its own sentence', async () => {
     tasksHc.taskById.mockResolvedValueOnce({ ...ROW, owner_member_id: ME, owner_name: 'Me' });
     const html = await renderDetail({ claimed: '1' });
-    expect(html).toContain("It's yours now.");
+    expect(html).toMatch(/It(?:'|&#x27;)s yours now./);
   });
 
   it('the slow marker still reads as the wait it is, not as a refusal', async () => {

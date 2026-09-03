@@ -4,6 +4,7 @@ import { gatePage } from '@/lib/auth/gate';
 import { withPageBudget } from '@/lib/http/page-budget';
 import {
   assignCandidates,
+  mayClaim,
   myMembership,
   sharesForTask,
   taskById,
@@ -63,12 +64,40 @@ function loadFailed(next: string, slow: boolean) {
   );
 }
 
+/**
+ * 8C U1 · WHY A CLAIM REFUSED, said from what the page can actually see.
+ *
+ * `hc.claim_task` answers one string for eleven refusals (ADR-0040 D2), so
+ * the reason cannot come from the failure. It does not have to: the control
+ * is only ever offered where `mayClaim` held, so a refusal that reaches this
+ * page is a RACE, and the page has just RE-READ the task. Someone else holds
+ * it now; it is already hers; it closed underneath her — each of those is a
+ * fact on the row in front of her, and each is said. Anything else is a
+ * cause the surface cannot know, and it does not invent one.
+ */
+function claimRefusal(task: TaskRow, me: { id: string } | null): string {
+  if (task.owner_member_id !== null && me !== null && task.owner_member_id === me.id) {
+    return 'That task is already yours.';
+  }
+  if (task.owner_member_id !== null) {
+    return `${task.owner_name ?? 'Someone else'} took that on first.`;
+  }
+  if (task.status === 'done') return 'That task was marked done before you took it on.';
+  if (task.status === 'cancelled') return 'That task was closed before you took it on.';
+  return "That couldn't be taken on just now. Please try again.";
+}
+
 /** Every marker the submit routes emit is READ and rendered (R5/F-7). */
-function noticeFor(sp: Record<string, string | string[] | undefined>) {
+function noticeFor(
+  sp: Record<string, string | string[] | undefined>,
+  task: TaskRow,
+  me: { id: string } | null,
+) {
   const e = typeof sp.e === 'string' ? sp.e : null;
   if (e === 'slow') {
     return { kind: 'alert' as const, text: "That took too long to confirm. Check the task before trying again — nothing is lost." };
   }
+  if (e === 'claim') return { kind: 'alert' as const, text: claimRefusal(task, me) };
   if (e === 'assign') return { kind: 'alert' as const, text: "That person couldn't be handed this task just now." };
   if (e === 'unassign') return { kind: 'alert' as const, text: "That couldn't be taken back just now. Please try again." };
   if (e === 'complete') return { kind: 'alert' as const, text: "That couldn't be marked done just now. Please try again." };
@@ -85,6 +114,7 @@ function noticeFor(sp: Record<string, string | string[] | undefined>) {
             : 'Handed over.',
     };
   }
+  if (sp.claimed === '1') return { kind: 'status' as const, text: "It's yours now." };
   if (sp.unassigned === '1') return { kind: 'status' as const, text: 'Taken back. Whatever the assignment created was withdrawn.' };
   if (sp.done === '1') return { kind: 'status' as const, text: 'Marked done.' };
   if (sp.snoozed === '1') return { kind: 'status' as const, text: 'Moved. The snooze is counted on the task.' };
@@ -137,7 +167,10 @@ export default async function TaskPage({
       const open = task.status === 'open';
       const holdsIt = me !== null && task.owner_member_id === me.id;
       const mayAct = open && (task.can_manage || holdsIt);
-      const notice = noticeFor(sp);
+      // 8C U1: offered exactly where hc.claim_task would not refuse — the
+      // definer's own gates, over the row RLS already returned.
+      const claimable = mayClaim(task, me);
+      const notice = noticeFor(sp, task, me);
 
       // The controls' reads, only where the controls render.
       let candidates: Candidate[] = [];
@@ -225,6 +258,20 @@ export default async function TaskPage({
               </p>
             ) : null}
           </Card>
+
+          {/* 8C U1 · the claim. One button, and the form carries NOTHING:
+              hc.claim_task takes the task alone and cannot name anyone else,
+              so there is no field here that could become a share or a
+              written instruction (ADR-0040 D3). It sits above the holder's
+              controls because on an unassigned task it is the only thing a
+              member at `view` can do. */}
+          {claimable ? (
+            <div className="record-controls">
+              <form method="post" action={`${next}/claim/submit`}>
+                <Button type="submit">Take this on</Button>
+              </form>
+            </div>
+          ) : null}
 
           {mayAct ? (
             <div className="record-controls">

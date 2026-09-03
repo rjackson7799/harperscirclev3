@@ -196,26 +196,6 @@ beforeAll(async () => {
      values ($1, 'task', $2, 'document', $3)`,
     [circleId, tTainted, dSrc],
   );
-  // 8C U1 · three rows the claim legs own outright: one plain claimable
-  // task, one that will be SHARED to the caregiver by name (the rung-5
-  // path — ADR-0040 D1/Q-C), and one INSTRUCTION row, which is never
-  // claimable at any level (ADR-0033 cluster C).
-  tClaim = randomUUID();
-  tShared = randomUUID();
-  tInstruction = randomUUID();
-  await raw.query(
-    `insert into public.tasks (id, circle_id, subject_id, title, due_on, due_zone, status,
-       source_arrival_id, approved_by, approved_at, approver_display_name, taint,
-       written_from_task_id, written_for_member_id)
-     values
-       ($1, $4, $5, 'Collect the dressings from the pharmacy', null, null, 'open',
-        null, $6, now(), 'Sarah', '{schedule}', null, null),
-       ($2, $4, $5, 'Sit with Nell on Thursday afternoon', null, null, 'open',
-        null, $6, now(), 'Sarah', '{schedule}', null, null),
-       ($3, $4, $5, 'Bring the dressings on Thursday', null, null, 'open',
-        null, $6, now(), 'Sarah', '{schedule}', $1, $7)`,
-    [tClaim, tShared, tInstruction, circleId, nell, people.sarah.id, member.nadia],
-  );
   await raw.query('set session_replication_role = default');
 
   return async () => {
@@ -478,6 +458,33 @@ describe('B2 · snooze counts; the filters are pure over the rows', () => {
 // and a control withheld where the claim would land is work she cannot take.
 // ============================================================================
 describe('8C U1 · the claim: the surface’s answer and the database’s are the same answer', () => {
+  // The claim's rows are fixtured HERE, not in the file's beforeAll. Ruth
+  // clears {schedule} at summary, so three more schedule tasks in the
+  // circle from the start silently changed what "Ruth sees the two Nell
+  // tasks she clears" was asserting — a fixture quietly rewriting an older
+  // leg's meaning. Created when this suite starts, they are invisible to
+  // every suite above and the older assertions keep the tree they had.
+  beforeAll(async () => {
+    tClaim = randomUUID();
+    tShared = randomUUID();
+    tInstruction = randomUUID();
+    await raw.query('set session_replication_role = replica');
+    await raw.query(
+      `insert into public.tasks (id, circle_id, subject_id, title, due_on, due_zone, status,
+         source_arrival_id, approved_by, approved_at, approver_display_name, taint,
+         written_from_task_id, written_for_member_id)
+       values
+         ($1, $4, $5, 'Collect the dressings from the pharmacy', null, null, 'open',
+          null, $6, now(), 'Sarah', '{schedule}', null, null),
+         ($2, $4, $5, 'Sit with Nell on Thursday afternoon', null, null, 'open',
+          null, $6, now(), 'Sarah', '{schedule}', null, null),
+         ($3, $4, $5, 'Bring the dressings on Thursday', null, null, 'open',
+          null, $6, now(), 'Sarah', '{schedule}', $1, $7)`,
+      [tClaim, tShared, tInstruction, circleId, nell, people.sarah.id, member.nadia],
+    );
+    await raw.query('set session_replication_role = default');
+  });
+
   /** Every live share and every instruction row in the circle — the app-half
    *  echo of ADR-0040 D3's SET EQUALITY, so a claim that quietly minted one
    *  would be caught here and not only at pgTAP. */
