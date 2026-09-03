@@ -340,7 +340,7 @@ describe('the coordinator — three kinds, each row labelled, ranked and cut fro
     });
     expect(typeof doc.rank).toBe('number');
     expect(doc.snippet.some((p) => p.hit && /^discharge$/i.test(p.text))).toBe(true);
-    expect(text(doc.snippet)).not.toMatch(/[00020003<>]/);
+    expect(text(doc.snippet)).not.toMatch(/[\u0002\u0003<>]/);
     expect(r.tasks[0]).toMatchObject({ kind: 'task', category: null, title: 'Follow the discharge instructions' });
     expect(r.events[0]).toMatchObject({ kind: 'timeline_event', category: 'medical', subject_name: 'Nell' });
     expect(r.events[0].snippet.some((p) => p.hit)).toBe(true);
