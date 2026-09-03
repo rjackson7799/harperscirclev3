@@ -1,11 +1,20 @@
 # Slice 8 — Search, and the ruled intake: the slice plan
 
-**Status:** **PLANNED — AWAITING OWNER RULINGS. Q1–Q7 are PUT, not
-settled.** Each carries the recommendation the build would execute on and
-names the alternative it rejects. **An unanswered question defaults to NOT
-PLANNED and the build does not start** (ADR-0006). Written 2026-09-02 in
-the planning session on `docs/slice-8-plan`, branched from `origin/main`
-after a fetch.
+**Status:** **PLANNED — RULED. Q1–Q7 SETTLED 2026-09-02 at the plan
+gate, every recommendation accepted as put** — the owner's words: *"go
+with your best recommendation for each open item"* — recorded under
+*Owner decisions* below, each with its consequence. **Ruled NOT PLANNED:
+ADR-0038 D6 item 3 (share-includes-bytes), contingent** — it re-enters
+only as an owner amendment re-opening Q-A. Nothing else is NOT PLANNED:
+6C is DEFERRED with a home (Q3(c)) and the six owner-track owed rows
+leave the ledger by PROMOTED exits (Q6), not by kill. ADR-0006's default
+— *an unanswered question is NOT PLANNED and the build does not start* —
+did not have to be exercised: a first rulings session on 2026-09-02
+found every ruling line blank, stopped without editing, and put the seven
+back; this session records the answers. Written 2026-09-02 in the
+planning session on `docs/slice-8-plan`, branched from `origin/main`
+after a fetch; the rulings recorded the same day on top of `4076be5`,
+with `origin/main` still `7e18164`.
 
 **`main` HAS MOVED since the kickoff's STATE block was written.** The
 kickoff names `main` @ **`6025cfa`** (PR #34, slice 7C + round 27).
@@ -111,8 +120,9 @@ its leg; the page gate (`tests/app/page-gate.test.ts`) fails until the
 page is listed **both ways**; and `tests/lint/answer-budget.test.ts`
 fails until the tree and the surface are named in `RECORD_TREES` and
 `RECORD_SURFACES` — the exact-set pin 7E added on R3/F-6. **A11Y-12 opens
-`pending` tagged 8 at this gate and flips inside 8B** (Q5). G12-01 stays
-`pending` at `gate`.
+`pending` tagged 8 and flips inside 8B** (Q5, SETTLED 2026-09-02; the row
+is written by the 8A build's first docs-only commit, not by this PR).
+G12-01 stays `pending` at `gate`.
 
 **G9 and G3 stand; nothing here depends on them.** The G9 gate is OPEN,
 `BAND_ARTIFACT_ALLOWLIST` is EMPTY, all-high-risk is the shipping mode,
@@ -145,7 +155,7 @@ only** — no CI run can upgrade local gate evidence.
 
 ---
 
-## THE THINGS THAT MUST BE SETTLED BEFORE A SCREEN IS DRAWN
+## THE THINGS THAT MUST BE SETTLED BEFORE A SCREEN IS DRAWN (Q4 — SETTLED 2026-09-02, as a block)
 
 ### 1 — `ts_headline` returns MARKUP, and a snippet is document content
 
@@ -252,25 +262,25 @@ the acceptance criterion's own list. This is a leg, not a comment.
 
 ---
 
-## The ruled intake, priced — not folded (Q3)
+## The ruled intake, priced — not folded (Q3 — SETTLED 2026-09-02)
 
 Each item's state was **re-verified at the site this session**; *home*
 means the unit that takes it, *NOT THIS SLICE* means named here with its
 reason and its standing home.
 
-| Item | Verified state at `7e18164` | Priced | Recommended home |
+| Item | Verified state at `7e18164` | Priced | Home — RULED 2026-09-02, as recommended |
 |---|---|---|---|
-| **Claim / self-assignment** (ADR-0033 Q-H → ADR-0035 D9 → **ADR-0036 Q-D: "RULED: slice 8"**) | `hc.assign_task` refuses below `manage` on the task; `revise_object`'s task allowlist excludes `owner_member_id`; no claim path at any layer | One definer + one event type + pgTAP; then one control and one route | **8A M1** (DDL, Tier 1) → **8C** (the surface) |
-| **ADR-0038 D6 item 1 — `hc.shares_for` carrying the assignment task's live status** (R2/F-4's wider form) | **The honest surface already landed at 7D**: `documents/[document]/page.tsx:455-460` renders a link to `/[circle]/tasks/{created_by_assignment_of}` instead of an Unshare for assignment-created shares. D6 itself says *"the honest surface does not need it"* | Widening a definer's return type re-pins `002`'s exact sets and the M5 signature, for a column the surface does not read | **KILL, with the reason on the record.** Not deferred — deferring implies a later need that the landed fix removed |
-| **ADR-0038 D6 item 2 — a level-bound step-up `target_ref`** (R3's dissent 1) | `hc.set_grant` composes `target_ref` as `member:subject:domain` and **not the level**; `rl` travels in the URL. R3: *"the app cannot fix this alone … if the owner wants level-bound step-up it is a slice-8 DDL question"* | A `create or replace` of `hc.set_grant` + the mint call site + STP-01/02 and GRT-01 re-pinned in the same commit + PPL-02's leg re-run | **TAKE — 8A M2.** The exposure is a coordinator confirming a level she did not see; the slice is already paying for a migration, and an auth binding with no home becomes permanent |
-| **ADR-0038 D6 item 3 — share-includes-bytes** | Contingent on **re-ruling Q-A**, which ADR-0038 D1 RATIFIED (*"A document share reaches the ROW, not the arrival's bytes or facts"*) | Not priced — a settled ruling is not a finding | **NOT PLANNED, contingent.** It re-enters only as an owner amendment that re-opens Q-A |
-| **OW-26 — the access log's cursor** (ADR-0038 D3, R4/F-3 remedy (a); MAJOR; home slice 8) | `lib/hc/people#accessLog` is `order by seq desc limit 300`; `seq` 1 — §7.5's custodianship declaration — is the FIRST row dropped. LOG-01's app half is green only in the narrower words 7E earned | A `seq` cursor on an RLS-filtered read + the printed projection reaching the same set + a >300-row fixture. **App-only**: the policy already decides | **8C** — its reader is a person reading a printable record. The pricing rule's own test |
-| **6C — multi-attachment group review** (AC-INBOX-5 / AC-INBOX-13; slice-7 Q4(a): *"home a Care Inbox increment (6C) before slice 8"*) | **NOT BUILT.** And, measured this session: **there is no coverage row for AC-INBOX-5 or AC-INBOX-13** — `docs/coverage.md` cites ten AC-INBOX criteria and neither of those two. The slice-6 and slice-7 plans both say *"rows stay `pending`"*; there are no rows to stay pending | A composition over the review screen — N children as one flow, one receipt (a 6B-B7-sized unit, Tier 2) | **Q3(c).** Recommended: **DEFER with a named home, and OPEN `GRP-01` `pending` NOW** so the absence is visible for the first time |
-| **OW-08/09/10/12/13/14** (six OPEN rows) | Owner-track and pipeline: the four unbounded fetches, the unobserved hosted runtime, render+OCR off the request process, the starvation heartbeat, leg 38 under load, the `HopCost` harness | Not this slice's work — but **their escalation clock has expired** (Q6) | **NOT THIS SLICE**, named; Q6 puts the clock |
+| **Claim / self-assignment** (ADR-0033 Q-H → ADR-0035 D9 → **ADR-0036 Q-D: "RULED: slice 8"**) | `hc.assign_task` refuses below `manage` on the task; `revise_object`'s task allowlist excludes `owner_member_id`; no claim path at any layer | One definer + one event type + pgTAP; then one control and one route | **8A M1** (DDL, Tier 1) → **8C** (the surface) — RULED (Q1, Q2) |
+| **ADR-0038 D6 item 1 — `hc.shares_for` carrying the assignment task's live status** (R2/F-4's wider form) | **The honest surface already landed at 7D**: `documents/[document]/page.tsx:455-460` renders a link to `/[circle]/tasks/{created_by_assignment_of}` instead of an Unshare for assignment-created shares. D6 itself says *"the honest surface does not need it"* | Widening a definer's return type re-pins `002`'s exact sets and the M5 signature, for a column the surface does not read | **KILLED, with the reason on the record (Q3(a) SETTLED).** Not deferred — deferring implies a later need that the landed fix removed |
+| **ADR-0038 D6 item 2 — a level-bound step-up `target_ref`** (R3's dissent 1) | `hc.set_grant` composes `target_ref` as `member:subject:domain` and **not the level**; `rl` travels in the URL. R3: *"the app cannot fix this alone … if the owner wants level-bound step-up it is a slice-8 DDL question"* | A `create or replace` of `hc.set_grant` + the mint call site + STP-01/02 and GRT-01 re-pinned in the same commit + PPL-02's leg re-run | **TAKEN — 8A M2 (Q3(a) SETTLED).** The exposure is a coordinator confirming a level she did not see; the slice is already paying for a migration, and an auth binding with no home becomes permanent |
+| **ADR-0038 D6 item 3 — share-includes-bytes** | Contingent on **re-ruling Q-A**, which ADR-0038 D1 RATIFIED (*"A document share reaches the ROW, not the arrival's bytes or facts"*) | Not priced — a settled ruling is not a finding | **NOT PLANNED, contingent (Q3(a) SETTLED).** It re-enters only as an owner amendment that re-opens Q-A |
+| **OW-26 — the access log's cursor** (ADR-0038 D3, R4/F-3 remedy (a); MAJOR; home slice 8) | `lib/hc/people#accessLog` is `order by seq desc limit 300`; `seq` 1 — §7.5's custodianship declaration — is the FIRST row dropped. LOG-01's app half is green only in the narrower words 7E earned | A `seq` cursor on an RLS-filtered read + the printed projection reaching the same set + a >300-row fixture. **App-only**: the policy already decides | **8C, TAKEN (Q3(b) SETTLED)** — its reader is a person reading a printable record. The pricing rule's own test |
+| **6C — multi-attachment group review** (AC-INBOX-5 / AC-INBOX-13; slice-7 Q4(a): *"home a Care Inbox increment (6C) before slice 8"*) | **NOT BUILT.** And, measured this session: **there is no coverage row for AC-INBOX-5 or AC-INBOX-13** — `docs/coverage.md` cites ten AC-INBOX criteria and neither of those two. The slice-6 and slice-7 plans both say *"rows stay `pending`"*; there are no rows to stay pending | A composition over the review screen — N children as one flow, one receipt (a 6B-B7-sized unit, Tier 2) | **Q3(c) SETTLED: DEFERRED with a named home, and `GRP-01` opened `pending`** so the absence is visible for the first time |
+| **OW-08/09/10/12/13/14** (six OPEN rows) | Owner-track and pipeline: the four unbounded fetches, the unobserved hosted runtime, render+OCR off the request process, the starvation heartbeat, leg 38 under load, the `HopCost` harness | Not this slice's work — but **their escalation clock has expired** (Q6) | **NOT THIS SLICE**, named; Q6 SETTLED: all six **`PROMOTED(row)`** to entry gates at `gate` — DEP-01, EXE-01, EXE-02, BND-01 |
 
 ---
 
-## Migration bound (Q2): **≤ 4** (M1–M2 planned, M3 + M4 reserved and NAMED)
+## Migration bound (Q2 — SETTLED 2026-09-02): **≤ 4** (M1–M2 planned, M3 + M4 reserved and NAMED)
 
 **Bounds are FRESH.** Slice 7 closed at **5 of ≤ 6** with M6 UNCONSUMED,
 and that bound is spent and closed; it does not carry. **The migration
@@ -283,18 +293,20 @@ bound does not exist until this gate sets it.**
 | # | File | Contents | Closes |
 |---|---|---|---|
 | **M1** | `task_claim` | **`hc.claim_task(p_task uuid)`** — the caller takes an **unassigned, open** task for **herself**. Refused unless `hc.visible_at(ctx, subject, taint, taint_resolved, 'task', p_task, owner_member_id) >= 'view'`; refused if `owner_member_id is not null` (reassignment is `unassign` + `assign`, which stays `manage`'s); refused under freeze through the same one function. Writes `owner_member_id = the claimer's member row`, `assigned_by = the same account`, `assigned_at`. **New event type `task_claimed`**, distinct from `task_assigned` so the log can tell *handed to you* from *you took it* — AC-TASK-2's *"every assignment has a human actor"* is satisfied either way, and the distinction is what makes the log readable. **Why this is safe below `manage` and `assign_task` is not:** a claim creates **no** object share, writes **no** `written_for_member_id` instruction, and moves work only to a member who could already read the task. §4.5.6's taint collision cannot arise, because the claimant IS the reader. **The AI has no path into this function** (§6.5). Refusals in one shape. | AC-TASK-1's claim half; PRD §4.5.1's *"Claims, reassigns, completes, snoozes, adds"*; ADR-0036 Q-D |
-| **M2** | `step_up_level_binding` | **`create or replace function hc.set_grant(...)`** composing `target_ref` as `member:subject:domain:**level**`, and the mint call site passing the level it is about to confirm. Consumed **only** if Q3(a) rules item 2 TAKEN; the ruling is quoted in the commit. STP-01/02's and GRT-01's exact-set pins are re-pinned **in the same commit**; no in-flight token can exist (nothing is production-activated). | ADR-0038 D6 item 2; R3's dissent 1 |
+| **M2** | `step_up_level_binding` | **`create or replace function hc.set_grant(...)`** composing `target_ref` as `member:subject:domain:**level**`, and the mint call site passing the level it is about to confirm. **Q3(a) SETTLED 2026-09-02: item 2 TAKEN — M2 is consumed**; the ruling is quoted in the commit. STP-01/02's and GRT-01's exact-set pins are re-pinned **in the same commit**; no in-flight token can exist (nothing is production-activated). | ADR-0038 D6 item 2; R3's dissent 1 |
 | **M3** | *(reserved)* | **Round-28 dispositions** — the standing precedent since 2A. Consumed only by a round's ruling. | — |
 | **M4** | *(reserved, NAMED)* | **A search index, consumed ONLY on a MEASURED PRF-06 breach at the 8B head.** PRF-06 has breached once already (`search_broad` 3,490 ms against 2,500) and the breach clause is a live part of that row. 8B adds two branches the bench covers (`search_tasks`) and one it does not (timeline), over a fixture the bench does not build. If the measurement at the 8B head breaches, the exit is an index — an append, never an edit — **with the measured numbers pasted into the red commit**. If it does not, **M4 closes UNCONSUMED.** | PRF-06's breach clause; §7.7 |
 
-**Expected close: 2 of ≤ 4** if Q3(a) TAKEs item 2 and no PRF-06 breach
-appears; **1 of ≤ 4** if item 2 is deferred. **A reserve not consumed
+**Expected close: 2 of ≤ 4** — Q3(a) TAKES item 2 (SETTLED 2026-09-02),
+so M2 is consumed, and M3 and M4 close UNCONSUMED unless their named
+conditions arise. **A reserve not consumed
 closes UNCONSUMED, and the bound closes at what was spent.** Anything past
 ≤ 4 is a **recorded owner amendment made before a line is written**;
 **shipped migrations are never edited** and recovery is forward-fix.
 
-The tree moves **74 → 75 or 76** migrations and **69 → 70 or 71** pgTAP
-files, one per consumed slot (`070`, `071`).
+The tree moves **74 → 76** migrations and **69 → 71** pgTAP files at the
+8A head, one per consumed slot (`070`, `071`); 77/78 and `072`/`073`
+only on a consumed reserve.
 `supabase:supabase-postgres-best-practices` is loaded **before any DDL is
 authored** and stands for the whole 8A build: every new function
 `security definer set search_path = ''`, owner `hc_internal`, EXECUTE
@@ -336,7 +348,7 @@ as zero so that *"we added one small thing"* cannot pass unnoticed. The
 
 ---
 
-## The increment — the split, argued (Q1)
+## The increment — the split, argued (Q1 — SETTLED 2026-09-02)
 
 ### What the tree says
 
@@ -353,16 +365,20 @@ module. Claim is one control and one route. The cursor is one module
 change. **The split rule is what fixes the shape**: the claim migration is
 Tier 1, the surfaces are Tier 2, and *"an increment may not contain both a
 Tier 1 unit and a Tier 3 unit"* — so the DDL is its own increment,
-planned and reviewed first, and the process change Q7 recommends
-(**Tier 3**) may not ride with it.
+planned and reviewed first, and the process change Q7 rules in
+(**Tier 3**, SETTLED) may not ride with it.
 
 ### The three increments
 
 | # | Increment | Branch | Tier | Round | Depends on |
 |---|---|---|---|---|---|
-| **8A** | The database increment — M1 `task_claim`, M2 `step_up_level_binding` (Q3(a)) | `slice/8-claim-db` | **Tier 1** | **28** | nothing |
+| **8A** | The database increment — M1 `task_claim`, M2 `step_up_level_binding` (Q3(a) SETTLED: TAKEN) | `slice/8-claim-db` | **Tier 1** | **28** | nothing |
 | **8B** | **Search, the surface** — the module, the field, the results page, the legs | `slice/8b-search-app` | **Tier 2** | **29** | nothing (its DB half is 1D's) |
 | **8C** | **Claim's surface and the access log's cursor** — the control, the route, OW-26 | `slice/8c-claim-log-app` | **Tier 2** | **30** | 8A merged |
+
+**Tiers RULED 2026-09-02 (Q1): 8A Tier 1 · 8B Tier 2 · 8C Tier 2.** A
+tier is never lowered mid-slice; the owner may raise one on the record
+before a line is written.
 
 **Why 8B does not wait for 8A.** Search depends on no migration. Ordering
 it second rather than first is the split rule's *"the Tier 1 units become
@@ -381,16 +397,17 @@ priced and not recommended.
 
 **Fail closed.** Any unit whose tier has to be *argued* is **Tier 1 until
 the owner rules it down**, and a tier is never lowered mid-slice. Two
-units are argued below and both are put to the owner rather than assumed:
+units were argued below, both were put to the owner rather than assumed,
+and both were RULED on 2026-09-02:
 
 - **OW-26's cursor (8C).** The Tier-1 trigger is *"writes the access log
   or ledger"*. A cursor **reads** it; the policy already decides which
   rows exist and the change adds `where seq < $n` to a read that is
-  filtered before it is ordered. **Recommended: Tier 2, ruled down
-  explicitly.** Fail-closed default if unruled: Tier 1.
+  filtered before it is ordered. **RULED DOWN to Tier 2 explicitly
+  (Q1 SETTLED).** The fail-closed default no longer applies to it.
 - **The preflight guard (Q7).** Test-only, so **Tier 3** — which is
-  exactly why it cannot ride 8A, and why the recommendation is its own
-  small PR before the 8A build kickoff (the slice-7 `chore/process-retune`
+  exactly why it cannot ride 8A, and why it is its own small PR before the
+  8A build kickoff (Q7 SETTLED; the slice-7 `chore/process-retune`
   precedent).
 
 ### 8A — the database increment — Tier 1
@@ -406,12 +423,12 @@ commit:
    that discriminates is an oracle); freeze closes it; the log entry
    names the claimant as actor; **no share and no instruction row is
    created by any path through this function** (asserted, not argued).
-2. **M2** (only if Q3(a) TAKEs it): `hc.set_grant`'s `target_ref` gains
+2. **M2** (Q3(a) SETTLED: TAKEN): `hc.set_grant`'s `target_ref` gains
    the level; `071_step_up_level.sql` drives a token minted for
    `summary` and posted for `manage` and asserts the refusal; STP-01/02
    and GRT-01 re-pinned in the same commit.
 3. **Closure at the 8A head:** clean-leg reset at the **exact** new count
-   (75 or 76) · pgTAP all green, files and Σ recorded **exactly** ·
+   (76: M1 + M2) · pgTAP all green, files and Σ recorded **exactly** ·
    concurrency all green, **teed** · `db:verify --fail-on warning` clean
    · the upgrade leg green — **both of these have NOT RUN since 7A and
    this increment is the first since to ship DDL** · vitest recorded
@@ -465,7 +482,7 @@ commit:
    *"That couldn't be done just now."* for a case the surface can name.
    A leg proves a `view`-level member claims and the task becomes hers,
    and that no control is offered where the function would refuse.
-2. **OW-26** — `accessLog` gains a `seq` cursor; the page and the
+2. **OW-26** (TAKEN here — Q3(b) SETTLED) — `accessLog` gains a `seq` cursor; the page and the
    **printed** projection reach the same set; a test drives a circle
    **past 300 rows** and asserts `seq` 1 — the custodianship
    declaration — is reachable. LOG-01's app half is **amended, never
@@ -487,14 +504,14 @@ DEF-12, VIS-09, PLT-04, MUT-01, MUT-02, MUT-03, UPG-01, UXA-01, DS-08.
 | ID | Assertion (compressed) | Layer | Slice | Status at slice end |
 |---|---|---|---|---|
 | **TSK-05** | `hc.claim_task`: a `view`-level member takes an **unassigned, open** task for herself and no other; `summary`, an owned task, a non-reader and a frozen circle refused in ONE shape; the claim creates no share and no written instruction; `task_claimed` names the claimant as actor (AC-TASK-1 claim half, AC-TASK-2) | pgTAP + app + e2e | 8A/8C | green |
-| **STP-03** | *(only if Q3(a) TAKEs D6 item 2)* Step-up binds the **level** as well as `member:subject:domain`: a token minted for `summary` does not consume against a post of `manage` for the same triple | pgTAP + app | 8A | green |
+| **STP-03** | *(Q3(a) SETTLED 2026-09-02: D6 item 2 TAKEN — the row exists)* Step-up binds the **level** as well as `member:subject:domain`: a token minted for `summary` does not consume against a post of `manage` for the same triple | pgTAP + app | 8A | green |
 | **SRCH-03** | The surface's leakproofness: ONE RLS-true read per relation, no second code path; a `summary` member's **body-only** term returns the same rendered shape as a term present nowhere, driven from a LIVE context; a share widens the one named object through search and never an object derived from it; the care-circle ceiling holds in search (AC-DOC-4, AC-PERM-6, AC-TASK-5) | app + e2e | 8B | green |
 | **SRCH-04** | The results' shape and copy: grouped by kind, **labelled by subject**, each link resolves to the object; §4.7.3's four strings verbatim; **no total, no count of withheld results, no autocomplete, no spelling correction, no prose answer and no composition across results** — asserted as ABSENCES over the rendered tree (AC-HOME-4, AC-DOC-1's search half, AC-TL-1's *"through search"*) | app + e2e | 8B | green |
 | **SRCH-05** | The snippet is cut from the matched text and reaches the DOM as **structure, never markup**: explicit `ts_headline` sentinels, split in the module, `<mark>` built by React; **no `dangerouslySetInnerHTML` anywhere on the surface**, fence-tested; `ocr_text` findable at weight D and never outranking a title | app + e2e | 8B | green |
 | **SRCH-06** | Latency and bounds: `q` capped at ingress and refused with the empty-result copy; the three reads inside ONE `AnswerBudget` with the overrun rendering the honest slow answer; a **measured** page p95 recorded at the 8B head against PRD §13.2, and the `prf06.mjs` scan legs re-run against the 8B fixture (§7.7) | app + bench | 8B | green |
-| **A11Y-12** | The search surface audited: the field labelled and reachable, results as headed groups, emphasis not conveyed by colour alone, 390 px and keyboard | e2e | 8 | **pending** at this gate → green in 8B |
+| **A11Y-12** | The search surface audited: the field labelled and reachable, results as headed groups, emphasis not conveyed by colour alone, 390 px and keyboard | e2e | 8 | **pending** (written by the 8A docs commit, Q5 SETTLED) → green in 8B |
 | **LOG-04** | The access log reaches **every** entry the reader may see: a `seq` cursor, the printed projection reaching the same set, `seq` 1 reachable on a circle past 300 rows (OW-26; LOG-01's app half amended to point here, never rewritten) | app + e2e | 8C | green |
-| **GRP-01** | *(opened `pending` by Q3(c) — the row that does not exist today)* Multi-attachment group review: N children reviewed as one flow with one receipt; partial states presented honestly and blocking on none (AC-INBOX-5, AC-INBOX-13) | app + e2e | **6C** | **pending** — never green on the arrival shape alone |
+| **GRP-01** | *(Q3(c) SETTLED 2026-09-02: opened `pending` — the row that did not exist at the gate)* Multi-attachment group review: N children reviewed as one flow with one receipt; partial states presented honestly and blocking on none (AC-INBOX-5, AC-INBOX-13) | app + e2e | **6C** | **pending** — never green on the arrival shape alone |
 
 **Rows that do NOT move:** RLS-11b (`pending`, 2+ — the notification and
 export channels), FRZ-16b, DEL-01, ADM-01, **SIG-01 (still NOT absorbed,
@@ -504,6 +521,22 @@ green at their own layers and are NOT re-earned by this slice** — the app
 rows are new rows, because *"a requirement spanning layers is split into
 one assertion per layer, never claimed green at a layer that cannot prove
 it."* **No row flips outside a ruling; pending never counts as green.**
+
+**Rows opened by Q6's PROMOTED exits (SETTLED 2026-09-02)** — in the same
+`## 8` section with Slice cell **`gate`** (the G12-01 shape), never green
+in this slice. Each is the *named, quantified entry gate* its ledger row
+becomes; the work stays where the ledger homed it, and the row is what
+keeps it visible after the ledger row leaves `OPEN`.
+
+| ID | Assertion (compressed) | Layer | Slice | Status at slice end | From |
+|---|---|---|---|---|---|
+| **DEP-01** | Before G4 passes — invite sending is the first production act — a hosted runtime has been observed under an auth-server fault and the observation recorded: date, runtime, what the page gate did | deploy | gate | **pending** | OW-09 |
+| **EXE-01** | Before G7 passes — no real forwarding address activates — the harness ADR-0028 D13 names exists (a concurrent in-process render + OCR overlapping an authenticated artifact read) and the `HopCost` ledger's first live report is recorded | harness | gate | **pending** | OW-14 |
+| **EXE-02** | Before G7 passes: §6.3 render and §6.9 OCR run off the request process; a heartbeat across the whole request window reports stalls that do not overlap the deadline; leg 38 passes under D13's named load condition, its duration and outcome recorded per gate run from `.gate/e2e-run.json`, never re-run to green | app + e2e | gate | **pending** | OW-10, OW-12, OW-13 |
+| **BND-01** | Before G7 passes: the four remaining unbounded outbound hops — `lib/mail/outbound.ts`, `postmark/route.ts`, `worker/relay/route.ts`, `worker/[stage]/route.ts` — each carry a time bound with a named test (the mail hop is slice 11's; the three fires ride EXE-02's increment), and `lib/storage/fetch.ts`'s comment states the measured 5/4 split | routes + tests | gate | **pending** | OW-08 |
+
+**All thirteen rows are written by the 8A build's first docs-only commit,
+quoting *Owner decisions* — not by this PR** (consequence 2).
 
 ---
 
@@ -537,16 +570,17 @@ home.
   the named upgrade path, not Phase 1 work.
 - **A search entry in the access log.** Named in *Settled before a
   screen* item 3; DDL and an owner amendment if ever wanted.
-- **`hc.shares_for` widened** and **share-includes-bytes** — Q3(a)'s KILL
-  and its contingent NOT PLANNED.
-- **Multi-attachment group review (6C)** — Q3(c)'s ruling; `GRP-01`
-  carries the absence.
+- **`hc.shares_for` widened** and **share-includes-bytes** — Q3(a)
+  SETTLED: KILLED, and NOT PLANNED contingent.
+- **Multi-attachment group review (6C)** — Q3(c) SETTLED: DEFERRED with a
+  named home; `GRP-01` carries the absence.
 - **OW-08, OW-09, OW-10, OW-12, OW-13, OW-14** — the four remaining
   unbounded fetches (mail, postmark inbound, the two worker fires), the
   unobserved hosted runtime, render + OCR off the request process, the
   starvation heartbeat, leg 38 under genuine load, the `HopCost` harness.
-  Owner-track and pipeline; **Q6 puts their expired clock**, which is not
-  the same as taking the work.
+  Owner-track and pipeline; **Q6 SETTLED: all six `PROMOTED(row)` —
+  DEP-01, EXE-01, EXE-02, BND-01 — entry gates on G4/G7**, which is not
+  the same as taking the work: none of it is built here.
 - **Admin (row 10), Notifications (row 11), export and deletion (G5, G6),
   the admin wrappers (ADM-01), the `exports` bucket.**
 - **Parent login** (CIR-06 is one UPDATE, no surface), **time-boxed
@@ -557,14 +591,16 @@ home.
   must not move while the G9 blind run is free to submit.
 - **The G3 activation rows, the G9 blind run and its sign-off, the two G4
   deploy rows and G7's hardening set** — deploy-level and owner-track,
-  untouched by this slice.
+  untouched by this slice. The four rows Q6 promotes into those gates
+  (DEP-01, EXE-01, EXE-02, BND-01) are opened `pending` and not worked
+  here.
 
 ---
 
-## G12 per increment (Q5)
+## G12 per increment (Q5 — SETTLED 2026-09-02)
 
-**A11Y-12 opens `pending` tagged 8 at this gate and flips inside 8B**, on
-the A11Y-07 precedent: a structural accessibility failure found at G12
+**A11Y-12 opens `pending` tagged 8 — ruled here, written by the 8A docs
+commit — and flips inside 8B**, on the A11Y-07 precedent: a structural accessibility failure found at G12
 *"is a redesign, not a fix."* The audit manifest grows mechanically —
 `tests/design/audit-manifest.test.ts` derives the route set from the
 filesystem and fails vitest on the new `page.tsx` until it names its leg —
@@ -585,7 +621,7 @@ argument at slice 7, and it held.
 
 ---
 
-## The owed ledger: the expired clock and the burn-down quota (Q6)
+## The owed ledger: the expired clock and the burn-down quota (Q6 — SETTLED 2026-09-02, per row)
 
 Re-derived by command this session with the process test's parser:
 **`docs/owed.md` — 26 rows · OPEN 7 / 25 · TAKEN 1 · RISK 1 · CLOSED 17**,
@@ -614,6 +650,13 @@ named slice (the `bounded-deferral-gates` exit the ledger already
 defines), or **kept OPEN with a fresh owner-track date**. The mechanism is
 already written down; what is missing is the ruling.
 
+**RULED 2026-09-02 (Q6 SETTLED):** OW-09 → `PROMOTED(DEP-01)` · OW-14 →
+`PROMOTED(EXE-01)` · OW-10, OW-12, OW-13 → `PROMOTED(EXE-02)` · OW-08 →
+`PROMOTED(BND-01)`; none KILLED, because none is moot. The quota is MET
+for slice 8 by OW-26's take plus those six exits, and the ledger is
+expected to read OPEN 0 / 25 from the 8A docs commit on. The per-row
+argument is in *Owner decisions*, Q6.
+
 **Named plainly, because it is the ledger's own failure mode:** the file
 exists because *"the slice-5B queue stays 39 OWED"* appeared verbatim in
 three consecutive rounds. Six rows sitting past an expired auto-escalation
@@ -621,7 +664,7 @@ clock is that shape, one size smaller.
 
 ---
 
-## The two round-27 host traps (Q7)
+## The two round-27 host traps (Q7 — SETTLED 2026-09-02)
 
 Both were paid for in round 27, neither is in `docs/process/traps.md`, and
 the file is **at its cap: 214 lines of content, 215 by the test's own
@@ -671,6 +714,186 @@ the slice-7 `chore/process-retune` precedent exactly, and it puts the
 guard in place before the slice's first gate rather than after it.
 **Alternative: fold both into 8B's first unit** — one fewer PR, and 8A's
 gate runs unguarded, which is how round 27 lost four runs.
+
+**RULED 2026-09-02 (Q7 SETTLED): as recommended** — both preflight, no
+eviction, one Tier-3 PR `chore/preflight-dev-lock` in its own fresh
+session, owner-merged before the 8A build kickoff.
+
+---
+
+## Owner decisions — SETTLED 2026-09-02 (the plan-gate rulings)
+
+The owner ruled on the seven questions at the plan gate, 2026-09-02, in
+session. **Every recommendation was accepted as put.** The owner's words,
+quoted exactly and applying to all seven: *"go with your best
+recommendation for each open item"*. A first rulings session earlier the
+same day had received the seven with every ruling line blank and STOPPED
+without editing — the brief's own rule, *never apply the ADR-0006 default
+silently* — and put them back; the words above are the answer. Under each
+question: the ruling those words ratify, then the consequence where it
+changes a bound, a tier, a row or a home. **Q6's per-row verdicts were
+delegated by those words to the planner's best recommendation and are
+recorded here as the owner's ruling; who chose is stated so it is not
+inferred later.** The questions as put, with the alternatives rejected, are
+preserved UNCHANGED below (the slice-7 precedent): a future reader sees
+what was chosen between, not only what was chosen.
+
+- **Q1 — SETTLED:** *"go with your best recommendation"* → **THREE
+  increments: 8A (DB, M1–M2) Tier 1 → round 28 → merge; 8B (Search)
+  Tier 2 → round 29 → merge; 8C (claim's surface + OW-26) Tier 2 → round
+  30 → merge.** Branches `slice/8-claim-db`, `slice/8b-search-app`,
+  `slice/8c-claim-log-app`. **Tiers, ruled here: 8A Tier 1 · 8B Tier 2 ·
+  8C Tier 2.** **OW-26's cursor is ruled DOWN to Tier 2 explicitly** — it
+  reads a log the policy has already filtered and writes nothing; the
+  fail-closed default (Tier 1) no longer applies to it. A tier is never
+  lowered mid-slice; the owner may raise one on the record before a line
+  is written. The one-app-increment alternative is rejected.
+- **Q2 — SETTLED:** → **the migration bound is ≤ 4**: M1 `task_claim` ·
+  M2 `step_up_level_binding` · M3 reserved for round-28 dispositions ·
+  M4 reserved and NAMED for a search index, consumed ONLY on a MEASURED
+  PRF-06 breach at the 8B head with the numbers pasted into the red
+  commit. **With Q3(a) taking item 2, M2 is consumed and the expected
+  close is 2 of ≤ 4**; M3 and M4 close UNCONSUMED unless their named
+  conditions arise, and the bound closes at what was spent.
+  **`hc.claim_task` requires `view` on the task**, refuses an
+  already-owned task, and creates no share and no written instruction —
+  the narrowness is the safety argument. `summary`-may-claim and zero-DDL
+  are rejected.
+- **Q3 — SETTLED, all three sub-rulings:** **(a)** ADR-0038 D6 item 1
+  (`hc.shares_for` carrying the assignment task's live status) **KILLED,
+  with its reason** — the honest surface landed at 7D
+  (`documents/[document]/page.tsx:455-460`) and D6 itself says the surface
+  does not need it; item 2 (a level-bound step-up `target_ref`) **TAKEN as
+  8A M2**; item 3 (share-includes-bytes) **NOT PLANNED, contingent** on an
+  owner amendment re-opening Q-A, which ADR-0038 D1 ratified. **(b) OW-26
+  is TAKEN into 8C** against a named unit (8C unit 2): the ledger row goes
+  `OPEN` → `TAKEN(8C/unit 2)` in the 8A docs commit (consequence 2) and
+  `CLOSED(sha)` at the 8C head. **(c) 6C — multi-attachment group review —
+  is DEFERRED with a named home (a Care Inbox increment), AND `GRP-01`
+  opens `pending`, tagged 6C**, so AC-INBOX-5 / AC-INBOX-13 have a row for
+  the first time and a third slip is visible. The fourth-increment
+  alternative is rejected.
+- **Q4 — SETTLED, as a block:** (1) explicit `ts_headline` `StartSel` /
+  `StopSel` sentinels that cannot occur in document text, split in the
+  module, emphasis built by React as `<mark>`, **`dangerouslySetInnerHTML`
+  nowhere on the surface**, recorded as a **NAMED DEPARTURE from TSD §7.2's
+  literal text with a one-line TSD erratum** at §7.2 carrying the options
+  string; (2) the §4.7.3 placeholder rides a **widened `myMembership`
+  query** — one round trip, unchanged — degrading to `Search the record`
+  when the read fails; (3) **a search writes nothing to the access log** —
+  no event type, no row, no `hc.log()` call; logging search would be DDL
+  and an owner amendment; (4) **`q` is capped at ingress** and refused with
+  the empty-result copy, and the three reads answer inside **one**
+  `AnswerBudget`. The strip-the-default-markup and second-read-per-screen
+  alternatives are rejected.
+- **Q5 — SETTLED:** **A11Y-12 opens `pending` tagged 8 and flips inside
+  8B**; **no new a11y row for 8C**, whose control and route are named
+  inside the existing record leg's manifest entry so the claim is a
+  citation; **G12-01 stays `pending` at `gate`.** The silent-extension
+  alternative is rejected.
+- **Q6 — SETTLED, per row (the planner's best recommendation, ratified by
+  the owner's words):** the six owner-track rows leave `OPEN` by the
+  ledger's fourth exit — **`PROMOTED(row)`**, *a named, quantified entry
+  gate on a named slice; leaves the ledger, stays visible as a `pending`
+  row* — and **none is KILLED, because none is moot**: every site the
+  rows name still exists at `bb40021`. Each becomes a `pending` row with
+  Slice cell **`gate`** (the G12-01 shape), never green in this slice. The
+  gates are the two the charter says still block — **G4** (verification
+  enforcement; its trigger is invite sending, the first production act)
+  and **G7** (ingestion abuse resistance; its trigger is activating a real
+  forwarding address, the moment real and adversary-supplied mail reaches
+  the pipeline) — and each row is ADDED to that gate's entry set by this
+  ruling, not read out of the gate's TSD §11.2 text.
+  - **OW-09 → `PROMOTED(DEP-01)`** — G4's entry: *a hosted runtime has
+    been observed under an auth-server fault and the observation recorded
+    (date, runtime, what the page gate did) before the first invite is
+    sent.* Its only instrument is a deployment; an `OPEN` row cannot hold
+    a fact no slice can produce.
+  - **OW-14 → `PROMOTED(EXE-01)`** — G7's entry, the instrument: *the
+    harness ADR-0028 D13 names — a concurrent in-process render + OCR
+    overlapping an authenticated artifact read — exists, and the `HopCost`
+    ledger's first live report is recorded.* OW-10's stated prerequisite,
+    so it is its own row.
+  - **OW-10, OW-12, OW-13 → `PROMOTED(EXE-02)`** — G7's entry, the fix and
+    its proof: *§6.3 render and §6.9 OCR run off the request process; a
+    heartbeat across the whole request window reports stalls that do not
+    overlap the deadline; leg 38 passes under D13's named load condition,
+    never re-run to green.* One row because OW-12 *"lands with OW-10"* and
+    OW-13 *"closes when OW-10 lands"* by their own acceptance conditions.
+    **OW-13's observation discipline carries into every slice-8 gate run
+    at no cost**: leg 38's duration and outcome are in
+    `.gate/e2e-run.json`, config-borne since OW-25 closed at `bb40021`.
+  - **OW-08 → `PROMOTED(BND-01)`** — G7's entry: *the four remaining
+    unbounded outbound hops — `lib/mail/outbound.ts`, `postmark/route.ts`,
+    `worker/relay/route.ts`, `worker/[stage]/route.ts` — each carry a time
+    bound with a named test, and `lib/storage/fetch.ts`'s 7/2 comment
+    states the measured 5/4 split.* The mail hop is slice 11's
+    (Notifications) and the three pipeline fires ride EXE-02's increment;
+    the row goes green only when all four are, and it is the first thing
+    slice 11's plan gate reads.
+
+  **The burn-down quota is ruled MET for slice 8:** it opens 0 ledger rows
+  and takes 7 out of `OPEN` — OW-26 by TAKEN then fix, six by promotion —
+  so `docs/owed.md` is expected to read **OPEN 0 / 25** from the 8A docs
+  commit on, from 7. The carry-a-fifth-round alternative is rejected, and
+  the escalation clock that expired at round 26 is discharged by this
+  ruling.
+- **Q7 — SETTLED:** **neither round-27 host trap becomes a `traps.md` row;
+  both become preflight, and no eviction is spent.** `preflight --for e2e`
+  reads `.next/dev/lock` and refuses on a live peer **naming its PID and
+  appUrl**; it prints measured free memory against a stated floor as a
+  **WARN**, never a refusal; `docs/ops/e2e-local-gate.md` carries the
+  `NODE_OPTIONS` line and the `.gate/e2e-run.json` preservation step.
+  **Both are test-only, therefore Tier 3, therefore they may not ride 8A:
+  they ship as one small PR, `chore/preflight-dev-lock`, owner-merged
+  before the 8A build kickoff** — the `chore/process-retune` precedent.
+  The traps-row and fold-into-8B alternatives are rejected.
+
+**Consequences of the rulings, recorded so nothing is inferred later:**
+
+1. **The migration bound is expected to close at 2 of ≤ 4.** M2 is
+   consumed (Q3(a)); M3 and M4 are reserves with named conditions and
+   close UNCONSUMED if those do not arise. The tree moves **74 → 76**
+   migrations and **69 → 71** pgTAP files at the 8A head (`070`, `071`);
+   77/78 and `072`/`073` only on a consumed reserve. Anything past ≤ 4 is
+   a recorded owner amendment before a line is written; shipped
+   migrations are never edited.
+2. **Thirteen coverage rows are ruled open and NONE is written by this
+   PR.** This PR is the plan only: `docs/coverage.md` and `docs/owed.md`
+   move in a build increment or a round, never in a rulings session — the
+   owner's instruction for this leg, a deliberate departure from the
+   slice-7 plan PR, which opened A11Y-09/10/11 itself. **The 8A build
+   writes them in its FIRST commit, docs-only, quoting this section** (M1
+   stays the first *unit*): TSK-05, STP-03, SRCH-03/04/05/06 and LOG-04
+   `pending` tagged to their increments; A11Y-12 `pending` tagged 8;
+   GRP-01 `pending` tagged 6C; DEP-01, EXE-01, EXE-02 and BND-01 `pending`
+   at `gate` — all under a new `## 8 — search, and the ruled intake`
+   section; and in `docs/owed.md` the six rows to `PROMOTED(row)` and
+   OW-26 to `TAKEN(8C/unit 2)`, the prose line re-tallied to **OPEN 0 /
+   25**, `tests/lint/process.test.ts` green in that commit. A plan-gate
+   ruling is sufficient authority for the ledger's status change — the
+   OW-04 precedent, `RISK(LOG-03)` applied by a later PR citing *"plan Q2,
+   SETTLED 2026-08-28"*. No row changes colour; no verdict moves
+   (ADR-0025 D6).
+3. **`chore/preflight-dev-lock` is a PRECONDITION of the 8A kickoff, not
+   of this plan.** This plan lands docs-only on `main` first; the chore PR
+   lands second — Tier 3, its own fresh session, its own PR; the 8A
+   kickoff is written against both. It goes before 8A because 8A's gate
+   is otherwise the first run to go unguarded, which is how round 27 lost
+   four.
+4. **The TSD §7.2 erratum is one line and lands at round-29 sign-off** in
+   the ADR-0038 D1 Q-C shape — the ADR binds, the erratum records — not in
+   this PR and not as a code change beyond the options string 8B already
+   passes.
+5. **Nothing here activates anything.** G4/G7 block, G9 stays OPEN,
+   `BAND_ARTIFACT_ALLOWLIST` stays EMPTY, SIG-01 is NOT absorbed, no real
+   family data, CI KEYLESS, browser legs local-gate only, `lib/ai/`
+   untouched and `PROMPT_VERSION_NAME` `hc-6b-3` does not move.
+6. **If PR #35 or PR #36 merges before the 8A kickoff, the ritual is
+   re-read at that head** — the kickoff carries the re-read; these rulings
+   stand regardless. Next free ADR: **0040** (0039 is #35's). Re-verified
+   at the rulings session: `origin/main` still `7e18164`, #35 and #36
+   still open.
 
 ---
 
@@ -798,7 +1021,7 @@ message** → green → the unit's tests join the suite. No unit is "done"
 without both commits in the history.
 
 **At each increment head:** clean-leg reset at the **exact** migration
-count (75 or 76 at 8A) · pgTAP all green with files and Σ recorded
+count (76 at 8A) · pgTAP all green with files and Σ recorded
 exactly · concurrency all green (**teed** — case 1's `40P01`s are the
 deliberate PLT-02 repro) · `db:verify --fail-on warning` clean · the
 upgrade leg green — **8A is the first increment since 7A to ship DDL, so
@@ -814,9 +1037,11 @@ the deltas ADR · a review packet — **or, under the retune, the Tier-2
 collapse for 8B and 8C.**
 
 **The gate cadence, each leg its own fresh session (ADR-0006):** this plan
-→ **owner rulings on Q1–Q7** (recorded verbatim here, status →
-`PLANNED — RULED`) → **`chore/preflight-dev-lock`, owner-merged (Q7)** →
-**8A build red→green (M1 FIRST)** → round-28 packet → review →
+→ **owner rulings on Q1–Q7 — DONE, SETTLED 2026-09-02, recorded above,
+status `PLANNED — RULED`** → the owner merges this PR (`--no-ff`) →
+**`chore/preflight-dev-lock`, owner-merged (Q7 SETTLED)** → **8A build
+red→green** (its first commit the docs-only ledger and coverage rows
+quoting the rulings; **M1 the FIRST unit**) → round-28 packet → review →
 dispositions → owner sign-off → **merge (`--no-ff`, never squash)** →
 **8B build** (the module and the leak leg FIRST — the surface's hardest
 claim asserted before a page renders) → round 29 → dispositions →
@@ -902,10 +1127,13 @@ replaces — and trap 2's measurable half becomes a preflight WARN. → Q7.
 ## ⏸ AT THE GATE, STOP
 
 This plan lands as a **docs-only PR** titled
-`[DO NOT MERGE without owner sign-off]`. **The owner rules Q1–Q7**, and
-the rulings are recorded **verbatim** in this file with the status moved
-to `PLANNED — RULED`. **An unanswered question defaults to NOT PLANNED and
-the build does not start.** The next leg after the ruling is
-`chore/preflight-dev-lock` if Q7 adopts it, then the **8A build kickoff**,
-its own fresh session. **The owner is sole merge authority; a merge
-commit, never a squash. STOP.**
+`[DO NOT MERGE without owner sign-off]`. **The owner RULED Q1–Q7 on
+2026-09-02**; the rulings are recorded **verbatim** above and the status
+is `PLANNED — RULED`. No question was left unanswered, so ADR-0006's
+default was not exercised; the one NOT PLANNED item is D6 item 3,
+contingent. The next leg is **`chore/preflight-dev-lock`** (Q7 SETTLED),
+its own fresh session and its own Tier-3 PR, owner-merged; then the **8A
+build kickoff**, its own fresh session, branching `slice/8-claim-db` from
+post-merge `origin/main` — the ledger and coverage rows first as a
+docs-only commit, then **M1 FIRST**. **The owner is sole merge authority;
+a merge commit, never a squash. STOP.**
