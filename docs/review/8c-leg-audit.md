@@ -106,19 +106,27 @@ whether it moves a verdict.
   first-open hint. The two-subject placeholder is never exercised in the
   browser — the search fixture's circle has one subject, so the branch is
   unreachable from this leg.
-- **Does it move SRCH-04's verdict? No.** The fourth string has real
-  evidence at the unit layer, in four places
+- **Does it move SRCH-04's verdict? No — and the gap was already DECLARED.**
+  ADR-0041's *"What is NOT claimed"* names it in as many words: *"a
+  two-subject placeholder driven in a browser (vitest and the live module
+  test carry it; the e2e circle has one subject)"*. So 8B did not overlook
+  this; it recorded the narrowing where a reviewer weighs narrowings, and the
+  fourth string has real evidence at the unit layer in four places
   (`tests/design/search-field.test.tsx` — *"two subjects: `Search the
   record`"*, plus the read-fails and older-shape cases — and
-  `tests/hc/search.test.ts`'s `placeholderFor`). SRCH-04's layer cell is
-  `app + e2e` and the app half carries it. **What is wrong is the TITLE**: a
-  reviewer grepping *"four strings verbatim"* would credit the browser leg
-  with evidence it does not hold. That is exactly the class round 18 found
-  and this quota exists to catch. Recommended: the title reads *"three of the
-  four §4.7.3 strings verbatim (the two-subject placeholder at the unit
-  layer)"*, or the fixture gains a second subject. **Not changed here** — 8B
-  is merged and this is a settled increment's leg; it is a finding for round
-  30 to disposition, not a build-session edit.
+  `tests/hc/search.test.ts`'s `placeholderFor`).
+- **What survives as the finding is the TITLE ALONE, and it is narrow but
+  real.** The declaration lives in the ADR; the contradiction lives in the
+  leg. A reviewer greps titles — `playwright test --list`, the coverage
+  cells, `AUDIT_MANIFEST`'s quoted citations — and *"the four §4.7.3 strings
+  verbatim"* credits the browser leg with a string it never renders. That is
+  the round-18 class in its mildest form: not a claim without evidence, but a
+  title that outruns the ADR beneath it. Recommended: the title reads *"three
+  of the four §4.7.3 strings verbatim (the two-subject placeholder at the
+  unit layer)"*, or the fixture gains a second subject. **Not changed here**
+  — `e2e/search.spec.ts` belongs to a merged increment, and a build session
+  quietly rewriting a shipped leg's title is how an audit trail stops being
+  one. It is round 30's to disposition.
 
 ## 6. `search.spec` — "A11Y-12: the search field labelled and keyboard-reachable, results as headed groups, emphasis as <mark> not colour alone, at 390px"
 
@@ -208,10 +216,19 @@ found and fixed pre-gate (F6), five observations (F1, F2, F4, F5, F7). No
 verdict moves.**
 
 **F3 is the one a reviewer should weigh**, because it is a title that credits
-a leg with evidence it does not hold — the round-18 class. It is left for
-round 30 to disposition rather than edited here: `e2e/search.spec.ts` is a
-merged increment's file, and a build session quietly rewriting a shipped
-leg's title is how an audit trail stops being one.
+a leg with a string it never renders — the round-18 class. Its weight is
+reduced, and honestly so: ADR-0041 already DECLARED the narrowing in *"What
+is NOT claimed"*, so what is left is a title contradicting the ADR beneath
+it, not a claim standing on nothing. It is left for round 30 to disposition
+rather than edited here: `e2e/search.spec.ts` is a merged increment's file,
+and a build session quietly rewriting a shipped leg's title is how an audit
+trail stops being one.
+
+**A note on this pass's own method.** F3 was first written up here as a
+finding against an undeclared gap. Reading ADR-0041's *"What is NOT
+claimed"* corrected it before this record was finished. An audit that reads
+the leg and not the increment's own declarations manufactures findings, and
+the correction is left visible rather than smoothed away.
 
 **The backlog.** OW-05's row records 19 of 38 legs covered before this pass,
 with 7E's own eight recorded separately for the same reason this record notes
