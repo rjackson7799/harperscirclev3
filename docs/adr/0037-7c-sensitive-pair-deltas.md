@@ -3,6 +3,11 @@
 **Status:** proposed — the 7C build record, put to round 27 (**Tier 1**: the
 full closure set, ruled at the plan gate, Q3; the browser gate unconditional,
 D19.14).
+**RULED — ADR-0038 (round 27, RATIFIED 2026-08-31): 42 findings, 40 ACCEPTED and
+fixed in 7E then 7D at `bb40021` (the gate GREEN 58/58), the head index below
+applied. MERGED — PR #34 → `main` @ `6025cfa`, 2026-09-02 (a merge commit, parents
+`18c362d` + `c859d55`). The status line above stands as written; this line is the
+stamp (the ADR-0022 pattern: amended, accepted as amended, merged at the SHA).**
 **Branch:** `slice/7c-sensitive-pair`, from `origin/main` @ `18c362d` (PR #33,
 the ADR-0036 round-26 rulings — the entry condition's discharge; two docs-only
 merges past the `e0a0a3c` evidence base).
