@@ -147,6 +147,7 @@ repo.
 | **Named exclusions** | An unlisted surface is out of scope by construction. |
 | **Owed intake** | How many ledger items this slice TAKES, priced against its own scope — *take the owed finding whose failure a person now reads; defer the one whose only reader is a worker.* |
 | **Coverage rows** | Which rows the slice opens, and at what status. |
+| **Candidates** | How many `docs/features.md` entries this slice PROMOTES — **default none**. That file binds nothing; an entry becomes plannable only once an ADR moves it into the PRD (ADR-0039 is the precedent). Read at the gate, never outside it. |
 
 ---
 
