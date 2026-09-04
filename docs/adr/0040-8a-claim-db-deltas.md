@@ -33,6 +33,29 @@ decisions. **Zero dependencies added. Nothing is production-activated.**
 
 ---
 
+## AMENDED BY ROUND 31 — the head index (ADR-0044, RULED 2026-09-03)
+
+**Nothing below is rewritten.** Round 31 — the commissioned adversarial pass
+this ADR's own stamp said had never been held (ADR-0043 D6) — found **one
+sentence in this file that the tree falsifies**, and it is a sentence about the
+app, not about either migration. The original prose stands and the site carries
+a marker. This index is the whole list, so a later reader cannot miss it.
+
+| Site | What round 31 found | Finding |
+|---|---|---|
+| **D6** | *"what changed is that it is now also in the sentence the database matches"* — **there is no sentence.** The two *Raise access* panels render exactly one expression between them, `person.display_name`, the **grantee**: no subject, no domain, no level. The password IS offered bound to `member:subject:domain:level`, which is what D6's first clause claims and what the tests and the PPL-02 leg prove; it is not offered **for** anything a coordinator can read, which is what D6's last clause claims and nothing proves. The four-part binding therefore made the app and the database agree with new precision about a value chosen by whoever wrote the URL. **The Q-F ruling that flipped STP-03's app half STANDS** (ADR-0043 D1) — the app genuinely composes and confirms the four parts — and the display gap is its own row, `docs/coverage.md` **STP-04**, with `docs/owed.md` **OW-28** | R31/F-1 |
+
+**Not amended, and said so explicitly:** D1–D5 and D7–D9 were read at this head
+and stand. M2's byte-for-byte provenance claim was **independently verified** —
+extracting `20260818120008`:245–382 against `20260903120002`:57–198 yields
+exactly one hunk — and D5's *"REPLACED, not widened"* is the best-evidenced
+decision in the increment. What round 31 found in the pgTAP pair (`071`'s
+`STP-03:` label sitting on a non-discriminating case; `070` building neither a
+`cancelled` nor a soft-deleted task) is carried by `OW-29` and `OW-31`, not by a
+marker here: those are the tests' defects, not this file's claims.
+
+---
+
 ## The commits (red → green per unit, the signature in every red)
 
 | Unit | Red | Green | Failure signature in the red |
@@ -134,6 +157,8 @@ token (071:13), the ceiling and the freeze precede the token (038:15–17,
 21), the two-session cases (concurrency 29, 31). **Q-D.**
 
 ## D6 — M2: the mint site composes the same four parts; the round-trip stays `rs/rd/rl`
+
+> **AMENDED (ADR-0044, round 31):** *"now also in the sentence the database matches"* — there is no sentence. The two *Raise access* panels name the GRANTEE and nothing else: no subject, no domain, no level (R31/F-1). The password is offered BOUND to the four parts, which is proven; it is not offered FOR anything a coordinator can read. STP-03's app-half flip STANDS; the display gap is `STP-04` with `OW-28`. See the head index.
 
 `people/[member]/page.tsx` offers the password FOR
 `member:subject:domain:level` (the hidden `target_ref` the step-up submit
