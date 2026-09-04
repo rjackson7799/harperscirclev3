@@ -661,3 +661,46 @@ running), G12-01 (`gate`), UXA-03, LOG-03 (never green by ruling). SRCH-01,
 SRCH-02, DSC-01, RLS-11a, PRF-04 and PRF-06 stay green at their own layers
 and are NOT re-earned by this slice. **No row flips outside a ruling; pending
 never counts as green.**
+
+## 9 — Home (9A: the freeze guard, Tier 1, round 32 · 9B: Home, Tier 2, round 33 — slice-9 plan Q1–Q9 SETTLED 2026-09-04; PRD §4.7; TSD §11.1 row 9; ADR-0043 D2; ADR-0044 D1–D7)
+
+**Written by the 9A build's FIRST commit after the kickoff, docs-only, quoting
+the plan's *"Coverage rows to open"*** — *"`docs/coverage.md` gains `## 9 — Home
+…`"*, with the seven rows below taking it from **282 to 289** before any round
+moves one. **Every row below opens `pending`; nothing turns green here**, and
+none of them is 9A's: 9A is the freeze guard and rides alone (Q1 — *"M1 plus its
+pgTAP pair. Nothing else"*), so HOME-01…HOME-05 and A11Y-13 are **9B's** and
+flip at the 9B head or not at all. **HOME-06 opens at Slice `gate` and is never
+green in this slice** (Q6) — the G12-01 shape, an assertion whose only
+instrument is a moderated protocol this repo cannot run.
+
+**`FRZ-17` gets NO new row.** It exists, `pending`, Slice cell `8 → 9`, and the
+plan is explicit: it *"flips green at 9A when M1 and its pgTAP pair land — its
+Slice cell moving to `9A` at the flip"*. **It is NOT flipped by this commit** —
+this commit is docs-only and ships no guard. `docs/owed.md` **OW-27** moves
+`OPEN → TAKEN(9A/M1)` in the same commit, and **OW-29, OW-30 and OW-31** move
+with it (ADR-0044 D2/D3/D4), each against a named unit inside 9A. **OW-28 stays
+`OPEN` — it is 9B's**, its unit ordered FIRST (ADR-0044 D1), and `STP-04`
+carries its exposure meanwhile.
+
+**Nothing here activates anything.** G4 and G7 still block, G9 is OPEN, G3 is
+open, and G12-01 stays `pending` at `gate`.
+
+| ID | Assertion | Source | Layer | Slice | Status | Test |
+|---|---|---|---|---|---|---|
+| **HOME-01** | Day one: on a circle with no arrivals Home renders **one instruction and the forwarding address and NOTHING ELSE** — asserted as ABSENCES over the rendered tree (no card grid, no `0`, no onboarding checklist, no empty-state heading); a two-subject circle renders **both** addresses, labelled by name. The assertion survives the router's arrival (AC-HOME-1; PRD §4.7.1) | AC-HOME-1; PRD §4.7.1; TSD §11.1 row 9; plan Q5, Q6 | app + e2e | 9B | **pending** | Opens `pending`, flips at the **9B** head only. The assertion is a set of ABSENCES over the rendered tree, which is why it is provable at all — the plan records the argument under its own table so §11.4 (*AC-HOME-1 carries no TSD mechanism*) does not read this row as an overclaim: §11.4 says nothing for the **schema or architecture** to enforce and classes AC-HOME-1 with *"interface copy and composition"*, and `SRCH-04` already proves an absence set of the same shape |
+| **HOME-02** | The router's composition is RLS-true and widens nothing: every block is rendered from its **destination surface's own read**, a block whose read returns nothing renders **nothing** (never a zero, never a heading), and the day-one card is shown **only** to a caller whose arrivals read succeeds and returns zero — a caller who cannot enumerate arrivals gets the router and its honest empty line (AC-PERM-1's composition half; A.3's channel set) | AC-PERM-1's composition half; TSD A.3's channel set; PRD §4.7.1; plan Q5 | app + e2e | 9B | **pending** | Opens `pending`, flips at the **9B** head only. The composition rule is Q5 as ruled: *"every block renders from its destination surface's own RLS-true read; a block whose read returns nothing renders NOTHING — never a zero"*, and the day-one card is shown **only** to a caller whose arrivals read SUCCEEDS and returns zero — a caller who cannot enumerate arrivals gets the router, never the card |
+| **HOME-03** | **No number on Home is model-computed or an assessment**: every number is a count of rows the caller can see; `lib/ai/` has no import path to the surface, **fence-tested**; no chart, score, trend, ratio or progress indicator in the rendered tree (AC-HOME-3; PRD §4.7.2's exclusion list; TSD §2210) | AC-HOME-3; PRD §4.7.2 exclusion list; TSD §2210; plan Q5 | app + review | 9B | **pending** | Opens `pending`, flips at the **9B** head only. Two halves: the **fence** (no import path from `lib/ai/` to the surface, tested) and the **absence set** over the rendered tree (no chart, score, trend, ratio or progress indicator). Neither half is the other |
+| **HOME-04** | The five §4.7.2 blocks, their order and their copy: how each subject is (name, where they are, the most recent thing on their record — recorded, never assessed) · what needs review (the count, plain, top item named) · my open tasks with dates · what's coming (dated items already in the record, **not a calendar**) · recent activity (the last few filings, **who approved them**). **Recent activity is a descending, small-limit read** proven against a fixture larger than the cap — never the tail of an ascending `limit 300` (PRD §4.7.2; the OW-26 class) | PRD §4.7.2; plan Q5; the OW-26 class (ADR-0038 D3, R4/F-3) | app + e2e | 9B | **pending** | Opens `pending`, flips at the **9B** head only. **Recent activity is a DESCENDING, small-limit read proven against a fixture LARGER than the cap** — never the tail of an ascending `limit 300`, which is precisely the shape OW-26 closed on the access log at `2f2c509`. A fixture at or below the cap cannot tell the two apart and does not discharge this row |
+| **HOME-05** | Latency and bounds: the whole composition inside **ONE** `AnswerBudget`, the overrun rendering the honest slow answer; a **measured** page p95 recorded at the 9B head against PRD §13.2 (1.5 s / 3 s) and PRF-06's 250 ms page tripwire | PRD §13.2 (1.5 s / 3 s); PRF-06; plan Q2 (M4, reserved and NAMED) | app + bench | 9B | **pending** | Opens `pending`, flips at the **9B** head only. The p95 is **MEASURED at the 9B head**, never asserted; a breach is what consumes **M4**, the slot reserved and NAMED for one composed Home read definer (plan Q2). A p95 recorded without a measurement is not this row |
+| **HOME-06** | *(never green in this slice)* AC-HOME-2 — *"a member can tell in five seconds what needs them"* — is verified by the **moderated protocol**: PRD Appendix B, a seeded synthetic circle, five participants. No instrument in this repo can prove it, and this row exists so that absence is visible rather than silent (PRD §1446; TSD §11.4) | AC-HOME-2; PRD §1446 + Appendix B; TSD §11.4; plan Q6 | review | **gate** | **pending** | **NEVER GREEN IN THIS SLICE.** Slice cell `gate`, the G12-01 shape. Q6 as ruled: AC-HOME-2 is a **moderated protocol** — PRD Appendix B, a seeded synthetic circle, five participants — and **no instrument in this repo can produce its evidence.** The row exists so the absence is visible rather than silent; `pending` never counts as green |
+| **A11Y-13** | Home audited: landmark structure and headed blocks, the day-one card reachable and labelled, emphasis not conveyed by colour alone, 390 px and keyboard — **built into the surface, not added after** (§8.7; G12 is a redesign if found late) | design_spec §8.7; TSD §11.2 G12; plan Q9 | e2e | 9B | **pending** | Opens `pending`, flips at the **9B** head only. **Built into the surface, not added after** — G12 is the FINAL gate, not the first check, and a structural accessibility failure found there is a redesign. Q9: none of G12-01, DEP-01, EXE-01, EXE-02 or BND-01 moves; slice 9 builds Home's own legs in as this row |
+
+**Rows that do NOT move at this commit** (the plan, *"Rows that do NOT move"*):
+RLS-11b, FRZ-16b, DEL-01, ADM-01, **SIG-01 (still NOT absorbed, and slice 9 does
+not absorb it)**, UXA-03, GRP-01, LOG-03 (never green by ruling), **G12-01,
+DEP-01, EXE-01, EXE-02 and BND-01** (Slice `gate`, never green in this slice —
+Q9). **SRCH-04 stays green**, **STP-03 stays green** on the marker ADR-0044 D2
+left it — its evidence citation is what `OW-29` repairs, not its truth — and
+**STP-04 stays `pending`**, 9B's. **No row flips outside a ruling; pending never
+counts as green.**
