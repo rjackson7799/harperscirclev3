@@ -280,6 +280,12 @@ const SORT_AT_I = `coalesce((i.occurred_on::timestamp + interval '12 hours') at 
                             i.local_at at time zone 'UTC')`;
 const INNER_EVENTS = `select i.id from public.timeline_events i
                        where i.circle_id = $1 and i.deleted_at is null`;
+// A sort key is not a date's expiry instant (ADR-0048 F-2). Eligibility
+// uses the recorded zone, with the subject's zone as the legacy fallback.
+const SUBJECT_EVENTS = `select i.id from public.timeline_events i
+                         join public.subjects hs on hs.id = i.subject_id
+                        where i.circle_id = $1 and i.deleted_at is null`;
+const LOCAL_DAY_I = `(now() at time zone coalesce(i.occurred_zone, hs.timezone))::date`;
 
 /** "Recent activity" — the last few FILINGS, newest filed first, each
  *  carrying its approver (§4.7.2's "with who approved them"). */
@@ -313,18 +319,13 @@ export async function upcomingEvents(
   if (!UUID_RE.test(circleId)) return [];
   return withRequestRole('authenticated', claims, async (q) => {
     const r = await q.query<EventSql>(
-      // The future is chosen by PLAIN COLUMNS first — a leakproof
-      // comparison Postgres may evaluate before the row policy, so the
-      // policy is asked about the few dated-ahead rows rather than about
-      // every event in the circle. The sort expression then orders that
-      // small set. (9B U4: the same query filtering on the coalesce alone
-      // measured p95 745 ms at 2,021 events.)
+      // Dates remain upcoming throughout their local day. Appointments
+      // have an instant; floating values deliberately do not. SORT_AT_I
+      // orders the selected rows but never decides temporal eligibility.
       `${EVENT_SELECT} and e.id in (
-         ${INNER_EVENTS}
-            and (i.occurred_on >= current_date
-                 or i.instant >= now()
-                 or (i.is_floating and i.local_at >= (now() at time zone 'UTC')))
-            and ${SORT_AT_I} >= now()
+         ${SUBJECT_EVENTS}
+            and (i.occurred_on >= ${LOCAL_DAY_I}
+                 or (i.occurred_on is null and not i.is_floating and i.instant >= now()))
           order by ${SORT_AT_I} asc, i.id
           limit $2)
         order by coalesce((e.occurred_on::timestamp + interval '12 hours') at time zone 'UTC',
@@ -343,14 +344,15 @@ export async function upcomingEvents(
  *
  *   · It is not "what's coming". A dated-ahead appointment is excluded — that
  *     block exists and this one would be lying about the present if it showed
- *     one. The exclusion is on PLAIN COLUMNS so the row policy is asked about
- *     fewer rows.
+ *     one. Date-only rows from today are also excluded: they name a day,
+ *     not an elapsed instant (ADR-0048 F-2). Floating times stay in the
+ *     record and recent filings, without a claim that they have happened.
  *   · Among what has happened it takes the LATEST EVENT DATE, not the most
  *     recently filed: "the most recent thing that happened" is about when it
  *     happened. An undated event is on the record but not in time, so it
  *     stands last rather than first.
  *
- * THIS IS THE ONE HOME READ STILL OVER PRF-06's 250 ms PAGE TRIPWIRE — p95
+ * HISTORICAL 9B MEASUREMENT, not re-earned by ADR-0048's correction — p95
  * 373 ms at 2,021 events (9B U4). Its ordering is an expression no index
  * covers, so the row policy is asked about every past event in the circle.
  * The two cheaper shapes were tried and rejected on their own evidence: a
@@ -370,10 +372,10 @@ export async function latestEventPerSubject(
       `${EVENT_SELECT} and e.id in (
          select distinct on (i.subject_id) i.id
            from public.timeline_events i
+           join public.subjects hs on hs.id = i.subject_id
           where i.circle_id = $1 and i.deleted_at is null
-            and (i.occurred_on <= current_date
-                 or i.instant <= now()
-                 or (i.is_floating and i.local_at <= (now() at time zone 'UTC'))
+            and (i.occurred_on < ${LOCAL_DAY_I}
+                 or (i.occurred_on is null and not i.is_floating and i.instant <= now())
                  or (i.occurred_on is null and i.instant is null and i.local_at is null))
           order by i.subject_id, ${SORT_AT_I} desc nulls last, i.approved_at desc, i.id desc)`,
       [circleId],
