@@ -41,7 +41,7 @@ The existing protected Supabase/Vercel staging setup now has HTTP evidence for u
 | Remaining acceptance | Current disposition |
 |---|---|
 | F-1 operational failure | Application regression proof exists. Controlled hosted request-role database outage now reaches the retry state, with normal-preview controls before/after; individual Supabase error injections and timeout/browser proof remain pending. Minimal restricted-tier and removed-member HTTP composition passed; populated permission variants remain pending. |
-| F-2 temporal correctness and performance | Real-PostgreSQL temporal regression proof exists. Benchmark tooling now includes membership and rejects every wrong-state HTTP sample; see `round-33-benchmark-followup.md`. Representative current query/page p95 and browser date behavior remain pending; empty fixtures and network/CLI overhead are not substitutes. |
+| F-2 temporal correctness and performance | Real-PostgreSQL temporal regression proof exists. Benchmark tooling includes membership and rejects wrong-state samples. Fresh hosted manual-entry workload: 2,021 events/501 claimed tasks, 150 valid HTTP samples, p95 982 ms; see `../ops/staging-home-performance.md`. DB-only tripwire, mixed-workload and browser date proof remain pending. |
 | F-3 fixture isolation and navigation | Completion-to-Home HTTP passed, but isolated/after-prior-legs/full-gate browser execution remains pending. |
 | OW-35 | The inbox assertion is written; qualifying browser execution remains pending. |
 | Browser runner | Independent local runner prepared; memory guard stopped before launch at 501 MiB. No assertion executed. Existing interactive attachment failure is a separate limitation. |
