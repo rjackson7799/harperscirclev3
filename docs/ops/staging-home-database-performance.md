@@ -1,5 +1,7 @@
 # Home database performance — Round 33
 
+**Subsequent correction:** the query-only change at `fdd3eee` reduced upcomingEvents server p95 to **175.567 ms**, versus 293.872 ms for the original in an alternating 25-pair comparison. All 30 paired results including warm-ups were identical. See [the optimization evidence](../review/round-33-query-optimization.md). The original measurements below remain historical; the changed query has not been deployed and remaining acceptance is still pending.
+
 Measured September 7, 2026 against staging `venzvdbvzjjsmouxjkzd`, using source head `dfed830c0eb0a278e00690eb109c9fc9a6949e11` and the populated manual-entry circle documented in [the HTTP report](staging-home-performance.md). No schema, policy, grant or application code changed.
 
 ## Method

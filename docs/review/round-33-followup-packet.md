@@ -1,5 +1,9 @@
 # Round 33 follow-up review packet
 
+## Current source amendment — fdd3eee
+
+The query-only optimization at `fdd3eee128aeb13c681ba30e7177e9a912b0010f` supersedes the source checkpoint below. UpcomingEvents server p95 is now **175.567 ms**, against original 293.872 ms in the paired comparison; all 30 full ordered result pairs matched. [Optimization record](round-33-query-optimization.md) binds the 75 affected tests, lint, TypeScript and measurements. No migration or RLS change. The lib tree is now `be12195d9000383f8469c0239ae077fcb34ba56b`; its old full-suite tree binding below no longer applies to current lib. App, components and supabase remain identical to the earlier source. Tests and docs also moved; the historical full suite is not promoted to a current full-suite run. The correction is not yet deployed. Browser, mixed-workload, final aggregate and secret-scan gates remain outstanding. Recommendation: retain the checkpoint unmerged. No performance migration is currently proposed.
+
 **SETTLED, except outstanding proof and owner disposition:** ADR-0048 governs F-1/F-2/F-3 and all six original questions. This packet does not reopen those decisions or backdate review of already merged PR #50. Review checkpoint: **not merge-ready**. No merge, production activation or new service is proposed.
 
 ## Scope and result

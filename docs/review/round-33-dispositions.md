@@ -52,3 +52,5 @@ Tally remains **3 OWED, 0 FIXED**, with no coverage promotion, owner merge or pr
 ## Consolidated review checkpoint
 
 See round-33-followup-packet.md for the current acceptance matrix and commit bindings. DB measurement is now complete at dfed830: upcomingEvents server execution p95 297.249 ms breaches 250 ms; HTTP p95 remains 982 ms for the manual-entry workload. Performance acceptance, mixed-workload and browser evidence remain owed. Exact tallies remain 3 OWED / 0 FIXED; coverage 290 total / 259 green / 9 review / 22 pending; ledger 35 rows / 2 OPEN / 2 TAKEN / 2 RISK / 23 CLOSED / 6 PROMOTED. No owner disposition is inferred.
+
+Query-only follow-up fdd3eee: upcomingEvents server p95 improved to 175.567 ms (original 293.872 ms in the paired run); all 30 paired full results matched. See round-33-query-optimization.md. No migration/RLS change; deployment, mixed-workload and browser acceptance remain pending. Finding tally remains 3 OWED / 0 FIXED.
