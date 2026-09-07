@@ -1,6 +1,6 @@
 # Slice 10A — proposed admission and audited-read contract
 
-September 7, 2026; inspected source baseline `7a67c3e`. Owner's subsequent “continue” authorizes authorization design and failing-test preparation while Home remains unmerged. It does not authorize this proposed schema/privilege change. No Admin route, migration, credential, operator account or hosted change is included here.
+September 7, 2026; inspected source baseline `7a67c3e`. After checkpoint `c4a561c`, the owner replied “continue” to the explicit request to implement this boundary with at most two migrations and no deployment. **Implementation and the metadata-access amendment are authorized**, subject to the isolated lifecycle capability proof below. No operator provisioning, staging migration, merge or production change is authorized.
 
 ## Existing facts and the required decision
 
@@ -41,4 +41,4 @@ Platform aggregates do not select an individual circle. Circle-detail reads are 
 
 Tier 1, at most two forward-only migrations, zero dependencies. M1: operator revocation state plus protected synchronous auth-state mirrors and lifecycle triggers, contingent on the isolated capability proof. M2: append-only internal read audit, the single platform-stats read operation, direct/default metadata grant removal and exact privilege pins. Migration timestamps are allocated only after approval; no reserve is implied. Include the server admission adapter and normalized response boundary in this increment; compose the page separately after the authorization boundary passes review.
 
-Before implementation, approve this narrow metadata-access amendment and migration ceiling together. The first executable work is the isolated auth capability probe, not a staging migration. No capability proof means no migration implementation and no privileged page. Home's pending browser/integration/mixed-workload gates, staging tester preservation, owner merge authority and production prohibition all remain in force.
+The owner approved this narrow metadata-access amendment and migration ceiling together after `c4a561c`. The first database work is the isolated auth capability probe, not a staging migration. No capability proof means no migration implementation and no privileged page. The independent server session-verification helper may proceed without granting any access. Home's pending browser/integration/mixed-workload gates, staging tester preservation, owner merge authority and production prohibition all remain in force.
