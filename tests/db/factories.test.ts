@@ -1,8 +1,21 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { makeRoleFactory } from '@/lib/db/role-pool';
+import { Client } from 'pg';
 
 // Test-only raw role probe. Product asAdmin exposes only audited reads.
-const rawAdmin = makeRoleFactory('hc_admin', 'HC_ADMIN_DB_URL');
+const rawAdmin = () => ({
+  async query(sql: string) {
+    const connection = new Client({ connectionString: process.env.HC_ADMIN_DB_URL });
+    await connection.connect();
+    try {
+      await connection.query('begin');
+      await connection.query('set local role hc_admin');
+      return await connection.query(sql);
+    } finally {
+      await connection.query('rollback').catch(() => {});
+      await connection.end();
+    }
+  },
+});
 
 // ============================================================================
 // A2 · The four factories (TSD §1.7): asUser via @supabase/ssr; asAdmin and

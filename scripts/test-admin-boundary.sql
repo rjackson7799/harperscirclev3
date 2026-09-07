@@ -40,10 +40,14 @@ select pg_temp.check_ok(pg_temp.admin_read(current_setting('test.admin_claims'):
 select pg_temp.check_ok((select count(*) from hc.admin_read_audit where outcome='ok')=2,'repeat read gets separate audit');
 select pg_temp.check_ok(pg_temp.admin_read(current_setting('test.admin_claims')::jsonb || '{"aal":"aal1"}')->>'kind'='denied','aal1 denied');
 select pg_temp.check_ok(pg_temp.admin_read(current_setting('test.admin_claims')::jsonb || '{"exp":1}')->>'kind'='denied','expired token denied');
+select pg_temp.check_ok(pg_temp.admin_read(current_setting('test.admin_claims')::jsonb || '{"exp":"NaN"}')->>'kind'='denied','non-numeric expiry denied');
 select pg_temp.check_ok(pg_temp.admin_read(current_setting('test.admin_claims')::jsonb || '{"session_id":"bad"}')->>'kind'='denied','malformed identity denied');
 update public.admin_users set revoked_at=now();
 select pg_temp.check_ok(pg_temp.admin_read(current_setting('test.admin_claims')::jsonb)->>'kind'='denied','revoked operator denied');
 update public.admin_users set revoked_at=null;
+update public.accounts set deleted_at=now() where id='10000000-0000-4000-8000-000000000011';
+select pg_temp.check_ok(pg_temp.admin_read(current_setting('test.admin_claims')::jsonb)->>'kind'='denied','deleted account denied');
+update public.accounts set deleted_at=null where id='10000000-0000-4000-8000-000000000011';
 savepoint enrolled;
 delete from auth.mfa_factors where id='20000000-0000-4000-8000-000000000011';
 select pg_temp.check_ok(pg_temp.admin_read(current_setting('test.admin_claims')::jsonb)->>'kind'='denied','removed factor denied');
@@ -59,8 +63,31 @@ select pg_temp.check_ok(not has_schema_privilege('hc_admin','hc','usage'),'admin
 select pg_temp.check_ok(not has_table_privilege('authenticated','hc.admin_auth_sessions','select,insert,update,delete'),'family cannot forge mirrors');
 select pg_temp.check_ok(not has_function_privilege('authenticated','admin_ops.read_platform_stats(uuid)','execute'),'family cannot execute admin reader');
 select pg_temp.check_ok(not has_table_privilege('hc_admin','public.documents','select'),'record content still inaccessible');
+do $$ begin
+  begin
+    set local role hc_internal;
+    update hc.admin_auth_anchors set account_id=account_id;
+    raise exception 'anchor_write_was_allowed';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+end $$;
 create view admin_meta.zz_future_probe as select 1 as n;
 select pg_temp.check_ok(not has_table_privilege('hc_admin','admin_meta.zz_future_probe','select'),'future views deny direct reads');
+
+select set_config('test.audit_count',(select count(*)::text from hc.admin_read_audit),true);
+create function pg_temp.reject_admin_audit() returns trigger language plpgsql as $$
+begin raise exception 'synthetic_audit_failure'; end $$;
+create trigger reject_admin_audit before insert on hc.admin_read_audit for each row execute function pg_temp.reject_admin_audit();
+do $$ begin
+  begin
+    perform pg_temp.admin_read(current_setting('test.admin_claims')::jsonb);
+    raise exception 'counts_returned_despite_audit_failure';
+  exception when raise_exception then
+    if sqlerrm <> 'synthetic_audit_failure' then raise; end if;
+  end;
+end $$;
+select pg_temp.check_ok((select count(*) from hc.admin_read_audit)=current_setting('test.audit_count')::bigint,'audit failure returned no successful read');
 
 select 'PASS: admission, audit, revocation, registration backfill and privilege checks' as boundary_result;
 rollback;

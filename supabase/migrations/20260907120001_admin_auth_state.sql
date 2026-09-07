@@ -17,9 +17,11 @@ alter table hc.admin_auth_sessions enable row level security;
 alter table hc.admin_auth_sessions force row level security;
 revoke all on hc.admin_auth_anchors,hc.admin_auth_factors,hc.admin_auth_sessions from public,anon,authenticated,hc_admin,hc_pipeline,hc_internal;
 grant select on hc.admin_auth_anchors,hc.admin_auth_factors,hc.admin_auth_sessions to hc_internal;
--- Required by SELECT FOR SHARE; no UPDATE policy permits actual mutation.
+-- SELECT FOR SHARE needs UPDATE privilege AND its USING policy. WITH CHECK
+-- false rejects every actual row update while allowing the locking read.
 grant update(account_id) on hc.admin_auth_anchors to hc_internal;
 create policy admin_anchor_read on hc.admin_auth_anchors for select to hc_internal using(true);
+create policy admin_anchor_lock on hc.admin_auth_anchors for update to hc_internal using(true) with check(false);
 create policy admin_factor_read on hc.admin_auth_factors for select to hc_internal using(true);
 create policy admin_session_read on hc.admin_auth_sessions for select to hc_internal using(true);
 grant select on public.admin_users to hc_internal;
