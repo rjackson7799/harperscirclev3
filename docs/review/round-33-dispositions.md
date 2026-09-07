@@ -19,3 +19,13 @@ Q-A through Q-F are decided in ADR-0048. Q-D's day-one card is coordinator-only,
 HOME-05 is pending again because the new membership read and temporal predicates require a current benchmark. Its old measurements remain explicitly historical. No coverage row is promoted: 290 total, 259 green, 9 review, 22 pending.
 
 Ledger after intake: 35 rows, OPEN 2 of 25, TAKEN 2, RISK 2, CLOSED 23, PROMOTED 6. OW-34 owns follow-up staging proof; OW-35 owns the pre-existing inbox test gap. G4/G7, G9/G3 and GATE-01 remain unchanged.
+
+## Fresh verification
+
+- Full application suite at `ba61b99`: **1,620 passed, 0 failed**, 109 file results. The earlier run's one floating-event expectation was corrected to ADR-0048 and the record's continued readability asserted.
+- Final defensive zone guard at `845eb0b`: **85 targeted tests passed**, covering Home, real-PostgreSQL temporal selection, live timeline reads and process records. This includes eleven temporal cases. The complete suite was not rerun after this last guard; the affected suites were.
+- Whole-tree lint passed before the final guard; changed-file lint passed afterward. Standard Turbopack production build, including TypeScript, passed at `845eb0b`.
+- Build reports a tracing warning in unchanged `lib/pipeline/ocr.ts`. The locked offline install reports existing engine-range warnings for jsdom/undici against the project's Node 22.15 pin. No dependency or lockfile changes were made.
+- Original source checkout remains at `7de7dac` with its same three untracked paths. No push, merge or deployment was performed. No browser run, new p95 or complete DB migration gate is claimed.
+
+Raw evidence lives in the handoff folder: `round33-final-app-suite.json`, `round33-final-targeted.json`, and `round33-final-build.log`. Red reports remain alongside them. Follow-up product head is `845eb0b`; later changes to these records are documentation-only.
