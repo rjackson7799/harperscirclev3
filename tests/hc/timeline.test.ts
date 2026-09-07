@@ -391,7 +391,12 @@ describe('9B · Home reads: descending, small-limit, and never the tail of an as
       const latest = await tl.latestEventPerSubject(claimsOf('sarah'), circleId);
       expect(latest.get(nell)?.id).not.toBe(future);
       expect(Date.parse(latest.get(nell)!.sort_at!)).toBeLessThanOrEqual(Date.now());
-      expect(latest.get(marcus)?.summary).toBe('Call from the nurse');
+      // ADR-0048: Marcus's event has a floating time, not a known past
+      // instant. It stays readable without claiming it has happened.
+      expect(latest.has(marcus)).toBe(false);
+      const floating = await tl.eventById(claimsOf('sarah'), circleId, ev.floating);
+      expect(floating?.summary).toBe('Call from the nurse');
+      expect(floating?.when.kind).toBe('floating');
 
       // RLS-true, like the read they compose: Marisol holds schedule on
       // Nell only, so she never sees a health-tainted filing.
