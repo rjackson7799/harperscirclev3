@@ -1,0 +1,11 @@
+.git
+node_modules
+.next
+.vercel
+.env*
+.gate
+.vitest
+test-results
+supabase/.temp
+supabase/.branches
+*.tsbuildinfo

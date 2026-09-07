@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Hosted connection URLs use sslrootcert with full certificate/hostname
+  // verification. pg reads this runtime path, which tracing cannot infer.
+  outputFileTracingIncludes: {
+    "/*": ["./certs/supabase-prod-ca-2021.crt"],
+  },
   // B9: the local gate's browser sits on 127.0.0.1 while the dev server
   // considers its own origin `localhost` — without this, Next 16's
   // cross-origin dev protection 403s /_next/static chunks and any
