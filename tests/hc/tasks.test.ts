@@ -613,3 +613,66 @@ describe('8C U1 · the claim: the surface’s answer and the database’s are th
     expect(await writes()).toEqual(before);
   });
 });
+
+// ============================================================================
+// 9B U2/U4 · myOpenTasks — Home's "my open tasks" block, at the layer that
+// decides it (PRD §4.7.2; HOME-04).
+//
+// The block used to be listTasks (200 rows, two hc.visible_at calls each)
+// filtered app-side to at most four. Measured at 501 tasks that read was p95
+// 1,581 ms on its own — so the predicate moved INTO the query, which means
+// the predicate is now this file's to prove: only the caller's, only open,
+// due-date order, its own small limit, and RLS deciding what is visible at
+// all.
+//
+// It inserts its own rows and removes them, so the assignment legs above
+// keep their fixture exactly as they left it.
+// ============================================================================
+describe('9B · myOpenTasks: the caller’s own open work, ordered, limited, RLS-true', () => {
+  it('returns only MY open tasks, soonest due first, and never anybody else’s', async () => {
+    const ids = { mineSoon: randomUUID(), mineLate: randomUUID(), mineDone: randomUUID(), hers: randomUUID() };
+    try {
+      await raw.query('set session_replication_role = replica');
+      await raw.query(
+        `insert into public.tasks (id, circle_id, subject_id, title, due_on, due_zone, status,
+           owner_member_id, approved_by, approved_at, approver_display_name, taint)
+         values
+           ($1, $5, $6, 'Mine, due soon', '2026-09-08', 'America/New_York', 'open', $8, $7, now(), 'Sarah', '{schedule}'),
+           ($2, $5, $6, 'Mine, due later', '2026-09-20', 'America/New_York', 'open', $8, $7, now(), 'Sarah', '{schedule}'),
+           ($3, $5, $6, 'Mine, already done', '2026-09-01', 'America/New_York', 'done', $8, $7, now(), 'Sarah', '{schedule}'),
+           ($4, $5, $6, 'Marisol''s, not mine', '2026-09-02', 'America/New_York', 'open', $9, $7, now(), 'Sarah', '{schedule}')`,
+        [ids.mineSoon, ids.mineLate, ids.mineDone, ids.hers, circleId, nell, people.sarah.id, member.ruth, member.marisol],
+      );
+      await raw.query('set session_replication_role = default');
+
+      const rows = await tasksLib.myOpenTasks(claimsOf('ruth'), circleId);
+      expect(rows.map((r) => r.title)).toEqual(['Mine, due soon', 'Mine, due later']);
+      expect(rows.every((r) => r.owner_member_id === member.ruth)).toBe(true);
+      expect(rows.every((r) => r.status === 'open')).toBe(true);
+      // The block's own small limit, and it is clamped.
+      expect((await tasksLib.myOpenTasks(claimsOf('ruth'), circleId, 1)).map((r) => r.title)).toEqual([
+        'Mine, due soon',
+      ]);
+      expect((await tasksLib.myOpenTasks(claimsOf('ruth'), circleId, 9999)).length).toBe(2);
+      // The same select as listTasks: a row carries its subject and its
+      // provenance, so Home renders from the same facts the Tasks page does.
+      expect(rows[0]).toMatchObject({ subject_name: 'Nell', due_on: '2026-09-08', can_manage: false });
+
+      // Marisol is a caregiver: she gets the one she owns, and none of
+      // Ruth's. (The assignment legs above own tPlain/tTainted's owner, so
+      // this asserts the predicate, not the fixture's exact size.)
+      const hers = await tasksLib.myOpenTasks(claimsOf('marisol'), circleId);
+      expect(hers.map((r) => r.title)).toContain("Marisol's, not mine");
+      expect(hers.every((r) => r.owner_member_id === member.marisol)).toBe(true);
+      expect(hers.some((r) => r.title.startsWith('Mine,'))).toBe(false);
+
+      // An outsider resolves no member row, so the predicate matches nothing
+      // — an empty answer, never everyone's.
+      expect(await tasksLib.myOpenTasks({ sub: randomUUID(), role: 'authenticated' }, circleId)).toEqual([]);
+    } finally {
+      await raw.query('set session_replication_role = replica');
+      await raw.query('delete from public.tasks where id = any($1)', [Object.values(ids)]);
+      await raw.query('set session_replication_role = default');
+    }
+  });
+});

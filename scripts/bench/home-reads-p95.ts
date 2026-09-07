@@ -23,7 +23,7 @@
 // ============================================================================
 
 import { latestEventPerSubject, recentEvents, upcomingEvents } from '@/lib/hc/timeline';
-import { listTasks, myMembership } from '@/lib/hc/tasks';
+import { listTasks, myOpenTasks } from '@/lib/hc/tasks';
 
 const [circle, account] = process.argv.slice(2);
 if (!circle || !account) {
@@ -41,8 +41,11 @@ function pct(sorted: number[], p: number): number {
 }
 
 const reads: [string, () => Promise<unknown>][] = [
-  ['myMembership', () => myMembership(claims, circle)],
-  ['listTasks', () => listTasks(claims, circle)],
+  ['myOpenTasks', () => myOpenTasks(claims, circle)],
+  // The read Home used to make for this block, kept as the CONTROL: it is
+  // what the narrowing is measured against, and the Tasks page still makes
+  // it.
+  ['listTasks (control)', () => listTasks(claims, circle)],
   ['latestEventPerSubject', () => latestEventPerSubject(claims, circle)],
   ['upcomingEvents', () => upcomingEvents(claims, circle)],
   ['recentEvents', () => recentEvents(claims, circle)],
@@ -60,7 +63,7 @@ for (const [name, run] of reads) {
   }
   const sorted = [...times].sort((a, b) => a - b);
   const p95 = pct(sorted, 95);
-  worst = Math.max(worst, p95);
+  if (!name.includes('control')) worst = Math.max(worst, p95);
   rows.push({
     read: name,
     n: sorted.length,

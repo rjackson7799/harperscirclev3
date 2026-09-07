@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/shell/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { FORWARDING_DOMAIN } from '@/lib/setup/steps';
 import { completionPromises } from '@/lib/setup/completion-copy';
-import { listTasks, myMembership, taskFilters, type TaskRow } from '@/lib/hc/tasks';
+import { myOpenTasks, type TaskRow } from '@/lib/hc/tasks';
 import {
   latestEventPerSubject,
   recentEvents,
@@ -65,13 +65,6 @@ function senderLabel(row: ArrivalRow): string {
   return row.sender_display_name ?? row.sender_address ?? "Something you added";
 }
 
-/** Today as the SUBJECT calendar day would be ideal (§13.6); Home is one
- *  page over several subjects, so the viewer UTC day is the honest common
- *  floor — the tasks page own rule, and its own words. */
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 /** §8.6: an error is an ERROR STATE, never an empty one. */
 function loadFailed(next: string, slow: boolean) {
   return (
@@ -111,8 +104,7 @@ export default async function HomePage({ params }: { params: Promise<{ circle: s
       let arrivals: { ok: boolean; rows: ArrivalRow[] };
       let subjects: SubjectRow[];
       let review: { count: number; top: ArrivalRow | null };
-      let me: Awaited<ReturnType<typeof myMembership>>;
-      let tasks: TaskRow[];
+      let mine: TaskRow[];
       let latest: Map<string, EventRow>;
       let coming: EventRow[];
       let recent: EventRow[];
@@ -121,12 +113,11 @@ export default async function HomePage({ params }: { params: Promise<{ circle: s
         // known before the arrivals read answers, and asking the other
         // reads afterwards would serialise the page behind it — on a
         // day-one circle they all answer empty anyway.
-        [arrivals, subjects, review, me, tasks, latest, coming, recent] = await Promise.all([
+        [arrivals, subjects, review, mine, latest, coming, recent] = await Promise.all([
           budget.race(readArrivals(supabase, circle), 'arrivals'),
           budget.race(readSubjects(supabase, circle), 'subjects'),
           budget.race(readNeedsReview(supabase, circle), 'needsReview'),
-          budget.race(myMembership(claims, circle), 'myMembership'),
-          budget.race(listTasks(claims, circle), 'listTasks'),
+          budget.race(myOpenTasks(claims, circle), 'myOpenTasks'),
           budget.race(latestEventPerSubject(claims, circle), 'latestEventPerSubject'),
           budget.race(upcomingEvents(claims, circle), 'upcomingEvents'),
           budget.race(recentEvents(claims, circle), 'recentEvents'),
@@ -178,7 +169,6 @@ export default async function HomePage({ params }: { params: Promise<{ circle: s
       // (plan Q5). A rendered `0` is a claim about rows the caller may not
       // be entitled to enumerate; the absence of the block claims nothing.
       // ----------------------------------------------------------------
-      const mine = taskFilters(tasks, me?.id ?? null, today()).mine.slice(0, 4);
       const blocks = [
         subjects.some((s) => s.situation || latest.has(s.id)),
         review.count > 0,

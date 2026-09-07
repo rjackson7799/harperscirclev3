@@ -72,7 +72,10 @@ vi.mock('@/lib/db/user', () => ({
 
 // The router's four other blocks read through the typed wrappers, each one
 // the read its DESTINATION surface already makes (plan Q5; HOME-02).
-const tasksHc = { myMembership: vi.fn(), listTasks: vi.fn() };
+// 9B U4: the block reads `myOpenTasks` — the caller's own open work, chosen
+// and limited IN SQL. The predicate it used to apply app-side is proven where
+// it now lives, in tests/hc/tasks.test.ts against the live stack.
+const tasksHc = { myOpenTasks: vi.fn() };
 vi.mock('@/lib/hc/tasks', async () => {
   const actual = await vi.importActual<typeof import('@/lib/hc/tasks')>('@/lib/hc/tasks');
   return { ...actual, ...tasksHc };
@@ -203,8 +206,8 @@ beforeEach(() => {
   session.readLiveSession.mockResolvedValue({ kind: 'signed-in', claims: CLAIMS });
   TABLES.set('subjects', { data: [NELL], error: null });
   TABLES.set('arrivals', { data: [], error: null, count: 0 });
-  tasksHc.myMembership.mockResolvedValue({ id: ME, tier: 'coordinator', subjects: [] });
-  tasksHc.listTasks.mockResolvedValue([]);
+  tasksHc.myOpenTasks.mockResolvedValue([]);
+
   timelineHc.latestEventPerSubject.mockResolvedValue(new Map());
   timelineHc.upcomingEvents.mockResolvedValue([]);
   timelineHc.recentEvents.mockResolvedValue([]);
@@ -364,18 +367,28 @@ describe('HOME-02/04 · the router — five blocks, each from its destination su
     expect(html).toContain(`href="/${CIRCLE}/inbox"`);
   });
 
-  it('my open tasks: the CALLER own open tasks, with their dates, and never anybody else', async () => {
-    tasksHc.listTasks.mockResolvedValue([
+  // 9B U4: "mine, and open" is decided IN SQL now, and its predicate is
+  // proven against the live stack in tests/hc/tasks.test.ts — the caller's
+  // own rows, only open, due-date order, its own limit, RLS deciding what is
+  // visible at all. What this case owns is the RENDERING: the block appears
+  // with the rows the read returned, each carrying its date, and a task with
+  // no date says so rather than showing a blank.
+  it('my open tasks: the block renders what the read returned, each with its date', async () => {
+    tasksHc.myOpenTasks.mockResolvedValue([
       task({ title: 'Call the pharmacy', owner_member_id: ME, due_on: '2026-09-10' }),
-      task({ id: 'aaaaaaaa-0000-4000-8000-0000000000a2', title: 'Book the follow-up', owner_member_id: 'someone-else', due_on: '2026-09-11' }),
-      task({ id: 'aaaaaaaa-0000-4000-8000-0000000000a3', title: 'Already done', owner_member_id: ME, status: 'done' }),
+      task({
+        id: 'aaaaaaaa-0000-4000-8000-0000000000a2',
+        title: 'Renew the parking permit',
+        owner_member_id: ME,
+        due_on: null,
+      }),
     ]);
     const text = words(await renderHome());
     expect(text).toContain('My open tasks');
     expect(text).toContain('Call the pharmacy');
     expect(text).toContain('September 10');
-    expect(text).not.toContain('Book the follow-up');
-    expect(text).not.toContain('Already done');
+    expect(text).toContain('Renew the parking permit');
+    expect(text).toContain('no date on it');
   });
 
   it("what's coming: dated items ALREADY IN THE RECORD, and not a calendar", async () => {
@@ -401,7 +414,7 @@ describe('HOME-02/04 · the router — five blocks, each from its destination su
   it('the five blocks render in the §4.7.2 order', async () => {
     TABLES.set('subjects', { data: [NELL], error: null });
     FILTERED.set('arrivals:state=proposals_ready', { data: [ARRIVED], error: null, count: 1 });
-    tasksHc.listTasks.mockResolvedValue([task({ owner_member_id: ME })]);
+    tasksHc.myOpenTasks.mockResolvedValue([task({ owner_member_id: ME })]);
     timelineHc.latestEventPerSubject.mockResolvedValue(new Map([[NELL.id, event()]]));
     timelineHc.upcomingEvents.mockResolvedValue([event({ id: 'eeeeeeee-0000-4000-8000-0000000000e2', summary: 'Cardiology follow-up' })]);
     timelineHc.recentEvents.mockResolvedValue([event({ id: 'eeeeeeee-0000-4000-8000-0000000000e3', summary: 'Blood results filed' })]);
@@ -491,7 +504,7 @@ describe('HOME-03 · every number is a count of rows the caller can see', () => 
   it('no chart, score, trend, ratio or progress indicator in the rendered tree', async () => {
     TABLES.set('arrivals', { data: [ARRIVED], error: null, count: 1 });
     FILTERED.set('arrivals:state=proposals_ready', { data: [ARRIVED], error: null, count: 2 });
-    tasksHc.listTasks.mockResolvedValue([task({ owner_member_id: ME })]);
+    tasksHc.myOpenTasks.mockResolvedValue([task({ owner_member_id: ME })]);
     timelineHc.latestEventPerSubject.mockResolvedValue(new Map([[NELL.id, event()]]));
     timelineHc.recentEvents.mockResolvedValue([event()]);
     const html = await renderHome();
@@ -527,7 +540,7 @@ describe('HOME-05 · one budget, and a named state rather than a spinner', () =>
   });
 
   it('a refused read is an ERROR STATE with "try again" — never a throw, never an empty Home', async () => {
-    tasksHc.listTasks.mockRejectedValue(new Error('permission denied for table tasks'));
+    tasksHc.myOpenTasks.mockRejectedValue(new Error('permission denied for table tasks'));
     const html = await renderHome();
     expect(html).toContain('role="alert"');
     expect(html).toContain('try again');
@@ -546,10 +559,10 @@ describe('HOME-05 · one budget, and a named state rather than a spinner', () =>
     const { readFileSync } = await import('node:fs');
     const src = readFileSync('app/(app)/[circle]/page.tsx', 'utf8');
     expect(src.match(/withPageBudget\(/g)?.length, 'exactly ONE budget').toBe(1);
-    // Eight reads, eight races: the day-one branch and the five blocks.
-    expect(src.match(/budget\.race\(/g)?.length).toBe(8);
+    // SEVEN reads, seven races: the day-one branch and the five blocks.
+    expect(src.match(/budget\.race\(/g)?.length).toBe(7);
     // Nothing awaits a read outside the race.
-    expect(src).not.toMatch(/await\s+(readArrivals|readSubjects|readNeedsReview|listTasks|myMembership|recentEvents|upcomingEvents|latestEventPerSubject)\(/);
+    expect(src).not.toMatch(/await\s+(readArrivals|readSubjects|readNeedsReview|myOpenTasks|recentEvents|upcomingEvents|latestEventPerSubject)\(/);
   });
 });
 
@@ -567,7 +580,7 @@ describe('A11Y-13 · landmark structure and headed blocks, over the rendered tre
   beforeEach(() => {
     TABLES.set('arrivals', { data: [ARRIVED], error: null, count: 1 });
     FILTERED.set('arrivals:state=proposals_ready', { data: [ARRIVED], error: null, count: 2 });
-    tasksHc.listTasks.mockResolvedValue([task({ owner_member_id: ME })]);
+    tasksHc.myOpenTasks.mockResolvedValue([task({ owner_member_id: ME })]);
     timelineHc.latestEventPerSubject.mockResolvedValue(new Map([[NELL.id, event()]]));
     timelineHc.upcomingEvents.mockResolvedValue([event({ id: 'eeeeeeee-0000-4000-8000-0000000000e2' })]);
     timelineHc.recentEvents.mockResolvedValue([event({ id: 'eeeeeeee-0000-4000-8000-0000000000e3' })]);

@@ -256,6 +256,50 @@ export async function listTasks(claims: RequestClaims, circleId: string): Promis
   });
 }
 
+/**
+ * HOME'S "my open tasks" (9B U2/U4; PRD §4.7.2) — the SAME select and the
+ * same open-first ordering `listTasks` uses, narrowed to the block's own
+ * question and its own small limit.
+ *
+ * WHY IT EXISTS RATHER THAN A FILTER OVER listTasks. Home rendered at most
+ * four rows and was asking for two hundred, each carrying two
+ * `hc.visible_at` calls and an instruction sub-select: measured at 501 tasks
+ * that read was p95 1,581 ms on its own, against PRF-06's 250 ms page
+ * tripwire (9B U4's breach). The id is chosen by a cheap query over the base
+ * table — RLS decides visibility on `public.tasks` exactly as it does for
+ * the full read, so nothing widens — and TASK_SELECT then runs for those few
+ * ids alone.
+ *
+ * "Mine" is resolved IN SQL by the same subquery `myMembership` uses, so the
+ * block costs one round trip rather than two, and so the predicate cannot
+ * drift from the one the tasks page applies app-side (`taskFilters`).
+ */
+export async function myOpenTasks(
+  claims: RequestClaims,
+  circleId: string,
+  limit = 4,
+): Promise<TaskRow[]> {
+  if (!UUID_RE.test(circleId)) return [];
+  const n = Math.max(1, Math.min(Math.trunc(limit), 20));
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<TaskSql>(
+      `${TASK_SELECT} and t.id in (
+         select i.id from public.tasks i
+          where i.circle_id = $1 and i.deleted_at is null and i.status = 'open'
+            and i.owner_member_id = (select m.id from public.circle_members m
+                                      where m.circle_id = $1
+                                        and m.account_id = (select auth.uid())
+                                        and m.removed_at is null and m.subject_id is null
+                                      limit 1)
+          order by (i.due_on is null), i.due_on, i.approved_at, i.id
+          limit $2)
+        order by (t.due_on is null), t.due_on, t.approved_at, t.id`,
+      [circleId, n],
+    );
+    return r.rows.map(toRow);
+  });
+}
+
 /** One task, or null in ONE shape for foreign, nonexistent, deleted,
  *  below-summary and malformed alike (DEF-10). */
 export async function taskById(
