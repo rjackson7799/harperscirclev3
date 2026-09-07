@@ -47,7 +47,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(25);
+select plan(26);
 
 create function pg_temp.errcode_as(p_role text, p_sql text) returns text
 language plpgsql as $$
@@ -64,11 +64,11 @@ begin
   return v;
 end $$;
 
-create function pg_temp.admin_scalar(p_sql text) returns text
+create function pg_temp.view_owner_scalar(p_sql text) returns text
 language plpgsql as $$
 declare v text;
 begin
-  execute 'set local role hc_admin';
+  execute 'set local role hc_internal';
   begin
     execute p_sql into v;
   exception when others then
@@ -389,14 +389,15 @@ select is((
                     where d.classid = 'pg_proc'::regclass and d.objid = p.oid
                       and d.refclassid = 'pg_extension'::regclass
                       and d.deptype = 'e')
-    and has_function_privilege('hc_admin', p.oid, 'execute')), 0,
+    and has_function_privilege('hc_admin', p.oid, 'execute')
+    and p.oid <> to_regprocedure('admin_ops.read_platform_stats(uuid)')), 0,
   'CI-4: hc_admin holds EXECUTE on nothing of OURS — admin_ops entry points are granted individually when ADM-01 lands');
 
 select is((
-  select count(*)::int
+  select array_agg(p.oid::regprocedure::text order by p.oid::regprocedure::text)
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'admin_ops'), 0,
-  'admin_ops holds ZERO functions — every §9.3 wrapper needs the auth slice''s step-up machinery (ADM-01, ADR-0009)');
+  where n.nspname = 'admin_ops'), array['admin_ops.read_platform_stats(uuid)']::text[],
+  'admin_ops exposes exactly the specifically audited platform-stats reader');
 
 -- ----------------------------------------------------------------------------
 -- 18–20 · A.1: the distinguished failure mode on the 1D surfaces —
@@ -414,14 +415,14 @@ select is(pg_temp.errcode_as('hc_admin', $$ select * from public.arrivals $$),
 -- ----------------------------------------------------------------------------
 -- 21–23 · The views work, and say only what §9.2 permits.
 -- ----------------------------------------------------------------------------
-select is(pg_temp.admin_scalar(format(
+select is(pg_temp.view_owner_scalar(format(
   $$ select subject_count::text || ':' || arrival_count::text
          || ':' || (members_by_tier ->> 'coordinator')
      from admin_meta.circle_shapes where circle_id = %L $$,
   current_setting('t.c1'))), '2:3:1',
   'circle_shapes: the fixture circle renders as counts — two subjects, three arrivals, one coordinator');
 
-select is(pg_temp.admin_scalar(
+select is(pg_temp.view_owner_scalar(
   $$ select (arrivals_by_channel ->> 'upload') || ':' || (arrivals_by_channel ->> 'email')
          || ':' || denials_total::text
      from admin_meta.platform_stats $$), '2:1:2',
@@ -482,5 +483,7 @@ select is((
     'sweep_health',    '4ac9a273c38e65c397df5ee48bdcc498'),
   'CI-2b (round-8 F1): every admin_meta view definition is PINNED (md5 of pg_get_viewdef) — a changed or added definition reds this assertion and forces the manual review the subid-0 residual depends on; re-pin only after reviewing the new definition for whole-row or content reach');
 
+select is(pg_temp.errcode_as('hc_admin', 'select * from admin_meta.platform_stats'),
+  '42501', 'direct metadata SELECT is denied; only the audited operation is allowed');
 select * from finish();
 rollback;

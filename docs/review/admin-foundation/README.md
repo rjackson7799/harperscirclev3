@@ -2,7 +2,7 @@
 
 Source under test: `lib/db/admin.ts` and `lib/db/role-pool.ts` at `7a67c3e`; neither product file changed. Proposed contract: [../slice-10-authorization-contract.md](../slice-10-authorization-contract.md).
 
-Run explicitly from the repository root:
+Historical RED command at `c4a561c` (the opt-in files are retired by the replacement adapter):
 
 ```powershell
 node node_modules/vitest/vitest.mjs run --config docs/review/admin-foundation/red.config.ts
@@ -12,4 +12,4 @@ September 7, 2026 result: **1 expected failure, 1 diagnostic control passed**, V
 
 The first sandboxed attempt stopped before test collection with `spawn EPERM`; it is not RED evidence. The permitted process retry produced the assertion failure above. Vite also emitted its existing future native-config-loader compatibility warning.
 
-These opt-in tests deliberately live outside the ordinary `tests/**` include. Home's suite is not silently made red by an unapproved authorization amendment. This is test preparation, not complete Admin coverage. The diagnostic control pins the old path only for this baseline and must be removed when the replacement is implemented. At implementation, move the admission regression to the regular suite, test the selected public adapter's normalized refusal, and add all cases in the contract matrix before claiming GREEN. Do not turn this expected failure into a skipped or expected-to-fail acceptance test.
+The replacement is covered in the regular `tests/app/admin-read.test.ts` suite: the factory exposes no arbitrary SQL interface, refuses failed session verification before connecting, and withholds results until audit commit. The obsolete diagnostic that expected the unsafe path was removed, not skipped. This is partial boundary evidence; database and browser acceptance remain separate.

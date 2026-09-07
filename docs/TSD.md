@@ -1471,8 +1471,11 @@ revoke execute on all functions in schema public, hc from public;
 
 -- What hc_admin may reach: two schemas, read-only views and named operations.
 grant usage  on schema admin_meta, admin_ops to hc_admin;
-grant select on all tables    in schema admin_meta to hc_admin;
-alter default privileges in schema admin_meta grant select on tables to hc_admin;
+-- Slice 10A owner amendment: no unaudited direct metadata SELECT.
+revoke select on all tables in schema admin_meta from hc_admin;
+alter default privileges in schema admin_meta revoke select on tables from hc_admin;
+alter default privileges for role hc_internal in schema admin_meta revoke select on tables from hc_admin;
+grant execute on function admin_ops.read_platform_stats(uuid) to hc_admin;
 -- admin_ops holds ONE definer wrapper per permitted operation, granted individually.
 -- There is no `grant execute on all functions in schema admin_ops`.
 ```
@@ -2554,7 +2557,7 @@ Nothing longer than 250ms except the deliberate infinite pulses. No easing more 
 | **Feedback inbox** | The product's Feedback button, triaged | Anything the reporter quoted from a record — the form strips and refuses record text |
 | **Account operations** | The five in §9.3 | — |
 
-Every view is a `SELECT` against `admin_meta`. There is no page that assembles data in application code from a wider query, because there is no wider query available to it.
+Every operator read uses a named audited operation whose data source is `admin_meta`; direct SELECT by `hc_admin` is denied. The initial operation is `admin_ops.read_platform_stats(uuid)`. It rechecks current operator registration, session ownership/assurance, verified factor and expiration under an account lock, then appends an internal audit. The application supplies server-verified claims in transaction-local context and releases counts only after commit. No page assembles data from a wider query. This is the Slice 10A amendment approved after `c4a561c`; circle-detail reads remain excluded until their family-visible audit contract is implemented.
 
 ### 9.3 Operations, and their constraints
 

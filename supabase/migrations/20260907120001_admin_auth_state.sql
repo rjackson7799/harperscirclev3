@@ -1,5 +1,6 @@
 -- Slice 10A M1 of 2, owner approved after c4a561c. Capability proof 4443b36.
 -- Synchronous nonsecret operator auth mirrors. No request-role auth access.
+begin;
 lock table public.admin_users, auth.sessions, auth.mfa_factors in share row exclusive mode;
 alter table public.admin_users add column revoked_at timestamptz;
 
@@ -74,3 +75,4 @@ do $$ declare actor uuid; begin
     perform public.hc_refresh_admin_auth(actor);
   end loop;
 end $$;
+commit;

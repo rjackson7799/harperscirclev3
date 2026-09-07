@@ -1,5 +1,6 @@
 -- Slice 10A M2 of 2. Read-only platform counts via one audited operation.
 -- This is the owner's explicit amendment to direct admin_meta SELECT.
+begin;
 revoke select on all tables in schema admin_meta from hc_admin;
 alter default privileges in schema admin_meta revoke select on tables from hc_admin;
 alter default privileges for role hc_internal in schema admin_meta revoke select on tables from hc_admin;
@@ -68,3 +69,4 @@ end $$;
 alter function admin_ops.read_platform_stats(uuid) owner to hc_internal;
 revoke all on function admin_ops.read_platform_stats(uuid) from public,anon,authenticated,hc_admin,hc_pipeline;
 grant execute on function admin_ops.read_platform_stats(uuid) to hc_admin;
+commit;

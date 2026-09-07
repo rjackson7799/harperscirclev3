@@ -1,4 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { makeRoleFactory } from '@/lib/db/role-pool';
+
+// Test-only raw role probe. Product asAdmin exposes only audited reads.
+const rawAdmin = makeRoleFactory('hc_admin', 'HC_ADMIN_DB_URL');
 
 // ============================================================================
 // A2 · The four factories (TSD §1.7): asUser via @supabase/ssr; asAdmin and
@@ -57,26 +61,25 @@ describe('A2 · asPipeline() is hc_pipeline, exactly', () => {
 
 describe('A2 · asAdmin() is hc_admin, exactly', () => {
   it('sessions run as hc_admin', async () => {
-    const r = await db.asAdmin().query('select current_user as u');
+    const r = await rawAdmin().query('select current_user as u');
     expect(r.rows[0].u).toBe('hc_admin');
   });
 
-  it('reads admin_meta views', async () => {
-    const r = await db
-      .asAdmin()
-      .query('select count(*)::int as n from admin_meta.platform_stats');
-    expect(r.rows[0].n).toBeGreaterThanOrEqual(0);
+  it('cannot bypass auditing with direct metadata SELECT', async () => {
+    await expect(rawAdmin().query('select * from admin_meta.platform_stats'))
+      .rejects.toMatchObject({ code: '42501' });
+    expect(Object.keys(db.asAdmin())).toEqual(['readPlatformStats']);
   });
 
   it('holds NO privilege on record tables (AC-ADMIN-1: permission denied)', async () => {
     await expect(
-      db.asAdmin().query('select * from public.documents limit 1'),
+      rawAdmin().query('select * from public.documents limit 1'),
     ).rejects.toMatchObject({ code: '42501' });
   });
 
   it('holds NO privilege on access_log (AC-ADMIN-2 posture)', async () => {
     await expect(
-      db.asAdmin().query('select * from public.access_log limit 1'),
+      rawAdmin().query('select * from public.access_log limit 1'),
     ).rejects.toMatchObject({ code: '42501' });
   });
 });
