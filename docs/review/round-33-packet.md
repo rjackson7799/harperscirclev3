@@ -86,6 +86,7 @@ HEAD` is docs-only.**
 | **production build** | clean, exit 0; `/[circle]` present in `routes-manifest.json` |
 | **gitleaks** | the CI image, digest-pinned, full history: **709 commits scanned, no leaks found** |
 | **CI on `main` @ `aae90d2`** | **GREEN** — run `34082125537` re-run and `success`, discharging the kickoff's ECR-transient item |
+| **CI on this PR head** | **GREEN** — runs 34089257750 (5m18s) and 34089265516 (5m33s), both pass. The only annotation is the Node 20 deprecation on actions/checkout@v4, setup-node@v4 and upload-artifact@v4 — plan **Q8**, ruled to its OWN chore PR and explicitly not slice 9’s |
 | **page p95 (§13.2)** | **628 ms** at 2,021 events · 501 tasks · 302 arrivals — p50 431 · p99 758 · max 932; target 1.5 s, ceiling 3 s held at all 150 requests |
 | **Home's reads (PRF-06's 250 ms tripwire)** | `recentEvents` 104 · `upcomingEvents` 53 · `myOpenTasks` 399 · `latestEventPerSubject` 657 ms — **two over it, recorded, Q-A** |
 | **browser gate** | **NOT RUN.** See below. |

@@ -77,7 +77,7 @@ whole tree · **typecheck** clean · **production build** clean with `/[circle]`
 in the routes manifest · **gitleaks** 709 commits, no leaks · **CI on `main` @
 `aae90d2` GREEN** (run `34082125537` re-run to `success`, discharging the
 kickoff's ECR item) · **no DDL**, so the DB legs stand at 9A's figures and are
-not restated.
+not restated. **CI on this PR head is GREEN** — runs 34089257750 and 34089265516, both pass; the only annotation is the Node 20 action deprecation, which is plan Q8 and its own chore PR.
 
 ## The ledgers
 
