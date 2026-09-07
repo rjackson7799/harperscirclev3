@@ -700,6 +700,12 @@ gate is not this row's evidence and is not claimed as it** — FRZ-17 is a pgTAP
 assertion, green in the clean-leg run at `efc2164` (71 files Σ 1,871 PASS, reset
 exact 77, concurrency 83/83).
 
+**AND THE GATE IS NOW DEFERRED BY OWNER RULING, not merely unrun** (slice-9
+plan **Q10**, 2026-09-06): the 66 legs move to **9B’s** run, and
+`docs/owed.md` **OW-32** carries the debt with a gate result as its acceptance
+condition. **No row here may be read as saying 9A’s surfaces were re-proven** —
+the increment edits none of them, and its evidence is pgTAP and catalog.
+
 **Nothing here activates anything.** G4 and G7 still block, G9 is OPEN, G3 is
 open, and G12-01 stays `pending` at `gate`.
 
