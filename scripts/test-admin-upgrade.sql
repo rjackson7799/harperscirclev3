@@ -21,7 +21,7 @@ insert into auth.sessions(id,user_id,factor_id,aal) values
 ('30000000-0000-4000-8000-000000000022','10000000-0000-4000-8000-000000000022','20000000-0000-4000-8000-000000000022','aal2');
 insert into public.accounts(id,kind,display_name) values
 ('10000000-0000-4000-8000-000000000021','admin','Synthetic upgrade operator'),
-('10000000-0000-4000-8000-000000000022','family','Synthetic upgrade family');
+('10000000-0000-4000-8000-000000000022','member','Synthetic upgrade family');
 insert into public.admin_users(account_id,mfa_enrolled_at) values ('10000000-0000-4000-8000-000000000021',now());
 select 'PASS: pre-M1 operator and family state committed' as upgrade_result;
 \else
