@@ -1,8 +1,18 @@
 # ADR-0045 — Slice 9A: the freeze guard — deltas as built, and the round-32 packet
 
-**Status:** `proposed` — 2026-09-06. **Unstamped.** It is stamped `accepted`
-when the owner rules Q-A…Q-F below. **An unanswered pointed question defaults
-to NOT PLANNED** (ADR-0006), and the 9B build does not start.
+**Status:** **`accepted` — 2026-09-06.** Stamped at round 32's rulings
+(ADR-0046 D9), which ruled **Q-A…Q-F all AS RECOMMENDED** — Q-A the exemption
+kept (D1), Q-B recorded not fixed and opening **`OW-33`** (D2), Q-C the four
+raises left as they are (D3), Q-D the marker standing (D4), Q-E `OW-32`'s
+acceptance rewritten as a **SUBSET** condition naming the nine files (D5), Q-F
+`FRZ-17` left single-layer (D6). **None departs from its recommendation.**
+**`accepted` records that the questions were RULED, not that a round was
+held** — round 32's review was never held; the owner merged this packet
+directly (ADR-0046). **Q-G is not this ADR's**: round 32's kickoff raised it
+and ADR-0046 D7 rules it, re-homing the browser gate to a **Vercel staging
+deployment** and flipping `OW-32` to **`RISK(GATE-01)`**, so 9B may close with
+browser evidence outstanding. With Q-A…Q-F ruled, ADR-0006's NOT PLANNED
+default is discharged and **the 9B build may start.**
 **Branch:** `slice/9-freeze-guard`, from `origin/main` @ `1eab0e5` (PR #47,
 round 31's dispositions, merged `--no-ff` 2026-09-04; parents `34b5c78` and
 `d801778`). Base re-verified unmoved by a fetch at the packet's assembly.
