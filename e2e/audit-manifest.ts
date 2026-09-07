@@ -76,6 +76,13 @@ export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/styleguide': {
     leg: 'a11y.spec — "styleguide: contrast-on axe over every composition; reduced motion stills the pulse"',
   },
+  // 9B U1 (HOME-01, A11Y-13): Home's own audit leg lands with U4,
+  // where the surface is finished. Until then this claim is OWED and says
+  // so — an unaudited route may not ship silently, which is what this list
+  // is for.
+  '/[circle]': {
+    leg: 'OWED: A11Y-13 — Home is audited by its own leg, written at 9B U4 (bounds and a11y). Listed here at U1 so the route cannot ship unaudited without a reader seeing this line.',
+  },
   '/[circle]/timeline': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}` },
   '/[circle]/tasks': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}; ${CLAIM_LEG}` },
   '/[circle]/tasks/[task]': { leg: `${RECORD_LEG}; ${CLAIM_LEG}` },
