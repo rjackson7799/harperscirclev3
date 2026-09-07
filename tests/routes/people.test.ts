@@ -342,21 +342,53 @@ describe('7D · R3/F-5 · send again — revoked first, expired only', () => {
   });
 });
 describe('NAV-01 · the composition half — a courtesy asserted per tier, never the mechanism', () => {
-  it('a caregiver’s nav is Tasks · Account', async () => {
+  it('a caregiver’s nav is Home · Tasks · Account', async () => {
     const { navFor } = await import('@/components/shell/nav-manifest');
-    expect(navFor('care_circle').map((e) => e.key)).toEqual(['tasks', 'account']);
+    expect(navFor('care_circle').map((e) => e.key)).toEqual(['home', 'tasks', 'account']);
   });
 
-  it('a family member’s nav is Timeline · Documents · People · Account', async () => {
+  it('a family member’s nav is Home · Timeline · Documents · People · Account', async () => {
     const { navFor } = await import('@/components/shell/nav-manifest');
-    expect(navFor('family').map((e) => e.key)).toEqual(['timeline', 'documents', 'people', 'account']);
+    expect(navFor('family').map((e) => e.key)).toEqual([
+      'home',
+      'timeline',
+      'documents',
+      'people',
+      'account',
+    ]);
   });
 
   it('a coordinator’s nav carries everything, people and documents included', async () => {
     const { navFor } = await import('@/components/shell/nav-manifest');
     const keys = navFor('coordinator').map((e) => e.key);
-    for (const k of ['inbox', 'upload', 'tasks', 'invite', 'timeline', 'documents', 'people', 'account']) {
+    for (const k of [
+      'home',
+      'inbox',
+      'upload',
+      'tasks',
+      'invite',
+      'timeline',
+      'documents',
+      'people',
+      'account',
+    ]) {
       expect(keys).toContain(k);
+    }
+  });
+
+  // 9B U3: Home is in EVERY tier's nav, and it is first. The router is the
+  // surface with the widest audience, and every block on it renders only
+  // what its own caller can see — so hiding it from a tier would hide a
+  // surface that person is entitled to, which is the opposite of what the
+  // courtesy is for. (PRD §4.1.4 rule 4 is untouched: it governs where an
+  // ACCEPTED INVITE lands — "nobody lands on Home" — not what the nav
+  // offers once you are inside.)
+  it('Home is in every tier’s nav, and it is the first entry', async () => {
+    const { navFor } = await import('@/components/shell/nav-manifest');
+    for (const tier of ['care_circle', 'family', 'coordinator', null]) {
+      const entries = navFor(tier);
+      expect(entries.map((e) => e.key)[0], `tier ${tier}`).toBe('home');
+      expect(entries[0].href('c-1')).toBe('/c-1');
     }
   });
 
