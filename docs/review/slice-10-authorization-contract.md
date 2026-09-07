@@ -1,0 +1,44 @@
+# Slice 10A — proposed admission and audited-read contract
+
+September 7, 2026; inspected source baseline `7a67c3e`. Owner's subsequent “continue” authorizes authorization design and failing-test preparation while Home remains unmerged. It does not authorize this proposed schema/privilege change. No Admin route, migration, credential, operator account or hosted change is included here.
+
+## Existing facts and the required decision
+
+`accounts(id, kind)` and the composite identity foreign keys separate admin and family identities. `admin_users.mfa_enrolled_at` records enrollment history; it does not prove that a verified factor still exists. `lib/db/admin.ts` accepts no identity and returns a general SQL interface. `role-pool.ts` sets `hc_admin` for a session but establishes neither operator admission nor an audit transaction. Migration `20260816120004_admin_boundary.sql` deliberately grants direct metadata SELECT, including future relations. `tests/db/factories.test.ts` expects that access; `supabase/tests/031_admin_boundary.sql` pins the safe view graph and empty operation surface.
+
+Recommendation requiring an explicit requirements amendment: retain safe metadata views as the data source, but revoke direct SELECT and future default SELECT from `hc_admin`; expose one audited `admin_ops.read_platform_stats` function instead. Reconcile TSD §§3.9/9.2 and the catalog/factory tests in the same implementation increment. Do not silently reinterpret “Every view is a SELECT against admin_meta” as an application-only audit promise. Existing content-denial and recursive dependency assertions remain mandatory and must not be weakened to make new functions pass.
+
+## Request and database boundary
+
+1. Both middleware and each Admin entry point gate access. A server-only admission adapter obtains live authentication and cryptographically verified claims, checks that the returned user ID equals the claim subject, and requires a nonempty session ID and `aal2`. Never accept trusted identity, assurance or session identifiers from form fields, headers or URL parameters. Auth service failures yield a generic retry response, not sign-out. No metadata query runs on failure.
+2. The dedicated Admin connection receives only server-verified claims in a transaction-local context. The read function rechecks admin account kind, active operator registration, live session ownership and assurance, and the continued existence of its verified factor using protected database state. Historical enrollment timestamp and cached JWT assurance alone are insufficient. Keep family account creation and the shared pipeline factory unchanged.
+3. Proposed revocation field: `admin_users.revoked_at`. A revoked registration never admits a read; deleting the registration also denies it. A read serializes on the applicable operator/session security state, rechecks after lock acquisition, and commits its audit before returning data. A revocation that commits first must defeat the read. A read that wins the lock may complete before revocation; do not promise retroactive cancellation of a delivered response.
+4. Auth-schema access is a capability gate. Migration `20260818120002_step_up_tokens.sql` explicitly records that `auth.mfa_factors` is not grantable to the definer role. The existing postgres-owned email-mirror triggers in `20260818120003_invites_lifecycle.sql` are a precedent, not proof that factor/session triggers work. Proposed protected mirrors carry only operator/session IDs, assurance, verified-factor identity/status and expiry, never factor secrets or recovery material. Confirm actual auth columns, trigger permissions and ALL update/delete/cascade paths in an isolated database before finalizing these mirrors. Race tests must include factor removal and session deletion; a stale asynchronous mirror is unacceptable. If the required synchronous lifecycle cannot be proven, stop this design rather than add a privileged maintenance read to the Admin request path.
+5. Claims in PostgreSQL settings are not signatures. The trusted server adapter verifies them; the database independently checks current authorization state. A holder of the deployment credential can forge settings, so this design does not claim protection against credential compromise or a malicious application server impersonating an active operator. The credential still must never read family content. No general query interface is exported to Admin routes.
+
+## Read and audit semantics
+
+One bounded operation returns the existing platform_stats fields only. No circle selector, arbitrary SQL, caller-chosen view or free-text filter is accepted. Do not add richer metrics by reading content tables. Timings from other safe views are a later named operation with equivalent evidence.
+
+An internal append-only audit stores server-generated request ID, verified operator/session IDs, a fixed operation code, database timestamp and normalized outcome. No JWT, email, query text, metadata result, provider error or family text is logged. Every actual read attempt gets a new audit event; disable response caching and prefetch that could serve an unaudited page. Duplicate network retries are separate attempts, not silently deduplicated reads.
+
+For admitted requests, record audit and read under one transaction; buffer the result until COMMIT succeeds. Audit failure or unknown commit outcome returns a generic unavailable result and no counts. An unknown commit may have recorded an event; a retry uses a new request ID. For a database authorization refusal, return a normalized denial value so its audit can commit instead of raising and rolling it back. Failures before an authenticated identity is established may be counted as anonymous security events, never attributed to a claimed user. If the database itself is unavailable, durable audit cannot be promised: deny delivery and retain only a sanitized operational failure signal.
+
+Platform aggregates do not select an individual circle. Circle-detail reads are excluded until they atomically write that family's access log under AC-ADMIN-4. Admin read access does not authorize export, deletion, transfer, suspension or password resets; those retain operation-bound fresh MFA and other governing requirements.
+
+## Evidence to earn
+
+| Layer | Required cases | Current status |
+|---|---|---|
+| Application admission | Signed out; family; mismatched live user/subject; missing session; aal1; missing verified factor; revoked operator; valid operator; auth outage; same cases with middleware bypassed | Only the legacy zero-identity transport path has an executable RED probe; remaining cases await the selected adapter contract |
+| Database admission | No/forged/nonexistent context; wrong session owner; expired/deleted session; removed factor; revoked/deleted admin; valid operator; family/admin identity exclusivity | Not run; real PostgreSQL required |
+| Audit | One event per delivered read; repeat requests; audit insert failure; commit failure; normalized denial; no results released before commit; no raw error leakage | Not implemented or run |
+| Privileges | Direct and default metadata SELECT absent; exact one-operation EXECUTE allowlist; no content reach through nested views, whole-row references or functions; runtime cannot forge mirror state | Existing 031 is the starting point, not proof of the proposed changes |
+| Concurrency/lifecycle | Read versus revocation, session deletion and factor removal in both commit orders; rollback; pooled-session reuse; interrupted connection | Not run; mocks cannot close this gate |
+| Browser | Real separate operator MFA enrollment/challenge; factor removal; sign-out/revocation in second browser; page/error/no-cache behavior | Pending; no operator provisioning authorized |
+
+## Proposed implementation bounds for one owner decision
+
+Tier 1, at most two forward-only migrations, zero dependencies. M1: operator revocation state plus protected synchronous auth-state mirrors and lifecycle triggers, contingent on the isolated capability proof. M2: append-only internal read audit, the single platform-stats read operation, direct/default metadata grant removal and exact privilege pins. Migration timestamps are allocated only after approval; no reserve is implied. Include the server admission adapter and normalized response boundary in this increment; compose the page separately after the authorization boundary passes review.
+
+Before implementation, approve this narrow metadata-access amendment and migration ceiling together. The first executable work is the isolated auth capability probe, not a staging migration. No capability proof means no migration implementation and no privileged page. Home's pending browser/integration/mixed-workload gates, staging tester preservation, owner merge authority and production prohibition all remain in force.

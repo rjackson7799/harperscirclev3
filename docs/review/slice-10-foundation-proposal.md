@@ -1,6 +1,6 @@
 # Slice 10A — Admin foundation proposal
 
-Status: **proposed; owner authorization required before Tier 1 implementation**. Assessed at `c3ea126`. This is a work-order proposal, not a statement that Home is closed. Home stays unmerged; its browser, mixed-workload and full integration gates retain their recorded status.
+Status: **owner authorized the limited design and failing-test preparation phase by replying “continue” after `7a67c3e`; schema/privilege implementation remains proposed**. Assessed at `c3ea126`. This is a work-order proposal, not a statement that Home is closed. Home stays unmerged; its browser, mixed-workload and full integration gates retain their recorded status. The resulting contract and bundled implementation decision are in [slice-10-authorization-contract.md](slice-10-authorization-contract.md).
 
 ## Outcome
 
