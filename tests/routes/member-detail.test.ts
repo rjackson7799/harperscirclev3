@@ -335,6 +335,111 @@ describe('the matrix — per subject per domain, words from the ONE module, lowe
   });
 });
 
+// ============================================================================
+// STP-04 · the §5.7 confirmation surface NAMES what it is confirming
+// (OW-28; ADR-0044 D1, ruling round 31 F-1; round-27 R3 dissent 1).
+//
+// Both panels named the GRANTEE and nothing else. All three of subject,
+// domain and level arrive as sp.rs/sp.rd/sp.rl, are set-validated only, and
+// go straight into the hidden target_ref — so a coordinator following a
+// crafted same-origin link (?rs=…&rd=finances&rl=manage) typed her password
+// and clicked *Raise it* without either screen naming *finances* or
+// *manage*. VALIDATION IS NOT THE FIX and does not close the row: the
+// crafted target_ref is perfectly well-formed. The repair is DISPLAY.
+//
+// The assertion is on the WORDS, BOTH WAYS — present on the honest path,
+// and a CRAFTED rs/rd/rl rendering the same three words it would grant.
+// Presence of the section is what the old suite asserted, and presence is
+// not content.
+// ============================================================================
+describe('STP-04 — both Raise access panels name the subject, the domain and the level', () => {
+  /** The confirm section alone: no assertion may pass on the matrix below it. */
+  function raiseSection(html: string): string {
+    const start = html.indexOf('aria-labelledby="confirm-raise"');
+    expect(start).toBeGreaterThan(-1);
+    const end = html.indexOf('</section>', start);
+    return html.slice(start, end);
+  }
+  /** The words as a reader sees them, entities decoded, tags gone. */
+  function words(html: string): string {
+    return html
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&#x27;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/\s+/g, ' ');
+  }
+
+  it('the password panel names all four parts — the grantee, the subject, the domain and the level', async () => {
+    const text = words(raiseSection(await renderPage(RUTH_M, { rs: NELL, rd: 'health', rl: 'view' })));
+    expect(text).toContain('Ruth');
+    expect(text).toContain('Nell');
+    expect(text).toContain('health & care');
+    expect(text).toContain('sees everything');
+  });
+
+  it('the spend panel repeats the same four parts — *Raise it* is not asked for a sentence the password panel did not say', async () => {
+    stepUpCookie = 'tok';
+    stepUpForCookie = RAISE_FOR;
+    const section = raiseSection(await renderPage(RUTH_M, { rs: NELL, rd: 'health', rl: 'view' }));
+    expect(section).toContain('Raise it');
+    const text = words(section);
+    expect(text).toContain('Ruth');
+    expect(text).toContain('Nell');
+    expect(text).toContain('health & care');
+    expect(text).toContain('sees everything');
+  });
+
+  // The harm itself: the coordinator did not choose these on the matrix a
+  // moment earlier — whoever wrote the URL did.
+  it('a CRAFTED rs/rd/rl renders the same three words it would grant — the password panel says *finances* and *full access*', async () => {
+    const text = words(raiseSection(await renderPage(RUTH_M, { rs: NELL, rd: 'finances', rl: 'manage' })));
+    expect(text).toContain('Nell');
+    expect(text).toContain('finances');
+    expect(text).toContain('full access');
+    expect(text).not.toContain('health & care');
+  });
+
+  it('a CRAFTED raise that has already been confirmed still says what it grants on the spend panel', async () => {
+    stepUpCookie = 'tok';
+    stepUpForCookie = stepUpFor('raise_grant', `${RUTH_M}:${NELL}:finances:manage`);
+    const section = raiseSection(await renderPage(RUTH_M, { rs: NELL, rd: 'finances', rl: 'manage' }));
+    expect(section).toContain('Raise it');
+    const text = words(section);
+    expect(text).toContain('finances');
+    expect(text).toContain('full access');
+  });
+
+  // Round 31 observation 4: isGrantLevel accepts `hidden`, LEVEL_WORD does
+  // not carry it, and a revocation offered as a raise is the same defect
+  // pointed the other way.
+  it('rl=hidden reads as the revocation it is — never *Raise access*, never *Raise it*', async () => {
+    const html = await renderPage(RUTH_M, { rs: NELL, rd: 'health', rl: 'hidden' });
+    const section = raiseSection(html);
+    expect(section).not.toContain('Raise it');
+    expect(words(section)).not.toContain('Raise access');
+    const text = words(section);
+    expect(text).toContain('Ruth');
+    expect(text).toContain('Nell');
+    expect(text).toContain('health & care');
+    expect(text).toMatch(/nothing|take away|takes away/i);
+    expect(text).not.toContain('undefined');
+  });
+
+  // A subject the page cannot name is a sentence it cannot render. It says
+  // that, and offers no confirmation at all — the words are the fix, so
+  // where there are no words there is no offer.
+  it('a subject this page cannot name is not confirmed blind', async () => {
+    const html = await renderPage(RUTH_M, {
+      rs: '22222222-0000-4000-8000-0000000000ff',
+      rd: 'health',
+      rl: 'view',
+    });
+    expect(html).not.toContain('Raise it');
+    expect(html).not.toContain('name="target_ref"');
+  });
+});
+
 describe('revoke — the honest limit in those words, at the moment of revocation', () => {
   it('the remove confirmation carries THE SENTENCE verbatim, the keep-share options, and posts to the EXISTING route', async () => {
     peopleHc.sharesForMember.mockResolvedValue([
