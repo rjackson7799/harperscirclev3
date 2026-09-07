@@ -799,3 +799,5 @@ Subsequent HOME-05 evidence, September 7 UTC: protected Vercel staging at `a8a4d
 Database follow-up at dfed830: all five actual Home wrappers measured on the populated staging fixture. Separate server diagnostic upcomingEvents p95 297.249 ms exceeds 250 ms. See docs/ops/staging-home-database-performance.md. HOME-05 remains pending; 290 rows, 259 green, 9 review, 22 pending.
 
 Subsequent query correction fdd3eee: upcomingEvents server p95 175.567 ms in the warm manual-entry paired diagnostic, with identical original/changed results across all 30 pairs. See docs/review/round-33-query-optimization.md. Deployment, mixed-workload and browser evidence remain pending; no row is promoted. Exact tally: 290 total, 259 green, 9 review, 22 pending.
+
+Hosted query correction e012b07: six HTTP behavior checks and 150 valid populated Home samples passed, p95 1,018 ms. Probe owns zero tasks; this is a separate HTTP workload from the original founder run. See docs/ops/staging-query-rollout.md. HOME-05 remains pending for remaining acceptance. Exact tally: 290 total / 259 green / 9 review / 22 pending.

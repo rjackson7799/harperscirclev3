@@ -26,3 +26,5 @@ The paired p95 improvement is approximately 40%. The corrected query meets 250 m
 Raw evidence: `staging-query-final.ts/mjs/json` in the handoff workspace; the JSON retains all samples and final plans. Connection safeguards and transport limitations match the [database report](../ops/staging-home-database-performance.md). This does not prove restricted-tier performance, cold/concurrent load, the original mixed workload, new deployed HTTP latency or browser behavior. HOME-05 and OW-34 retain those remaining requirements; no complete finding closure is inferred.
 
 Production build at fdd3eee completed successfully, including TypeScript and all 36 static pages. It retains the existing dynamic-filesystem tracing warning in unchanged lib/pipeline/ocr.ts. No deployment occurred. The final documentation checkpoint changes docs only from this source head.
+
+Subsequently deployed from e012b07: see ../ops/staging-query-rollout.md for protected preview identity, six passing HTTP checks and 150 valid Home responses (p95 1,018 ms). The query is now hosted; the historical local-only statement above describes the earlier checkpoint.

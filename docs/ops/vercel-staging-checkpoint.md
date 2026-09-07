@@ -1,5 +1,9 @@
 # Vercel staging checkpoint — 2026-09-07 UTC
 
+## Latest query rollout — September 7
+
+The stable staging alias now points to dpl_6ixP78EytVqCzy1LrvidFnSy4kMB, built from e012b07, READY preview in pdx1. Six HTTP checks and 150 valid populated Home responses passed (p95 1,018 ms). Alias readback and anonymous Vercel-auth redirect verified; prior preview retained. See staging-query-rollout.md for complete evidence and fixture limits. Earlier deployment records below remain historical.
+
 Subsequent verification: [setup-to-Home HTTP smoke](staging-setup-smoke.md) passed using the existing services only, with verification restrictions retained. Full browser and ingestion gates remain pending.
 
 ## Subsequent Oregon deployment
