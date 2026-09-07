@@ -6,6 +6,10 @@ This workflow follows the owner's September 6 handoff instruction to improve spe
 
 ## Local development
 
+When Docker is off or the owner is browsing staging, use `npm run test:without-db` for the database-independent portion of the application suite. It inherits the main Vitest configuration and one-worker setting, explicitly defers the 22 integration files listed in `vitest.without-db.config.ts`, and writes `.vitest/without-db.json`. Its startup message states the deferred count. New tests are included by default; unexpected PostgreSQL Client/Pool construction throws a named error through the test-only guard instead of silently contacting a database. This guard is not a general network sandbox: existing local HTTP/TCP fixture tests still run.
+
+The main `test:app` and guarded `verify:local` commands retain the complete suite. A passing `test:without-db` run is partial application evidence, never full database, browser, CI or launch clearance. Tests such as the real-PostgreSQL temporal cases remain required separately. Do not promote excluded files to passed, point integration fixtures at staging, or start/reset Docker merely to make this optional command more complete.
+
 1. During a correction, run the smallest relevant regression first, capture its expected failure, then implement and run the affected tests. Database-backed tests still need the shared-stack preflight wrapper. Do not reset the database merely to start a work session.
 2. At the final code head, use `npm run verify:local`. It runs lint, the full application suite, and the production build **sequentially**, stops at the first failure, and holds the existing shared-stack lease throughout. Vitest already uses one worker. `verify:local:steps` is an internal command, not a substitute for the guarded entry point.
 3. The production build includes TypeScript checking. A separate `npm run typecheck` remains useful during editing, but need not repeat that work immediately before a successful build. Database, concurrency, browser, latency, and launch gates remain separate where required by the change.

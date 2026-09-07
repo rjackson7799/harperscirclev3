@@ -62,3 +62,7 @@ The documentation working tree based on dfed830 passed all 29 tests in tests/lin
 ## Owner exploration and secret-scan update
 
 The reusable tester is now available and the owner confirmed Chrome login/Home rendering with a screenshot. See ../ops/staging-exploration.md; this is narrow manual evidence, not full browser acceptance. Native Windows secret-scan evidence above supersedes the historical missing-executable statement. No new risk ruling, coverage promotion or merge occurs.
+
+## Database-free verification update
+
+The new optional test:without-db command passed 1,411 tests across 90 files; 22 database-dependent files remain explicitly deferred. Two safety regressions were RED before the guard, then GREEN, and two configured pg-import probes passed. TypeScript and final changed-file lint passed. See round-33-without-db-verification.md for working-tree binding and harness limits. Product code and staging are unchanged; this strengthens partial application evidence without closing the remaining integration/browser gates.

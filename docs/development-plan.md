@@ -43,3 +43,5 @@ Preserve the original checkout's protected files. Use the isolated `review/round
 - [Delegated decisions](adr/0048-round33-followup-decisions.md), [coverage](coverage.md), and [owed ledger](owed.md): governing decisions and status.
 
 Owner exploration is active: preserve the reusable tester and synthetic circle. See docs/ops/staging-exploration.md. Use the native Windows secret scanner documented in docs/ops/round33-secret-scan.md; Docker is not required for that check.
+
+Local verification now has an optional npm run test:without-db path: 1,411 tests in 90 files passed, with 22 database-dependent files explicitly deferred. Its pg guard prevents accidental PostgreSQL construction; this is partial application evidence, not completion of the full gate. See docs/review/round-33-without-db-verification.md. No staging reset is needed while the owner explores.

@@ -18,6 +18,7 @@
     "test:concurrency": "node scripts/preflight.mjs --for concurrency -- node scripts/concurrency/run.mjs",
     "db:verify": "supabase db lint --fail-on warning",
     "test:app": "vitest run --reporter=default --reporter=json --outputFile=.vitest/run.json",
+    "test:without-db": "vitest run --config vitest.without-db.config.ts --reporter=default --reporter=json --outputFile=.vitest/without-db.json",
     "test:e2e": "node scripts/preflight.mjs --for e2e -- playwright test",
     "preflight": "node scripts/preflight.mjs",
     "verify:local": "node scripts/preflight.mjs --for db -- npm run verify:local:steps",
