@@ -28,13 +28,13 @@ jobs:
         run: npm ci
       - name: Start disposable runner database
         run: npx supabase db start
-      - name: Clone only the local auth schema into the isolated probe database
+      - name: Clone the empty local schema with its original owners and dependencies
         run: |
           set -euo pipefail
           DB=supabase_db_HarpersCirclev3
           docker exec "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hc_admin_probe'
-          docker exec "$DB" pg_dump -U postgres -d postgres --schema-only --schema=auth > auth-schema.sql
-          docker exec -i "$DB" psql -U postgres -d hc_admin_probe -v ON_ERROR_STOP=1 < auth-schema.sql
+          docker exec "$DB" pg_dump -U supabase_admin -d postgres --schema-only > probe-schema.sql
+          docker exec -i "$DB" psql -U supabase_admin -d hc_admin_probe -v ON_ERROR_STOP=1 < probe-schema.sql
       - name: Exercise auth trigger lifecycle with rollback
         run: |
           set -euo pipefail
