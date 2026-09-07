@@ -16,6 +16,8 @@ The audit is append-only to the definer role. An authorization denial is returne
 
 Two draft, forward-only migration files consume the approved ceiling: `20260907120001_admin_auth_state.sql` and `20260907120002_admin_audited_read.sql`. No dependencies, reserve, hosted migration or production deployment. The first isolated attempt at M1 failed before any schema statement because LOCK TABLE needed an explicit transaction; both draft migrations now explicitly BEGIN/COMMIT. These files have not shipped to staging or production.
 
+The existing-state upgrade rehearsal also pins the maintenance owner. Its assertion failed at `84ba8a8` when the helper inherited the executor's ownership. Correction `cef2b16` explicitly assigns both helpers and the three mirror tables to postgres, preserving the synchronous writer's access without granting request-role writes. This remains an edit to the unshipped M1 draft within the approved two-file ceiling; fresh validation is recorded separately in the isolated CI report.
+
 Feasibility: isolated SQL lifecycle and real MFA/concurrency prototype evidence are recorded in `docs/ops/isolated-admin-ci.md`. Application RED: eight adapter tests at `ef35700`; GREEN: 25 targeted Admin read/session tests after the replacement. Database RED at `a2fb9a8`: `unaudited_metadata_select_still_granted`. Final migration, privilege, upgrade, audit failure, concurrency and browser acceptance must be recorded separately against the final source. None is inferred from prototype success.
 
 ## Alert-consumer follow-up — blocks closure
