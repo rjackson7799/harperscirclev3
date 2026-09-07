@@ -62,13 +62,37 @@ async function selected(which: 'upcoming' | 'past', row: {
         $6::timestamp local_at, $7::timestamptz instant, $8::boolean is_floating,
         $3::timestamptz approved_at),
     subject_fixture as (select '${SUBJECT}'::uuid id, $9::text timezone)
-    ${sql}`, [CIRCLE, 4, row.now, row.date ?? null, row.zone ?? null,
+    select * from (${sql}) selected`, [CIRCLE, 4, row.now, row.date ?? null, row.zone ?? null,
     row.local ?? null, row.instant ?? null, row.floating ?? false,
     row.subjectZone ?? row.zone ?? 'Pacific/Honolulu']);
   return result.rows.some((r) => r.id === EVENT);
 }
 
 describe('Home temporal eligibility at real PostgreSQL boundaries', () => {
+  it.each(['2026-09-07T00:01Z', '2026-09-07T23:59Z', '2026-11-01T06:00Z'])('preserves every recognized zone local-date boundary at %s', async (now) => {
+    const tl = await import('@/lib/hc/timeline');
+    await tl.upcomingEvents({}, CIRCLE);
+    const sql = innerSelection(captured)
+      .replaceAll('public.timeline_events', 'event_fixture')
+      .replaceAll('public.subjects', 'subject_fixture')
+      .replaceAll('now()', '$3::timestamptz');
+    const result = await db.query(`with
+      event_fixture as (
+        select md5(z.name || d.delta::text)::uuid id, $1::uuid circle_id,
+          '${SUBJECT}'::uuid subject_id, null::timestamptz deleted_at,
+          ($3::timestamptz at time zone z.name)::date + d.delta occurred_on,
+          z.name occurred_zone, null::timestamp local_at,
+          null::timestamptz instant, false is_floating, $3::timestamptz approved_at,
+          d.delta >= 0 expected
+        from pg_timezone_names z cross join generate_series(-2, 2) d(delta)),
+      subject_fixture as (select '${SUBJECT}'::uuid id, 'Pacific/Honolulu'::text timezone),
+      selected as (${sql})
+      select count(*) filter (where f.expected is distinct from (s.id is not null))::int mismatches,
+        count(*)::int total
+      from event_fixture f left join selected s on s.id = f.id`, [CIRCLE, 100000, now]);
+    expect(result.rows[0].total).toBeGreaterThan(5000);
+    expect(result.rows[0].mismatches).toBe(0);
+  });
   it.each(cases)('$name', async (row) => {
     expect(await selected('upcoming', row)).toBe(row.upcoming);
     expect(await selected('past', row)).toBe(!row.upcoming);
