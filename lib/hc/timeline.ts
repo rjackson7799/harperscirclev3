@@ -237,6 +237,87 @@ export async function listEvents(
   });
 }
 
+/**
+ * HOME'S THREE SMALL READS (9B U2; PRD §4.7.2; HOME-04; plan Q5 point 3).
+ *
+ * `listEvents` above orders `sort_at asc` with `limit 300`. Taking the TAIL
+ * of that for "the last few filings" is correct on a small circle and
+ * SILENTLY WRONG past 300 events — the most recent filings are exactly the
+ * rows the cap drops. That is `OW-26`'s defect class (a limit with no cursor
+ * on the surface whose purpose is to show the recent thing), and Home does
+ * not repeat it: each of the three below orders the way it reads and takes
+ * its own small limit, so the cap can only drop rows the block was never
+ * showing.
+ *
+ * All three ride EVENT_SELECT unchanged — the timeline's own read, its own
+ * joins, its own RLS. Home composes; it does not re-ask.
+ */
+const HOME_LIMIT_MAX = 20;
+const homeLimit = (n: number) => Math.max(1, Math.min(Math.trunc(n), HOME_LIMIT_MAX));
+
+/** "Recent activity" — the last few FILINGS, newest filed first, each
+ *  carrying its approver (§4.7.2's "with who approved them"). */
+export async function recentEvents(
+  claims: RequestClaims,
+  circleId: string,
+  limit = 4,
+): Promise<EventRow[]> {
+  if (!UUID_RE.test(circleId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<EventSql>(
+      `select * from (${EVENT_SELECT}) t
+        order by t.approved_at desc, t.id desc
+        limit $2`,
+      [circleId, homeLimit(limit)],
+    );
+    return r.rows.map(toRow);
+  });
+}
+
+/** "What's coming" — dated items ALREADY IN THE RECORD, soonest first, from
+ *  now forward. Not a calendar: Phase 1 has no calendar sync, and an event
+ *  with no date of its own is not "coming". */
+export async function upcomingEvents(
+  claims: RequestClaims,
+  circleId: string,
+  limit = 4,
+): Promise<EventRow[]> {
+  if (!UUID_RE.test(circleId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<EventSql>(
+      `select * from (${EVENT_SELECT}) t
+        where t.sort_at is not null and t.sort_at >= now()
+        order by t.sort_at asc, t.id
+        limit $2`,
+      [circleId, homeLimit(limit)],
+    );
+    return r.rows.map(toRow);
+  });
+}
+
+/**
+ * "How each subject is" — the most recent thing that HAS HAPPENED on each
+ * subject's record, keyed by subject id. Ordered by when it happened, not by
+ * when it was filed, and the future is excluded: an appointment next week is
+ * "what's coming", never "the most recent thing". An undated event is on the
+ * record but not in time, so it stands last rather than first.
+ */
+export async function latestEventPerSubject(
+  claims: RequestClaims,
+  circleId: string,
+): Promise<Map<string, EventRow>> {
+  if (!UUID_RE.test(circleId)) return new Map();
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<EventSql>(
+      `select distinct on (t.subject_id) * from (${EVENT_SELECT}) t
+        where t.sort_at is null or t.sort_at <= now()
+        order by t.subject_id, t.sort_at desc nulls last, t.approved_at desc, t.id desc`,
+      [circleId],
+    );
+    return new Map(r.rows.map((row) => [row.subject_id, toRow(row)]));
+  });
+}
+
 /** One event, or null in ONE shape for foreign, nonexistent, deleted,
  *  below-summary and malformed alike. */
 export async function eventById(claims: RequestClaims, circleId: string, eventId: string): Promise<EventRow | null> {

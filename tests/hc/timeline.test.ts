@@ -315,3 +315,97 @@ describe('B3 · add by hand — ONE action for a view×5 member (TLN-02)', () =>
     expect(await tl.canAddByHand(claimsOf('marisol'), circleId, nell)).toBe(false);
   });
 });
+// ============================================================================
+// 9B U2 · HOME'S THREE READS, against a fixture LARGER THAN THE CAP (PRD
+// §4.7.2; HOME-04; slice-9 plan Q5 point 3; the OW-26 class).
+//
+// listEvents orders `sort_at asc` with `limit 300`. Taking the TAIL of that
+// for "the last few filings" is correct on a small circle and silently wrong
+// past 300 events — the most recent filings are EXACTLY the rows the cap
+// drops. The proof has to be driven against a fixture bigger than the cap,
+// because on any smaller one the ascending tail and the descending head
+// agree and the assertion proves nothing.
+//
+// This block inserts its own 310 rows and removes them again, so the file's
+// other cases neither see them nor depend on their absence.
+// ============================================================================
+describe('9B · Home reads: descending, small-limit, and never the tail of an ascending page', () => {
+  it('recentEvents returns the newest FILINGS — the very rows listEvents’ ascending cap drops', async () => {
+    const future = randomUUID();
+    try {
+      await raw.query('set session_replication_role = replica');
+      await raw.query(
+        `insert into public.timeline_events
+           (id, circle_id, subject_id, kind, summary, occurred_on, occurred_zone,
+            approved_by, approved_at, approver_display_name, taint)
+         select gen_random_uuid(), $1, $2, 'care', 'Bulk filing ' || g,
+                (date '2024-01-01' + g), 'America/New_York',
+                $3, now() - make_interval(mins => 400 - g), 'Sarah', '{health}'
+           from generate_series(1, 310) g`,
+        [circleId, nell, people.sarah.id],
+      );
+      await raw.query(
+        `insert into public.timeline_events
+           (id, circle_id, subject_id, kind, summary, occurred_on, occurred_zone,
+            approved_by, approved_at, approver_display_name, taint)
+         values ($1, $2, $3, 'admin', 'Renewal appointment', current_date + 30,
+                 'America/New_York', $4, now() - interval '4 days', 'Sarah', '{schedule}')`,
+        [future, circleId, nell, people.sarah.id],
+      );
+      await raw.query('set session_replication_role = default');
+
+      // The cap is real, and the tail of it is the WRONG answer.
+      const ascending = await tl.listEvents(claimsOf('sarah'), circleId, { subject: 'all' });
+      expect(ascending.length).toBe(300);
+      const inAscending = new Set(ascending.map((r) => r.summary));
+
+      const recent = await tl.recentEvents(claimsOf('sarah'), circleId, 4);
+      expect(recent.length).toBe(4);
+      // Newest FILED first, whatever else this file has already filed.
+      const filed = recent.map((r) => Date.parse(r.approved_at));
+      expect([...filed].sort((a, b) => b - a)).toEqual(filed);
+      // The three newest of the bulk are in it, in that order.
+      expect(recent.map((r) => r.summary).slice(-3)).toEqual([
+        'Bulk filing 310',
+        'Bulk filing 309',
+        'Bulk filing 308',
+      ]);
+      // The whole point, stated as an assertion rather than a comment: not
+      // one of the four is reachable from the ascending page.
+      for (const r of recent) expect(inAscending.has(r.summary)).toBe(false);
+      // "with who approved them" (§4.7.2) rides every row.
+      for (const r of recent) expect(r.approver_display_name).toBe('Sarah');
+
+      // The limit is the block's, and it is small and clamped.
+      expect((await tl.recentEvents(claimsOf('sarah'), circleId, 1)).length).toBe(1);
+      expect((await tl.recentEvents(claimsOf('sarah'), circleId, 9999)).length).toBe(20);
+
+      // What's coming: dated items ALREADY IN THE RECORD, from now forward,
+      // soonest first — and nothing from the past.
+      const coming = await tl.upcomingEvents(claimsOf('sarah'), circleId, 4);
+      expect(coming[0]?.id).toBe(future);
+      for (const r of coming) expect(Date.parse(r.sort_at!)).toBeGreaterThanOrEqual(Date.now() - 1000);
+
+      // How each subject is: the most recent thing that HAS HAPPENED, per
+      // subject — never the appointment that has not.
+      const latest = await tl.latestEventPerSubject(claimsOf('sarah'), circleId);
+      expect(latest.get(nell)?.id).not.toBe(future);
+      expect(Date.parse(latest.get(nell)!.sort_at!)).toBeLessThanOrEqual(Date.now());
+      expect(latest.get(marcus)?.summary).toBe('Call from the nurse');
+
+      // RLS-true, like the read they compose: Marisol holds schedule on
+      // Nell only, so she never sees a health-tainted filing.
+      const hers = await tl.recentEvents(claimsOf('marisol'), circleId, 4);
+      for (const r of hers) expect(r.subject_id).toBe(nell);
+      expect(hers.some((r) => r.summary.startsWith('Bulk filing'))).toBe(false);
+    } finally {
+      await raw.query('set session_replication_role = replica');
+      await raw.query(
+        `delete from public.timeline_events
+          where circle_id = $1 and (summary like 'Bulk filing %' or id = $2)`,
+        [circleId, future],
+      );
+      await raw.query('set session_replication_role = default');
+    }
+  });
+});

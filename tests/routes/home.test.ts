@@ -265,12 +265,15 @@ describe('HOME-01 · day one — one instruction, the forwarding address, and NO
   // Q5, the day-one branch: a fact about what the CALLER can see is not a
   // fact about the CIRCLE, and a read that failed is not a read that
   // returned nothing.
+  // The honest line itself is the ROUTER's, and it is asserted where it
+  // belongs — in U2's "a block whose read returns nothing" case, with every
+  // read empty. Here the claim is only the one this case is about: a failed
+  // read never produces the day-one card.
   it('a caller whose arrivals read FAILED is never shown the day-one card', async () => {
     TABLES.set('arrivals', { data: null, error: { message: 'permission denied' } });
     const text = words(await renderHome());
     expect(text).not.toContain(completionPromises.instruction);
     expect(text).not.toContain('nell.k7m2qp@harperscircle.app');
-    expect(text).toContain('Nothing here needs you right now.');
   });
 
   it('a caller whose arrivals read returns rows is never shown the day-one card', async () => {
@@ -324,8 +327,12 @@ describe('HOME-01 · day one — one instruction, the forwarding address, and NO
 // ============================================================================
 describe('HOME-02/04 · the router — five blocks, each from its destination surface own read', () => {
   beforeEach(() => {
-    // Past day one: the Care Inbox has something in it.
+    // Past day one: the Care Inbox has something in it. It is FILED, so
+    // nothing is waiting on a person — the review block's own read asks a
+    // different question of the same table, and each case that wants one
+    // says so.
     TABLES.set('arrivals', { data: [ARRIVED], error: null, count: 1 });
+    FILTERED.set('arrivals:state=proposals_ready', { data: [], error: null, count: 0 });
   });
 
   it('how each subject is: the name, where they are, and the most recent thing on their record — recorded, never assessed', async () => {
