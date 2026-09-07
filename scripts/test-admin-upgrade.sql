@@ -25,6 +25,8 @@ insert into public.accounts(id,kind,display_name) values
 insert into public.admin_users(account_id,mfa_enrolled_at) values ('10000000-0000-4000-8000-000000000021',now());
 select 'PASS: pre-M1 operator and family state committed' as upgrade_result;
 \else
+select pg_temp.check_ok((select proowner='postgres'::regrole from pg_proc where oid='public.hc_refresh_admin_auth(uuid)'::regprocedure),'refresh helper must be postgres owned');
+select pg_temp.check_ok((select proowner='postgres'::regrole from pg_proc where oid='public.hc_sync_admin_auth()'::regprocedure),'trigger helper must be postgres owned');
 select pg_temp.check_ok((select count(*) from hc.admin_auth_anchors)=1,'backfill only registered operator');
 select pg_temp.check_ok((select count(*) from hc.admin_auth_factors)=1,'family factor excluded');
 select pg_temp.check_ok((select count(*) from hc.admin_auth_sessions)=1,'family session excluded');

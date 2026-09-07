@@ -65,7 +65,7 @@ jobs:
           npx supabase migration up --local
           for db in hc_admin_probe hc_admin_upgrade; do
             for migration in supabase/migrations/2026090712000{1,2}_*.sql; do
-              docker exec -i supabase_db_HarpersCirclev3 psql -U postgres -d "$db" -v ON_ERROR_STOP=1 < "$migration" >> admin-upgrade.log 2>&1
+              docker exec -i -e PGPASSWORD=postgres supabase_db_HarpersCirclev3 psql -U supabase_admin -d "$db" -v ON_ERROR_STOP=1 < "$migration" >> admin-upgrade.log 2>&1
             done
           done
       - name: Verify existing-state upgrade
