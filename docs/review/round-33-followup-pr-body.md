@@ -4,7 +4,7 @@ Home could show an empty success message when reads failed, and date-only items 
 
 The Home accessibility test now owns its synthetic circle instead of reusing data populated by earlier tests. Completion-to-Home navigation is asserted in the existing walkthrough. Both browser changes remain unrun.
 
-Validation: 1,620/1,620 application tests at `ba61b99`; after the final zone guard, 85/85 affected tests at `845eb0b`. Whole-tree lint passed before that guard, changed-file lint afterward. Standard production build and TypeScript pass at the final product head. Build retains the tracing warning in unchanged OCR code; locked packages also report Node engine warnings. The full suite was not repeated after the final guard.
+Validation: fresh `npm run verify:local` passed on clean commit `0d93dbb6765062bf7c42a3088add5eba875852d0`: whole-tree lint, 1,621/1,621 application tests, and standard production build including TypeScript. This full run includes the final zone guard and supersedes the narrower prior verification. Build retains the tracing warning in unchanged OCR code; Vite also reports existing configuration/import warnings. The new guarded local command runs the checks sequentially with the existing single test worker. Staging dependencies and efficient validation are documented in `docs/ops/development-validation.md`.
 
 Review findings: `docs/review/round-33-findings.md`. Delegated decisions: ADR-0048. Dispositions retain three OWED evidence closures under OW-34; OW-35 records the existing inbox-leg gap. HOME-05 is pending until fresh latency evidence; staging/browser and production gates remain unchanged. This is a locally prepared PR body: the branch has not been pushed and no follow-up PR has been opened.
 

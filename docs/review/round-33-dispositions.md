@@ -29,3 +29,7 @@ Ledger after intake: 35 rows, OPEN 2 of 25, TAKEN 2, RISK 2, CLOSED 23, PROMOTED
 - Original source checkout remains at `7de7dac` with its same three untracked paths. No push, merge or deployment was performed. No browser run, new p95 or complete DB migration gate is claimed.
 
 Raw evidence lives in the handoff folder: `round33-final-app-suite.json`, `round33-final-targeted.json`, and `round33-final-build.log`. Red reports remain alongside them. Follow-up product head is `845eb0b`; later changes to these records are documentation-only.
+
+## Subsequent full verification — workflow follow-up
+
+At clean commit `0d93dbb6765062bf7c42a3088add5eba875852d0`, `npm run verify:local` exited 0: whole-tree lint, **1,621 passed / 0 failed / 0 pending** application tests (140.36 seconds), then production build including TypeScript. The existing preflight lease guarded the sequential run. This is fresh verification including the final zone guard; earlier results above remain historical. Raw evidence is retained in the handoff workspace as `round33-workflow-suite.json` and `round33-workflow-verification.log`. The later commit recording this paragraph changes documentation only. Browser, latency, OW-34 and OW-35 dispositions are unchanged; no hosted run or coverage promotion is claimed.
