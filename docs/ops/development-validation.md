@@ -1,5 +1,7 @@
 # Efficient validation and staging handoff
 
+Current hosted state: [V3 staging database checkpoint](staging-checkpoint.md). The inventory below describes the earlier discovery; the owner subsequently created a separate project and its 77 existing migrations have now been applied and checked. Application deployment and browser adaptation remain pending.
+
 This workflow follows the owner's September 6 handoff instruction to improve speed without sacrificing quality. It adds a convenience entry point; it changes no acceptance criteria, authorization, schema, dependencies, or browser gates.
 
 ## Local development
