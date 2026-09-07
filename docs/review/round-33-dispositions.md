@@ -48,3 +48,7 @@ The existing protected Supabase/Vercel staging setup now has HTTP evidence for u
 | Full ingestion/email gate | Companion dependencies remain deferred by the owner's no-additional-service decision. This is not an acceptance waiver. |
 
 Tally remains **3 OWED, 0 FIXED**, with no coverage promotion, owner merge or production activation. No new service is required for the narrow browser smoke; the full nine-file gate still has the documented additional dependencies. The owner has deferred further memory troubleshooting. Follow `../development-plan.md` for the current execution order: available performance/evidence work, then one consolidated Home review packet. Do not repeatedly retry the browser gate without a changed environment.
+
+## Consolidated review checkpoint
+
+See round-33-followup-packet.md for the current acceptance matrix and commit bindings. DB measurement is now complete at dfed830: upcomingEvents server execution p95 297.249 ms breaches 250 ms; HTTP p95 remains 982 ms for the manual-entry workload. Performance acceptance, mixed-workload and browser evidence remain owed. Exact tallies remain 3 OWED / 0 FIXED; coverage 290 total / 259 green / 9 review / 22 pending; ledger 35 rows / 2 OPEN / 2 TAKEN / 2 RISK / 23 CLOSED / 6 PROMOTED. No owner disposition is inferred.
