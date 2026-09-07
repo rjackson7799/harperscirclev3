@@ -513,8 +513,17 @@ test.describe('the 6B review legs', () => {
         [f.circleId, memberId, f.subjectId, f.accountId],
       );
 
-      // The row and the state — what summary already grants…
-      await familyPage.goto(`/${f.circleId}/inbox/${arrival}`);
+      // OW-35: assert THIS arrival in the list, not another fixture's
+      // status elsewhere on the page, before following its real link.
+      await familyPage.goto(`/${f.circleId}/inbox`);
+      const arrivalLink = familyPage.locator(`a[href="/${f.circleId}/inbox/${arrival}"]`);
+      await expect(arrivalLink).toHaveCount(1);
+      await expect(arrivalLink).toBeVisible();
+      const arrivalCard = familyPage.locator('.card').filter({ has: arrivalLink });
+      await expect(arrivalCard).toHaveCount(1);
+      await expect(arrivalCard.locator('span.meta')).toHaveText(' · Needs you');
+      await arrivalLink.click();
+      await familyPage.waitForURL(`**/${f.circleId}/inbox/${arrival}`);
       const main = (await familyPage.textContent('main')) ?? '';
       expect(main).toContain('fuller access');
       // …and nothing else: no source region, no facts, no review controls.
