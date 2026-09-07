@@ -1,6 +1,6 @@
 # Admin foundation — capability and session checkpoint
 
-September 7, 2026. Owner approved the Tier 1 boundary, metadata-access amendment and maximum two migrations after `c4a561c`. Migration usage: **0 of 2**. Dependencies: **0**. No reserve, deployment, operator provisioning or merge.
+September 7, 2026. Owner approved the Tier 1 boundary, metadata-access amendment and maximum two migrations after `c4a561c`. Migration usage: **2 of 2 draft files; neither deployed**. Dependencies: **0**. No reserve, deployment, operator provisioning or merge.
 
 ## What was verified
 
@@ -24,4 +24,4 @@ No native PostgreSQL executable was found on PATH or in the standard installatio
 
 Real GoTrue lifecycle and concurrent revocation proof subsequently **passed at `4443b36560be881b72b59c8932ff89dd8e9f9d6b`**, with 19 assertions and six observed lock schedules. Details and the retained failed setup run are in [isolated-admin-ci.md](../ops/isolated-admin-ci.md). This is a test-only prototype, not the final authorization or audit function.
 
-Next: implement the two named migrations with failing database tests, reconcile TSD/catalog assertions and replace the legacy general Admin factory. No repeated permission request is required for the approved scope. Backfill, actual operator-registration/revocation, mirror permissions, audit commit/failure handling and browser proof remain to be earned against that implementation. No privileged page until its gates pass. Home's existing browser, mixed-workload and final aggregate gates remain pending; the reusable staging family tester is preserved.
+Implemented at `5573f03`: both named migrations, reconciled privilege/policy inventories, and the replacement named-read adapter. Isolated run `34159091922` passed all 1,872 database tests in 71 files, 34 Admin application/factory tests in three files, the custom admission/audit/registration-backfill boundary checks, and 19 real MFA/concurrency assertions using the implemented function. This supersedes prototype-only evidence for those named checks. A pre-existing-registration migration upgrade rehearsal, final review and any later privileged UI/browser proof remain outstanding. OW-36 records the missing audited health-reader operation and blocks closure. See ADR-0049 and the isolated CI evidence. No privileged page until its gates pass. Home's existing browser, mixed-workload and final aggregate gates remain pending; the reusable staging family tester is preserved.

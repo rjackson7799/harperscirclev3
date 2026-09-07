@@ -28,6 +28,8 @@ Platform aggregates do not select an individual circle. Circle-detail reads are 
 
 ## Evidence to earn
 
+The table below is the original planning baseline at `7a67c3e`, retained as history. Current implementation evidence at `5573f03` is in [the capability checkpoint](slice-10-capability-checkpoint.md) and [the isolated runner report](../ops/isolated-admin-ci.md). Those reports distinguish verified cases from remaining upgrade, review and browser work. OW-36 separately blocks closure.
+
 | Layer | Required cases | Current status |
 |---|---|---|
 | Application admission | Signed out; family; mismatched live user/subject; missing session; aal1; missing verified factor; revoked operator; valid operator; auth outage; same cases with middleware bypassed | Only the legacy zero-identity transport path has an executable RED probe; remaining cases await the selected adapter contract |
