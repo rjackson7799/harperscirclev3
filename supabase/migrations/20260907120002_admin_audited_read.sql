@@ -3,6 +3,9 @@
 begin;
 revoke select on all tables in schema admin_meta from hc_admin;
 alter default privileges in schema admin_meta revoke select on tables from hc_admin;
+-- Cover the documented maintenance role even if this migration is executed
+-- by the platform's supabase_admin role instead of postgres.
+alter default privileges for role postgres in schema admin_meta revoke select on tables from hc_admin;
 alter default privileges for role hc_internal in schema admin_meta revoke select on tables from hc_admin;
 
 create table hc.admin_read_audit(
