@@ -649,6 +649,13 @@ insert into snapshot_expected values
   ('authenticated', 'extractions',     'SELECT'),
   ('authenticated', 'proposals',       'SELECT');
 
+insert into snapshot_expected values
+  ('hc_internal','admin_users','SELECT'),
+  ('hc_internal','admin_auth_anchors','SELECT'),
+  ('hc_internal','admin_auth_factors','SELECT'),
+  ('hc_internal','admin_auth_sessions','SELECT'),
+  ('hc_internal','admin_read_audit','INSERT');
+
 create temp view snapshot_actual as
   select r.rolname as grantee, c.relname::text as tbl, a.privilege_type as priv
   from pg_class c
@@ -688,6 +695,8 @@ select is((
         'access_log_internal_collapse',
         'accounts_internal','accounts_internal_bootstrap',
         'accounts_internal_set_slice',
+        'admin_anchor_lock','admin_anchor_read','admin_audit_append',
+        'admin_factor_read','admin_registration_read','admin_session_read',
         'approval_attempts_internal','approval_attempts_internal_update',
         'approval_attempts_internal_write',
         'arrival_events_internal','arrival_events_internal_append',
@@ -745,7 +754,7 @@ select is((
         'timeline_events_internal','timeline_events_internal_revise',
         'timeline_events_internal_write',
         'tombstones_internal','tombstones_internal_write']::name[],
-  'the hc_internal policy list is exactly the enumerated one hundred four');
+  'the hc_internal policy list is exactly the enumerated one hundred ten');
 
 -- ----------------------------------------------------------------------------
 -- 1B U11 · The writer allowlist BEGINS (kickoff mandate), catalog-based:

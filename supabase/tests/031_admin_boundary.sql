@@ -197,8 +197,8 @@ select is((
   join pg_namespace n on n.oid = d.defaclnamespace
   cross join lateral aclexplode(d.defaclacl) a
   where n.nspname = 'admin_meta' and a.grantee = 'hc_admin'::regrole::oid
-    and d.defaclobjtype = 'r'), 2,
-  'future admin_meta relations inherit the hc_admin SELECT by default privilege (both creating roles) — a view added next year is granted, not forgotten');
+    and d.defaclobjtype = 'r'), 0,
+  'future admin_meta relations never inherit unaudited hc_admin SELECT');
 
 -- ----------------------------------------------------------------------------
 -- 6–11 · The views: exact inventory, hc_internal-owned (the intentional
@@ -224,8 +224,8 @@ select is((
   select count(*)::int
   from pg_class c join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'admin_meta' and c.relkind = 'v'
-    and not has_table_privilege('hc_admin', c.oid, 'select')), 0,
-  'hc_admin reads every admin_meta view');
+    and has_table_privilege('hc_admin', c.oid, 'select')), 0,
+  'hc_admin cannot directly read any admin_meta view');
 
 select is((
   select array_agg(a.attname::text order by a.attnum)

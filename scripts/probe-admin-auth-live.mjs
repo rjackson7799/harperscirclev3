@@ -1,4 +1,4 @@
-// Test-only prototype. Fixed loopback connections; never accepts a hosted URL.
+// Actual Admin boundary integration tests. Fixed loopback; no hosted override.
 import { execFileSync } from 'node:child_process';
 import { createHmac, randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
@@ -33,14 +33,25 @@ function totp(secret) {
   const digest = createHmac('sha1', Buffer.from(bytes)).update(counter).digest();
   return ((digest.readUInt32BE(digest[19] & 15) & 0x7fffffff) % 1000000).toString().padStart(6, '0');
 }
-async function admitted(c, user, session) {
-  // Prototype serialization only, not the final authorization/audit function.
-  await c.query('select id from admin_probe.anchors where id=$1 for share', [user]);
-  const result = await c.query(`select exists(select 1 from admin_probe.sessions s
-    join admin_probe.factors f on f.id=s.factor_id and f.user_id=s.user_id
-    where s.id=$1 and s.user_id=$2 and s.aal='aal2' and f.status='verified'
-    and (s.not_after is null or s.not_after>clock_timestamp())) as admitted`, [session, user]);
-  return result.rows[0].admitted;
+async function admitted(c, user, session, inTransaction = false) {
+  if (!inTransaction) await c.query('begin');
+  await c.query('set local role hc_admin');
+  await c.query("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({
+    sub:user, session_id:session, aal:'aal2', exp:Math.floor(Date.now()/1000)+3600,
+  })]);
+  const result = await c.query('select admin_ops.read_platform_stats($1) as result', [randomUUID()]);
+  await c.query('reset role');
+  if (!inTransaction) await c.query('commit');
+  return result.rows[0].result.kind === 'ok';
+}
+async function register(c, user) {
+  await c.query("insert into public.accounts(id,kind,display_name) values($1,'admin','Synthetic operator')", [user]);
+  await c.query('insert into public.admin_users(account_id,mfa_enrolled_at) values($1,now())', [user]);
+}
+async function removeFixture(c, user) {
+  await c.query('delete from public.admin_users where account_id=$1', [user]);
+  await c.query('delete from public.accounts where id=$1', [user]);
+  await c.query('delete from auth.users where id=$1', [user]);
 }
 async function blocking(observer, waiter, blocker) {
   for (let i = 0; i < 100; i++) {
@@ -54,33 +65,6 @@ let db;
 try {
   db = await connection();
   check((await db.query('select count(*)::int as n from auth.users')).rows[0].n === 0, 'fresh runner has no auth users');
-  await db.query(`create schema admin_probe;
-    revoke all on schema admin_probe from public;
-    create table admin_probe.anchors(id uuid primary key);
-    create table admin_probe.factors(id uuid primary key,user_id uuid,status text);
-    create table admin_probe.sessions(id uuid primary key,user_id uuid,factor_id uuid,aal text,not_after timestamptz);
-    create function admin_probe.sync() returns trigger language plpgsql security definer set search_path='' as $$
-    declare actor uuid;
-    begin
-      actor := case when tg_op='DELETE' then old.user_id else new.user_id end;
-      insert into admin_probe.anchors values(actor) on conflict(id) do update set id=excluded.id;
-      if tg_table_name='mfa_factors' then
-        if tg_op='DELETE' then delete from admin_probe.factors where id=old.id;
-        else insert into admin_probe.factors values(new.id,new.user_id,new.status::text)
-          on conflict(id) do update set user_id=excluded.user_id,status=excluded.status;
-        end if;
-      else
-        if tg_op='DELETE' then delete from admin_probe.sessions where id=old.id;
-        else insert into admin_probe.sessions values(new.id,new.user_id,new.factor_id,new.aal::text,new.not_after)
-          on conflict(id) do update set user_id=excluded.user_id,factor_id=excluded.factor_id,aal=excluded.aal,not_after=excluded.not_after;
-        end if;
-      end if;
-      return null;
-    end $$;
-    revoke all on function admin_probe.sync() from public;
-    create trigger hc_admin_live_probe_factor after insert or update or delete on auth.mfa_factors for each row execute function admin_probe.sync();
-    create trigger hc_admin_live_probe_session after insert or update or delete on auth.sessions for each row execute function admin_probe.sync();`);
-
   report.stage = 'real MFA lifecycle';
   const status = JSON.parse(execFileSync(process.execPath, ['node_modules/supabase/dist/supabase.js', 'status', '--output', 'json'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }));
   check(status.API_URL === 'http://127.0.0.1:54341', 'auth endpoint is fixed loopback');
@@ -88,10 +72,11 @@ try {
   const signup = await auth.signUp({ email: `admin-probe-${randomUUID()}@example.invalid`, password: `${randomUUID()}Aa9!` });
   check(!signup.error && !!signup.data.session, 'real signup creates session');
   const user = signup.data.user.id;
+  await register(db,user);
   const enroll = await auth.mfa.enroll({ factorType: 'totp' });
   check(!enroll.error && !!enroll.data?.totp?.secret, 'real TOTP enrollment succeeds');
   const factor = enroll.data.id;
-  const initial = await db.query('select status from admin_probe.factors where id=$1', [factor]);
+  const initial = await db.query('select status from hc.admin_auth_factors where id=$1', [factor]);
   check(initial.rows[0]?.status === 'unverified', 'unverified factor mirrored');
   const verified = await auth.mfa.challengeAndVerify({ factorId: factor, code: totp(enroll.data.totp.secret) });
   check(!verified.error, 'real TOTP challenge succeeds');
@@ -102,10 +87,11 @@ try {
   check(!unenroll.error, 'real factor removal succeeds');
   check(!await admitted(db, user, claims.session_id), 'factor removal denies prior aal2 session');
   check(!(await auth.signOut({ scope: 'global' })).error, 'global signout succeeds');
-  const sessions = await db.query('select count(*)::int as n from admin_probe.sessions where user_id=$1', [user]);
+  const sessions = await db.query('select count(*)::int as n from hc.admin_auth_sessions where account_id=$1', [user]);
   check(sessions.rows[0].n === 0, 'global signout removes mirrored sessions');
   const stale = await auth.getUser(token);
   report.staleTokenGetUserAccepted = !stale.error && !!stale.data.user;
+  await removeFixture(db,user);
 
   report.stage = 'concurrent revocation';
   const reader = await connection(); const writer = await connection();
@@ -117,10 +103,11 @@ try {
       await db.query("insert into auth.users(id,aud,role,email) values($1,'authenticated','authenticated',$2)", [u, `${u}@example.invalid`]);
       await db.query("insert into auth.mfa_factors(id,user_id,factor_type,status,created_at,updated_at) values($1,$2,'totp','verified',now(),now())", [f,u]);
       await db.query("insert into auth.sessions(id,user_id,factor_id,aal) values($1,$2,$3,'aal2')", [s,u,f]);
+      await register(db,u);
       await reader.query('begin'); await writer.query('begin');
       const remove = () => writer.query(`delete from auth.${target} where id=$1`, [target === 'sessions' ? s : f]);
       if (order === 'read-first') {
-        check(await admitted(reader,u,s), `${target}: read before revocation admits`);
+        check(await admitted(reader,u,s,true), `${target}: read before revocation admits`);
         const pending = remove().then(() => null, e => e);
         await blocking(db,writerPid,readerPid);
         await reader.query('commit');
@@ -129,14 +116,14 @@ try {
         check(!await admitted(db,u,s), `${target}: read-first revocation denies next read`);
       } else {
         await remove();
-        const pending = admitted(reader,u,s).then(value => ({value}), () => ({failed:true}));
+        const pending = admitted(reader,u,s,true).then(value => ({value}), () => ({failed:true}));
         await blocking(db,readerPid,writerPid);
         await writer.query(order === 'revoke-first' ? 'commit' : 'rollback');
         const result = await pending;
         check(!result.failed && result.value === (order === 'revoke-rollback'), `${target}: ${order} controls waiting read`);
         await reader.query('commit');
       }
-      await db.query('delete from auth.users where id=$1', [u]);
+      await removeFixture(db,u);
     }
   }
   report.result = 'PASS';

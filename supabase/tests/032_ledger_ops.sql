@@ -95,11 +95,11 @@ begin
   return v;
 end $$;
 
-create function pg_temp.admin_scalar(p_sql text) returns text
+create function pg_temp.view_owner_scalar(p_sql text) returns text
 language plpgsql as $$
 declare v text;
 begin
-  execute 'set local role hc_admin';
+  execute 'set local role hc_internal';
   begin
     execute p_sql into v;
   exception when others then
@@ -282,11 +282,11 @@ select is(pg_temp.scalar(format(
   current_setting('t.task1'))), 'false',
   'the finding''s posture is OVER-taint: the touched child is marked unresolved, fail-closed (OPS-01)');
 
-select is(pg_temp.admin_scalar(
+select is(pg_temp.view_owner_scalar(
   $$ select (last_findings > 0)::text || ':' ||
             (last_run_at >= now() - interval '24 hours')::text
      from admin_meta.sweep_health where kind = 'provenance' $$), 'true:true',
-  'the operator''s alert surface: findings > 0 and run recency, through admin_meta (alert rule: page on findings, page on stale last_run_at)');
+  'internal alert data retains findings and run recency; audited operator access is pending under ADR-0049');
 
 -- ----------------------------------------------------------------------------
 -- 14–20 · The deletion ledger (§2.9): interface landed, surface staged.
