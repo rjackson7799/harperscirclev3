@@ -1,6 +1,6 @@
 # Slice 10A — Admin foundation proposal
 
-Status: **owner authorized the limited design and failing-test preparation phase by replying “continue” after `7a67c3e`; schema/privilege implementation remains proposed**. Assessed at `c3ea126`. This is a work-order proposal, not a statement that Home is closed. Home stays unmerged; its browser, mixed-workload and full integration gates retain their recorded status. The resulting contract and bundled implementation decision are in [slice-10-authorization-contract.md](slice-10-authorization-contract.md).
+Status: **owner subsequently approved implementation with at most two migrations and no deployment after `c4a561c`**. The isolated lifecycle capability gate still applies. This is not a statement that Home is closed. Home stays unmerged; its browser, mixed-workload and full integration gates retain their recorded status. See [the ruled contract](slice-10-authorization-contract.md) and [current capability checkpoint](slice-10-capability-checkpoint.md).
 
 ## Outcome
 

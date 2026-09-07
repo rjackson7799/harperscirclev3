@@ -1,0 +1,25 @@
+# Admin foundation — capability and session checkpoint
+
+September 7, 2026. Owner approved the Tier 1 boundary, metadata-access amendment and maximum two migrations after `c4a561c`. Migration usage: **0 of 2**. Dependencies: **0**. No reserve, deployment, operator provisioning or merge.
+
+## What was verified
+
+Read-only catalog inspection against the existing staging project at `2026-09-07T19:27:10Z`, source `c4a561c554ca82ec90cd26641f32bae76acadf2c`, used the established TLS-verified temporary CLI transport. The transaction was read-only and rolled back. No auth row contents were selected and no auth data or schema changed.
+
+Both `auth.sessions` and `auth.mfa_factors` are owned by `supabase_auth_admin`; the inspected `postgres` migration role has SELECT and TRIGGER privileges on both. Sessions expose `user_id`, `factor_id`, `aal` and `not_after`; factors expose `user_id` and `status`. Both user foreign keys cascade on user deletion. There is **no factor foreign key on sessions** in the returned constraint inventory: admission must join the current verified factor, never assume a session disappears on factor removal. Secret-bearing auth columns were identified by name only and must never enter mirrors.
+
+This is capability metadata, NOT successful trigger installation or lifecycle proof. The sanitized local report is `../admin-auth-catalog.json` relative to the repository root; the outer probe script holds no saved credential. It reads the temporary transport fields in memory and suppresses raw connection errors.
+
+## Application unit completed
+
+`lib/auth/admin-session.ts` verifies one captured token with both signature verification and the live-user call, matches their subjects, checks UUID session identity, aal2, token expiration and at least one currently verified factor, and returns only the identity allowlist. Operational faults are normalized to unavailable; explicit auth denials remain denied. The helper makes no database call and is not wired to a route. It deliberately returns **verified-session**, not admin authorization: a family member can have MFA. Database registration, session/factor binding and audit commit remain required before any metadata delivery.
+
+RED baseline `a0f023e`: 13 failures and 4 passes against a fail-closed placeholder. The factor-case table was corrected to pass array values as objects rather than spread test arguments; it was not a product retry. GREEN targeted run: **28/28** across the new 17-case Admin session file and the existing 11-case session file. Whole-tree TypeScript completed successfully; changed-file ESLint completed with zero warnings. Existing Vite config-loader warnings remain. No full suite, PostgreSQL or browser pass is claimed. The earlier opt-in zero-identity factory regression remains RED until the database boundary and replacement factory can land together.
+
+## Concrete remaining gate
+
+No native PostgreSQL executable was found on PATH or in the standard installation directory; Docker remains off under the owner's instruction. No disposable Supabase database is currently configured in this workspace. The approved design explicitly requires an isolated lifecycle proof before writing either migration. Catalog permissions alone do not satisfy that prerequisite. Do not attach experimental auth triggers to the staging database the owner is using.
+
+Prepared `scripts/probe-admin-auth-lifecycle.sql`: guarded to a disposable database named `hc_admin_probe`, transaction/timeout bounded, synthetic user only, all objects and rows rolled back. It exercises trigger creation, insert/update/delete, rollback and auth-user cascades using the real auth tables. **Not run.** It also enumerates remaining real GoTrue, concurrency, backfill and permission proof. Renaming a shared database to satisfy the guard is forbidden. This is a test artifact, not M1 or M2.
+
+Resume database work when an existing isolated test environment is available; no repeated permission request is required for the approved scope. First run this capability test and the remaining lifecycle/concurrency proof, then implement the two named migrations, reconcile TSD/catalog assertions and replace the legacy general Admin factory. No privileged page until these checks pass. Home's existing browser, mixed-workload and final aggregate gates remain pending; the reusable staging family tester is preserved.
