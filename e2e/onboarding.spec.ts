@@ -147,6 +147,11 @@ test.describe('the §11.4-3 walkthrough', () => {
     // AC-AUTH-5: only what Phase 1 built.
     expect(body.toLowerCase()).not.toContain('checklist');
     expect(body.toLowerCase()).not.toContain('local resources');
+    // Q-E: exercise the new primary action, not just its rendered href.
+    await page.getByRole('link', { name: "Go to Nell & Marcus's circle" }).click();
+    await page.waitForURL((url) => url.pathname === `/${circleId}`);
+    await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
+    await expect(page.locator('main')).toContainText('forwarding address');
   });
 
   test('verification flips the mirror; the invite affordance appears', async () => {

@@ -112,16 +112,16 @@ let circleId = '';
  *  the audit legs verify the account first — they are about operability,
  *  not the verification state machine. The message is asserted to be
  *  THIS account's before its link is used (the run-3 lesson). */
-async function verifyByMail(page: Page) {
+async function verifyByMail(page: Page, email = EMAIL) {
   const search = await fetch(
-    `${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:${EMAIL}`)}`,
+    `${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:${email}`)}`,
   ).then((r) => r.json());
   expect(search.messages.length).toBeGreaterThan(0);
   const picked = (
     search.messages as Array<{ ID: string; To?: Array<{ Address?: string }> }>
-  ).find((m) => (m.To ?? []).some((t) => t.Address === EMAIL));
+  ).find((m) => (m.To ?? []).some((t) => t.Address === email));
   if (!picked) {
-    throw new Error(`Mailpit search for ${EMAIL} returned no message addressed to it`);
+    throw new Error(`Mailpit search for ${email} returned no message addressed to it`);
   }
   const message = await fetch(
     `${MAILPIT}/api/v1/message/${picked.ID}`,
@@ -566,12 +566,35 @@ test.describe('the D7 browser a11y leg', () => {
   // (§8.7).
   // ==========================================================================
   test('A11Y-13: Home audited in both states — the day-one card and the router — at 390px, headed and keyboard-operable', async ({
-    browser,
     page,
   }) => {
     test.setTimeout(300_000);
-    const circle = await ensureCircle(browser);
-    await signIn(page);
+    // F-3: this leg owns its account and circle. Earlier document audits
+    // populate the memoized circle; neither test order nor deleting their
+    // arrivals can establish a legitimate day-one fixture.
+    const email = `a11y.home.${randomUUID()}@example.com`;
+    await page.goto('/create-account');
+    await page.fill('input[name="name"]', 'Avery');
+    await page.fill('input[name="email"]', email);
+    await page.fill('input[name="password"]', PASSWORD);
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/setup/step/1');
+    await verifyByMail(page, email);
+    await page.goto('/setup');
+    await page.waitForURL('**/setup/step/1');
+    await page.check('input[name="relationship"][value="daughter"]');
+    await page.check('input[name="slice"][value="money-paperwork"]');
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/setup/step/2');
+    await page.fill('input[name="subject_name_1"]', 'Nell');
+    await page.check('input[name="situation_1"][value="At home, on their own"]');
+    await page.fill('input[name="zip_1"]', '02140');
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/setup/step/3**');
+    const circle = new URL(page.url()).searchParams.get('circle');
+    expect(circle).toBeTruthy();
+    const initial = await query('select count(*)::int as n from public.arrivals where circle_id = $1', [circle]);
+    expect(initial.rows[0].n).toBe(0);
 
     // DAY ONE. This circle has never had an arrival, so Home is the card:
     // axe at WCAG 2.2 AA with contrast on, the 44 px touch-target floor, no
@@ -585,10 +608,18 @@ test.describe('the D7 browser a11y leg', () => {
 
     // THE ROUTER. One arrival and one filed row are what the blocks are made
     // of; without them this would audit an empty page and prove nothing.
-    await ensureRecordRows(browser);
     const subject = await query(
       'select id from public.subjects where circle_id = $1 order by created_at limit 1',
       [circle],
+    );
+    const account = await query('select id from public.accounts where email = $1', [email]);
+    await query(
+      `insert into public.timeline_events (id, circle_id, subject_id, kind, summary, occurred_on, occurred_zone,
+         approved_by, approved_at, approver_display_name, taint)
+       values (gen_random_uuid(), $1, $2, 'care', 'Home health nurse started weekly visits',
+               '2026-08-15', 'America/New_York', $3, now(), 'Avery', '{health}')`,
+      [circle, subject.rows[0].id, account.rows[0].id],
+      true,
     );
     await query(
       `insert into public.arrivals (id, circle_id, subject_id, channel, state,

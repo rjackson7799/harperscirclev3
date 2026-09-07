@@ -28,8 +28,8 @@ import { formatShortDate } from '@/lib/format/dates';
  * name.
  *
  * THE BRANCH IS A FACT ABOUT THE CALLER, NOT ABOUT THE CIRCLE (plan Q5). The
- * day-one card is shown ONLY to a caller whose arrivals read SUCCEEDS AND
- * RETURNS ZERO. A read that FAILED is not a read that returned nothing, and a
+ * day-one card is shown ONLY to a known coordinator whose arrivals read
+ * SUCCEEDS AND RETURNS ZERO (ADR-0048 Q-D). A read that FAILED is not empty, and a
  * caller who cannot enumerate arrivals gets the router — never an instruction
  * addressed to somebody else, and never a claim about rows she is not
  * entitled to enumerate.
