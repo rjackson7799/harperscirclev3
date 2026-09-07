@@ -1,5 +1,15 @@
 # Vercel staging checkpoint — 2026-09-07 UTC
 
+## Subsequent Oregon deployment
+
+The stable preview alias now points to `dpl_D6jKeTX89tqQBoXVqAoXYTUjYjuS` at `https://harperscirclev3-staging-hxedwrgzt-honu-vibe.vercel.app`, built from `a8a4d45` (same product code as the initial checkpoint). Vercel's deployment API confirms READY, preview (`target=null`), and function region **`pdx1`**. The project's `resourceConfig.functionDefaultRegions` is now `["pdx1"]`, co-locating application functions with the Oregon database. The build machine still reports `iad1`; build location is not the deployed function location.
+
+The remote build and TypeScript passed. A new synthetic invalid sign-in returned HTTP 303 with exactly `/sign-in?e=nomatch`; the alias moved only after that check passed. Evidence: `vercel-staging-oregon-deploy.log` and `staging-oregon-sign-in.headers` in the handoff workspace. This removes an avoidable cross-region database trip; it is not a measured Home p95 result. The prior preview remains available as a rollback reference.
+
+Browser automation could list the user's signed-in staging tab but failed to attach its debugger; the accessibility fallback and a fresh-tab attempt also failed. No browser assertion executed and no coverage status changed. The user's existing tab was left untouched; no temporary tab remained. Browser gate, fixtures, email capture and ingestion-service work remain pending.
+
+The remainder of this document preserves the initial deployment checkpoint.
+
 The owner authorized creating and configuring a separate Vercel staging project. This is an initial protected preview, not browser-gate completion or production readiness.
 
 - Project: `honu-vibe/harperscirclev3-staging` (`prj_pO2dGrexFrtKINnbAa84RBG2SYqk`).
