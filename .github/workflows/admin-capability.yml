@@ -8,6 +8,7 @@ on:
       - 'scripts/probe-admin-auth-lifecycle.sql'
       - 'scripts/probe-admin-auth-live.mjs'
       - 'scripts/test-admin-boundary.sql'
+      - 'scripts/test-admin-upgrade.sql'
       - 'supabase/migrations/**'
       - 'supabase/tests/**'
       - 'lib/db/admin.ts'
@@ -32,6 +33,11 @@ jobs:
           cache: npm
       - name: Install pinned tools
         run: npm ci
+      - name: Hold the two draft migrations for a pre-upgrade baseline
+        run: |
+          mkdir "$RUNNER_TEMP/admin-drafts"
+          mv supabase/migrations/20260907120001_admin_auth_state.sql "$RUNNER_TEMP/admin-drafts/"
+          mv supabase/migrations/20260907120002_admin_audited_read.sql "$RUNNER_TEMP/admin-drafts/"
       - name: Start disposable database and auth services together
         run: npx supabase start -x studio,imgproxy,realtime,edge-runtime,logflare,vector,mailpit,postgres-meta,supavisor
       - name: Clone the fresh local database with its original owners and dependencies
@@ -44,8 +50,28 @@ jobs:
           ALTER DATABASE postgres WITH ALLOW_CONNECTIONS false;
           SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'postgres';
           CREATE DATABASE hc_admin_probe TEMPLATE postgres;
+          CREATE DATABASE hc_admin_upgrade TEMPLATE postgres;
           ALTER DATABASE postgres WITH ALLOW_CONNECTIONS true;
           SQL
+      - name: Seed existing operator before applying either draft migration
+        run: |
+          set -euo pipefail
+          docker exec -i supabase_db_HarpersCirclev3 psql -U postgres -d hc_admin_upgrade -v seed=true -v ON_ERROR_STOP=1 < scripts/test-admin-upgrade.sql 2>&1 | tee admin-upgrade.log
+      - name: Apply unchanged drafts to fresh and populated databases
+        run: |
+          set -euo pipefail
+          mv "$RUNNER_TEMP/admin-drafts/"*.sql supabase/migrations/
+          git diff --exit-code -- supabase/migrations
+          npx supabase migration up --local
+          for db in hc_admin_probe hc_admin_upgrade; do
+            for migration in supabase/migrations/2026090712000{1,2}_*.sql; do
+              docker exec -i supabase_db_HarpersCirclev3 psql -U postgres -d "$db" -v ON_ERROR_STOP=1 < "$migration" >> admin-upgrade.log 2>&1
+            done
+          done
+      - name: Verify existing-state upgrade
+        run: |
+          set -euo pipefail
+          docker exec -i supabase_db_HarpersCirclev3 psql -U postgres -d hc_admin_upgrade -v seed=false -v ON_ERROR_STOP=1 < scripts/test-admin-upgrade.sql 2>&1 | tee -a admin-upgrade.log
       - name: Exercise auth trigger lifecycle with rollback
         run: |
           set -euo pipefail
@@ -73,4 +99,5 @@ jobs:
             admin-live-result.json
             admin-boundary.log
             admin-pgtap.log
+            admin-upgrade.log
           retention-days: 14
