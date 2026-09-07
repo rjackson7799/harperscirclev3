@@ -107,6 +107,7 @@ Every surface in the scope document appears here, in or out, with a reason.
 | Checklists | Phase 2 | Its differentiator is population from an accumulated record; there is no record on day one. | |
 | Person profile | Phase 2 | Profile facts accumulate in Phase 1 as extractions; the surface that presents them follows. | |
 | Calendar sync | Phase 2 | Two-way sync is a large integration for a family that has not yet forwarded anything. | |
+| Decisions (§5) | Phase 2 | **Not a Scope v3 surface** — added by ADR-0039, so it is the one row here that does not answer to the scope document. Needs a record with options in it before it has anything to compare. | Financial |
 | Memories & Album | Phase 3 | Retention layer. Needs a family that already stayed. | |
 | Local resources | Phase 3 | Blocked on a data-sourcing decision — §12.1. | |
 | Parent phone experience | Phase 4 | Design spec §10.4 puts it outside the MVP; its type scale must be re-derived, not inherited. | |
@@ -810,6 +811,8 @@ Enough to keep the data model honest. No more.
 
 **Calendar sync** (Phase 2). Two-way with Google/Outlook, per-person sync scope, conflict flags. *Model implication: dated items need a stable external identity and a sync direction.*
 
+**Decisions** (Phase 2). An open choice held as a record object: several options, each pointing at what it was drawn from, the family's own criteria, and — once made — the choice with its approver and its date. The unchosen options are retained, because six months later *why we picked them* is the question a sibling asks. Three contractor quotes read against a homeowners policy and a warranty is the shape; so is choosing between two rehab facilities. The product compares and names gaps; **it never states which option to take** (§6.9). *Model implication: the object is `episodes`' shape — a wrapper over record objects, proposed and approved like anything else, never concealing its members — with options as children and taint as the transitive union over every option's sources (§7.6). `decision` appends to the object-type and proposal-kind enumerations; that append is cheap now and a migration-plus-backfill once the record has volume, which is why it is named here rather than discovered in Phase 2.*
+
 **Memories & Album** (Phase 3). Photos, voice notes, stories; album by decade and category; transcription; one memory into each brief; prompt-a-memory. **The AI never generates, edits or embellishes memory content** — stated policy, and it holds for restoration and enhancement too. *Model implication: the `memory` timeline kind and the memories domain exist in the Phase 1 permission model.*
 
 **Local resources** (Phase 3). A directory pre-filtered by the record — zip, insurance, mobility, budget already known. Blocked on §12.1.
@@ -875,6 +878,8 @@ Three separate prohibitions, each absolute. It may suggest an owner (§4.5.2). I
 
 **Test:** every assignment, every grant and every memory has a human actor in the access log or in its provenance.
 
+**A fourth prohibition was added at §6.9** — the product never states which option to take. It is stated separately rather than as a fourth item here because it governs a *comparison* rather than a write, and because it was ruled after this section was written (ADR-0039). The three above are unchanged.
+
 ### 6.6 Plain language, no clinical advice
 
 The product organises, connects and reminds. It does not diagnose, recommend treatment, or interpret results medically. Copy discipline is a product requirement, not a legal footnote.
@@ -890,6 +895,8 @@ The line, concretely:
 
 Extraction restates the source. Interpretation states relationships between records. Neither states clinical judgment. **Test:** an adversarial review of every AI-authored string template in the product finds no imperative, no prognosis and no unattributed clinical claim.
 
+**This line is not health-specific, and §6.9 says so.** The same boundary holds for a decision about money, property or a provider — the right-hand column's *"in the product's own voice"* is what does the work, not the word *clinical* (ADR-0039).
+
 ### 6.7 The record is exportable
 
 The family owns it and can take it out — originals, extracted facts, provenance, citations and the access log, in a versioned open format, self-service. Scope, authorization, delivery and expiry are specified in §4.1.6; the constraint that matters here is that an export is scoped to the requester's own access, never to the circle's contents.
@@ -897,6 +904,23 @@ The family owns it and can take it out — originals, extracted facts, provenanc
 ### 6.8 Where the moat is
 
 Not the extraction, which is commoditising. The **interpretation against an accumulated family record**, which no one else has and which compounds with every item filed. Build effort follows that: the interpretation step is a separate, record-aware pass, and it is the part worth being slow and careful about.
+
+### 6.9 The product does not state a preference
+
+Added by ADR-0039. §6.6 draws the line at clinical judgment; the same line holds outside health, and this section says so **before** a surface exists that would test it. It is numbered after §6.8 because renumbering §6 would break every citation into it, not because it is an afterthought.
+
+A family choosing between three contractor quotes against an insurance exclusion and a live warranty is making a decision the record can inform and must not make. **The product never states which option to take** — not for a repair, not for a policy, not for a provider, not for a plan of care, at any confidence, in any phase.
+
+This is a real restraint and it costs something, so what the product does instead is specified rather than left as consolation. Four outputs, none of which is an opinion:
+
+- **The comparison.** Each option's extracted fields side by side, every cell citing its own source region (§6.1) and carrying its own confidence (§6.4). Restating sources, attributed — the left column of §6.6's table, in a grid.
+- **The relationships.** *"The policy excludes wear and tear. This quote describes the failure as a compressor burnout; this one as age-related."* Interpretation between records, which §6.8 names as the moat, and which §4.2.5 already ships as conflicts.
+- **The gaps.** *"Two of the three state no labour warranty, and nothing here says whether the 2019 install's parts warranty is still live."* Absence is the highest-value output on a decision, it is the thing a tired coordinator misses, and it costs nothing in this contract because it asserts nothing about the world.
+- **The family's criteria, applied.** The family says what matters — price, warranty length, availability, who can come first — and the comparison orders by it. **The weighting is a human input.** That is precisely what makes the output a comparison rather than an opinion, and it is the hinge this whole section turns on.
+
+An ordering with an undeclared criterion is a recommendation wearing a table's clothes. So the criteria are shown beside the ordering, always, and an ordering with no criteria entered does not render.
+
+**Test:** no AI-authored string template recommends, ranks by an undeclared criterion, names a preferred option, or characterises one option as better, safer, cheaper-in-context or more sensible than another. The same adversarial review as §6.6, over the same templates.
 
 ---
 
@@ -1330,6 +1354,8 @@ Each carries a decision deadline. Deadlines are tied to build and cohort milesto
 | **12.9** | **The headline metric's target.** §10.2 defines the measure; the number is registered in advance, against a sample sized per §12.4. | Not from the first two families. After a preregistered cohort produces four weeks. |
 | **12.10** | **Who adjudicates a frozen record, and against what standard.** §7.5 builds the freeze and specifies its mechanics, but the question it raises — a family in dispute, one side claiming abuse, no verifiable identities, and us in the middle — is legal and ethical rather than technical. It needs counsel, a written standard, and a named adjudicator. | **Before the first family is onboarded.** A freeze can be requested on day one, and there is no version of "we'll work it out when it happens" that is acceptable here. Part of G1. |
 | **12.11** | **Mandatory MFA for coordinators.** Optional in Phase 1 (§4.1.1). Auth §2's reasoning — a 45–70 user base, a familiar method, an obvious recovery path — argues against forcing it; the contents of a circle argue for it. The trigger to decide is a circle holding legal or financial documents, which is week one for most families. | Before the cohort passes five families, and part of G1's read |
+| **12.12** | **The counterparty.** A contractor, an adjuster, a claims examiner, a facility's admissions office: a party the record refers to constantly and who has no access to it and never will. §4.6 holds people with *access*; §5's Phase-2 person profile holds *providers* as facts about a subject, and a contractor is not a fact about the parent. Does a counterparty become an entity, or stay a name on a decision option plus a provider fact? | **Before the §5 decision object's schema is frozen.** Like §12.8, this determines a shape and cannot be decided after it. |
+| **12.13** | **The non-medical extraction families.** §4.2.5's five named conflicts are all medical, and G9's corpus covers the medical family plus the insurance **claims** family (`eob` → `amount`, `policy_number`, `member_id`, `coverage_determination`). It carries no **coverage-terms** class (exclusions, deductible, named perils), no **warranty-term** class, and no **offer** class (a quote's total, its validity window, a licence number). Those fields therefore ship all-high-risk by §6.4's own closing rule — correct, and unusable across a vault of home and financial paperwork, where it means nothing is ever pre-selected. What is the non-medical conflict set, and does the corpus grow to carry these classes? | **Before the owner signs G9's bands.** `BAND_ARTIFACT_ALLOWLIST` is empty today, and `docs/eval/g9-corpus-spec.md` §8 is explicit that changing a blind item after bands are signed invalidates them — so the cheap window is open now and closes at signature. Priced as §7 row 4 of that file. |
 
 ---
 
