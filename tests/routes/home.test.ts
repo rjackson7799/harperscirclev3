@@ -560,8 +560,8 @@ describe('HOME-05 · one budget, and a named state rather than a spinner', () =>
     const { readFileSync } = await import('node:fs');
     const src = readFileSync('app/(app)/[circle]/page.tsx', 'utf8');
     expect(src.match(/withPageBudget\(/g)?.length, 'exactly ONE budget').toBe(1);
-    // SEVEN reads, seven races: the day-one branch and the five blocks.
-    expect(src.match(/budget\.race\(/g)?.length).toBe(7);
+    // Eight reads: the original seven plus the coordinator-only display decision.
+    expect(src.match(/budget\.race\(/g)?.length).toBe(8);
     // Nothing awaits a read outside the race.
     expect(src).not.toMatch(/await\s+(readArrivals|readSubjects|readNeedsReview|myOpenTasks|recentEvents|upcomingEvents|latestEventPerSubject)\(/);
   });

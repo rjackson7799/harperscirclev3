@@ -53,7 +53,7 @@ export const NAV_MANIFEST: NavEntry[] = [
  *
  * 9B U3: HOME IS IN EVERY TIER'S LIST. The router is the surface with the
  * widest audience and each of its blocks renders only what its own caller
- * can see — a caregiver's Home is her tasks and nothing else — so hiding it
+ * can see; only coordinators receive the day-one card (ADR-0048). Hiding it
  * from a tier would hide a surface that person is entitled to, which is the
  * opposite of what this courtesy is for. (PRD §4.1.4 rule 4 is untouched: it
  * governs where an ACCEPTED INVITE lands, not what the nav offers once you

@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/shell/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { FORWARDING_DOMAIN } from '@/lib/setup/steps';
 import { completionPromises } from '@/lib/setup/completion-copy';
-import { myOpenTasks, type TaskRow } from '@/lib/hc/tasks';
+import { myMembership, myOpenTasks, type TaskRow } from '@/lib/hc/tasks';
 import {
   latestEventPerSubject,
   recentEvents,
@@ -108,12 +108,13 @@ export default async function HomePage({ params }: { params: Promise<{ circle: s
       let latest: Map<string, EventRow>;
       let coming: EventRow[];
       let recent: EventRow[];
+      let membership: Awaited<ReturnType<typeof myMembership>>;
       try {
         // Every read at once, under the ONE budget. The branch cannot be
         // known before the arrivals read answers, and asking the other
         // reads afterwards would serialise the page behind it — on a
         // day-one circle they all answer empty anyway.
-        [arrivals, subjects, review, mine, latest, coming, recent] = await Promise.all([
+        [arrivals, subjects, review, mine, latest, coming, recent, membership] = await Promise.all([
           budget.race(readArrivals(supabase, circle), 'arrivals'),
           budget.race(readSubjects(supabase, circle), 'subjects'),
           budget.race(readNeedsReview(supabase, circle), 'needsReview'),
@@ -121,6 +122,7 @@ export default async function HomePage({ params }: { params: Promise<{ circle: s
           budget.race(latestEventPerSubject(claims, circle), 'latestEventPerSubject'),
           budget.race(upcomingEvents(claims, circle), 'upcomingEvents'),
           budget.race(recentEvents(claims, circle), 'recentEvents'),
+          budget.race(myMembership(claims, circle), 'myMembership'),
         ]);
       } catch (err) {
         if ((err as Error).name === 'AnswerBudgetExceeded') throw err;
@@ -132,7 +134,10 @@ export default async function HomePage({ params }: { params: Promise<{ circle: s
       // Q5's branch, exactly: SUCCEEDS AND RETURNS ZERO. And the card is
       // made OF the address — with none visible there is nothing to render,
       // so the honest line stands in rather than an empty card.
-      const dayOne = arrivals.ok && arrivals.rows.length === 0 && addressable.length > 0;
+      // ADR-0048 Q-D: RLS-filtered zero arrivals do not mean a new circle.
+      // Only a known coordinator receives the onboarding instruction.
+      const dayOne = membership?.tier === 'coordinator' && arrivals.ok &&
+        arrivals.rows.length === 0 && addressable.length > 0;
 
       if (dayOne) {
         return (
@@ -320,6 +325,7 @@ async function readArrivals(
     .limit(50);
   if (error) {
     console.error(`home: arrivals read failed: ${error.message}`);
+    if (error.code !== '42501') throw error;
     return { ok: false, rows: [] };
   }
   return { ok: true, rows: (data ?? []) as ArrivalRow[] };
@@ -352,6 +358,7 @@ async function readNeedsReview(
     .limit(1);
   if (error) {
     console.error(`home: needs-review read failed: ${error.message}`);
+    if (error.code !== '42501') throw error;
     return { count: 0, top: null };
   }
   const rows = (data ?? []) as ArrivalRow[];
@@ -372,7 +379,7 @@ async function readSubjects(
     .order('first_name');
   if (error) {
     console.error(`home: subjects read failed: ${error.message}`);
-    return [];
+    throw error;
   }
   return (data ?? []) as SubjectRow[];
 }
