@@ -1,5 +1,7 @@
 # Vercel staging checkpoint — 2026-09-07 UTC
 
+Subsequent verification: [setup-to-Home HTTP smoke](staging-setup-smoke.md) passed using the existing services only, with verification restrictions retained. Full browser and ingestion gates remain pending.
+
 ## Subsequent Oregon deployment
 
 The stable preview alias now points to `dpl_D6jKeTX89tqQBoXVqAoXYTUjYjuS` at `https://harperscirclev3-staging-hxedwrgzt-honu-vibe.vercel.app`, built from `a8a4d45` (same product code as the initial checkpoint). Vercel's deployment API confirms READY, preview (`target=null`), and function region **`pdx1`**. The project's `resourceConfig.functionDefaultRegions` is now `["pdx1"]`, co-locating application functions with the Oregon database. The build machine still reports `iad1`; build location is not the deployed function location.

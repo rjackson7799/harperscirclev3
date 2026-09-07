@@ -1,5 +1,9 @@
 # Staging companion services — preparation checkpoint
 
+## Owner decision: no additional service
+
+The owner subsequently said, "i'd rather not add on another service at this point, can we proceed without it?" Work continues using Supabase and Vercel only. Do not provision the proposed Linux host or substitute another paid service. The companion-service proposal below is deferred, not awaiting purchase approval. Prioritize Home, setup, navigation and permission checks that can be run with existing infrastructure. Email delivery, synthetic AI/virus-scanning integration and the qualifying full browser gate remain pending; this decision does not waive their acceptance criteria or promote coverage. The fixture access-control implementation remains available locally and is not deployed as a hosted service.
+
 This is fixture/test infrastructure under the owner's delegated continuation. No product authentication, RLS, migration, provider adapter or dependency changes are included. No remote fixture endpoint is enabled by this change. The existing staging preview remains on its previously verified deployment.
 
 ## Synthetic AI fixture
