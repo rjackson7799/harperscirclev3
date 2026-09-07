@@ -33,8 +33,9 @@ jobs:
           set -euo pipefail
           DB=supabase_db_HarpersCirclev3
           docker exec "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hc_admin_probe'
-          docker exec "$DB" pg_dump -U supabase_admin -d postgres --schema-only > probe-schema.sql
-          docker exec -i "$DB" psql -U supabase_admin -d hc_admin_probe -v ON_ERROR_STOP=1 < probe-schema.sql
+          # Public default password of this disposable CLI stack, not a secret.
+          docker exec -e PGPASSWORD=postgres "$DB" pg_dump -U supabase_admin -d postgres --schema-only > probe-schema.sql
+          docker exec -i -e PGPASSWORD=postgres "$DB" psql -U supabase_admin -d hc_admin_probe -v ON_ERROR_STOP=1 < probe-schema.sql
       - name: Exercise auth trigger lifecycle with rollback
         run: |
           set -euo pipefail
