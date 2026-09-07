@@ -6,8 +6,8 @@
 //
 // M4 — the reserved and NAMED migration slot for one composed Home read
 // definer — is consumed ONLY on a MEASURED breach here, with the numbers
-// pasted into the red commit (slice-9 plan Q2). A p95 within budget closes it
-// UNCONSUMED. This script therefore prints a verdict in those words.
+// pasted into the red commit (slice-9 plan Q2). The script reports measurements;
+// fixture validity, gate closure and migration authorization require disposition.
 //
 // WHAT IT MEASURES: the whole answer over HTTP from a signed-in member's own
 // session — the gate, the EIGHT reads inside one AnswerBudget (three through
@@ -56,6 +56,17 @@ function pct(sorted, p) {
 }
 
 const ctx = await request.newContext({ baseURL: base });
+function assertHome(body, status, sample) {
+  if (status !== 200) throw new Error(`${sample}: ${status}`);
+  const hasBlocks = /aria-labelledby="(needs-review|my-tasks|whats-coming|recent-activity|subject-)/.test(body);
+  const hasCard = /forwarding address/.test(body);
+  if (mode === 'router' && (!hasBlocks || hasCard)) {
+    throw new Error(`${sample}: expected the populated Home router; measurement invalid`);
+  }
+  if (mode === 'day-one' && (!hasCard || hasBlocks)) {
+    throw new Error(`${sample}: expected day-one Home; measurement invalid`);
+  }
+}
 try {
   const signIn = await ctx.post('/sign-in/submit', { form: { email, password }, maxRedirects: 0 });
   const location = signIn.headers()['location'] ?? '';
@@ -67,32 +78,21 @@ try {
   // rows, from this member's own context.
   const control = await ctx.get(`/${circle}`);
   const body = await control.text();
-  if (control.status() !== 200) throw new Error(`control: ${control.status()}`);
-  const hasBlocks = /aria-labelledby="(needs-review|my-tasks|whats-coming|recent-activity|subject-)/.test(body);
-  const hasCard = /forwarding address/.test(body);
-  if (mode === 'router' && !hasBlocks) {
-    throw new Error('control: Home rendered no §4.7.2 block — refusing to measure the wrong state');
-  }
-  if (mode === 'router' && hasCard) {
-    throw new Error('control: Home rendered the day-one card — refusing to call it the router');
-  }
-  if (mode === 'day-one' && !hasCard) {
-    throw new Error('control: Home rendered no forwarding address — refusing to call it day one');
-  }
-  if (mode === 'day-one' && hasBlocks) {
-    throw new Error('control: Home rendered a block — refusing to call it day one');
-  }
+  assertHome(body, control.status(), 'control');
 
   // Warm, untimed.
-  for (let i = 0; i < 5; i++) await ctx.get(`/${circle}`);
+  for (let i = 0; i < 5; i++) {
+    const res = await ctx.get(`/${circle}`);
+    assertHome(await res.text(), res.status(), `warm-up ${i}`);
+  }
 
   const times = [];
   for (let i = 0; i < runs; i++) {
     const t0 = performance.now();
     const res = await ctx.get(`/${circle}`);
-    await res.text();
+    const body = await res.text();
     const dt = performance.now() - t0;
-    if (res.status() !== 200) throw new Error(`run ${i}: ${res.status()}`);
+    assertHome(body, res.status(), `run ${i}`);
     times.push(dt);
   }
   const sorted = [...times].sort((a, b) => a - b);
@@ -106,8 +106,8 @@ try {
   );
   console.log(
     p95 <= P95_TARGET_MS
-      ? `WITHIN §13.2 (p95 ${Math.round(p95)} ≤ ${P95_TARGET_MS} ms; ceiling ${CEILING_MS} ms ${max <= CEILING_MS ? 'held' : 'BREACHED by max'}) — M4 closes UNCONSUMED on this measurement`
-      : `BREACH of §13.2's p95 target (${Math.round(p95)} > ${P95_TARGET_MS} ms) — this is M4's condition; record the numbers in the red commit`,
+      ? `WITHIN §13.2 (p95 ${Math.round(p95)} ≤ ${P95_TARGET_MS} ms; ceiling ${CEILING_MS} ms ${max <= CEILING_MS ? 'held' : 'BREACHED by max'}) — record fixture and reviewed commit; no automatic gate closure`
+      : `BREACH of §13.2's p95 target (${Math.round(p95)} > ${P95_TARGET_MS} ms) — record the measurement for disposition; no migration is authorized by this output`,
   );
   console.log(
     `PRF-06's ${PRF06_PAGE_TRIPWIRE_MS} ms page tripwire is a DB-level number measured by scripts/bench/prf06.mjs — it is NOT this HTTP figure, and the two are not compared here.`,

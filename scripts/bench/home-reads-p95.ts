@@ -9,21 +9,21 @@
 // two numbers are measured by two harnesses and reported separately.
 //
 // It runs the REAL wrappers, never a re-typed query: lib/hc/timeline's three
-// Home reads and lib/hc/tasks' listTasks, through withRequestRole as the
+// Home reads, myOpenTasks and myMembership (plus listTasks as a control), through withRequestRole as the
 // caller, so what is timed is what the page issues.
 //
 // METHOD, PRF-06's verbatim: warm only (5 untimed passes first), 25 timed
 // runs per read, nearest-rank p95. Cold is a different question and is not
 // answered here.
 //
-// Usage (a standalone harness, so HC_DB_URL is the maintenance login — the
-// runtime login cannot provision through auth; traps §3):
-//   HC_DB_URL=postgresql://postgres:postgres@127.0.0.1:54342/postgres \
+// Usage: provide HC_DB_URL for the runtime login and an existing representative
+// fixture's circle/account. This harness reads only; fixture provisioning is separate.
+//   HC_DB_URL=<runtime connection> \
 //     node scripts/ts-run.mjs scripts/bench/home-reads-p95.ts <circle> <account-id>
 // ============================================================================
 
 import { latestEventPerSubject, recentEvents, upcomingEvents } from '@/lib/hc/timeline';
-import { listTasks, myOpenTasks } from '@/lib/hc/tasks';
+import { listTasks, myMembership, myOpenTasks } from '@/lib/hc/tasks';
 
 const [circle, account] = process.argv.slice(2);
 if (!circle || !account) {
@@ -41,6 +41,7 @@ function pct(sorted: number[], p: number): number {
 }
 
 const reads: [string, () => Promise<unknown>][] = [
+  ['myMembership', () => myMembership(claims, circle)],
   ['myOpenTasks', () => myOpenTasks(claims, circle)],
   // The read Home used to make for this block, kept as the CONTROL: it is
   // what the narrowing is measured against, and the Tasks page still makes
@@ -75,7 +76,7 @@ for (const [name, run] of reads) {
 console.table(rows);
 console.log(
   worst <= PAGE_TRIPWIRE_MS
-    ? `WITHIN PRF-06's page tripwire (worst read p95 ${Math.round(worst)} ≤ ${PAGE_TRIPWIRE_MS} ms) — M4 closes UNCONSUMED on this measurement`
-    : `BREACH of PRF-06's ${PAGE_TRIPWIRE_MS} ms page tripwire (worst read p95 ${Math.round(worst)} ms) — this is M4's condition; record the numbers in the red commit`,
+    ? `WITHIN PRF-06's page tripwire (worst read p95 ${Math.round(worst)} ≤ ${PAGE_TRIPWIRE_MS} ms) — record fixture and reviewed commit; no automatic gate closure`
+    : `BREACH of PRF-06's ${PAGE_TRIPWIRE_MS} ms page tripwire (worst read p95 ${Math.round(worst)} ms) — record the measurement for disposition; no migration is authorized by this output`,
 );
 process.exit(0);
