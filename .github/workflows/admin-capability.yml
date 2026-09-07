@@ -28,14 +28,18 @@ jobs:
         run: npm ci
       - name: Start disposable runner database
         run: npx supabase db start
-      - name: Clone the empty local schema with its original owners and dependencies
+      - name: Clone the fresh local database with its original owners and dependencies
         run: |
           set -euo pipefail
           DB=supabase_db_HarpersCirclev3
-          docker exec "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hc_admin_probe'
           # Public default password of this disposable CLI stack, not a secret.
-          docker exec -e PGPASSWORD=postgres "$DB" pg_dump -U supabase_admin -d postgres --schema-only > probe-schema.sql
-          docker exec -i -e PGPASSWORD=postgres "$DB" psql -U supabase_admin -d hc_admin_probe -v ON_ERROR_STOP=1 < probe-schema.sql
+          test "$(docker exec -e PGPASSWORD=postgres "$DB" psql -U supabase_admin -d postgres -Atc 'SELECT count(*) FROM auth.users')" = 0
+          docker exec -i -e PGPASSWORD=postgres "$DB" psql -U supabase_admin -d template1 -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER DATABASE postgres WITH ALLOW_CONNECTIONS false;
+          SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'postgres';
+          CREATE DATABASE hc_admin_probe TEMPLATE postgres;
+          ALTER DATABASE postgres WITH ALLOW_CONNECTIONS true;
+          SQL
       - name: Exercise auth trigger lifecycle with rollback
         run: |
           set -euo pipefail
