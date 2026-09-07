@@ -375,6 +375,45 @@ test.describe('the 7C people legs', () => {
     expect(await f.page.locator('form:has(input[name="domain"][value="health"])').count()).toBe(0);
   });
 
+  // ---------------------------------------------------------------------
+  // STP-04 · OW-28 (ADR-0044 D1, ruling round 31 F-1). The PPL-02 leg above
+  // drives the HONEST path, where the coordinator picked the level on the
+  // matrix a moment earlier — which is why the missing words were invisible
+  // to it BY CONSTRUCTION. This leg is the crafted same-origin link: the
+  // subject, the domain and the level arrive from whoever wrote the URL,
+  // and both panels have to say them before she types her password and
+  // again before she spends the token. Nothing is granted here — the WORDS
+  // are the assertion.
+  // ---------------------------------------------------------------------
+  test('a crafted raise link names what it would grant — the subject, the domain and the level, on the password panel and again on the one that spends the token (STP-04, AC-PERM-5)', async ({
+    browser,
+  }) => {
+    const f = await theFounder(browser);
+    const dan = await theMember(browser, 'dan');
+
+    await f.page.goto(`/${f.circleId}/people/${dan.memberId}?rs=${f.nell}&rd=finances&rl=manage`);
+    const panel = f.page.locator('section:has(h2#confirm-raise)');
+    await expect(panel).toContainText('Nell');
+    await expect(panel).toContainText('finances');
+    await expect(panel).toContainText('full access');
+    await expect(panel.locator('input[name="password"]')).toBeVisible();
+
+    await f.page.fill('input[name="password"]', PASSWORD);
+    await f.page.click('button:has-text("Confirm it")');
+    await expect(panel.locator('button:has-text("Raise it")')).toBeVisible();
+    await expect(panel).toContainText('Nell');
+    await expect(panel).toContainText('finances');
+    await expect(panel).toContainText('full access');
+
+    // `hidden` is a revocation and never reads as a raise (round 31
+    // observation 4): it reaches this section only from a crafted link,
+    // because a lower posts straight through.
+    await f.page.goto(`/${f.circleId}/people/${dan.memberId}?rs=${f.nell}&rd=health&rl=hidden`);
+    await expect(panel).toContainText('health & care');
+    await expect(panel).toContainText(/nothing at all/i);
+    expect(await panel.locator('button:has-text("Raise it")').count()).toBe(0);
+  });
+
   test('nav follows access — a caregiver’s nav is Tasks · Account, a family member’s is Timeline · Documents · People · Account; the hand-built URL is refused regardless (NAV-01)', async ({
     browser,
   }) => {

@@ -16,6 +16,7 @@ import {
   DOMAINS,
   DOMAIN_LABEL,
   GRANT_LEVELS,
+  LEVEL_PHRASE,
   LEVEL_RANK,
   LEVEL_WORD,
   isDomain,
@@ -182,6 +183,15 @@ export default async function MemberPage({
               rl: raiseLevel,
             }).toString()
           : null;
+      // STP-04 · OW-28: the subject is named by DISPLAY NAME, or it is not
+      // confirmed at all. The repair is DISPLAY, so where the page has no
+      // words for whose record this is, it makes no offer.
+      const raiseSubjectName =
+        subjects.find((s) => s.subject_id === raiseSubject)?.display_name ?? null;
+      // A level of `hidden` is a revocation. It reaches this section only
+      // from a crafted link — a lower posts straight through — and it
+      // renders as what it is.
+      const revoking = raiseLevel === 'hidden';
       // 7D · R2/F-3: PRESENCE is not confirmation. One cookie name held
       // whatever was minted last, so a token for a SHARE rendered "Raise it"
       // here with no password — and the click dead-ended on a definer that
@@ -235,31 +245,70 @@ export default async function MemberPage({
             ) : null}
           </Card>
 
+          {/* STP-04 · OW-28 (ADR-0044 D1, ruling round 31 F-1): the §5.7
+              confirmation surface NAMES what it is confirming. Both panels —
+              the one that asks for the password and the one that spends the
+              token — render the same four parts the token binds and
+              hc.set_grant matches: the grantee, the subject by display name,
+              DOMAIN_LABEL[rd] and LEVEL_WORD[rl]. A crafted rs/rd/rl is
+              RENDERED, never hidden: validation was never the fix, because
+              the crafted target_ref is perfectly well-formed. And `hidden` is
+              a REVOCATION — isGrantLevel accepts it and LEVEL_WORD does not
+              carry it, so offering it as a raise is the same lie pointed the
+              other way (round 31 observation 4). */}
           {raise && raiseSubject && raiseDomain && raiseLevel ? (
             <section className="record-section" aria-labelledby="confirm-raise">
-              <h2 id="confirm-raise">Raise access</h2>
-              {stepUp ? (
-                <form method="post" action={`${next}/grant/submit`}>
+              <h2 id="confirm-raise">{revoking ? 'Remove access' : 'Raise access'}</h2>
+              {raiseSubjectName == null ? (
+                // A subject this page cannot name is a sentence it cannot
+                // render, and the words ARE the confirmation — so nothing is
+                // offered here at all.
+                <p className="field-help" role="alert">
+                  This page can&apos;t say whose record that link means, so there is nothing to
+                  confirm here. Change access from the list below instead.
+                </p>
+              ) : (
+                <>
                   <p>
-                    This raises what {person.display_name} can see. It takes effect at once and
+                    {revoking ? 'This takes away what ' : 'This raises what '}
+                    <strong>{person.display_name}</strong> can see of{' '}
+                    <strong>{raiseSubjectName}</strong>&apos;s{' '}
+                    <strong>{DOMAIN_LABEL[raiseDomain]}</strong>. It takes effect at once and
                     it&apos;s written in the family&apos;s log, with both levels.
                   </p>
-                  <input type="hidden" name="subject_id" value={raiseSubject} />
-                  <input type="hidden" name="domain" value={raiseDomain} />
-                  <input type="hidden" name="level" value={raiseLevel} />
-                  <Button type="submit">Raise it</Button>
-                </form>
-              ) : (
-                <form method="post" action="/account/step-up/submit">
-                  <p className="field-help">Raising access needs a fresh confirmation that it&apos;s you.</p>
-                  <input type="hidden" name="operation" value={RAISE_OPERATION} />
-                  <input type="hidden" name="target_ref" value={`${memberId}:${raiseSubject}:${raiseDomain}:${raiseLevel}`} />
-                  <input type="hidden" name="next" value={`${next}?${raise}`} />
-                  <Field label="Your password">
-                    <Input type="password" name="password" required />
-                  </Field>
-                  <Button type="submit">Confirm it&apos;s you</Button>
-                </form>
+                  <p className="meta">
+                    New level:{' '}
+                    <strong>
+                      {raiseLevel === 'hidden' ? 'nothing at all' : LEVEL_WORD[raiseLevel]}
+                    </strong>
+                    {raiseLevel === 'hidden'
+                      ? ' — they see nothing of it. This is a revocation, not a raise.'
+                      : ` — ${LEVEL_PHRASE[raiseLevel]}`}
+                  </p>
+                  {stepUp ? (
+                    <form method="post" action={`${next}/grant/submit`}>
+                      <input type="hidden" name="subject_id" value={raiseSubject} />
+                      <input type="hidden" name="domain" value={raiseDomain} />
+                      <input type="hidden" name="level" value={raiseLevel} />
+                      <Button type="submit">{revoking ? 'Remove it' : 'Raise it'}</Button>
+                    </form>
+                  ) : (
+                    <form method="post" action="/account/step-up/submit">
+                      <p className="field-help">
+                        {revoking
+                          ? 'Changing access needs a fresh confirmation that it\u2019s you.'
+                          : 'Raising access needs a fresh confirmation that it\u2019s you.'}
+                      </p>
+                      <input type="hidden" name="operation" value={RAISE_OPERATION} />
+                      <input type="hidden" name="target_ref" value={`${memberId}:${raiseSubject}:${raiseDomain}:${raiseLevel}`} />
+                      <input type="hidden" name="next" value={`${next}?${raise}`} />
+                      <Field label="Your password">
+                        <Input type="password" name="password" required />
+                      </Field>
+                      <Button type="submit">Confirm it&apos;s you</Button>
+                    </form>
+                  )}
+                </>
               )}
             </section>
           ) : null}
