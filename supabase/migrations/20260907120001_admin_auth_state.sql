@@ -7,6 +7,11 @@ alter table public.admin_users add column revoked_at timestamptz;
 create table hc.admin_auth_anchors(account_id uuid primary key);
 create table hc.admin_auth_factors(id uuid primary key, account_id uuid not null, status text not null);
 create table hc.admin_auth_sessions(id uuid primary key, account_id uuid not null, factor_id uuid, aal text, not_after timestamptz);
+-- Pin maintenance ownership even when the platform executes migrations as
+-- supabase_admin. The synchronous writer must own its protected mirror rows.
+alter table hc.admin_auth_anchors owner to postgres;
+alter table hc.admin_auth_factors owner to postgres;
+alter table hc.admin_auth_sessions owner to postgres;
 create index admin_auth_factors_account on hc.admin_auth_factors(account_id);
 create index admin_auth_sessions_account on hc.admin_auth_sessions(account_id);
 alter table hc.admin_auth_anchors enable row level security;
@@ -45,6 +50,7 @@ begin
     insert into hc.admin_auth_sessions select id,user_id,factor_id,aal::text,not_after from auth.sessions where user_id=p_account;
   end if;
 end $$;
+alter function public.hc_refresh_admin_auth(uuid) owner to postgres;
 revoke all on function public.hc_refresh_admin_auth(uuid) from public,anon,authenticated,hc_admin,hc_pipeline,hc_internal;
 
 create function public.hc_sync_admin_auth() returns trigger
@@ -67,6 +73,7 @@ begin
   end loop;
   return null;
 end $$;
+alter function public.hc_sync_admin_auth() owner to postgres;
 revoke all on function public.hc_sync_admin_auth() from public,anon,authenticated,hc_admin,hc_pipeline,hc_internal;
 create trigger hc_admin_factor_sync after insert or update or delete on auth.mfa_factors for each row execute function public.hc_sync_admin_auth();
 create trigger hc_admin_session_sync after insert or update or delete on auth.sessions for each row execute function public.hc_sync_admin_auth();
