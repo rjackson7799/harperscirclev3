@@ -1,5 +1,7 @@
 # V3 staging database checkpoint — 2026-09-07 UTC
 
+Subsequent application setup is recorded in [the Vercel staging checkpoint](vercel-staging-checkpoint.md). The remaining-setup section below is the historical state immediately after database initialization.
+
 The owner created a separate project and supplied its URL after explicitly choosing a new v3 database. This checkpoint records initialization of that staging target with existing migrations, not a new schema increment or production activation.
 
 - Project: **HarpersCirclev3 Staging**, Oregon.
