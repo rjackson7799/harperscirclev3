@@ -29,6 +29,9 @@ export const GROUP_LABELS: Partial<Record<NavGroup, string>> = {
 };
 
 export const NAV_MANIFEST: NavEntry[] = [
+  // 9B U3 (PRD §4.7): Home is the ROUTER, so it is the first entry — the
+  // way back to "what needs me now" from anywhere in the circle.
+  { key: 'home', label: 'Home', group: 'primary', href: (c) => `/${c}` },
   { key: 'inbox', label: 'Care Inbox', group: 'primary', href: (c) => `/${c}/inbox` },
   { key: 'upload', label: 'Add a document', group: 'primary', href: (c) => `/${c}/upload` },
   { key: 'tasks', label: 'Tasks', group: 'primary', href: (c) => `/${c}/tasks` },
@@ -44,9 +47,17 @@ export const NAV_MANIFEST: NavEntry[] = [
  * COURTESY, asserted, never the mechanism (§4.0, §7.7): the gate and RLS
  * refuse a hand-constructed URL regardless of what is listed here.
  *
- *   · care_circle: Tasks · Account — only the work handed to them;
- *   · family: Timeline · Documents · People · Account;
+ *   · care_circle: Home · Tasks · Account — only the work handed to them;
+ *   · family: Home · Timeline · Documents · People · Account;
  *   · coordinator: everything.
+ *
+ * 9B U3: HOME IS IN EVERY TIER'S LIST. The router is the surface with the
+ * widest audience and each of its blocks renders only what its own caller
+ * can see — a caregiver's Home is her tasks and nothing else — so hiding it
+ * from a tier would hide a surface that person is entitled to, which is the
+ * opposite of what this courtesy is for. (PRD §4.1.4 rule 4 is untouched: it
+ * governs where an ACCEPTED INVITE lands, not what the nav offers once you
+ * are inside.)
  *
  * An unknown tier (the read failed, or no membership resolved) falls back
  * to the FULL manifest: hiding is a courtesy, and a failed read must never
@@ -55,11 +66,11 @@ export const NAV_MANIFEST: NavEntry[] = [
  */
 export function navFor(tier: string | null): NavEntry[] {
   if (tier === 'care_circle') {
-    return NAV_MANIFEST.filter((e) => ['tasks', 'account'].includes(e.key));
+    return NAV_MANIFEST.filter((e) => ['home', 'tasks', 'account'].includes(e.key));
   }
   if (tier === 'family') {
     return NAV_MANIFEST.filter((e) =>
-      ['timeline', 'documents', 'people', 'account'].includes(e.key),
+      ['home', 'timeline', 'documents', 'people', 'account'].includes(e.key),
     );
   }
   return NAV_MANIFEST;

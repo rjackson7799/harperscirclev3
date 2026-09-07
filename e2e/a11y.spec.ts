@@ -556,6 +556,75 @@ test.describe('the D7 browser a11y leg', () => {
     await expect(page.locator('main .subject-label').first()).toContainText('Nell');
   });
 
+
+  // ==========================================================================
+  // 9B U4 · A11Y-13 — HOME, audited in BOTH of its states, because they are
+  // two surfaces and not one: the day-one card (one instruction, one address,
+  // and nothing else) and the router (five §4.7.2 blocks). Built INTO the
+  // surface rather than added after — G12 is the final gate, not the first
+  // check, and a structural accessibility failure found there is a redesign
+  // (§8.7).
+  // ==========================================================================
+  test('A11Y-13: Home audited in both states — the day-one card and the router — at 390px, headed and keyboard-operable', async ({
+    browser,
+    page,
+  }) => {
+    test.setTimeout(300_000);
+    const circle = await ensureCircle(browser);
+    await signIn(page);
+
+    // DAY ONE. This circle has never had an arrival, so Home is the card:
+    // axe at WCAG 2.2 AA with contrast on, the 44 px touch-target floor, no
+    // horizontal scroll at 390 px — and the ABSENCE set in the browser,
+    // where it is a rendered tree rather than a string.
+    await auditRoute(page, `/${circle}`);
+    await expect(page.locator('main')).toContainText('forwarding address');
+    expect(await page.locator('main ul, main ol, main input[type="checkbox"]').count()).toBe(0);
+    expect(await page.locator('main h2').count()).toBe(0);
+    expect(await page.locator('main h1').count()).toBe(1);
+
+    // THE ROUTER. One arrival and one filed row are what the blocks are made
+    // of; without them this would audit an empty page and prove nothing.
+    await ensureRecordRows(browser);
+    const subject = await query(
+      'select id from public.subjects where circle_id = $1 order by created_at limit 1',
+      [circle],
+    );
+    await query(
+      `insert into public.arrivals (id, circle_id, subject_id, channel, state,
+         sender_display_name, sender_address)
+       values (gen_random_uuid(), $1, $2, 'email', 'filed', 'Ridgeview Clinic',
+               'records@ridgeview.example')`,
+      [circle, subject.rows[0].id],
+      true,
+    );
+
+    await auditRoute(page, `/${circle}`);
+    // Every block is a section labelled BY ITS OWN HEADING — the landmark
+    // structure §8.7 asks for, asserted in the browser rather than inferred.
+    const sections = page.locator('main section[aria-labelledby]');
+    expect(await sections.count()).toBeGreaterThan(0);
+    for (const id of await sections.evaluateAll((els) =>
+      els.map((e) => e.getAttribute('aria-labelledby') ?? ''),
+    )) {
+      await expect(page.locator(`#${id}`)).toHaveCount(1);
+    }
+    // Positive control: the audit ran over real blocks, not an empty router.
+    await expect(page.locator('main')).toContainText('Recent activity');
+    // Emphasis is a WORD, never colour alone: the approver is named in text.
+    await expect(page.locator('main')).toContainText('approved by');
+
+    // Keyboard: every block's own heading link takes focus and shows a ring.
+    const headings = page.locator('main section[aria-labelledby] h2 a');
+    const n = await headings.count();
+    expect(n).toBeGreaterThan(0);
+    for (let i = 0; i < n; i++) {
+      await headings.nth(i).focus();
+      await expect(headings.nth(i)).toBeFocused();
+    }
+    // …and Home is reachable from the nav, on every screen, first.
+    await expect(page.locator(`nav.left-nav a[href="/${circle}"]`)).toHaveCount(1);
+  });
   test('A11Y-09: the filters and the assign flow, keyboard-operable end to end, at 390px and desktop', async ({
     browser,
   }) => {

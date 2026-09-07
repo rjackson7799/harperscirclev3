@@ -54,6 +54,9 @@ const DOCS_DETAIL_LEG =
 // else: the timeline routes share RECORD_LEG and have no claim to make.
 const CLAIM_LEG =
   'record.spec — "claim: a view-level member takes an unassigned task from her own screen, and no control is offered where the function would refuse (TSK-05, AC-TASK-1/2)"';
+// 9B U4 (slice-9 plan unit 4; A11Y-13): Home's own audit leg.
+const HOME_LEG =
+  'a11y.spec — "A11Y-13: Home audited in both states — the day-one card and the router — at 390px, headed and keyboard-operable"';
 export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/': {
     leg: 'redirect-only: routes by session to /setup or /sign-in; no rendered surface of its own — both destinations are audited',
@@ -76,6 +79,10 @@ export const AUDIT_MANIFEST: Record<string, AuditClaim> = {
   '/styleguide': {
     leg: 'a11y.spec — "styleguide: contrast-on axe over every composition; reduced motion stills the pulse"',
   },
+  // 9B U4 (A11Y-13): Home's own leg, and it audits BOTH states — the
+  // day-one card and the router are two surfaces, not one, and an audit of
+  // either alone would leave the other unvisited.
+  '/[circle]': { leg: HOME_LEG },
   '/[circle]/timeline': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}` },
   '/[circle]/tasks': { leg: `${SHELL_LEG} (empty); ${RECORD_LEG}; ${CLAIM_LEG}` },
   '/[circle]/tasks/[task]': { leg: `${RECORD_LEG}; ${CLAIM_LEG}` },

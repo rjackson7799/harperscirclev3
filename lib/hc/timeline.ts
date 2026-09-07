@@ -237,6 +237,151 @@ export async function listEvents(
   });
 }
 
+/**
+ * HOME'S THREE SMALL READS (9B U2; PRD §4.7.2; HOME-04; plan Q5 point 3).
+ *
+ * `listEvents` above orders `sort_at asc` with `limit 300`. Taking the TAIL
+ * of that for "the last few filings" is correct on a small circle and
+ * SILENTLY WRONG past 300 events — the most recent filings are exactly the
+ * rows the cap drops. That is `OW-26`'s defect class (a limit with no cursor
+ * on the surface whose purpose is to show the recent thing), and Home does
+ * not repeat it: each of the three below orders the way it reads and takes
+ * its own small limit, so the cap can only drop rows the block was never
+ * showing.
+ *
+ * All three ride EVENT_SELECT unchanged — the timeline's own read, its own
+ * joins, its own RLS. Home composes; it does not re-ask.
+ */
+const HOME_LIMIT_MAX = 20;
+const homeLimit = (n: number) => Math.max(1, Math.min(Math.trunc(n), HOME_LIMIT_MAX));
+
+/**
+ * PICK THE ROWS BEFORE PAYING FOR THEM (9B U4, the measured breach).
+ *
+ * The first shape of these three reads wrapped EVENT_SELECT and ordered the
+ * wrapper. That makes the database compute the whole select list — five
+ * joins, a lateral, and a jsonb_agg over each event's linked documents — for
+ * EVERY event in the circle, and only then sort and take four. Measured at
+ * 2,021 events: `recentEvents` p95 555 ms, `latestEventPerSubject` 556 ms,
+ * `upcomingEvents` 385 ms, against PRF-06's 250 ms page tripwire, with the
+ * page itself at p95 2,797 ms against §13.2's 1,500.
+ *
+ * So the id is chosen by a cheap query over the base table — same circle,
+ * same `deleted_at is null`, and RLS decides visibility on
+ * `public.timeline_events` exactly as it does for the full read, so nothing
+ * widens — and EVENT_SELECT then runs for those few ids alone. The outer
+ * ORDER BY is restated because `in (…)` does not preserve one.
+ *
+ * `SORT_AT_I` is the same expression EVENT_SELECT computes as `sort_at`,
+ * over the inner alias. It is written once here so the two cannot drift.
+ */
+const SORT_AT_I = `coalesce((i.occurred_on::timestamp + interval '12 hours') at time zone 'UTC',
+                            i.instant,
+                            i.local_at at time zone 'UTC')`;
+const INNER_EVENTS = `select i.id from public.timeline_events i
+                       where i.circle_id = $1 and i.deleted_at is null`;
+
+/** "Recent activity" — the last few FILINGS, newest filed first, each
+ *  carrying its approver (§4.7.2's "with who approved them"). */
+export async function recentEvents(
+  claims: RequestClaims,
+  circleId: string,
+  limit = 4,
+): Promise<EventRow[]> {
+  if (!UUID_RE.test(circleId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<EventSql>(
+      `${EVENT_SELECT} and e.id in (
+         ${INNER_EVENTS}
+          order by i.approved_at desc, i.id desc
+          limit $2)
+        order by e.approved_at desc, e.id desc`,
+      [circleId, homeLimit(limit)],
+    );
+    return r.rows.map(toRow);
+  });
+}
+
+/** "What's coming" — dated items ALREADY IN THE RECORD, soonest first, from
+ *  now forward. Not a calendar: Phase 1 has no calendar sync, and an event
+ *  with no date of its own is not "coming". */
+export async function upcomingEvents(
+  claims: RequestClaims,
+  circleId: string,
+  limit = 4,
+): Promise<EventRow[]> {
+  if (!UUID_RE.test(circleId)) return [];
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<EventSql>(
+      // The future is chosen by PLAIN COLUMNS first — a leakproof
+      // comparison Postgres may evaluate before the row policy, so the
+      // policy is asked about the few dated-ahead rows rather than about
+      // every event in the circle. The sort expression then orders that
+      // small set. (9B U4: the same query filtering on the coalesce alone
+      // measured p95 745 ms at 2,021 events.)
+      `${EVENT_SELECT} and e.id in (
+         ${INNER_EVENTS}
+            and (i.occurred_on >= current_date
+                 or i.instant >= now()
+                 or (i.is_floating and i.local_at >= (now() at time zone 'UTC')))
+            and ${SORT_AT_I} >= now()
+          order by ${SORT_AT_I} asc, i.id
+          limit $2)
+        order by coalesce((e.occurred_on::timestamp + interval '12 hours') at time zone 'UTC',
+                          e.instant, e.local_at at time zone 'UTC') asc, e.id`,
+      [circleId, homeLimit(limit)],
+    );
+    return r.rows.map(toRow);
+  });
+}
+
+/**
+ * "How each subject is" — the most recent thing on each subject's record,
+ * keyed by subject id.
+ *
+ * TWO THINGS IT IS NOT, and both are deliberate:
+ *
+ *   · It is not "what's coming". A dated-ahead appointment is excluded — that
+ *     block exists and this one would be lying about the present if it showed
+ *     one. The exclusion is on PLAIN COLUMNS so the row policy is asked about
+ *     fewer rows.
+ *   · Among what has happened it takes the LATEST EVENT DATE, not the most
+ *     recently filed: "the most recent thing that happened" is about when it
+ *     happened. An undated event is on the record but not in time, so it
+ *     stands last rather than first.
+ *
+ * THIS IS THE ONE HOME READ STILL OVER PRF-06's 250 ms PAGE TRIPWIRE — p95
+ * 373 ms at 2,021 events (9B U4). Its ordering is an expression no index
+ * covers, so the row policy is asked about every past event in the circle.
+ * The two cheaper shapes were tried and rejected on their own evidence: a
+ * per-subject lateral ordered by the indexed `approved_at` TIMED OUT (the
+ * policy is evaluated per candidate row and the limit cannot be pushed
+ * through it), and ordering by filed time instead of event time is a change
+ * of MEANING, not of shape. The residual is recorded for the round rather
+ * than paid for with a migration slot no session may spend on its own.
+ */
+export async function latestEventPerSubject(
+  claims: RequestClaims,
+  circleId: string,
+): Promise<Map<string, EventRow>> {
+  if (!UUID_RE.test(circleId)) return new Map();
+  return withRequestRole('authenticated', claims, async (q) => {
+    const r = await q.query<EventSql>(
+      `${EVENT_SELECT} and e.id in (
+         select distinct on (i.subject_id) i.id
+           from public.timeline_events i
+          where i.circle_id = $1 and i.deleted_at is null
+            and (i.occurred_on <= current_date
+                 or i.instant <= now()
+                 or (i.is_floating and i.local_at <= (now() at time zone 'UTC'))
+                 or (i.occurred_on is null and i.instant is null and i.local_at is null))
+          order by i.subject_id, ${SORT_AT_I} desc nulls last, i.approved_at desc, i.id desc)`,
+      [circleId],
+    );
+    return new Map(r.rows.map((row) => [row.subject_id, toRow(row)]));
+  });
+}
+
 /** One event, or null in ONE shape for foreign, nonexistent, deleted,
  *  below-summary and malformed alike. */
 export async function eventById(claims: RequestClaims, circleId: string, eventId: string): Promise<EventRow | null> {

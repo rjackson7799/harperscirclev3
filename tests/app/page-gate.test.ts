@@ -97,6 +97,14 @@ const sp = (s: Record<string, string> = {}) => Promise.resolve(s);
  *  getClaims directly and are named in lib/auth/gate.ts). */
 const GATED: Record<string, Entry> = {
   // ---- the ten pages ------------------------------------------------------
+  // 9B U1: Home. It takes params only — no searchParams — so the shape of
+  // its unavailable case is its own.
+  '/[circle]': {
+    kind: 'page',
+    next: `/${CIRCLE}`,
+    load: () => import('@/app/(app)/[circle]/page'),
+    props: { params: params({ circle: CIRCLE }) },
+  },
   '/[circle]/inbox': {
     kind: 'page',
     next: `/${CIRCLE}/inbox`,
@@ -391,9 +399,10 @@ describe('GTE-01 · the gated set is PINNED to the filesystem both ways', () => 
     expect(stale, `entries with no gated file behind them: ${stale.join(', ')}`).toEqual([]);
   });
 
-  it('the D15 enumeration holds on disk, plus 7B, 7C C2, 8B and 8C: ten + three + one + one pages, five + one + five + three + one form routes, one layout', () => {
+  it('the D15 enumeration holds on disk, plus 7B, 7C C2, 8B, 8C and 9B: ten + three + one + one + one pages, five + one + five + three + one form routes, one layout', () => {
     const kinds = Object.values(GATED).map((e) => e.kind);
-    expect(kinds.filter((k) => k === 'page').length).toBe(20);
+    // 9B U1 adds Home: the twenty-first page.
+    expect(kinds.filter((k) => k === 'page').length).toBe(21);
     // 8C U1 adds the claim: the fifth task write, the seventeenth form route.
     expect(kinds.filter((k) => k === 'route').length).toBe(17);
     expect(kinds.filter((k) => k === 'layout').length).toBe(1);
