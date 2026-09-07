@@ -58,3 +58,19 @@ This proves restricted-tier Home composition and removal for this minimal subjec
 The installed local Playwright runner offers an alternative to the failed interactive-browser attachment without adding a service. A separate read-only staging smoke harness was prepared with one headless browser, an exact-origin deployment-access header, phone viewport, screenshots, overflow and WCAG checks. It does not start local web servers or claim to replace the qualifying nine-file gate.
 
 The attempt stopped before browser launch: free memory was **501 MiB**, below the retained **1.2 GiB** browser floor. Under the shared preflight lease, the seven idle local Supabase containers were temporarily stopped without deletion to attempt to free memory, then all seven were restarted in `finally`; subsequent inspection confirmed recovery. No browser assertion ran. Evidence: `staging-browser-smoke.json` and the task tool record. The local full application suite was not rerun for these evidence-only updates.
+
+## Controlled runtime database failure — 2026-09-07 10:29 UTC
+
+After explicit owner approval of the prepared payload and temporary deployment, created protected preview `dpl_ADenBaKhu5bdmT6BfdfUiYjyqxxs` (`harperscirclev3-staging-1wqs680a3-honu-vibe.vercel.app`) from clean commit `facff060cac2b842c81854c218ffaa56308adfca`. Only its runtime `HC_DB_URL` was overridden to an intentionally unavailable loopback connection. No shared project variable, database policy or stable alias was edited. The remote build and TypeScript passed, retaining the existing OCR tracing warning. The CLI rejected the production-only `--skip-domain` flag before creating anything; the actual deployment used the default preview target, verified as `null` in the result.
+
+Using a real disposable signup session for `hc-fault-1788776959632@example.invalid`, the HTTP harness verified all three cases:
+
+| Case | Observed result |
+|---|---|
+| Normal preview before fault | 200, signed-in caller visible, `Nothing here needs you right now.`, no retry alert |
+| Temporary fault preview | 200, signed-in caller visible, `We couldn't load this just now. Nothing has been lost — try again in a moment.`, retry link to the same Home, no empty-success message |
+| Normal preview after fault | Same successful empty state as the first control |
+
+The harness removed disposable password/form/cookie/body/header files. The synthetic unverified account remains, without a membership. The temporary deployment was removed by exact ID after the passing test. Read-only alias checks before and after confirmed that `harperscirclev3-staging-preview.vercel.app` still points to `dpl_D6jKeTX89tqQBoXVqAoXYTUjYjuS`.
+
+Evidence: handoff workspace `staging-home-fault-smoke.json`, `staging-home-fault-smoke.mjs`, `staging-fault-upload-manifest.json`, and the task's deployment/build/removal records. This is controlled hosted proof of the request-role database failure path reaching Home's retry state. It does not independently inject each Supabase subjects/count error from F-1, prove a timeout case, or supply browser evidence. The earlier mocked regression cases retain those narrower assertions. No coverage row or complete finding disposition is promoted.

@@ -40,7 +40,7 @@ The existing protected Supabase/Vercel staging setup now has HTTP evidence for u
 
 | Remaining acceptance | Current disposition |
 |---|---|
-| F-1 operational failure | Application regression proof exists; controlled hosted failure-state proof still pending. Minimal restricted-tier and removed-member HTTP composition now passed; populated permission variants and browser behavior remain pending. |
+| F-1 operational failure | Application regression proof exists. Controlled hosted request-role database outage now reaches the retry state, with normal-preview controls before/after; individual Supabase error injections and timeout/browser proof remain pending. Minimal restricted-tier and removed-member HTTP composition passed; populated permission variants remain pending. |
 | F-2 temporal correctness and performance | Real-PostgreSQL temporal regression proof exists. Representative current query/page p95 and browser date behavior remain pending; empty fixtures and network/CLI overhead are not substitutes. |
 | F-3 fixture isolation and navigation | Completion-to-Home HTTP passed, but isolated/after-prior-legs/full-gate browser execution remains pending. |
 | OW-35 | The inbox assertion is written; qualifying browser execution remains pending. |
