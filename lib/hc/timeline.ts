@@ -284,8 +284,12 @@ const INNER_EVENTS = `select i.id from public.timeline_events i
 // uses the recorded zone, with the subject's zone as the legacy fallback.
 const SUBJECT_EVENTS = `select i.id from public.timeline_events i
                          join public.subjects hs on hs.id = i.subject_id
+                         left join pg_timezone_names htz
+                           on htz.name = coalesce(i.occurred_zone, hs.timezone)
                         where i.circle_id = $1 and i.deleted_at is null`;
-const LOCAL_DAY_I = `(now() at time zone coalesce(i.occurred_zone, hs.timezone))::date`;
+// Zone columns historically accepted arbitrary text. A non-matching zone
+// leaves placement unknown, not an exception or an invented fallback.
+const LOCAL_DAY_I = `(now() at time zone htz.name)::date`;
 
 /** "Recent activity" — the last few FILINGS, newest filed first, each
  *  carrying its approver (§4.7.2's "with who approved them"). */
@@ -373,6 +377,8 @@ export async function latestEventPerSubject(
          select distinct on (i.subject_id) i.id
            from public.timeline_events i
            join public.subjects hs on hs.id = i.subject_id
+           left join pg_timezone_names htz
+             on htz.name = coalesce(i.occurred_zone, hs.timezone)
           where i.circle_id = $1 and i.deleted_at is null
             and (i.occurred_on < ${LOCAL_DAY_I}
                  or (i.occurred_on is null and not i.is_floating and i.instant <= now())
