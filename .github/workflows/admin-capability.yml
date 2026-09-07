@@ -87,6 +87,8 @@ jobs:
           docker exec -i supabase_db_HarpersCirclev3 psql -U postgres -d hc_admin_probe -v ON_ERROR_STOP=1 < scripts/test-admin-boundary.sql 2>&1 | tee admin-boundary.log
       - name: Full database regression suite
         run: set -o pipefail; npm run test:db 2>&1 | tee admin-pgtap.log
+      - name: Database lint
+        run: set -o pipefail; npm run db:verify 2>&1 | tee admin-db-lint.log
       - name: Admin application and factory contracts
         run: npx vitest run tests/app/admin-read.test.ts tests/app/admin-session.test.ts tests/db/factories.test.ts
       - uses: actions/upload-artifact@v4
@@ -100,4 +102,5 @@ jobs:
             admin-boundary.log
             admin-pgtap.log
             admin-upgrade.log
+            admin-db-lint.log
           retention-days: 14
