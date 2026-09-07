@@ -33,3 +33,13 @@ This earns a narrower staging check of unverified setup, coordinator day-one Hom
 Six fresh read-only HTTP checks against the same immutable deployment passed: the synthetic circle's Home, Inbox, Tasks, People and Timeline, plus Home for a nonexistent circle identifier. Each returned HTTP 307 to sign-in with the exact requested path preserved, and `Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate`. None of the response bodies contained the synthetic subject's name. The existing and nonexistent Home requests had the same redirect pattern; this limited observation is not a complete enumeration or timing audit.
 
 Evidence: `staging-signed-out-check.json` in the handoff workspace, produced by `staging-signed-out-check.mjs`. Requests used Vercel deployment access but no application session and did not follow redirects. No account, data or credential was created or changed. This checks signed-out navigation and response caching, not authenticated restricted-member authorization. All existing open gates remain pending.
+
+## Signed-in nonmember follow-up — 2026-09-07 09:39 UTC
+
+Created one synthetic outsider through the actual signup route: `hc-outsider-1788773990834@example.invalid`. Signup returned 303 to setup. Without completing setup or assigning any permission, its application session requested the existing synthetic circle's Home and the nonexistent-circle Home used above.
+
+Both returned HTTP 200 with identical parsed main text: `HomeNothing here needs you right now.` Both displayed the caller's account email in the shell, contained no Synthetic Nell text anywhere in the response HTML, rendered no forwarding-address element, and returned private/no-store cache headers. This matches Home's successful empty-read behavior for a caller without membership; it is not a claim of HTTP 403 enforcement or a complete existence/timing audit.
+
+A separate read-only query of `auth.users`, `circle_members` and `circles`, scoped to that synthetic email, confirmed: unverified account, **zero memberships, zero circles created**. No verification stamp or permission was changed. The synthetic account remains in staging; its disposable password and cookie/form/header/body files were removed by the harness.
+
+Evidence: handoff workspace `staging-nonmember-smoke.mjs`, `staging-nonmember-smoke.json`, and `staging-nonmember-state.sql`; database query output is retained in the task's tool record. This adds a signed-in nonmember HTTP case to the earlier coordinator and signed-out cases. It does not cover restricted member tiers, revocation, populated hidden records, operational faults, latency or browser interaction. OW-34 and the existing coverage dispositions remain pending. No product code or deployment changed.
