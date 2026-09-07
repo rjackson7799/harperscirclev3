@@ -426,13 +426,17 @@ test.describe('the 7C people legs', () => {
     const marisolHrefs = await marisolNav.evaluateAll((as) =>
       as.map((a) => (a as HTMLAnchorElement).getAttribute('href')),
     );
-    expect(marisolHrefs).toEqual([`/${f.circleId}/tasks`, '/account']);
+    // 9B U3: Home is in every tier nav and is first — the router is the
+    // surface with the widest audience, and each block on it renders only
+    // what its own caller can see.
+    expect(marisolHrefs).toEqual([`/${f.circleId}`, `/${f.circleId}/tasks`, '/account']);
 
     await dan.page.goto(`/${f.circleId}/timeline`);
     const danHrefs = await dan.page
       .locator('nav.left-nav a')
       .evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute('href')));
     expect(danHrefs).toEqual([
+      `/${f.circleId}`,
       `/${f.circleId}/timeline`,
       `/${f.circleId}/documents`,
       `/${f.circleId}/people`,

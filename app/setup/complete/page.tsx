@@ -89,7 +89,7 @@ export default async function CompletePage({
       <div className="subject-block">
         {verified ? (
           <p>
-            <a className="button-primary" href={`/${circleId}/invite`}>
+            <a className="button-secondary" href={`/${circleId}/invite`}>
               Invite someone
             </a>
           </p>
@@ -97,6 +97,18 @@ export default async function CompletePage({
           <p className="auth-meta">{completionPromises.inviteDisabledReason}</p>
         )}
         <p>{completionPromises.instruction}</p>
+        {/* 9B U3 — THE POST-SETUP DESTINATION. Until Home existed this
+            screen's only way forward was Invite someone, and a founder
+            returning through / resumes into setup step 4 forever. On day
+            one Home is this screen's own job continued: the forwarding
+            address and the one instruction (§4.7.1). It does not wait on
+            the mailbox — an unverified founder cannot invite yet, and Home
+            is not an invite. */}
+        <p>
+          <a className="button-primary" href={`/${circleId}`}>
+            Go to {subjects.map((s) => s.first_name).join(' & ')}&apos;s circle
+          </a>
+        </p>
       </div>
     </main>
   );
