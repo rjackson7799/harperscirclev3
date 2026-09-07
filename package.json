@@ -19,7 +19,9 @@
     "db:verify": "supabase db lint --fail-on warning",
     "test:app": "vitest run --reporter=default --reporter=json --outputFile=.vitest/run.json",
     "test:e2e": "node scripts/preflight.mjs --for e2e -- playwright test",
-    "preflight": "node scripts/preflight.mjs"
+    "preflight": "node scripts/preflight.mjs",
+    "verify:local": "node scripts/preflight.mjs --for db -- npm run verify:local:steps",
+    "verify:local:steps": "npm run lint && npm run test:app && npm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.120.0",
