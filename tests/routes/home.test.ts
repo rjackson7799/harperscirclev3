@@ -504,3 +504,99 @@ describe('HOME-03 · every number is a count of rows the caller can see', () => 
     }
   });
 });
+
+// ============================================================================
+// 9B U4 · HOME-05's app half — ONE budget around the WHOLE composition, and
+// the overrun rendering the honest slow answer (PRD §13.2; OW-03's ruling).
+//
+// Five budgets that each pass while the page takes six seconds is the exact
+// failure a budget exists to prevent, which is why the assertion is on ONE.
+// The p95 itself is MEASURED at the 9B head by scripts/bench/home-p95.mjs and
+// recorded in the deltas ADR — a number nothing here can assert.
+// ============================================================================
+describe('HOME-05 · one budget, and a named state rather than a spinner', () => {
+  it('an AnswerBudgetExceeded from ANY of the eight reads renders the honest slow answer', async () => {
+    // The REAL class: withPageBudget catches by instance, and a look-alike
+    // is (correctly) rethrown — a page must not be fooled by a name.
+    const { AnswerBudgetExceeded } = await import('@/lib/http/budget');
+    timelineHc.recentEvents.mockRejectedValue(new AnswerBudgetExceeded('recentEvents', 15_000));
+    const html = await renderHome();
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('taking longer than usual');
+    expect(html).toContain(`href="/${CIRCLE}"`);
+  });
+
+  it('a refused read is an ERROR STATE with "try again" — never a throw, never an empty Home', async () => {
+    tasksHc.listTasks.mockRejectedValue(new Error('permission denied for table tasks'));
+    const html = await renderHome();
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('try again');
+    // and it is NOT mistaken for day one
+    expect(html).not.toContain('harperscircle.app');
+  });
+
+  it('signed out ⇒ the sign-in redirect carries Home as `next`', async () => {
+    session.readLiveSession.mockResolvedValue({ kind: 'signed-out' });
+    await expect(renderHome()).rejects.toThrow(
+      `NEXT_REDIRECT /sign-in?next=${encodeURIComponent(`/${CIRCLE}`)}`,
+    );
+  });
+
+  it('every read is RACED through the one budget — none escapes it', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('app/(app)/[circle]/page.tsx', 'utf8');
+    expect(src.match(/withPageBudget\(/g)?.length, 'exactly ONE budget').toBe(1);
+    // Eight reads, eight races: the day-one branch and the five blocks.
+    expect(src.match(/budget\.race\(/g)?.length).toBe(8);
+    // Nothing awaits a read outside the race.
+    expect(src).not.toMatch(/await\s+(readArrivals|readSubjects|readNeedsReview|listTasks|myMembership|recentEvents|upcomingEvents|latestEventPerSubject)\(/);
+  });
+});
+
+// ============================================================================
+// A11Y-13 · Home's structure, built INTO the surface (design_spec §8.7; G12 is
+// the final gate, not the first check — a structural failure found there is a
+// redesign, not a fix).
+//
+// The browser half — axe at WCAG 2.2 AA, 390 px, keyboard — is the a11y.spec
+// leg. What is assertable over the rendered tree is here: the landmark
+// structure, every block headed and its heading BOUND to its section, and no
+// meaning carried by colour alone.
+// ============================================================================
+describe('A11Y-13 · landmark structure and headed blocks, over the rendered tree', () => {
+  beforeEach(() => {
+    TABLES.set('arrivals', { data: [ARRIVED], error: null, count: 1 });
+    FILTERED.set('arrivals:state=proposals_ready', { data: [ARRIVED], error: null, count: 2 });
+    tasksHc.listTasks.mockResolvedValue([task({ owner_member_id: ME })]);
+    timelineHc.latestEventPerSubject.mockResolvedValue(new Map([[NELL.id, event()]]));
+    timelineHc.upcomingEvents.mockResolvedValue([event({ id: 'eeeeeeee-0000-4000-8000-0000000000e2' })]);
+    timelineHc.recentEvents.mockResolvedValue([event({ id: 'eeeeeeee-0000-4000-8000-0000000000e3' })]);
+  });
+
+  it('every block is a section whose aria-labelledby names its own heading', async () => {
+    const html = await renderHome();
+    const labelled = [...html.matchAll(/aria-labelledby="([^"]+)"/g)].map((m) => m[1]);
+    expect(labelled.length).toBeGreaterThanOrEqual(5);
+    for (const id of labelled) {
+      expect(html, `no heading carries id="${id}"`).toContain(`id="${id}"`);
+    }
+    // One h1 (the page's own), and every other block heading an h2 — never a
+    // level skipped, never a heading standing outside its section.
+    expect(html.match(/<h1/g)?.length).toBe(1);
+    expect(html).not.toContain('<h3');
+  });
+
+  it('the day-one card is reachable and labelled — the address is text, not an image or a bare mono blob', async () => {
+    TABLES.set('arrivals', { data: [], error: null, count: 0 });
+    const html = await renderHome();
+    expect(html).toContain('forwarding address');
+    expect(html).toContain('nell.k7m2qp@harperscircle.app');
+    expect(html).not.toContain('<img');
+  });
+
+  it('nothing on Home carries meaning by colour alone — every emphasis is a word', async () => {
+    const html = await renderHome();
+    expect(html).not.toMatch(/style="[^"]*color/i);
+    expect(html).not.toMatch(/class="[^"]*\b(red|green|amber|danger|warning|success)\b/i);
+  });
+});
