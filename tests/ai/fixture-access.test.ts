@@ -25,7 +25,8 @@ describe('staging fixture access boundary', () => {
   });
   it('refuses missing and incorrect credentials before parsing or recording the body', async () => {
     const server = await start({ accessKey: KEY });
-    for (const headers of [{}, { 'x-api-key': `${KEY}wrong` }]) {
+    const rejectedHeaders: Record<string, string>[] = [{}, { 'x-api-key': `${KEY}wrong` }];
+    for (const headers of rejectedHeaders) {
       const response = await fetch(`${server.url}/v1/messages`, {
         method: 'POST', headers, body: 'invalid JSON that must never reach the recorder',
       });

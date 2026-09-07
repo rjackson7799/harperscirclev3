@@ -56,6 +56,7 @@
 // ============================================================================
 
 import http from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -280,6 +281,13 @@ function messageEnvelope(model, text, extra = {}) {
 }
 
 export async function startAnthropicFixtureServer(options = {}) {
+  const host = options.host ?? '127.0.0.1';
+  const accessKey = options.accessKey;
+  const loopback = host === '127.0.0.1' || host === '::1';
+  if ((!loopback && accessKey === undefined) ||
+      (accessKey !== undefined && (typeof accessKey !== 'string' || accessKey.trim().length < 32))) {
+    throw new Error('fixture: an access key of at least 32 characters is required');
+  }
   const root = options.root ?? process.cwd();
   const corpus = loadCorpus(root);
   const requests = [];
@@ -287,10 +295,20 @@ export async function startAnthropicFixtureServer(options = {}) {
   const server = http.createServer((req, res) => {
     // A health endpoint, so the local gate can wait for this server the same
     // way Playwright waits for the app (webServer.url needs a 2xx).
-    if (req.method === 'GET') {
+    if (req.method === 'GET' && (accessKey === undefined || req.url === '/')) {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true, fixture: 'anthropic-messages' }));
       return;
+    }
+    if (accessKey !== undefined) {
+      const supplied = req.headers['x-api-key'];
+      const expected = Buffer.from(accessKey);
+      const actual = typeof supplied === 'string' ? Buffer.from(supplied) : Buffer.alloc(0);
+      if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+        res.writeHead(401, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ type: 'error', error: { type: 'authentication_error' } }));
+        return;
+      }
     }
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
@@ -307,7 +325,10 @@ export async function startAnthropicFixtureServer(options = {}) {
       // The HEADERS ride beside the body (R2/F-12): `server-side-fallback` is
       // an `anthropic-beta` header value, not a body key, so an absence
       // asserted over `raw` alone could never fail. Node lower-cases the names.
-      requests.push({ url: req.url, headers: { ...req.headers }, raw, body });
+      const headers = { ...req.headers };
+      delete headers['x-api-key'];
+      delete headers.authorization;
+      requests.push({ url: req.url, headers, raw, body });
 
       const text = requestText(body);
       const model = body.model ?? 'claude-opus-5';
@@ -402,9 +423,12 @@ export async function startAnthropicFixtureServer(options = {}) {
     });
   });
 
-  await new Promise((resolve) => server.listen(options.port ?? 0, '127.0.0.1', resolve));
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(options.port ?? 0, host, resolve);
+  });
   const address = server.address();
-  const url = `http://127.0.0.1:${address.port}`;
+  const url = `http://${host === '::1' ? '[::1]' : host === '0.0.0.0' ? '127.0.0.1' : host}:${address.port}`;
 
   return {
     url,
@@ -431,7 +455,13 @@ export async function startAnthropicFixtureServer(options = {}) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const portArg = process.argv.indexOf('--port');
   const port = portArg > 0 ? Number(process.argv[portArg + 1]) : 8787;
-  const fixture = await startAnthropicFixtureServer({ port });
+  const fixture = await startAnthropicFixtureServer({
+    port,
+    host: process.env.HC_FIXTURE_BIND_HOST ?? '127.0.0.1',
+    accessKey: process.env.HC_FIXTURE_ACCESS_KEY,
+  });
   console.log(`anthropic fixture server listening on ${fixture.url}`);
-  console.log('CI and the local gate speak to this; no credential is involved.');
+  console.log(process.env.HC_FIXTURE_ACCESS_KEY
+    ? 'Dedicated fixture access key required; no provider credential is used.'
+    : 'Local fixture mode; no provider credential is used.');
 }
