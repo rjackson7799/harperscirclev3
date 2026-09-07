@@ -282,11 +282,21 @@ const INNER_EVENTS = `select i.id from public.timeline_events i
                        where i.circle_id = $1 and i.deleted_at is null`;
 // A sort key is not a date's expiry instant (ADR-0048 F-2). Eligibility
 // uses the recorded zone, with the subject's zone as the legacy fallback.
-const SUBJECT_EVENTS = `select i.id from public.timeline_events i
+// The earliest recognized local date is a conservative candidate bound.
+// Plain-column filtering can avoid needless per-row policy work; the exact
+// local-day predicate below still decides eligibility under the same RLS.
+// Materialize once per statement, with no persisted time-zone cache.
+const SUBJECT_EVENTS = `with home_zones as materialized (
+                           select name, (now() at time zone name)::date local_day
+                             from pg_timezone_names
+                         )
+                         select i.id from public.timeline_events i
                          join public.subjects hs on hs.id = i.subject_id
-                         left join pg_timezone_names htz
+                         left join home_zones htz
                            on htz.name = coalesce(i.occurred_zone, hs.timezone)
-                        where i.circle_id = $1 and i.deleted_at is null`;
+                        where i.circle_id = $1 and i.deleted_at is null
+                          and (i.occurred_on >= (select min(local_day) from home_zones)
+                               or i.instant >= now())`;
 // Zone columns historically accepted arbitrary text. A non-matching zone
 // leaves placement unknown, not an exception or an invented fallback.
 const LOCAL_DAY_I = `(now() at time zone htz.name)::date`;
@@ -328,7 +338,7 @@ export async function upcomingEvents(
       // orders the selected rows but never decides temporal eligibility.
       `${EVENT_SELECT} and e.id in (
          ${SUBJECT_EVENTS}
-            and (i.occurred_on >= ${LOCAL_DAY_I}
+            and (i.occurred_on >= htz.local_day
                  or (i.occurred_on is null and not i.is_floating and i.instant >= now()))
           order by ${SORT_AT_I} asc, i.id
           limit $2)
