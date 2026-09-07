@@ -27,8 +27,8 @@ jobs:
           cache: npm
       - name: Install pinned tools
         run: npm ci
-      - name: Start disposable runner database
-        run: npx supabase db start
+      - name: Start disposable database and auth services together
+        run: npx supabase start -x studio,imgproxy,realtime,edge-runtime,logflare,vector,mailpit,postgres-meta,supavisor
       - name: Clone the fresh local database with its original owners and dependencies
         run: |
           set -euo pipefail
@@ -48,8 +48,6 @@ jobs:
       - name: Retain exact-source evidence
         if: always()
         run: git rev-parse HEAD > admin-capability-source.txt
-      - name: Start disposable auth services
-        run: npx supabase start -x studio,imgproxy,realtime,edge-runtime,logflare,vector,mailpit,postgres-meta,supavisor
       - name: Real MFA lifecycle and concurrent revocation
         run: node scripts/probe-admin-auth-live.mjs
       - uses: actions/upload-artifact@v4
