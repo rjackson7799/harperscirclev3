@@ -72,7 +72,11 @@ do $$ begin
   end;
   reset role;
 end $$;
+-- Preserve the documented maintenance creator even when fixture injection
+-- needs the platform owner of the audit table.
+set local role postgres;
 create view admin_meta.zz_future_probe as select 1 as n;
+reset role;
 select pg_temp.check_ok(not has_table_privilege('hc_admin','admin_meta.zz_future_probe','select'),'future views deny direct reads');
 
 select set_config('test.audit_count',(select count(*)::text from hc.admin_read_audit),true);

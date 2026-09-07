@@ -84,7 +84,9 @@ jobs:
       - name: Admin database boundary
         run: |
           set -euo pipefail
-          docker exec -i supabase_db_HarpersCirclev3 psql -U postgres -d hc_admin_probe -v ON_ERROR_STOP=1 < scripts/test-admin-boundary.sql 2>&1 | tee admin-boundary.log
+          # Owner privileges are needed only for fixture/audit-failure injection.
+          # The SQL helper explicitly SET ROLE hc_admin for every product read.
+          docker exec -i -e PGPASSWORD=postgres supabase_db_HarpersCirclev3 psql -U supabase_admin -d hc_admin_probe -v ON_ERROR_STOP=1 < scripts/test-admin-boundary.sql 2>&1 | tee admin-boundary.log
       - name: Full database regression suite
         run: set -o pipefail; npm run test:db 2>&1 | tee admin-pgtap.log
       - name: Database lint
