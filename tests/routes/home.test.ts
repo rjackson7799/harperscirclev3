@@ -31,7 +31,7 @@ vi.mock('@/lib/auth/session', () => session);
 
 type Result = {
   data: unknown[] | null;
-  error: { message: string } | null;
+  error: { message: string; code?: string } | null;
   /** supabase-js's exact count, when the read asked for one. */
   count?: number | null;
 };
@@ -75,7 +75,7 @@ vi.mock('@/lib/db/user', () => ({
 // 9B U4: the block reads `myOpenTasks` — the caller's own open work, chosen
 // and limited IN SQL. The predicate it used to apply app-side is proven where
 // it now lives, in tests/hc/tasks.test.ts against the live stack.
-const tasksHc = { myOpenTasks: vi.fn() };
+const tasksHc = { myOpenTasks: vi.fn(), myMembership: vi.fn() };
 vi.mock('@/lib/hc/tasks', async () => {
   const actual = await vi.importActual<typeof import('@/lib/hc/tasks')>('@/lib/hc/tasks');
   return { ...actual, ...tasksHc };
@@ -207,6 +207,7 @@ beforeEach(() => {
   TABLES.set('subjects', { data: [NELL], error: null });
   TABLES.set('arrivals', { data: [], error: null, count: 0 });
   tasksHc.myOpenTasks.mockResolvedValue([]);
+  tasksHc.myMembership.mockResolvedValue({ id: ME, tier: 'coordinator', subjects: [] });
 
   timelineHc.latestEventPerSubject.mockResolvedValue(new Map());
   timelineHc.upcomingEvents.mockResolvedValue([]);
@@ -273,7 +274,7 @@ describe('HOME-01 · day one — one instruction, the forwarding address, and NO
   // read empty. Here the claim is only the one this case is about: a failed
   // read never produces the day-one card.
   it('a caller whose arrivals read FAILED is never shown the day-one card', async () => {
-    TABLES.set('arrivals', { data: null, error: { message: 'permission denied' } });
+    TABLES.set('arrivals', { data: null, error: { message: 'permission denied', code: '42501' } });
     const text = words(await renderHome());
     expect(text).not.toContain(completionPromises.instruction);
     expect(text).not.toContain('nell.k7m2qp@harperscircle.app');
@@ -453,7 +454,7 @@ describe('HOME-02/04 · the router — five blocks, each from its destination su
   // and its honest line — never the day-one card, never an instruction
   // addressed to the coordinator.
   it('a caller whose arrivals read FAILED still gets the blocks she CAN see', async () => {
-    TABLES.set('arrivals', { data: null, error: { message: 'permission denied' } });
+    TABLES.set('arrivals', { data: null, error: { message: 'permission denied', code: '42501' } });
     timelineHc.recentEvents.mockResolvedValue([event()]);
     const text = words(await renderHome());
     expect(text).toContain('Recent activity');
@@ -611,5 +612,35 @@ describe('A11Y-13 · landmark structure and headed blocks, over the rendered tre
     const html = await renderHome();
     expect(html).not.toMatch(/style="[^"]*color/i);
     expect(html).not.toMatch(/class="[^"]*\b(red|green|amber|danger|warning|success)\b/i);
+  });
+});
+
+
+describe('round 33: operational failures and coordinator-only day one', () => {
+  it.each(['subjects', 'review', 'arrivals'])('%s operational failure renders retry, never empty success', async (read) => {
+    TABLES.set('subjects', { data: [], error: null });
+    TABLES.set('arrivals', { data: [ARRIVED], error: null });
+    const failure = { data: null, error: { code: '57014', message: 'statement timeout' }, count: null };
+    if (read === 'review') FILTERED.set('arrivals:state=proposals_ready', failure);
+    else TABLES.set(read, failure);
+    const html = await renderHome();
+    expect(html).toContain('role="alert"');
+    expect(words(html)).toContain('try again');
+    expect(words(html)).not.toContain('Nothing here needs you right now.');
+  });
+  it.each(['care_circle', 'family', null])('tier %s gets its visible tasks, not onboarding, when arrivals are empty', async (tier) => {
+    tasksHc.myMembership.mockResolvedValue(tier ? { id: ME, tier, subjects: [] } : null);
+    tasksHc.myOpenTasks.mockResolvedValue([task({ owner_member_id: ME })]);
+    const text = words(await renderHome());
+    expect(text).not.toContain(completionPromises.instruction);
+    expect(text).not.toContain('forwarding address');
+    expect(text).toContain('My open tasks');
+    expect(text).toContain('Call the pharmacy');
+  });
+  it('membership failure is not evidence that the caller is a coordinator', async () => {
+    tasksHc.myMembership.mockRejectedValue(new Error('membership unavailable'));
+    const html = await renderHome();
+    expect(html).toContain('role="alert"');
+    expect(words(html)).not.toContain(completionPromises.instruction);
   });
 });
