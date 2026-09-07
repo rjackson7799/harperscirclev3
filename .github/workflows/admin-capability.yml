@@ -7,6 +7,8 @@ on:
       - '.github/workflows/admin-capability.yml'
       - 'scripts/probe-admin-auth-lifecycle.sql'
       - 'scripts/probe-admin-auth-live.mjs'
+      - 'scripts/test-admin-boundary.sql'
+      - 'supabase/migrations/**'
 
 permissions:
   contents: read
@@ -50,6 +52,10 @@ jobs:
         run: git rev-parse HEAD > admin-capability-source.txt
       - name: Real MFA lifecycle and concurrent revocation
         run: node scripts/probe-admin-auth-live.mjs
+      - name: Admin database boundary
+        run: |
+          set -euo pipefail
+          docker exec -i supabase_db_HarpersCirclev3 psql -U postgres -d hc_admin_probe -v ON_ERROR_STOP=1 < scripts/test-admin-boundary.sql 2>&1 | tee admin-boundary.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -58,4 +64,5 @@ jobs:
             admin-capability.log
             admin-capability-source.txt
             admin-live-result.json
+            admin-boundary.log
           retention-days: 14
