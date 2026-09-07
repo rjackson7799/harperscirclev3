@@ -29,18 +29,36 @@ import { completionPromises } from '@/lib/setup/completion-copy';
 const session = { readLiveSession: vi.fn() };
 vi.mock('@/lib/auth/session', () => session);
 
-type Result = { data: unknown[] | null; error: { message: string } | null };
+type Result = {
+  data: unknown[] | null;
+  error: { message: string } | null;
+  /** supabase-js's exact count, when the read asked for one. */
+  count?: number | null;
+};
 const TABLES = new Map<string, Result>();
+/** Two reads can share a table and ask different questions — the arrivals
+ *  the Care Inbox lists, and the ones waiting on a person. The FILTER is
+ *  what tells them apart, so the mock records it. */
+const FILTERED = new Map<string, Result>();
+const key = (table: string, col: string, val: unknown) => `${table}:${col}=${String(val)}`;
 
-/** supabase-js's builder is thenable at every link; the TABLE decides the
- *  answer, so one page can hold several reads that differ. */
+/** supabase-js's builder is thenable at every link; the table AND the
+ *  filters decide the answer, so one page can hold several reads that
+ *  differ. */
 function chain(table: string): Record<string, unknown> {
+  const filters: string[] = [];
   const proxy: Record<string, unknown> = {};
-  for (const m of ['select', 'eq', 'is', 'in', 'order', 'limit', 'single', 'maybeSingle', 'gte', 'not']) {
+  for (const m of ['select', 'is', 'in', 'order', 'limit', 'single', 'maybeSingle', 'gte', 'not']) {
     proxy[m] = () => proxy;
   }
-  const answer = (): Promise<unknown> =>
-    Promise.resolve(TABLES.get(table) ?? { data: [], error: null });
+  proxy.eq = (col: string, val: unknown) => {
+    filters.push(key(table, col, val));
+    return proxy;
+  };
+  const answer = (): Promise<unknown> => {
+    for (const f of filters) if (FILTERED.has(f)) return Promise.resolve(FILTERED.get(f));
+    return Promise.resolve(TABLES.get(table) ?? { data: [], error: null, count: 0 });
+  };
   proxy.then = (...a: unknown[]) => answer().then(...(a as [never]));
   proxy.catch = (...a: unknown[]) => answer().catch(...(a as [never]));
   return proxy;
@@ -51,6 +69,23 @@ vi.mock('@/lib/db/user', () => ({
     auth: { getClaims: vi.fn(), getUser: vi.fn() },
   }),
 }));
+
+// The router's four other blocks read through the typed wrappers, each one
+// the read its DESTINATION surface already makes (plan Q5; HOME-02).
+const tasksHc = { myMembership: vi.fn(), listTasks: vi.fn() };
+vi.mock('@/lib/hc/tasks', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/hc/tasks')>('@/lib/hc/tasks');
+  return { ...actual, ...tasksHc };
+});
+const timelineHc = {
+  latestEventPerSubject: vi.fn(),
+  upcomingEvents: vi.fn(),
+  recentEvents: vi.fn(),
+};
+vi.mock('@/lib/hc/timeline', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/hc/timeline')>('@/lib/hc/timeline');
+  return { ...actual, ...timelineHc };
+});
 
 vi.mock('next/navigation', () => ({
   redirect: (path: string) => {
@@ -95,13 +130,84 @@ function words(html: string): string {
     .trim();
 }
 
+/** One arrival in the Care Inbox: enough to leave the day-one branch. */
+const ARRIVED = {
+  id: '55555555-0000-4000-8000-000000000005',
+  state: 'filed',
+  received_at: '2026-09-01T09:00:00Z',
+  channel: 'email',
+  sender_display_name: 'Ridgeview Clinic',
+  sender_address: 'records@ridgeview.example',
+};
+
+function event(over: Record<string, unknown> = {}) {
+  return {
+    id: 'eeeeeeee-0000-4000-8000-0000000000e1',
+    circle_id: CIRCLE,
+    subject_id: NELL.id,
+    subject_name: 'Nell',
+    subject_seq: 1,
+    kind: 'medical',
+    summary: 'Discharge summary filed',
+    when: { kind: 'date', on: '2026-08-28' },
+    sort_at: '2026-08-28T12:00:00Z',
+    episode: null,
+    source: { kind: 'none' },
+    extraction: null,
+    linked_documents: [],
+    approved_at: '2026-08-29T10:00:00Z',
+    approver_display_name: 'Sarah',
+    ...over,
+  };
+}
+
+function task(over: Record<string, unknown> = {}) {
+  return {
+    id: 'aaaaaaaa-0000-4000-8000-0000000000a1',
+    circle_id: CIRCLE,
+    subject_id: NELL.id,
+    subject_name: 'Nell',
+    subject_seq: 1,
+    title: 'Call the pharmacy',
+    detail: null,
+    due_on: '2026-09-10',
+    due_zone: 'America/New_York',
+    status: 'open',
+    owner_member_id: '44444444-0000-4000-8000-000000000004',
+    owner_name: 'Sarah',
+    assigned_at: null,
+    assigned_by_name: null,
+    snooze_count: 0,
+    written_for_member_id: null,
+    written_from_task_id: null,
+    taint: [],
+    taint_resolved: true,
+    source: { kind: 'none' },
+    approved_at: '2026-08-29T10:00:00Z',
+    approver_display_name: 'Sarah',
+    completed_at: null,
+    completed_by_name: null,
+    can_manage: true,
+    can_view: true,
+    ...over,
+  };
+}
+
+const ME = '44444444-0000-4000-8000-000000000004';
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   TABLES.clear();
+  FILTERED.clear();
   session.readLiveSession.mockResolvedValue({ kind: 'signed-in', claims: CLAIMS });
   TABLES.set('subjects', { data: [NELL], error: null });
-  TABLES.set('arrivals', { data: [], error: null });
+  TABLES.set('arrivals', { data: [], error: null, count: 0 });
+  tasksHc.myMembership.mockResolvedValue({ id: ME, tier: 'coordinator', subjects: [] });
+  tasksHc.listTasks.mockResolvedValue([]);
+  timelineHc.latestEventPerSubject.mockResolvedValue(new Map());
+  timelineHc.upcomingEvents.mockResolvedValue([]);
+  timelineHc.recentEvents.mockResolvedValue([]);
 });
 
 describe('HOME-01 · day one — one instruction, the forwarding address, and NOTHING ELSE', () => {
@@ -200,5 +306,194 @@ describe('HOME-01 · day one — one instruction, the forwarding address, and NO
     expect(words(await renderHome())).toMatch(/not live yet/i);
     TABLES.set('subjects', { data: [NELL], error: null });
     expect(words(await renderHome())).not.toMatch(/not live yet/i);
+  });
+});
+// ============================================================================
+// 9B U2 · THE ROUTER — the five §4.7.2 blocks (HOME-02, HOME-03, HOME-04;
+// plan Q5).
+//
+// Each block renders from its DESTINATION SURFACE'S OWN READ, and a block
+// whose read returns nothing renders NOTHING — never a zero, never a
+// heading. A rendered `0` is not neutral: "What needs review: 0" shown to a
+// member who cannot see the Care Inbox is a claim about rows she is not
+// entitled to enumerate, on the surface with the widest audience. The
+// absence of the block claims nothing.
+//
+// HOME-01's absence set above must survive this file. It is not repeated
+// here; it is the same file, and it stays green.
+// ============================================================================
+describe('HOME-02/04 · the router — five blocks, each from its destination surface own read', () => {
+  beforeEach(() => {
+    // Past day one: the Care Inbox has something in it.
+    TABLES.set('arrivals', { data: [ARRIVED], error: null, count: 1 });
+  });
+
+  it('how each subject is: the name, where they are, and the most recent thing on their record — recorded, never assessed', async () => {
+    TABLES.set('subjects', { data: [NELL, MARCUS], error: null });
+    timelineHc.latestEventPerSubject.mockResolvedValue(
+      new Map([[NELL.id, event({ summary: 'Discharge summary filed' })]]),
+    );
+    const text = words(await renderHome());
+    expect(text).toContain('How Nell is');
+    expect(text).toContain('At home, with help twice a week');
+    expect(text).toContain('Discharge summary filed');
+    // The second subject gets her own block, and no event of her own is
+    // not an assessment of anything.
+    expect(text).toContain('How Marcus is');
+    expect(text).toContain('In hospital right now');
+  });
+
+  it('what needs review: the count, plain, with the top item NAMED and the Care Inbox linked', async () => {
+    FILTERED.set('arrivals:state=proposals_ready', {
+      data: [ARRIVED],
+      error: null,
+      count: 3,
+    });
+    const html = await renderHome();
+    const text = words(html);
+    expect(text).toContain('What needs review');
+    expect(text).toMatch(/\b3\b/);
+    expect(text).toContain('Ridgeview Clinic');
+    expect(html).toContain(`href="/${CIRCLE}/inbox"`);
+  });
+
+  it('my open tasks: the CALLER own open tasks, with their dates, and never anybody else', async () => {
+    tasksHc.listTasks.mockResolvedValue([
+      task({ title: 'Call the pharmacy', owner_member_id: ME, due_on: '2026-09-10' }),
+      task({ id: 'aaaaaaaa-0000-4000-8000-0000000000a2', title: 'Book the follow-up', owner_member_id: 'someone-else', due_on: '2026-09-11' }),
+      task({ id: 'aaaaaaaa-0000-4000-8000-0000000000a3', title: 'Already done', owner_member_id: ME, status: 'done' }),
+    ]);
+    const text = words(await renderHome());
+    expect(text).toContain('My open tasks');
+    expect(text).toContain('Call the pharmacy');
+    expect(text).toContain('September 10');
+    expect(text).not.toContain('Book the follow-up');
+    expect(text).not.toContain('Already done');
+  });
+
+  it("what's coming: dated items ALREADY IN THE RECORD, and not a calendar", async () => {
+    timelineHc.upcomingEvents.mockResolvedValue([
+      event({ id: 'eeeeeeee-0000-4000-8000-0000000000e2', summary: 'Cardiology follow-up', when: { kind: 'date', on: '2026-09-20' } }),
+    ]);
+    const text = words(await renderHome());
+    expect(text).toContain("What's coming");
+    expect(text).toContain('Cardiology follow-up');
+    expect(text).toContain('September 20');
+  });
+
+  it('recent activity: the last few filings, WITH WHO APPROVED THEM', async () => {
+    timelineHc.recentEvents.mockResolvedValue([
+      event({ id: 'eeeeeeee-0000-4000-8000-0000000000e3', summary: 'Blood results filed', approver_display_name: 'Dan' }),
+    ]);
+    const text = words(await renderHome());
+    expect(text).toContain('Recent activity');
+    expect(text).toContain('Blood results filed');
+    expect(text).toContain('Dan');
+  });
+
+  it('the five blocks render in the §4.7.2 order', async () => {
+    TABLES.set('subjects', { data: [NELL], error: null });
+    FILTERED.set('arrivals:state=proposals_ready', { data: [ARRIVED], error: null, count: 1 });
+    tasksHc.listTasks.mockResolvedValue([task({ owner_member_id: ME })]);
+    timelineHc.latestEventPerSubject.mockResolvedValue(new Map([[NELL.id, event()]]));
+    timelineHc.upcomingEvents.mockResolvedValue([event({ id: 'eeeeeeee-0000-4000-8000-0000000000e2', summary: 'Cardiology follow-up' })]);
+    timelineHc.recentEvents.mockResolvedValue([event({ id: 'eeeeeeee-0000-4000-8000-0000000000e3', summary: 'Blood results filed' })]);
+    const text = words(await renderHome());
+    const order = ['How Nell is', 'What needs review', 'My open tasks', "What's coming", 'Recent activity'].map(
+      (t) => text.indexOf(t),
+    );
+    expect(order.every((i) => i > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  // The rule that buys HOME-01 and HOME-02 at once.
+  it('a block whose read returns nothing renders NOTHING — never a zero, never a heading', async () => {
+    TABLES.set('subjects', { data: [], error: null });
+    const html = await renderHome();
+    const text = words(html);
+    for (const block of ['How ', 'What needs review', 'My open tasks', "What's coming", 'Recent activity']) {
+      expect(text).not.toContain(block);
+    }
+    expect(html).not.toContain('<h2');
+    const numeric = text.split(/\s+/).filter((t) => /^\d+$/.test(t.replace(/[·.,]/g, '')));
+    expect(numeric, `bare numbers rendered by an empty router: ${numeric.join(', ')}`).toEqual([]);
+    expect(text).toContain('Nothing here needs you right now.');
+  });
+
+  it('an empty Care Inbox renders no review block at all — not "0"', async () => {
+    FILTERED.set('arrivals:state=proposals_ready', { data: [], error: null, count: 0 });
+    timelineHc.recentEvents.mockResolvedValue([event()]);
+    const text = words(await renderHome());
+    expect(text).not.toContain('What needs review');
+    // and the block that DOES have something still renders
+    expect(text).toContain('Recent activity');
+  });
+
+  // Q5's other half: a caller who cannot enumerate arrivals gets the router
+  // and its honest line — never the day-one card, never an instruction
+  // addressed to the coordinator.
+  it('a caller whose arrivals read FAILED still gets the blocks she CAN see', async () => {
+    TABLES.set('arrivals', { data: null, error: { message: 'permission denied' } });
+    timelineHc.recentEvents.mockResolvedValue([event()]);
+    const text = words(await renderHome());
+    expect(text).toContain('Recent activity');
+    expect(text).not.toContain(completionPromises.instruction);
+    expect(text).not.toContain('What needs review');
+  });
+});
+
+// ============================================================================
+// HOME-03 · no number on Home is model-computed or an assessment.
+// Two halves: the FENCE (lib/ai has no import path to this surface, walked
+// transitively — not just asserted) and the ABSENCE SET over the rendered
+// tree (no chart, score, trend, ratio or progress indicator).
+// ============================================================================
+describe('HOME-03 · every number is a count of rows the caller can see', () => {
+  it('lib/ai has NO import path to the Home surface — the whole reachable graph, walked', async () => {
+    const { readFileSync, existsSync } = await import('node:fs');
+    const { dirname, join, resolve } = await import('node:path');
+    const root = process.cwd();
+    const resolveSpec = (spec: string, from: string): string | null => {
+      let base: string;
+      if (spec.startsWith('@/')) base = join(root, spec.slice(2));
+      else if (spec.startsWith('.')) base = resolve(dirname(from), spec);
+      else return null; // a package, not our tree
+      for (const ext of ['.ts', '.tsx', '/index.ts', '/index.tsx']) {
+        if (existsSync(base + ext)) return base + ext;
+      }
+      return existsSync(base) ? base : null;
+    };
+    const seen = new Set<string>();
+    const stack = [join(root, 'app/(app)/[circle]/page.tsx')];
+    while (stack.length > 0) {
+      const file = stack.pop()!;
+      if (seen.has(file)) continue;
+      seen.add(file);
+      const src = readFileSync(file, 'utf8');
+      for (const m of src.matchAll(/from\s+'([^']+)'/g)) {
+        const next = resolveSpec(m[1], file);
+        if (next && !seen.has(next)) stack.push(next);
+      }
+    }
+    const ai = [...seen].filter((f) => /[\\/]lib[\\/]ai[\\/]/.test(f));
+    expect(ai, `Home reaches the provider adapter: ${ai.join(', ')}`).toEqual([]);
+    // A positive control: the walk really did walk.
+    expect(seen.size).toBeGreaterThan(5);
+  });
+
+  it('no chart, score, trend, ratio or progress indicator in the rendered tree', async () => {
+    TABLES.set('arrivals', { data: [ARRIVED], error: null, count: 1 });
+    FILTERED.set('arrivals:state=proposals_ready', { data: [ARRIVED], error: null, count: 2 });
+    tasksHc.listTasks.mockResolvedValue([task({ owner_member_id: ME })]);
+    timelineHc.latestEventPerSubject.mockResolvedValue(new Map([[NELL.id, event()]]));
+    timelineHc.recentEvents.mockResolvedValue([event()]);
+    const html = await renderHome();
+    for (const forbidden of ['<svg', '<canvas', '<progress', '<meter', 'role="progressbar"', 'width: ', 'chart', '%']) {
+      expect(html.toLowerCase(), `Home renders "${forbidden}"`).not.toContain(forbidden);
+    }
+    const text = words(html);
+    for (const word of ['score', 'trend', 'progress', 'average', 'out of']) {
+      expect(text.toLowerCase(), `Home says "${word}"`).not.toContain(word);
+    }
   });
 });
