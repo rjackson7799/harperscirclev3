@@ -21,7 +21,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(20);
+select plan(22);
 
 -- 1 · Every function in hc is owned by the non-login internal role.
 select is((
@@ -830,6 +830,66 @@ select set_config('request.jwt.claims', '{not json', true);
 select is(pg_temp.errc('select hc.uid()'), pg_temp.errc('select auth.uid()'),
   'uid equivalence: malformed claims raise the same error class from both');
 select set_config('request.jwt.claims', '', true);
+
+-- ----------------------------------------------------------------------------
+-- 21-22 · OW-30 / ADR-0044 D3 (round 31 F-3): THE FREEZE INVARIANT, PINNED.
+--
+-- FRZ-17 was one function. The reasoning behind it was a class. Every hc.*
+-- write definer in the tree gated at < 'manage', and FRZ-13's unresolved
+-- carve-out caps a non-objected-to coordinator at exactly 'view'
+-- (20260815230009) — so "the carve-out is READ-ONLY" was true by a
+-- COINCIDENCE OF THRESHOLDS and never by construction. hc.claim_task was the
+-- first write admitting at view, and the coincidence ended. Nothing in the
+-- tree noticed: no pgTAP file, no gate, no scanner. ADR-0026 — if it can be
+-- an exact-set assertion, it must be — so here it is.
+--
+-- THE RULE: an hc definer that reads hc.visible_at AND writes must also test
+-- public.freezes, unless it is on the pinned list below. Adding a name is
+-- then a deliberate edit with a reason beside it, which is the whole point.
+--
+-- The two body-text heuristics are legal ONLY behind that pin, and both are
+-- deliberately LOOSE, because over-inclusion is the safe direction here: a
+-- function wrongly called a writer merely has to appear on the list or test
+-- freezes, while one wrongly called a reader disappears from the rule
+-- SILENTLY. "Writes" is direct DML OR a call to hc.log — which is what
+-- caught hc.log_artifact_read, the SECOND function in the tree admitting
+-- below manage, and one nobody had named.
+-- ----------------------------------------------------------------------------
+create temp table freeze_guard_exempt (proname name primary key,
+                                       manage_gated boolean, why text);
+insert into freeze_guard_exempt values
+  ('cancel_arrival',         true,  'gates < manage before it writes: the cap is view, so the carve-out can never reach it'),
+  ('create_manual_proposal', true,  'its FIRST gate is < manage; the second, < view, is unreachable behind it'),
+  ('reclassify_taint',       true,  'gates < manage; writes only through apply_taint / mark_unresolved_one / log'),
+  ('resolve_duplicate',      true,  'gates < manage'),
+  ('revise_object',          true,  'gates < manage'),
+  ('share_object',           true,  'gates < manage'),
+  -- The one exemption that is NOT the threshold. It admits at >= view and it
+  -- writes — but its only write is an access-log append recording a read that
+  -- was PERMITTED. Refusing it under a freeze would not prevent the read; it
+  -- would make the read UNLOGGED, which is worse. The carve-out exists so a
+  -- coordinator can still read, and this is the row that says she did.
+  ('log_artifact_read',      false, 'admits at >= view, but its only write is an hc.log audit append: it records a permitted read and widens nothing');
+
+select is((
+  select coalesce(array_agg(p.proname order by p.proname), array[]::name[])
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'hc' and p.prosecdef
+    and p.prosrc like '%hc.visible_at(%'
+    and (p.prosrc ~* '(insert into|update |delete from)' or p.prosrc like '%hc.log(%')
+    and p.prosrc not like '%public.freezes%'),
+  (select coalesce(array_agg(proname order by proname), array[]::name[])
+     from freeze_guard_exempt),
+  'FREEZE INVARIANT: every hc definer that reads hc.visible_at AND writes also tests public.freezes, except the seven pinned by name — so a new write definer routing its freeze through visible_at alone (the FRZ-17 reasoning) fails HERE, not four rounds later (OW-30)');
+
+select is((
+  select coalesce(array_agg(e.proname order by e.proname), array[]::name[])
+  from freeze_guard_exempt e
+  join pg_proc p on p.proname = e.proname
+  join pg_namespace n on n.oid = p.pronamespace and n.nspname = 'hc'
+  where e.manage_gated and p.prosrc not like '%< ''manage''%'),
+  array[]::name[],
+  'AND THE EXEMPTIONS ARE NOT A BARE LIST: six of the seven are exempt because they gate at < manage, which FRZ-13''s view cap can never satisfy — asserted, not assumed, because "true by coincidence of thresholds" is exactly the defect. The seventh, log_artifact_read, is named and argued above');
 
 select * from finish();
 rollback;

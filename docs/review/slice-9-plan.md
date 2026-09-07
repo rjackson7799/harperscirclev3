@@ -898,6 +898,51 @@ stay `pending` — no instrument in slice 9 produces their evidence.
 
 ---
 
+## Owner amendment — Q10, RULED 2026-09-06: 9A’s browser gate is DEFERRED
+into 9B’s run
+
+**This is an amendment to a ruled plan, made on the record and BEFORE the
+round-32 packet is assembled** — not an omission discovered later. 9A’s
+kickoff ordered the browser gate *unconditionally*, citing ADR-0033 D19.14
+(*a kickoff may not narrow the evidence set*); deferring it therefore needs an
+owner ruling, which this is.
+
+**THE RULING:** the 66-leg browser gate is **NOT run at the 9A head**. It is
+deferred into **9B’s gate run**, which covers the same nine files at a later
+head, and the debt is carried by **`docs/owed.md` OW-32** with an acceptance
+condition, never by memory.
+
+**THE ARGUMENT, which is why this is a deferral and not a hole:**
+
+1. **9A changes no browser surface.** `git diff 1eab0e5..efc2164` touches no
+   `app/`, no `components/`, no `lib/` file — the increment is one migration
+   plus pgTAP. The gate at this head is regression assurance over surfaces
+   nothing in 9A edited.
+2. **Nothing green rests on it.** `FRZ-17` is green on pgTAP and a catalog
+   pin; `OW-27`, `OW-29`, `OW-30` and `OW-31` close on commits. The closing
+   docs commit `319f558` states in its own message that the gate is not its
+   evidence, so no cell has to be re-read to stay true.
+3. **The one run we have is classified, not unexplained.** 2026-09-04, 66
+   legs, 62 passed and 4 unexpected — three timeouts at 1.55× the 8C
+   durations and one timing assertion, on a host that reached 158 MB free.
+   Not a product failure and not a finding; its record and all four traces
+   are preserved.
+4. **The host cannot meet the precondition while a session is open.**
+   Measured on a fresh boot with the stack up and `hc_clamd` down: 534 MB
+   free, against a 1,229 MB floor and `hc_clamd`’s own 1,001 MB. The gap is
+   ~1.7 GB and the only sources are VS Code (995 MB) and the WebView2 tree
+   (676 MB). The gate runs on this host only with the session closed.
+
+**WHAT THIS RULING DOES NOT DO.** It does not make 9A’s surfaces proven, and
+no row may be read as if it did. It does not touch 9B, whose gate is
+mandatory and whose Home surfaces are new. It does not narrow any other
+evidence: the reset, pgTAP, concurrency, `db:verify`, lint, typecheck, build
+and vitest legs were all earned at `efc2164` and are unaffected. **Round 32’s
+packet opens with the gate declared UNRUN**, the classified red and its four
+traces attached, so the reviewer is told rather than left to notice.
+
+---
+
 ## ⏸ AT THE PR, STOP
 
 This PR is **docs-only** and merges nothing. **The owner is sole merge

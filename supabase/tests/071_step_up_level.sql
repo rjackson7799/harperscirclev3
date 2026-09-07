@@ -27,7 +27,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(14);
+select plan(15);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 038 pattern).
@@ -168,15 +168,39 @@ select is(
   'EXECUTE: authenticated alone, never anon / hc_pipeline / hc_admin — asserted from the catalog, never by calling as a denied role');
 
 -- ----------------------------------------------------------------------------
--- 4–8 · THE LEVEL IS IN THE BINDING: minted for summary, posted for manage.
+-- 4-8 · THE LEVEL IS IN THE BINDING — and 9A rebuilt case 4 so that it says
+--       so. Round 31 F-2 (ADR-0044 D2, docs/owed.md OW-29): the case that
+--       carried the STP-03: label here minted a FOUR-part token and posted
+--       manage, which a three-part composition refuses just as flatly — it
+--       passed identically with M2's `|| ':' || p_level::text` removed,
+--       proven live in one begin/rollback. It tested nothing M2 did.
+--
+--       EVERY CASE CARRYING THE STP-03: LABEL BELOW DISCRIMINATES: strip
+--       the suffix from hc.set_grant and 4, 7, 9 and 11 all go red, and
+--       those four are exactly the ones labelled. A case that merely passes
+--       under its own row's name is worse than no case, because the triage
+--       reads "three unrelated raise cases failed" and looks elsewhere.
+--
+--       HOW TO PROBE THIS FILE, because the obvious way is wrong. Removing
+--       the suffix and running the whole file end to end shows 4 and 9 RED
+--       and 7 and 11 GREEN — and that is a CASCADE, not a verdict on 7 and
+--       11. When 4 and 9 stop refusing they SUCCEED, which raises health to
+--       manage and schedule to view; 7's and 11's posts are then LOWERS,
+--       and a lower demands no token (case 13). Probe 7 and 11 from the
+--       FIXTURE instead (health log, schedule summary), where both posts
+--       are raises: both are then refused with the suffix gone and both
+--       land with it intact. Round 31 F-2's own method — the control in
+--       the same transaction — applied one level up.
 -- ----------------------------------------------------------------------------
+select pg_temp.mint_raise(current_setting('t.u1')::uuid,
+  current_setting('t.triple') || ':health', 'tok_3p');
 select pg_temp.mint_raise(current_setting('t.u1')::uuid,
   current_setting('t.triple') || ':health:summary', 'tok_s');
 
-select is(pg_temp.raise_as('health', 'manage', 'tok_s'), 'ERROR:P0001:grant_refused',
-  'STP-03: a token minted to raise health to SUMMARY does not consume against a post of MANAGE for the same member:subject:domain — the level is the fourth part of what the definer matches');
+select is(pg_temp.raise_as('health', 'manage', 'tok_3p'), 'ERROR:P0001:grant_refused',
+  'STP-03: the pre-8A THREE-part target member:subject:health does not raise health to MANAGE — the shape a crafted link could carry, refused because the definer composes FOUR parts. DISCRIMINATES: with the suffix removed this same call SUCCEEDS and health goes to manage, which is the escalation this row exists to forbid (OW-29)');
 
-select is(pg_temp.consumed('tok_s'), 'false',
+select is(pg_temp.consumed('tok_3p'), 'false',
   'the refusal consumed nothing — consume_step_up''s exact match never touched the row, so the confirmation she gave is still hers to spend on what she confirmed');
 
 select is((
@@ -188,7 +212,7 @@ select is((
   'the grant stands at log and the log has no entry — the crafted-link shape R3 named writes nothing');
 
 select is(pg_temp.raise_as('health', 'summary', 'tok_s'), 'summary',
-  'the same token raises to SUMMARY — the level it was minted for');
+  'STP-03: the FOUR-part token raises to exactly the level it was minted for. DISCRIMINATES: with the suffix removed the composition is three-part, this four-part token no longer matches it, and the raise it was minted for is REFUSED — which is what proves the binding was REPLACED and not merely widened');
 
 select is(pg_temp.consumed('tok_s'), 'true',
   '… and is consumed by that raise, in the definer''s own transaction');
@@ -199,15 +223,15 @@ select is(pg_temp.consumed('tok_s'), 'true',
 select pg_temp.mint_raise(current_setting('t.u1')::uuid,
   current_setting('t.triple') || ':schedule', 'tok_old');
 select is(pg_temp.raise_as('schedule', 'view', 'tok_old'), 'ERROR:P0001:grant_refused',
-  'the pre-8A three-part target member:subject:domain no longer raises anything — the binding is replaced, and no in-flight token can exist (nothing is production-activated)');
+  'STP-03: the pre-8A three-part target member:subject:domain no longer raises anything — the binding is replaced, and no in-flight token can exist (nothing is production-activated). DISCRIMINATES: with the suffix removed this call SUCCEEDS. ADR-0044 D2 re-leads STP-03''s evidence citation with THIS case');
 
 select pg_temp.mint_raise(current_setting('t.u1')::uuid,
   current_setting('t.triple') || ':schedule:view', 'tok_v');
 select is(pg_temp.raise_as('schedule', 'manage', 'tok_v'), 'ERROR:P0001:grant_refused',
-  'a token for VIEW cannot post MANAGE: lower never buys higher');
+  'a token for VIEW cannot post MANAGE: lower never buys higher. NOT labelled STP-03 and deliberately so — round 31 F-2 names this case the same shape as the old case 4: it passes with or without the level suffix, because a four-part token misses a three-part composition either way');
 
 select is(pg_temp.raise_as('schedule', 'view', 'tok_v'), 'view',
-  '… and posts VIEW, what it was minted for');
+  'STP-03: … and posts VIEW, what it was minted for. DISCRIMINATES: with the suffix removed the four-part token no longer matches a three-part composition and this raise is refused');
 
 -- ----------------------------------------------------------------------------
 -- 12–14 · What does not change: the stored shape, the token-free lower, the
@@ -230,6 +254,21 @@ select is((
    order by l.seq asc limit 1),
   array['log', 'summary'],
   'the raise that landed is in the log with BOTH levels (AC-PERM-5) — log → summary, the level she confirmed');
+
+-- ----------------------------------------------------------------------------
+-- 15 · 9A / OW-29: the DISPLACED assertion, kept and told the truth about.
+--      This is what case 4 used to be — a token minted for summary posted
+--      against manage. It is a true statement of the contract and it is
+--      worth pinning, but it is NOT evidence for STP-03: a four-part token
+--      misses a three-part composition just as flatly, so it passes with
+--      the suffix removed. It carries no label, and it is APPENDED rather
+--      than inserted so cases 9-14 keep the numbers ADR-0044 D2's marker
+--      and docs/coverage.md STP-03 cite.
+-- ----------------------------------------------------------------------------
+select pg_temp.mint_raise(current_setting('t.u1')::uuid,
+  current_setting('t.triple') || ':documents:summary', 'tok_s2');
+select is(pg_temp.raise_as('documents', 'manage', 'tok_s2'), 'ERROR:P0001:grant_refused',
+  'a token minted to raise documents to SUMMARY does not consume against a post of MANAGE for the same member:subject:domain (true with or without M2 — see the header)');
 
 select * from finish();
 rollback;

@@ -47,7 +47,7 @@ begin;
 
 create extension if not exists pgtap;
 
-select plan(40);
+select plan(45);
 
 -- ----------------------------------------------------------------------------
 -- Helpers (the 066/067 pattern).
@@ -128,7 +128,9 @@ end $$;
 -- t_sched3 · t_sched4 · t_sched5 · t_sched6 · t_tainted {schedule,health} ·
 -- t_shared (shared to Marisol by name, no assignment behind it) ·
 -- t_owned (held by Ruth) · t_done (done) · t_instr (an instruction row,
--- written for Ruth from t_owned, nobody's) · t_s2 (Marcus's).
+-- written for Ruth from t_owned, nobody's) · t_s2 (Marcus's) ·
+-- t_cancelled (cancelled) · t_deleted (soft-deleted, open and unassigned
+-- otherwise) — the last two added by 9A for OW-31.
 -- ----------------------------------------------------------------------------
 set session_replication_role = replica;
 do $fx$
@@ -151,6 +153,9 @@ declare
   t_shared uuid := gen_random_uuid(); t_owned uuid := gen_random_uuid();
   t_done uuid := gen_random_uuid(); t_instr uuid := gen_random_uuid();
   t_s2 uuid := gen_random_uuid();
+  -- 9A (OW-31, ADR-0044 D4): the two refusals 8A's header claimed and 070
+  -- never constructed.
+  t_cancelled uuid := gen_random_uuid(); t_deleted uuid := gen_random_uuid();
   d text;
 begin
   insert into public.accounts (id, kind, display_name) values
@@ -214,7 +219,14 @@ begin
     (t_shared,  c1, s1, 'Sort the Tuesday pills',       'open', u_sarah, now(), 'Sarah', '{schedule}'),
     (t_owned,   c1, s1, 'Book the follow-up',           'open', u_sarah, now(), 'Sarah', '{schedule}'),
     (t_done,    c1, s1, 'Cancel the old subscription',  'done', u_sarah, now(), 'Sarah', '{schedule}'),
-    (t_s2,      c1, s2, 'Marcus: renew the bus pass',   'open', u_sarah, now(), 'Sarah', '{schedule}');
+    (t_s2,      c1, s2, 'Marcus: renew the bus pass',   'open', u_sarah, now(), 'Sarah', '{schedule}'),
+    (t_cancelled, c1, s1, 'Chase the missing delivery',  'cancelled', u_sarah, now(), 'Sarah', '{schedule}'),
+    (t_deleted, c1, s1, 'Ask about the second opinion',  'open', u_sarah, now(), 'Sarah', '{schedule}');
+  -- Soft-deleted, and OPEN and UNASSIGNED otherwise: the row differs from
+  -- t_plain in exactly one column, so its refusal is deleted_at and nothing
+  -- else. t_cancelled is the third status the CHECK allows and the second
+  -- thing status <> 'open' refuses.
+  update public.tasks set deleted_at = now() where id = t_deleted;
   update public.tasks set owner_member_id = m_ruth, assigned_by = u_sarah, assigned_at = now()
    where id = t_owned;
   update public.tasks set completed_by = u_sarah, completed_at = now()
@@ -242,6 +254,7 @@ begin
   perform set_config('t.c1', c1::text, true);
   perform set_config('t.s1', s1::text, true);
   perform set_config('t.s2', s2::text, true);
+  perform set_config('t.m_sarah', m_sarah::text, true);
   perform set_config('t.m_dan', m_dan::text, true);
   perform set_config('t.m_lena', m_lena::text, true);
   perform set_config('t.m_ruth', m_ruth::text, true);
@@ -261,6 +274,8 @@ begin
   perform set_config('t.t_done', t_done::text, true);
   perform set_config('t.t_instr', t_instr::text, true);
   perform set_config('t.t_s2', t_s2::text, true);
+  perform set_config('t.t_cancelled', t_cancelled::text, true);
+  perform set_config('t.t_deleted', t_deleted::text, true);
   perform set_config('t.t_none', gen_random_uuid()::text, true);
 end $fx$;
 set session_replication_role = default;
@@ -306,8 +321,8 @@ select ok(
 select is((select count(*)::int from hc.log_event_types where code = 'task_claimed'), 1,
   'task_claimed joins the event vocabulary — distinct from task_assigned, so the log can tell "handed to you" from "you took it"');
 
-select is((select count(*)::int from public.tasks where circle_id = current_setting('t.c1')::uuid), 13,
-  'the fixture: thirteen task rows, the exact count every path below must leave');
+select is((select count(*)::int from public.tasks where circle_id = current_setting('t.c1')::uuid), 15,
+  'the fixture: fifteen task rows, the exact count every path below must leave (13 at 8A; 9A adds t_cancelled and t_deleted for OW-31, and re-pins this count in the same commit)');
 
 -- ----------------------------------------------------------------------------
 -- 6–12 · THE HEADLINE: Lena, at view on {schedule}, takes an unassigned
@@ -501,8 +516,8 @@ select set_eq(
        from instr_snap $$,
   'ACROSS EVERY PATH: the instruction set is exactly what it was');
 
-select is((select count(*)::int from public.tasks where circle_id = current_setting('t.c1')::uuid), 13,
-  'ACROSS EVERY PATH: thirteen task rows still — no path through claim_task creates a row');
+select is((select count(*)::int from public.tasks where circle_id = current_setting('t.c1')::uuid), 15,
+  'ACROSS EVERY PATH: fifteen task rows still — no path through claim_task creates a row');
 
 -- ----------------------------------------------------------------------------
 -- 39–40 · A claimed task is a HANDED task to every other writer.
@@ -517,6 +532,65 @@ select is(pg_temp.call_as(current_setting('t.u_kim')::uuid, format(
   $$ select (hc.complete_task(%L)) ->> 'status' $$, current_setting('t.t_sched2'))),
   'done',
   'the claimant completes what she claimed — complete_task sees her as the holder exactly as it sees a handed one');
+
+-- ----------------------------------------------------------------------------
+-- 41-42 · 9A / OW-31 (ADR-0044 D4) — the two refusals 8A's header claimed and
+--         this file never constructed. `tasks.status` is
+--         `check (status in ('open','done','cancelled'))` and claim_task
+--         refuses on `status <> 'open'`, so CANCELLED refuses too and was
+--         named nowhere; and no fixture row carried `deleted_at` at all, the
+--         nearest case being t_none, a random uuid. Both in the ONE shape.
+--         APPENDED, never inserted: cases 1-40 keep their numbers, so
+--         docs/coverage.md TSK-05's citations stay true.
+-- ----------------------------------------------------------------------------
+select is(pg_temp.claim_as('u_lena', 't_cancelled'), 'ERROR:P0001:claim_refused',
+  'a CANCELLED task refuses in the ONE shape — the third status the CHECK allows, and the second thing status <> ''open'' refuses (OW-31)');
+
+select is(pg_temp.claim_as('u_lena', 't_deleted'), 'ERROR:P0001:claim_refused',
+  'a SOFT-DELETED task refuses in the ONE shape — open, unassigned and readable in every column but deleted_at, so the refusal is deleted_at and nothing else (OW-31)');
+
+-- ----------------------------------------------------------------------------
+-- 43-45 · 9A / M1 — FRZ-17 (OW-27; ADR-0043 D2). THE PAIR, AND THE CONTROL
+--         IS HALF OF IT. Cases 32-35 above open their freeze with
+--         `insert into public.freezes (circle_id) values (…)` and `state`
+--         DEFAULTS to 'open' (20260815200005:20), so the UNRESOLVED path —
+--         FRZ-13's read-only carve-out — is exercised nowhere for this
+--         function, which is why four merged rounds missed this.
+--
+--         Under an UNRESOLVED freeze naming Dan, hc.grant_vectors gives
+--         Sarah — a coordinator who is NOT the objected-to member —
+--         `frozen = false` and `cap = 'view'`, and hc.visible_at applies the
+--         cap as `least(…)` LAST. `view` is exactly claim_task's admission
+--         floor, so before M1 she TAKES A TASK WHILE THE CIRCLE IS FROZEN.
+--
+--         44 is the CONTROL and is not decoration: it is what tells a guard
+--         apart from a collapsed carve-out. If the fixture were wrong and
+--         Sarah were closed rather than carved out, 43 would pass for the
+--         wrong reason and prove nothing — the FRZ-17 defect class recurring
+--         inside its own test. Her READ must still resolve at exactly 'view'.
+-- ----------------------------------------------------------------------------
+do $$
+begin
+  insert into public.freezes (circle_id, state, objected_to_member_id,
+                              adjudicated_at, adjudicated_by, outcome_note)
+  values (current_setting('t.c1')::uuid, 'unresolved',
+          current_setting('t.m_dan')::uuid, now(), 'Adjudicator',
+          'unresolved: the objection names Dan; coordinators other than Dan keep a read-only view');
+end $$;
+
+select is(pg_temp.claim_as('u_sarah', 't_sched3'), 'ERROR:P0001:claim_refused',
+  'FRZ-17: under an UNRESOLVED freeze a carve-out coordinator — manage x5, capped at view, frozen = false — is REFUSED the claim, in the ONE shape. The carve-out is read-only BY CONSTRUCTION now, not by the coincidence that every other write definer gates at manage');
+
+select is(pg_temp.level_of('u_sarah', 't_sched3'), 'view',
+  'FRZ-17, THE CONTROL: her READ through the carve-out still resolves at exactly view — least(manage, cap) — so 43 is the guard refusing and not the carve-out collapsing. Without this line 43 passes for the wrong reason');
+
+do $$
+begin
+  delete from public.freezes where circle_id = current_setting('t.c1')::uuid;
+end $$;
+
+select is(pg_temp.claim_as('u_sarah', 't_sched3'), current_setting('t.m_sarah'),
+  'FRZ-17: the unresolved freeze lifted, the very same call lands — it WAS the freeze, and nothing else stood in the way (the 32-35 idiom, now on the path 32-35 never took)');
 
 select * from finish();
 rollback;
