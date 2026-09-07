@@ -25,7 +25,7 @@ For a future hosted fixture, set `HC_FIXTURE_BIND_HOST=0.0.0.0` only inside the 
 | Database fixtures | Replace the seven files' unsupported `session_replication_role` bypass with fixtures that satisfy the real claim/provenance constraints. Do not relax application roles or triggers. |
 | Runner | Preserve target-specific guards, one-worker execution, independent fixtures and full JSON/trace evidence. The in-app/Chrome automation attachment problem remains separate from these service dependencies. |
 
-Sources: [DigitalOcean pricing](https://www.digitalocean.com/pricing/droplets), [Mailpit SMTP](https://mailpit.axllent.org/docs/configuration/smtp/), [Mailpit UI/API protection](https://mailpit.axllent.org/docs/configuration/http/). Account, region, DNS, recurring cost and server access must be selected before provisioning. The owner has been asked whether an existing Linux host is available or a new-server proposal is needed.
+Historical proposal sources: [DigitalOcean pricing](https://www.digitalocean.com/pricing/droplets), [Mailpit SMTP](https://mailpit.axllent.org/docs/configuration/smtp/), [Mailpit UI/API protection](https://mailpit.axllent.org/docs/configuration/http/). This proposal is deferred by the owner decision above; no hosting selection or purchase approval is currently requested.
 
 ## Evidence
 

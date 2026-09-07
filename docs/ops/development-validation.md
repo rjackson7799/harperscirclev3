@@ -1,6 +1,6 @@
 # Efficient validation and staging handoff
 
-Current hosted state: [V3 staging database checkpoint](staging-checkpoint.md). The inventory below describes the earlier discovery; the owner subsequently created a separate project and its 77 existing migrations have now been applied and checked. Application deployment and browser adaptation remain pending.
+Current hosted state: the separate Supabase project has all 77 existing migrations, and the protected Vercel preview is deployed in Oregon. See [database checkpoint](staging-checkpoint.md), [deployment checkpoint](vercel-staging-checkpoint.md), and [current staging smoke evidence](staging-setup-smoke.md). Coordinator, nonmember, restricted-tier and removed-member Home HTTP checks have passed. Full browser adaptation and qualifying evidence remain pending. The inventory below is historical discovery, not a request to create more resources; the owner has explicitly deferred additional services.
 
 This workflow follows the owner's September 6 handoff instruction to improve speed without sacrificing quality. It adds a convenience entry point; it changes no acceptance criteria, authorization, schema, dependencies, or browser gates.
 
@@ -29,7 +29,7 @@ The next staging increment must prepare these items before executing the qualify
 | Virus scanning and ingestion | Provide a reachable scanner/worker arrangement compatible with the existing ingestion deployment contract; verify clean and EICAR paths. Supabase/Vercel provisioning does not itself supply the existing clamd dependency. |
 | Test runner and evidence | Move the runner to a host with adequate memory if necessary. Adapt preflight to guard the actual staging target before enabling remote fixture writes. Preserve JSON, traces and screenshots; keep CI KEYLESS and do not silently move browser gates into CI. |
 
-Use `auth-config-parity.md`, `ingestion-deploy.md`, `ai-provider.md`, and `runtime-db-credentials.md` as the implementation inputs. Provisioning is still pending. The initial local inspection did not verify account access; the subsequent read-only inventory below does. Select the account/team, region and bounded cost before creating resources. The owner's conditional staging instruction supports preparation; paid-resource or credential decisions requiring owner input should be bundled into one concrete request once the setup is ready to execute.
+Use `auth-config-parity.md`, `ingestion-deploy.md`, `ai-provider.md`, and `runtime-db-credentials.md` as implementation inputs. Database and application provisioning are complete; the remaining fixture email, AI and scanning dependencies are deferred under the no-additional-service decision. Do not re-request hosting selection or infer authorization to buy a companion host. Lightweight staging HTTP checks run without those dependencies; a browser-only smoke can use the installed local runner when sufficient memory is available, keeping its evidence separate from the complete gate.
 
 OW-32 and OW-34 remain pending their qualifying proof, including the required nine-file browser gate, Home fixture isolation and latency evidence. OW-35's missing assertion remains separate. This workflow does not promote any coverage row or grant merge/production approval.
 

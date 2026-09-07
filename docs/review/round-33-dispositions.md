@@ -33,3 +33,18 @@ Raw evidence lives in the handoff folder: `round33-final-app-suite.json`, `round
 ## Subsequent full verification — workflow follow-up
 
 At clean commit `0d93dbb6765062bf7c42a3088add5eba875852d0`, `npm run verify:local` exited 0: whole-tree lint, **1,621 passed / 0 failed / 0 pending** application tests (140.36 seconds), then production build including TypeScript. The existing preflight lease guarded the sequential run. This is fresh verification including the final zone guard; earlier results above remain historical. Raw evidence is retained in the handoff workspace as `round33-workflow-suite.json` and `round33-workflow-verification.log`. The later commit recording this paragraph changes documentation only. Browser, latency, OW-34 and OW-35 dispositions are unchanged; no hosted run or coverage promotion is claimed.
+
+## Current closeout checkpoint — subsequent staging work
+
+The existing protected Supabase/Vercel staging setup now has HTTP evidence for unverified setup-to-Home, coordinator day-one display, signed-out redirects and cache headers, signed-in nonmember isolation, Care Circle/Family router display, and removal using the same session. See `docs/ops/staging-setup-smoke.md` for exact fixtures, deployment, cleanup and limits. These later results supersede the absence of hosted checks in the historical paragraphs above, without changing their commit-bound local results.
+
+| Remaining acceptance | Current disposition |
+|---|---|
+| F-1 operational failure | Application regression proof exists; controlled hosted failure-state proof still pending. Minimal restricted-tier and removed-member HTTP composition now passed; populated permission variants and browser behavior remain pending. |
+| F-2 temporal correctness and performance | Real-PostgreSQL temporal regression proof exists. Representative current query/page p95 and browser date behavior remain pending; empty fixtures and network/CLI overhead are not substitutes. |
+| F-3 fixture isolation and navigation | Completion-to-Home HTTP passed, but isolated/after-prior-legs/full-gate browser execution remains pending. |
+| OW-35 | The inbox assertion is written; qualifying browser execution remains pending. |
+| Browser runner | Independent local runner prepared; memory guard stopped before launch at 501 MiB. No assertion executed. Existing interactive attachment failure is a separate limitation. |
+| Full ingestion/email gate | Companion dependencies remain deferred by the owner's no-additional-service decision. This is not an acceptance waiver. |
+
+Tally remains **3 OWED, 0 FIXED**, with no coverage promotion, owner merge or production activation. No new service is required for the narrow browser smoke; the full nine-file gate still has the documented additional dependencies. Next action is to rerun the narrow browser check only after memory is available, then preserve its actual scope in this record rather than treating it as full closure.
