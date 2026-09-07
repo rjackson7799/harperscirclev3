@@ -87,4 +87,9 @@ describe('Home temporal eligibility at real PostgreSQL boundaries', () => {
       expect(await selected('past', row)).toBe(false);
     }
   });
+  it('an unrecognized recorded zone cannot break the whole Home read or silently choose a different zone', async () => {
+    const row = { now: '2026-09-07T18:00Z', date: '2026-09-07', zone: 'Unknown/Place' };
+    expect(await selected('upcoming', row)).toBe(false);
+    expect(await selected('past', row)).toBe(false);
+  });
 });
